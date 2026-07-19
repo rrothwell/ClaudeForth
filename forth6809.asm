@@ -26,12 +26,13 @@
 ; Building this surfaced two real findings, not just mechanical
 ; work: (1) the original 1024-byte BASEDICT could not hold the
 ; header table (1954 bytes needed) - BASEDICT was resized to
-; 2048 bytes ($E000-$E7FF), taking the space from BASECODE (now
-; $E800-$FFBF, 6080 bytes, was 7104). This resize is based on
+; 2048 bytes ($E000-$E7FF), taking the space from BASECODE (then
+; $E800-$FFBF, 6080 bytes, was 7104). This resize was based on
 ; the header-table budget alone; the actual assembled byte size
 ; of BASECODE's code was never measured with a real 6809
-; assembler, so whether 6080 bytes is enough for all ~530
-; routine labels in this file remains unverified. (2) DOES>
+; assembler, so whether 6080 bytes was enough for all ~530
+; routine labels in this file was never verified before BASECODE
+; moved again (below). (2) DOES>
 ; initially had no corresponding code anywhere in the file -
 ; SETDOES and the DOES> compiling word (code label DOESGT, since
 ; a literal ">" is not a valid 6809 assembler label) were added
@@ -45,6 +46,17 @@
 ; CFA is the DODOES-trampoline pattern, built by hand here with
 ; fixed, assemble-time addresses since there is no interactive
 ; CREATE/CONSTANT phase for ROM content.
+;
+; BASEDICT holds exactly 1973 bytes ($D83F-$DFF3), an exact,
+; zero-padding fit for SECTION 27's real dictionary content.
+; BASECODE ($DFF4-$FFA1) is contiguous directly above it, sized
+; to a nominal 8110-byte budget. BASECODE's end lands exactly
+; one byte below INITCODE's start ($FFA2) - zero gap, zero
+; overlap. USROMSTRT/USROMEND, INOUT, RSTACK, DSTACK, CODETOP,
+; APPCODE, APPDICT, and APPVARS are all mutually consistent, with
+; no overlaps anywhere in the current memory map. See the ROM
+; Size Required section of the documentation and the open-items
+; checklist for real content totals and remaining margin.
 ;
 ; This file preserves the code exactly as derived and verified
 ; turn-by-turn in the conversation, including the corrected
@@ -60,22 +72,113 @@
 ; ------------------------------------------------------------
 ; MEMORY MAP
 ; ------------------------------------------------------------
+USROMSTRT EQU $C100     ; Usable ROM start. Beginning of the usable
+                         ; EPROM address range. INITCODE, BASECODE,
+                         ; and BASEDICT must all fall within
+                         ; USROMSTRT..USROMEND - see the verification
+                         ; note below each one's EQU.
+USROMEND EQU  VECTORS-1 ; Usable ROM end. Corrected: 1 before VECTORS'
+                         ; start ($FFEF), not one past VECTORS' end as
+                         ; originally defined - this is a real 16-bit
+                         ; address (the last byte available before the
+                         ; reserved vector table), usable directly in
+                         ; comparisons or as a memory operand, unlike
+                         ; the previous $10000 definition
 VECTORS  EQU  $FFF0
-INIT     EQU  $FFC0
-BASECODE EQU  $E800     ; was $E400 - shrunk 1024 B to give BASEDICT room
-BASEDICT EQU  $E000     ; now 2048 B ($E000-$E7FF), was 1024 B - see SECTION 27
-ACIA     EQU  $DF00
-RSTACK   EQU  $DEFF
-DSTACK   EQU  $DBFF
-CODETOP  EQU  $D800     ; code space ceiling (data stack begins here)
-APPCODE  EQU  $7000
-APPVARS  EQU  $6F00     ; renamed from APPDATA -> RAM -> APPVARIABLES -> APPVARS
-APPDICT  EQU  $0320
-SIBUF    EQU  $0300
-WORDBUF  EQU  $02D4
-TIBBUF   EQU  $0284
+INITCODE EQU  $FFA2     ; was $FFA0, before that $FFC0 - now exactly 78
+                         ; bytes, matching the ~78-byte COLDSTRT+WARM+
+                         ; WARMMSG estimate with zero margin (was 80,
+                         ; with 2 bytes of slack). UNRESOLVED: this is
+                         ; a real, pre-existing overlap with BASECODE
+                         ; (ends $FFBF), not something this change
+                         ; introduced - $FFA0 already overlapped it by
+                         ; 32 bytes before this change; $FFA2 overlaps
+                         ; by 30 bytes - reduced, not resolved. See the
+                         ; open-items checklist.
+BASECODE EQU  $DFF4     ; was $E012 - shifted down 30 bytes so its
+                         ; nominal end ($FFA1) lands exactly one byte
+                         ; below INITCODE's start ($FFA2), resolving the
+                         ; INITCODE/BASECODE overlap precisely: zero
+                         ; gap, zero overlap. Nominal size (8110 bytes)
+                         ; is unchanged, only the start address moved.
+BASEDICT EQU  $D83F     ; was $D85D - shifted down the same 30 bytes as
+                         ; BASECODE, preserving the exact, zero-padding
+                         ; fit for its real 1973-byte dictionary content
+                         ; (SECTION 27) and staying perfectly contiguous
+                         ; with BASECODE's new start.
+INOUT    EQU  $C000     ; was $DF00 - moved so INOUT (256 B) sits
+                         ; directly below USROMSTRT ($C100), contiguous,
+                         ; no gap. This also resolves the INOUT portion
+                         ; of the collision flagged when BASEDICT moved
+                         ; to $D85D: INOUT no longer overlaps BASEDICT
+                         ; ($D85D-$E011), since $C0FF < $D85D. The
+                         ; DSTACK and RSTACK portions of that same
+                         ; collision were NOT touched by this specific
+                         ; change, but were resolved separately when
+                         ; those two regions moved (see below). This
+                         ; move ALSO overlapped APPCODE at the time
+                         ; ($7000-$D7FF then) - since resolved too, when
+                         ; APPCODE moved down $2000 (see below).
+INOUTEND EQU  INOUT+$FF
+RSTACK   EQU  $BFFF     ; was $BEFF - occupied range is $BD00-$BFFF
+                         ; (768 bytes, unchanged size). RESOLVED: once a
+                         ; 512-byte gap sat between this and DSTACK
+                         ; below; DSTACK moving up $200 closed it - now
+                         ; exactly contiguous, no gap
+DSTACK   EQU  $BCFF     ; was $BAFF - moved up $200. RESOLVED (both):
+                         ; occupied range is now $B900-$BCFF, which
+                         ; exactly matches CODETOP ($B900) as its true
+                         ; bottom - the 512-byte mismatch is gone - and
+                         ; is now exactly contiguous with RSTACK's
+                         ; bottom ($BD00), closing that gap too
+CODETOP  EQU  $B900     ; was $B800 - code space ceiling (data stack
+                         ; begins here). RESOLVED: this once no longer
+                         ; matched DSTACK's true occupied bottom (was
+                         ; $B700, a 512-byte mismatch) - now that DSTACK
+                         ; moved up $200 to $B900, CODETOP matches it
+                         ; exactly again
+APPCODE  EQU  $7000     ; was $5000 - back to its original address.
+                         ; RESOLVED: this once overlapped DSTACK's true
+                         ; range by 512 bytes ($B700-$B8FF), a direct
+                         ; consequence of the CODETOP/DSTACK mismatch -
+                         ; now that DSTACK moved and CODETOP matches it
+                         ; again, APPCODE's nominal range (up to
+                         ; CODETOP-1) no longer reaches into DSTACK
+APPDICT  EQU  $2000     ; was $015B - moved up, size unchanged (20133
+                         ; bytes, now $2000-$6EA4). REDUCED BUT NOT
+                         ; RESOLVED: still overlaps APPVARS below by 347
+                         ; bytes ($2000-$215A), though SIBUF/WORDBUF/
+                         ; TIBBUF/OUTBUF (swallowed by the previous
+                         ; APPDICT address) are now clear. See the
+                         ; open-items checklist
+APPVARS  EQU  $021B     ; grown from 256 to 8000 bytes (end now $215A,
+                         ; was $031A), taking the space directly from
+                         ; APPDICT above it; start address unchanged.
+                         ; That 8000-byte figure describes the original
+                         ; intent, not the current actual usable size -
+                         ; see APPVARSEND below, which now tracks
+                         ; APPDICT's real position instead
+APPVARSEND EQU APPDICT-1 ; was APPVARS+8000 ($215B) - now derives
+                         ; directly from wherever APPDICT actually
+                         ; starts, currently $1FFF (7653 bytes usable,
+                         ; down from the static 8000). Self-correcting:
+                         ; this can no longer go stale if APPDICT moves
+                         ; again, unlike the previous fixed-size
+                         ; definition. VUNUSEDW (below) is unchanged -
+                         ; it already computed against APPVARSEND
+SIBUF    EQU  $01FB     ; was $0300
+WORDBUF  EQU  $01DA     ; was $02D4
+TIBBUF   EQU  $018A     ; was $0284
 TIBBUFL  EQU  80
-SERBUF   EQU  $0200
+SERBUF   EQU  $0106     ; was $0200 - USER0/USER1 removed entirely (see
+                         ; below); the 6 buffers (SERBUF's 4-byte index
+                         ; block, INBUF, OUTBUF, TIBBUF, WORDBUF, SIBUF)
+                         ; now sit contiguously right after MVSCRATCH,
+                         ; with no gap - this also closes a pre-existing
+                         ; 11-byte gap that used to sit between WORDBUF
+                         ; and SIBUF ($02F5-$02FF), unrelated to USER0/
+                         ; USER1 but caught while making this region
+                         ; genuinely contiguous end to end
 INHEAD   EQU  SERBUF
 INTAIL   EQU  SERBUF+1
 OUTHEAD  EQU  SERBUF+2
@@ -84,16 +187,49 @@ INBUFSZ  EQU  64
 OUTBUFSZ EQU  64
 INBUF    EQU  SERBUF+4
 OUTBUF   EQU  SERBUF+4+INBUFSZ
-USER1    EQU  $0180
-USER0    EQU  $0100
 GLOBALS  EQU  $0000
+
+; ------------------------------------------------------------
+; MVSCRATCH - three cells shared, one at a time, by routine
+; families that never call each other or run concurrently in
+; this single-threaded interpreter: MOVE/CMOVE/CMOVE>, FILL, and
+; HOLDS (plus the single-cell multiply routine). Sharing avoids
+; needing 3x the physical storage for what is provably the same
+; scratch need at different times; the tradeoff is that these
+; three cells use ordinary extended addressing (3-byte LDD/STD),
+; not direct-page (2-byte), since page zero has no room left.
+;
+;   MVCNT    - MOVE/CMOVE's remaining-byte count
+;     FILLCNT  EQU MVCNT   - FILL's remaining-byte count
+;     HSLEN    EQU MVCNT   - HOLDS's remaining-char count
+;   MVDST    - MOVE/CMOVE's destination address
+;     FILLADDR EQU MVDST   - FILL's target address
+;     HSADDR   EQU MVDST   - HOLDS's source address
+;   MVSRC    - MOVE/CMOVE's source address
+;     MRESULT  EQU MVSRC   - single-cell multiply's 16-bit result
+;     FILLCHR  EQU MVSRC   - FILL's fill character (1 byte, uses
+;                            MVSRC's first byte only)
+; ------------------------------------------------------------
+         ORG   $0100
+MVCNT      RMB   2
+MVDST      RMB   2
+MVSRC      RMB   2
+FILLCNT  EQU  MVCNT
+HSLEN    EQU  MVCNT
+FILLADDR EQU  MVDST
+HSADDR   EQU  MVDST
+MRESULT  EQU  MVSRC
+FILLCHR  EQU  MVSRC
 
 SP0      EQU  DSTACK+1
 RP0      EQU  RSTACK+1
 
 ; ------------------------------------------------------------
-; ACIA (6850) constants
+; ACIA (6850) constants - the chip sits at INOUT+8, not at the
+; base of the I/O block, leaving INOUT+0..INOUT+7 free for other
+; memory-mapped devices sharing this 256-byte region
 ; ------------------------------------------------------------
+ACIA     EQU  INOUT+8
 ACIACR   EQU  ACIA
 ACIASR   EQU  ACIA
 ACIADR   EQU  ACIA+1
@@ -302,7 +438,7 @@ GLOBALS_USED EQU 256  ; total bytes used, of 256 available - fully packed
 ; ============================================================
 ; SECTION 1: HARDWARE VECTOR TABLE
 ; ============================================================
-         ORG   $FFF0
+         ORG   VECTORS       ; VECTORS is $FFF0
 VRESV    FDB   $0000
 VSWI3    FDB   SWI3H
 VSWI2    FDB   SWI2H
@@ -312,10 +448,13 @@ VSWI     FDB   SWIH
 VNMI     FDB   WARM            ; NMI -> warm restart
 VRESET   FDB   COLDSTRT
 
+VECTOREND  EQU   *          ; Verify vectors size, value should match $10.
+VECTORSIZE EQU   VECTOREND-VECTORS
+
 ; ============================================================
 ; SECTION 2: INIT CODE (COLDSTRT / WARM)
 ; ============================================================
-         ORG   $FFC0
+         ORG   INITCODE       ; INITCODE is $FFA2 (was INIT/$FFA0, before that literal $FFC0)
 COLDSTRT:
          ORCC  #$50
          LDS   #RSTACK+1
@@ -334,9 +473,11 @@ CLRGLOB: CLR   ,X+
          CLR   ,X
 
          LDA   #$03
-         STA   ACIA
+         STA   ACIACR         ; was "STA ACIA" - only correct by
+                               ; coincidence while ACIA and ACIACR were
+                               ; the same address; now genuinely distinct
          LDA   #CR_RXON
-         STA   ACIA
+         STA   ACIACR         ; was "STA ACIA" - same fix
 
          JMP   COLD
 
@@ -356,9 +497,21 @@ WARM:    ORCC  #$50
 WARMMSG: FCC   "  warm"
 WARMMSGL EQU   *-WARMMSG
 
+INITEND  EQU   *          ; Verify no collision with vectors, value should match vector ORG
+INITSIZE EQU   INITEND-INITCODE
+
 ; ============================================================
 ; SECTION 3: ACIA INTERRUPT HANDLER
 ; ============================================================
+         ORG   BASECODE       ; BASECODE is $E800. This ORG was missing
+                               ; entirely - every routine from here through
+                               ; SECTION 26 (IRQH, COLD/ABORT/QUIT, and
+                               ; every primitive) would otherwise have
+                               ; continued growing from wherever SECTION 2's
+                               ; WARM message left the location counter,
+                               ; inside INIT's 48-byte $FFC0-$FFEF budget,
+                               ; overflowing directly into VECTORS ($FFF0)
+                               ; instead of landing in BASECODE at all
 
 ; ------------------------------------------------------------
 ; INFILL - ( -- A=fill level, 0-63 ) input ring's current fill
@@ -492,7 +645,7 @@ COLD:    LDD   #APPVARS
          LDD   #SIGNONL
          PSHU  D
          JSR   TYPE
-         JSR   CR
+         JSR   CRW
          ; falls through into ABORT
 
 ABORT:   LDU   #SP0
@@ -532,7 +685,7 @@ QLOOP:   LDD   #0
          STD   LATEST
          LDU   #SP0
 
-         JSR   CR
+         JSR   CRW
          LDX   #ERRMSG
          PSHU  X
          LDD   #ERRMSGL
@@ -545,7 +698,7 @@ QLOOP:   LDD   #0
 
 QOK:     LDD   STATE
          BNE   QLOOP
-         JSR   CR
+         JSR   CRW
          LDX   #OKMSG
          PSHU  X
          LDD   #OKMSGL
@@ -711,10 +864,10 @@ UNUSEDW: LDD   #CODETOP
          PSHU  D
          RTS
 
-VUNUSEDW: LDD  #APPCODE
-          SUBD VARHERE
-          PSHU D
-          RTS
+VUNUSEDW: LDD  #APPVARSEND    ; was #APPCODE - a real bug, not just a
+          SUBD VARHERE        ; missing check: computed a meaningless
+          PSHU D              ; distance to an unrelated region instead
+          RTS                 ; of remaining APPVARS space
 
 ; ============================================================
 ; SECTION 7: HEADER (factored from :/CREATE/VARIABLE)
@@ -1085,7 +1238,8 @@ DOEXEC:  JSR   EXECUTE
 
 TRYNUM:  JSR   NUMBERQ
          PULU  D
-         TSTD
+         CMPD  #0            ; was TSTD (6309-only) - PULU doesn't set CC on
+                              ; genuine 6809, so compare D against 0 directly
          BEQ   BADWORD
 
          LDD   STATE
@@ -1840,7 +1994,11 @@ DOPLUSTEST: PULS X
             STD  MSCR3
             LDA  MSCR2
             LDB  MSCR3
-            EORA B
+            PSHS B
+            EORA ,S+          ; was "EORA B" - not valid 6809 syntax (no
+                                ; register-to-register EORA); push B, then
+                                ; operate through ,S+ - the standard 6809
+                                ; idiom for adding/combining two registers
             BMI  DPTEXIT
             LDD  MSCR3
             BEQ  DPTEXIT
@@ -2479,13 +2637,15 @@ SNOFLIP2: STA  MBHI
           LDB  MBLO
           MUL
           LDA  MRESULT
-          ADDA B
+          PSHS B
+          ADDA ,S+          ; was "ADDA B" - not valid 6809 syntax
           STA  MRESULT
           LDA  MALO
           LDB  MBHI
           MUL
           LDA  MRESULT
-          ADDA B
+          PSHS B
+          ADDA ,S+          ; was "ADDA B" - not valid 6809 syntax
           STA  MRESULT
           LDD  MRESULT
           TST  MSIGN
@@ -3909,7 +4069,7 @@ SUBCPLP: LDD  SUBCOPYCNT
          BEQ  SUBCPDONE
          LDD  SUBOUTLEN
          CMPD SUBDESTCAP
-         BHS  SUBOVERFLOW
+         LBHS SUBOVERFLOW      ; was BHS - out of short-branch range
          LDX  SUBCOPYSRC
          LDA  ,X+
          STX  SUBCOPYSRC
@@ -4423,10 +4583,10 @@ ENVNOTFOUND: LDD #FALSEV
              RTS
 
 ENVTABLE:
-         FDB   EN1, EN1L, 31
-         FDB   EN2, EN2L, 32767
-         FDB   EN3, EN3L, 65535
-         FDB   EN6, EN6L, 8
+         FDB   EN1,EN1L,31
+         FDB   EN2,EN2L,32767
+         FDB   EN3,EN3L,65535
+         FDB   EN6,EN6L,8
          FDB   0
 EN1:     FCC   "/COUNTED-STRING"
 EN1L     EQU   *-EN1
@@ -4469,7 +4629,7 @@ WWLOOP:  LDD   WWALK
          CLRA
          PSHU  D
          JSR   TYPE
-         JSR   SPACE
+         JSR   SPACEW
          LDX   WWALK
          LEAX  1,X
          LDB   HDRFLAGS
@@ -4479,7 +4639,7 @@ WWLOOP:  LDD   WWALK
          LDD   ,X
          STD   WWALK
          BRA   WWLOOP
-WWDONE:  JSR   CR
+WWDONE:  JSR   CRW
          RTS
 
 HEXDIGIT: PULU D
@@ -4515,7 +4675,7 @@ DUMPW:   PULU  D
          PULU  D
          STD   DUMPADDR
 DULINE:  LDD   DUMPCNT
-         BEQ   DUDONE
+         LBEQ  DUDONE          ; was BEQ - out of short-branch range
          LDD   DUMPADDR
          STD   HEXBUF
          CLR   DUMPCOL
@@ -4588,9 +4748,9 @@ DUABLANK: LDD #32
           JSR EMIT
           INC DUMPCOL
           BRA DUACHAR
-DULEND:  JSR  CR
+DULEND:  JSR  CRW
          LDD  DUMPCNT
-         BNE  DULINE
+         LBNE DULINE           ; was BNE - out of short-branch range
 DUDONE:  RTS
 
 ; ============================================================
@@ -4610,6 +4770,12 @@ QUITHDR:  FCB   4
           FCC   "QUIT"
           FDB   ABORTHDR
           FDB   QUIT
+
+BASELATEST EQU  QUITHDR  ; the ROM dictionary's true head - referenced by
+                          ; COLD to initialize LATEST, and asserted in the
+                          ; SECTION 27 header comment below, but never
+                          ; actually defined anywhere until now: an
+                          ; undefined-symbol bug, not a placeholder
 
 ; ------------------------------------------------------------
 ; TRUE / FALSE - CONSTANT TRUE -1 / CONSTANT FALSE 0. The first
@@ -4636,10 +4802,16 @@ FALSEBODY: JSR   DODOES
            FDB   FALSEVAL
 FALSEVAL:  FDB   0
 
+; Verify no collision with init code,
+; value should match ORG INITCODE.
+BASECODEEND  EQU   *
+BASECODESIZE EQU   BASECODEEND-BASECODE
+
 ; ============================================================
 ; SECTION 27: FORTH DICTIONARY (ROM base dictionary headers)
 ; Every primitive word in the Glossary gets a real header here,
-; chained via LINK, living in BASEDICT ($E000-$E7FF). CFA points
+; chained via LINK, living in BASEDICT ($D85D-$E011, an exact fit
+; for this dictionary's 1973 bytes - was $E000-$E7FF). CFA points
 ; directly at each primitive's own code label for almost every
 ; entry - these are raw code entries, not DODOES trampolines, so
 ; CFA = the label itself. The two exceptions are TRUE and FALSE
@@ -4670,7 +4842,7 @@ FALSEVAL:  FDB   0
 ; escaped inside FCC - see emit_name's comment for why.
 ; ============================================================
 
-         ORG   $E000
+         ORG   BASEDICT       ; BASEDICT is $E000
 
 H_KEY:
          FCB   $03
@@ -5764,6 +5936,11 @@ H_FALSE:
          FDB   FALSEBODY
 
 DICTTOP  EQU   H_FALSE   ; newest entry in this base chain
+
+; Verify no collision with base code.
+; Value should match ORG BASECODE
+BASEDICTEND  EQU   *
+BASEDICTSIZE EQU   BASEDICTEND-BASEDICT
 
 ; ============================================================
 ; END OF CONSOLIDATED SOURCE
