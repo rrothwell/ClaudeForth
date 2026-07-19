@@ -1,0 +1,27 @@
+gitignore# General macOS user settings
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Icon files loaded by Finder
+Icon?
+
+# Thumbnails
+._*
+
+# Files that may be automatically created by macOS applications
+.Spotlight-V100
+.Trashes
+
+# Directories potential used by Apple filesystems
+.DocumentRevisions-V100
+.fseventsd
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Directories created by network filesystems
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+TemporaryItems
+apdisk
