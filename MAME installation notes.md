@@ -22,7 +22,6 @@ ls -al
 ```
 
 Modify the mame.ini file shown as follows:
-<mark style="color:green">
 ```
 #
 # CORE SEARCH PATH OPTIONS
@@ -53,8 +52,42 @@ diff_directory            "$HOME/Library/Application Support/mame/diff"
 comment_directory         "$HOME/Library/Application Support/mame/comments"
 share_directory           /usr/local/share/mame/share
 ```
-</mark>
 
+Create the directory structure as follows:
+```
+cd $HOME/Library/Application\ Support/mame
+mkdir artwork
+mkdir cabinets
+mkdir cheat   
+mkdir cfg   
+mkdir comments 
+mkdir cpanel  
+mkdir crosshair
+mkdir ctrlr    
+mkdir diff 
+mkdir fonts
+mkdir hiscore
+mkdir ini    
+mkdir inp
+mkdir marquees
+mkdir nvram   
+mkdir roms 
+mkdir samples
+mkdir snap   
+mkdir software
+mkdir sta     
+mkdir videosnaps
+```
+
+Move the mame.ini file to its new home:
+```
+mv $HOME/Games/mame/mame.ini $HOME/Library/Application\ Support/mame
+```
+
+Start mame:
+```
+mame
+```
 
 
 The instructions followed are from [MAME on Macs](https://mameonmacs.blogspot.com/2025/12/mame-via-homebrew-on-macs-finally-there.html)
