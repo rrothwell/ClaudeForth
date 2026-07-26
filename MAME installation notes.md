@@ -19,6 +19,8 @@ and adjustments to the paths in this file.
 
 Modify the mame.ini file as follows:
 <code><span style="color:green">
+```
+{
 #
 # CORE SEARCH PATH OPTIONS
 #
@@ -47,7 +49,8 @@ snapshot_directory        "$HOME/Library/Application Support/mame/snap"
 diff_directory            "$HOME/Library/Application Support/mame/diff"
 comment_directory         "$HOME/Library/Application Support/mame/comments"
 share_directory           /usr/local/share/mame/share
-
+}
+```
 </span></code>
 
 
