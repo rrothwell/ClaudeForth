@@ -14,7 +14,8 @@ MC6850 ACIA for serial IO.
 |:-----------------|------------:|
 |Initial specification and code generation|:white_check_mark:|
 |Initial documentation|:white_check_mark:|
-|Resolve assembler bugs, missing labels and dictionary entries, fix memory map overlaps & gaps. |:white_check_mark:|
+|Resolve assembler bugs, missing labels and dictionary entries, fix memory map overlaps & gaps. Assembles without errors. |:white_check_mark:|
+|Install MAME. Add configuration file for MECB 6809 computer. | |
 |Manual tests & tests against ANS test suite. | |
 |Develop a simple forth application| |
 |Refine the documentation| |
