@@ -12,12 +12,12 @@ MC6850 ACIA for serial IO.
 
 | Item             | Completed   |
 |:-----------------|------------:|
-|Initial soecification and code generation|- [x]|
-|Initial documentation|- [x]|
-|Resolve assembler bugs, missing labels and dictionary entries, fix memory map overlaps & gaps|- [x]|
-|Manual tests & tests against ANS test suite|- [x]|
-|Develop a simple forth application|- [x]|
-|Refine the documentation|- [x]|
+|Initial specification and code generation|:white_check_mark:|
+|Initial documentation|:white_check_mark:|
+|Resolve assembler bugs, missing labels and dictionary entries, fix memory map overlaps & gaps. |:white_check_mark:|
+|Manual tests & tests against ANS test suite. | |
+|Develop a simple forth application| |
+|Refine the documentation| |
 
 ## Assets
 
