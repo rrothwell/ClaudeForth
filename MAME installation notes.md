@@ -22,7 +22,7 @@ ls -al
 ```
 
 Modify the mame.ini file shown as follows:
-<span style="color:green">
+<mark style="color:green">
 ```
 #
 # CORE SEARCH PATH OPTIONS
@@ -53,7 +53,7 @@ diff_directory            "$HOME/Library/Application Support/mame/diff"
 comment_directory         "$HOME/Library/Application Support/mame/comments"
 share_directory           /usr/local/share/mame/share
 ```
-</span>
+</mark>
 
 
 
