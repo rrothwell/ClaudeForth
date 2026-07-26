@@ -1,8 +1,10 @@
 # MAME Installation notes on Intel Mac
 
 Install MAME using Homebrew via the Terminal:
-`brew install mame`
-`brew install rom-tools`
+```
+brew install mame
+brew install rom-tools
+```
 
 Setup MAME with a modified directory structure
 to isolate user data from future MAME upgrades 
@@ -10,17 +12,18 @@ performed via Homebrew.
 This requires the generation of a mame.ini file 
 and adjustments to the paths in this file.
 
-`# create a temporary directory that can be deleted afterwards.`
-`mkdir $HOME/Games`
-`mkdir $HOME/Games/mame`
-`cd HOME/Games/mame`
-`mame -cc`
-`ls -al`
+```
+# create a temporary directory that can be deleted afterwards.`
+mkdir $HOME/Games
+mkdir $HOME/Games/mame
+cd HOME/Games/mame
+mame -cc
+ls -al
+```
 
 Modify the mame.ini file as follows:
-<code><span style="color:green">
+<div style="color:green">
 ```
-{
 #
 # CORE SEARCH PATH OPTIONS
 #
@@ -49,9 +52,8 @@ snapshot_directory        "$HOME/Library/Application Support/mame/snap"
 diff_directory            "$HOME/Library/Application Support/mame/diff"
 comment_directory         "$HOME/Library/Application Support/mame/comments"
 share_directory           /usr/local/share/mame/share
-}
 ```
-</span></code>
+</div>
 
 
 
