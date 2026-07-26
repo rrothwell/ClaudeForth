@@ -21,7 +21,7 @@ mame -cc
 ls -al
 ```
 
-Modify the mame.ini file as follows:
+Modify the mame.ini file shown as follows:
 <span style="color:green">
 ```
 #
@@ -53,7 +53,7 @@ diff_directory            "$HOME/Library/Application Support/mame/diff"
 comment_directory         "$HOME/Library/Application Support/mame/comments"
 share_directory           /usr/local/share/mame/share
 ```
-</spav>
+</span>
 
 
 
