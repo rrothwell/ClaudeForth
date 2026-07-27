@@ -49,7 +49,7 @@ produces a running application with the 2 expected drivers.
 ```
 ./mecb6502
 ```
-(MAME-mecb6502-0.5.png)
+![mecb6502](MAME-mecb6502-0.5.png)
 
 The mecb6809 build proceeded smoothly.
 Executing MAME customised for 6809, 
@@ -58,4 +58,4 @@ produces a running application with the 1 expected driver.
 ```
 ./mecb6809
 ```
-(MAME-mecb6809-0.5.png)
+![mecb6809](MAME-mecb6809-0.5.png)
