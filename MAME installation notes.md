@@ -1,10 +1,16 @@
 # MAME Installation notes on Intel Mac
 
+MAME as of July 2026, version 0.288, does not have drivers 
+for the MECB 6809 provided as part of the offical distribution. 
+However the contributor "epaell" is working on building 
+a custom version with [mecb6809](https://github.com/epaell/MECB/tree/main/MAME) support.
+
 Install MAME using Homebrew via the Terminal:
 ```
 brew install mame
 brew install rom-tools
 ```
+Note: [ROM Tools](https://chdman.com) might be useful for fixing checksums.
 
 Setup MAME with a modified directory structure
 to isolate user data from future MAME upgrades 
@@ -90,4 +96,32 @@ mame
 ```
 
 
-The instructions followed are from [MAME on Macs](https://mameonmacs.blogspot.com/2025/12/mame-via-homebrew-on-macs-finally-there.html)
+The instructions followed above are from: 
+[MAME on Macs](https://mameonmacs.blogspot.com/2025/12/mame-via-homebrew-on-macs-finally-there.html)
+
+Test the installation against the Grant Searle minimalist 6809 emulation.
+The manufacturer is listed under "Grant Searle", 
+the long name is "Simple 6809 Machine",
+the short name is gs6809.
+
+As the driver is already present, only the ROM file needs to be provided 
+and copied into the ROM directory as a .bin file that has been zipped.
+The ROM file containing a monitor (ASSIST09) and Basic language (Microsoft Basic)
+is distributed by Jeff Tranter as a [combined](https://github.com/jefftranter/6809/tree/master/sbc/combined) hex file.
+
+Download the .hex file (text format) and convert it into a .bin file,
+then .zip file and move it into the MAME rom directory:
+```
+cd $HOME/git
+git clone https://github.com/jefftranter/6809.git
+cd 6809
+cd sbc
+cd combined
+brew install binutils
+/usr/local/opt/binutils/bin/objcopy --input-target=ihex --output-target=binary combined.hex gs6809.bin
+cp gs6809.bin $HOME/Library/Application\ Support/mame/roms
+cd $HOME/Library/Application\ Support/mame/roms
+zip gs6809.zip gs6809.bin
+mame gs6809
+```
+If succesfull ASSIST09 should present itself in the MAME window.
