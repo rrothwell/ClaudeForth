@@ -31,3 +31,18 @@ MC6850 ACIA for serial IO.
 
 ![alt Memory Map](forth6809_memory_map.svg)
 
+## Plans
+1. Assemble and test a bare bones ANS Forth.
+1. Scan for refactoring opportunities, removing code duplication.
+1. Debugging support.
+1. Reorganise dictionary ordering to improved compilation support.
+1. Optimised words for common constants.
+1. Dictionary vocabulary support.
+1. Inbuilt assembler.
+1. Forth decompiler.
+1. Interrupt chaining to call forth words.
+1. Cooperative multitasking.
+1. Mass storage support - SD Card or Flash.
+1. Application compilation to the ROM area via ROM emulation.
+
+

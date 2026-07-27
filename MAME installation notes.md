@@ -1,9 +1,15 @@
 # MAME Installation notes on Intel Mac
 
-MAME as of July 2026, version 0.288, does not have drivers 
+The target computer for ClaudeForth is the Minimalist Eurocard Board (MECB) 6809.
+The testing framework for ClaudeForth is to be based on software emulation
+of the target computer via MAME. 
+
+MAME, as of July 2026, version 0.288, does not have drivers 
 for the MECB 6809 provided as part of the offical distribution. 
 However the contributor "epaell" is working on building 
 a custom version with [mecb6809](https://github.com/epaell/MECB/tree/main/MAME) support.
+
+Lets investigate the suitability of MAME for this purpose.
 
 Install MAME using Homebrew via the Terminal:
 ```
