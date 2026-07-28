@@ -1,7 +1,7 @@
 # MAME Customization for MECB 6809
 
 The development machine is a MacMini with i7 Intel processor running MacOS Sonoma 14.7.4.
-An updated Homebrew installation is present as are the Xcode Command Line Tools.
+An updated Homebrew installation is present as are the Xcode Command Line Tools (Xcode 16.2).
 
 Download the latest release of the [MAME source code](https://www.mamedev.org/release.php).
 And the epaell git repository containing the [MECB 6809 driver source code](https://github.com/epaell/MECB/tree/main).
@@ -77,6 +77,7 @@ Executing MAME customised for 6809,
 produces a running application with the 1 expected driver.
 
 ```
-./mecb6809 mecb6809
+cd $HOME/git/mame0288
+./mecb6809
 ```
 ![mecb6809](MAME-mecb6809-0.5.png)
