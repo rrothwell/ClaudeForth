@@ -12,21 +12,39 @@ git clone https://github.com/epaell/MECB.git MECB_epaell
 
 ```
 
-Follow the instructions on the [epaell git repository](https://github.com/epaell/MECB/blob/main/MAME/readme.md).
+Following the instructions on the [epaell git repository](https://github.com/epaell/MECB/blob/main/MAME/readme.md).
 ```
 export MAMESRC=$HOME/git/MECB_epaell/MAME/
 export MAMEDST=$HOME/git/mame0288
+
+# Copy the driver codes to where they can be found during the MAME build.
 cp $MAMESRC/mecb6502.cpp $MAMEDST/src/mame/homebrew/
 cp $MAMESRC/mecb6502b.cpp $MAMEDST/src/mame/homebrew/
 cp $MAMESRC/mecb6809.cpp $MAMEDST/src/mame/homebrew/
-cp -R $MAMESRC/mecb6502 $MAMEDST/roms/
-cp -R $MAMESRC/mecb6502b $MAMEDST/roms/
-cp -R $MAMESRC/mecb6809 $MAMEDST/roms/
+
+# Copy the ROM files to where they can be found on mame startup.
+# These commands copy a folder containing 
+# the .bin file representing the ROM.
+# zipping the files is not necessary.
+
+# These are not findable when running customised apps
+# as the roms directory location has been changed.
+#cp -R $MAMESRC/mecb6502 $MAMEDST/roms/
+#cp -R $MAMESRC/mecb6502b $MAMEDST/roms/
+#cp -R $MAMESRC/mecb6809 $MAMEDST/roms/
+
+# Move the ROM files to the new location 
+# as described in MAME_Customization.md
+cp -R $MAMESRC/mecb6502 $HOME/Library/Application\ Support/mame/roms/
+cp -R $MAMESRC/mecb6502b $HOME/Library/Application\ Support/mame/roms/
+cp -R $MAMESRC/mecb6809 $HOME/Library/Application\ Support/mame/roms/
+
+# Provide an updated MAME driver list
 cp $MAMESRC/mame.lst $MAMEDST/src/mame/
+```
+I have 2 cores in my CPU so the build commands are:
+```
 cd $MAMEDST
-```
-I have 2 cores in my CPU so the build command is:
-```
 make SUBTARGET=mecb6502 SOURCES=src/mame/homebrew/mecb6502.cpp,src/mame/homebrew/mecb6502b.cpp TOOLS=1 REGENIE=1 -j3
 make SUBTARGET=mecb6809 SOURCES=src/mame/homebrew/mecb6809.cpp TOOLS=1 REGENIE=1 -j3
 ```
@@ -43,10 +61,13 @@ Download the .dmg file from the [Simple DirectMedia Layer](https://www.libsdl.or
 Mount the .dmg file, copy the SDL3.xcframework folder into Library/Frameworks folder.
 The make command then proceeded to completion.
 
+The two customised MAME apps produced by the build are named mecb6502 and mecb6809.
+
 Executing MAME customised for 6502, 
-produces a running application with the 2 expected drivers.
+produces a running application with the 2 expected drivers,
 
 ```
+cd $HOME/git/mame0288
 ./mecb6502
 ```
 ![mecb6502](MAME-mecb6502-0.5.png)
@@ -56,6 +77,6 @@ Executing MAME customised for 6809,
 produces a running application with the 1 expected driver.
 
 ```
-./mecb6809
+./mecb6809 mecb6809
 ```
 ![mecb6809](MAME-mecb6809-0.5.png)
