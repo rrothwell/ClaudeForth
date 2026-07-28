@@ -25,14 +25,13 @@ cd $HOME/git/mame0288
 ./mecb6809 -listslots
 # Yes its there, so startup MAME to open the connection.
 ./mecb6809 mecb6809 -rs232 pty 
-
 ```
 
 With the MAME window forward, type the TAB key 
 to show the internal user interface menu.
 * Activate the Pseudo Terminals option to reveal the created RS232 device.
 * Activate the Machine Configuration option to reveal the RS232 parameters including the baud rate. 
-Set the baud rate to 115200, xon/xoff hand shaking, 8 bits, no parity, 1 stop bit
+Set the baud rate to 115200, xon/xoff hand shaking, 8 bits, no parity, 1 stop bit,
 then reset the system.
 
 Create a new MacOS terminal window and create a screen 
@@ -42,8 +41,8 @@ connected to the other end of the created RS232 device.
 screen /dev/ttys001 115200,cs8,ixon,ixoff
 ```
 
-ASSIST 09 can now be tested.
+ASSIST 09 can now be exercised from the terminal new terminal window/screen.
 
-When finished exit using: __CTRL + A__, __CTRL + \__.
+When finished exit using: __CTRL + A__, __CTRL + \\__.
 
 Also see [The State of Me](https://blog.thestateofme.com/2022/05/25/attaching-a-terminal-emulator-to-a-mame-serial-port/)
