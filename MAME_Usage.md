@@ -1,4 +1,4 @@
-# MAME Usage for MECB 6809 Testing
+# MAME Usage for MECB 6502 & MECB 6809
 
 Verify correct operation of the customised MAME apps with the supplied ROM files.
 
