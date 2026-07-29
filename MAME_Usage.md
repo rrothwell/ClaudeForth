@@ -9,7 +9,7 @@ and the serial communications linkage.
 
 
 Test with the 6502 SMon ROM file.
-```
+```bash
 cd $HOME/git/mame0288
 ./mecb6502 mecb6502
 ```
@@ -19,7 +19,7 @@ For details see: [SMON](https://github.com/dhansel/smon6502/).
 ![mecb6502](MAME-mecb6502-ROM-0.5.png)
 
 Test with the 6502 OSI Basic ROM file.
-```
+```bash
 cd $HOME/git/mame0288
 ./mecb6502 mecb6502b
 ```
@@ -35,7 +35,7 @@ For details see:
  This causes a break at the line $C100 with a register display.
  It then refuses to execute the Basic ROM assembly.
  However running the MAME debugger at the same time seems to have permanently fixed the problem.
-```
+```bash
 cd $HOME/git/mame0288
 ./mecb6809 mecb6809
 # OR

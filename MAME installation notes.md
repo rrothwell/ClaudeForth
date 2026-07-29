@@ -12,7 +12,7 @@ a custom version with [mecb6809](https://github.com/epaell/MECB/tree/main/MAME) 
 Lets investigate the suitability of MAME for this purpose.
 
 Install MAME using Homebrew via the Terminal:
-```
+```bash
 brew install mame
 brew install rom-tools
 ```
@@ -24,7 +24,7 @@ performed via Homebrew.
 This requires the generation of a mame.ini file 
 and adjustments to the paths in this file.
 
-```
+```bash
 # create a temporary directory that can be deleted afterwards.`
 mkdir $HOME/Games
 mkdir $HOME/Games/mame
@@ -34,7 +34,7 @@ ls -al
 ```
 
 Modify the mame.ini file shown as follows:
-```
+```bash
 #
 # CORE SEARCH PATH OPTIONS
 #
@@ -66,7 +66,7 @@ share_directory           /usr/local/share/mame/share
 ```
 
 Create the directory structure as follows:
-```
+```bash
 cd $HOME/Library/Application\ Support/mame
 mkdir artwork
 mkdir cabinets
@@ -92,12 +92,12 @@ mkdir videosnaps
 ```
 
 Move the mame.ini file to its new home:
-```
+```bash
 mv $HOME/Games/mame/mame.ini $HOME/Library/Application\ Support/mame
 ```
 
 Start mame:
-```
+```bash
 mame
 ```
 
@@ -117,7 +117,7 @@ is distributed by Jeff Tranter as a [combined](https://github.com/jefftranter/68
 
 Download the .hex file (text format) and convert it into a .bin file,
 then .zip file and move it into the MAME rom directory:
-```
+```bash
 cd $HOME/git
 git clone https://github.com/jefftranter/6809.git
 cd 6809

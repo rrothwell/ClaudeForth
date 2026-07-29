@@ -8,6 +8,20 @@ and to target the Minimalist Eurocard Board (MECB) 6809 computer,
 with the MECB IO card providing an
 MC6850 ACIA for serial IO.
 
+## Development Environment
+
+The development machine is a MacMini with i7 Intel processor running MacOS Sonoma 14.7.4.
+An updated Homebrew installation is present as are the Xcode Command Line Tools (Xcode 16.2).
+[Homebrew](https://brew.sh) is used to install software dependencies.
+
+```bash
+xcode-select --install
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+brew install binutils
+
+```
+
+
 ## Progress
 
 | Item             | Completed   |
