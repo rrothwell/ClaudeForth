@@ -32,6 +32,7 @@ brew install binutils
 |Install MAME. Add configuration file for an existing emulated 6809 computer. |:white_check_mark:|
 |Customise MAME with the missing mecb6809 and mecb6502 drivers and providing monitor ROM files . |:white_check_mark:|
 |Set up serial communications to MAME mecb6809 to allow upload of testing code. |:white_check_mark:|
+|Load forth6809.bin rom file and verify memory layout and operation. | |
 |Manual tests & tests against ANS test suite. | |
 |Develop a simple forth application| |
 |Refine the documentation| |

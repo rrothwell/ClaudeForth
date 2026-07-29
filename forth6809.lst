@@ -438,7 +438,7 @@
                       (    forth6809.asm):00438         ; ============================================================
                       (    forth6809.asm):00439         ; SECTION 1: HARDWARE VECTOR TABLE
                       (    forth6809.asm):00440         ; ============================================================
-                      (    forth6809.asm):00441                  ORG   VECTORS       ; VECTORS is $FFF0
+                      (    forth6809.asm):00441                  ORG                                                                                                                                                                                                                 ; VECTORS is $FFF0
 FFF0 0000             (    forth6809.asm):00442         VRESV    FDB   $0000
 FFF2 E080             (    forth6809.asm):00443         VSWI3    FDB   SWI3H
 FFF4 E081             (    forth6809.asm):00444         VSWI2    FDB   SWI2H
