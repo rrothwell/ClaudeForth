@@ -29,7 +29,7 @@ brew install binutils
 |Initial specification and code generation|:white_check_mark:|
 |Initial documentation|:white_check_mark:|
 |Resolve assembler bugs, missing labels and dictionary entries, fix memory map overlaps & gaps. Assembles without errors. |:white_check_mark:|
-|Install MAME. Add configuration file for an existing MECB 6809 computer. |:white_check_mark:|
+|Install MAME. Add configuration file for an existing emulated 6809 computer. |:white_check_mark:|
 |Customise MAME with the missing mecb6809 and mecb6502 drivers and providing monitor ROM files . |:white_check_mark:|
 |Set up serial communications to MAME mecb6809 to allow upload of testing code. |:white_check_mark:|
 |Manual tests & tests against ANS test suite. | |
@@ -49,12 +49,12 @@ brew install binutils
 
 ### Documentation
 
-* MAME Test Harness
-    1. Chapter 1: [MAME installation notes](MAME installation notes.md)
-    1. Chapter 2: [MAME_Customization.md]
-    1. Chapter 3: [MAME_Usage.md]
-    1. Chapter 4: [MAME Serial Communications.md]
-    1. Chapter 5: [MAME Testing.md]
+#### MAME Test Harness
+    1. Chapter 1: [MAME installation notes](https://github.com/rrothwell/ClaudeForth/blob/master/MAME%20installation%20notes.md)
+    1. Chapter 2: [MAME_Customization](https://github.com/rrothwell/ClaudeForth/blob/master/MAME_Customization.md)
+    1. Chapter 3: [MAME_Usage](https://github.com/rrothwell/ClaudeForth/blob/master/MAME_Usage.md)
+    1. Chapter 4: [MAME Serial Communications](https://github.com/rrothwell/ClaudeForth/blob/master/MAME%20Serial%20Communications.md)
+    1. Chapter 5: [MAME Testing.](https://github.com/rrothwell/ClaudeForth/blob/master/MAME%20Testing.md)
 
 
 ## Plans
