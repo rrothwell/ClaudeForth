@@ -2,15 +2,15 @@
 
 Download the latest release of the [MAME source code](https://www.mamedev.org/release.php).
 And the epaell git repository containing the [MECB 6809 driver source code](https://github.com/epaell/MECB/tree/main).
-```
+```bash
 cd $HOME/git
 git clone -b mame0288 --depth 1 https://github.com/mamedev/mame.git mame0288
 git clone https://github.com/epaell/MECB.git MECB_epaell
-
+# brew install sdl3 does not install in an accessibe path for the build.
 ```
 
 Following the instructions on the [epaell git repository](https://github.com/epaell/MECB/blob/main/MAME/readme.md).
-```
+```bash
 export MAMESRC=$HOME/git/MECB_epaell/MAME/
 export MAMEDST=$HOME/git/mame0288
 
@@ -39,8 +39,9 @@ cp -R $MAMESRC/mecb6809 $HOME/Library/Application\ Support/mame/roms/
 # Provide an updated MAME driver list
 cp $MAMESRC/mame.lst $MAMEDST/src/mame/
 ```
+
 I have 2 cores in my CPU so the build commands are:
-```
+```bash
 cd $MAMEDST
 make SUBTARGET=mecb6502 SOURCES=src/mame/homebrew/mecb6502.cpp,src/mame/homebrew/mecb6502b.cpp TOOLS=1 REGENIE=1 -j3
 make SUBTARGET=mecb6809 SOURCES=src/mame/homebrew/mecb6809.cpp TOOLS=1 REGENIE=1 -j3
@@ -63,17 +64,18 @@ The two customised MAME apps produced by the build are named mecb6502 and mecb68
 Executing MAME customised for 6502, 
 produces a running application with the 2 expected drivers,
 
-```
+```bash
 cd $HOME/git/mame0288
 ./mecb6502
 ```
+
 ![mecb6502](MAME-mecb6502-0.5.png)
 
 The mecb6809 build proceeded smoothly.
 Executing MAME customised for 6809, 
 produces a running application with the 1 expected driver.
 
-```
+```bash
 cd $HOME/git/mame0288
 ./mecb6809
 ```
