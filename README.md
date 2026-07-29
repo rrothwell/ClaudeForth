@@ -50,11 +50,11 @@ brew install binutils
 ### Documentation
 
 #### MAME Test Harness
-    1. Chapter 1: [MAME installation notes](https://github.com/rrothwell/ClaudeForth/blob/master/MAME%20installation%20notes.md)
-    1. Chapter 2: [MAME_Customization](https://github.com/rrothwell/ClaudeForth/blob/master/MAME_Customization.md)
-    1. Chapter 3: [MAME_Usage](https://github.com/rrothwell/ClaudeForth/blob/master/MAME_Usage.md)
-    1. Chapter 4: [MAME Serial Communications](https://github.com/rrothwell/ClaudeForth/blob/master/MAME%20Serial%20Communications.md)
-    1. Chapter 5: [MAME Testing.](https://github.com/rrothwell/ClaudeForth/blob/master/MAME%20Testing.md)
+1. Chapter 1: [MAME installation notes](https://github.com/rrothwell/ClaudeForth/blob/master/MAME%20installation%20notes.md)
+1. Chapter 2: [MAME_Customization](https://github.com/rrothwell/ClaudeForth/blob/master/MAME_Customization.md)
+1. Chapter 3: [MAME_Usage](https://github.com/rrothwell/ClaudeForth/blob/master/MAME_Usage.md)
+1. Chapter 4: [MAME Serial Communications](https://github.com/rrothwell/ClaudeForth/blob/master/MAME%20Serial%20Communications.md)
+1. Chapter 5: [MAME Testing.](https://github.com/rrothwell/ClaudeForth/blob/master/MAME%20Testing.md)
 
 
 ## Plans
