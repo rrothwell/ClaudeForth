@@ -1,0 +1,57 @@
+flowchart TD
+    Start([Cold/warm start]) --> QUIT["QUIT: QLOOP&#58;<br/>reset STATE, save<br/>DPHERE/CODEHERE/VARHERE/LATEST"]
+
+    QUIT --> QUERY["QUERY: point ACCEPT at TIBBUF"]
+    QUERY --> ACCEPT["ACCEPT: ALOOP"]
+
+    ACCEPT --> KEY["KEY: read one char<br/>from ACIA (blocks until ready)"]
+    KEY --> CharCheck{"char is CR?"}
+    CharCheck -- "no (ordinary char)" --> StoreChar["store char in TIBBUF,<br/>ACNT+1, JSR EMIT to echo it"]
+    CharCheck -- "no (BS/DEL)" --> ABKSP["ABKSP&#58;<br/>ACNT-1, EMIT BS,SP,BS"]
+    StoreChar --> ACCEPT
+    ABKSP --> ACCEPT
+    CharCheck -- "yes" --> ADONE["ADONE: return char count"]
+
+    ADONE --> QUERYSET["QUERY sets NTIB/SRCLEN/<br/>SRCADDR/SRCID/TOIN from the line"]
+    QUERYSET --> CATCH["JSR CATCH of INTERPRET<br/>(so a THROW anywhere below<br/>unwinds cleanly back here)"]
+
+    CATCH --> INTERPRET["INTERPRET: ILOOP"]
+
+    INTERPRET --> WORD["WORD: parse next<br/>space-delimited token"]
+    WORD --> EmptyCheck{"token length = 0?<br/>(end of line)"}
+    EmptyCheck -- yes --> IDONE["IDONE: return to QUIT"]
+    EmptyCheck -- no --> FIND["FIND: walk the dictionary<br/>chain for a name match"]
+
+    FIND --> FoundCheck{"word found?"}
+
+    FoundCheck -- yes --> StateCheck1{"STATE = 0 (interpreting)<br/>or word is IMMEDIATE?"}
+    StateCheck1 -- yes --> DOEXEC["DOEXEC: JSR EXECUTE"]
+    StateCheck1 -- "no (compiling,<br/>not immediate)" --> CCALL1["JSR CCALL<br/>(compile a call to the word)"]
+    DOEXEC --> INTERPRET
+    CCALL1 --> INTERPRET
+
+    FoundCheck -- no --> TRYNUM["TRYNUM: JSR NUMBERQ"]
+    TRYNUM --> NumCheck{"NUMBERQ succeeded?"}
+
+    NumCheck -- no --> BADWORD["BADWORD: JSR COUNT,<br/>JSR TYPE (echo the bad word),<br/>PSHU -13, JSR THROW"]
+    BADWORD -.->|"THROW unwinds<br/>via CATCH"| CATCH
+
+    NumCheck -- yes --> StateCheck2{"STATE = 0 (interpreting)?"}
+    StateCheck2 -- yes --> PushNum["number already pushed<br/>onto the stack by NUMBERQ"]
+    StateCheck2 -- "no (compiling)" --> CompileLit["JSR CCALL for LIT,<br/>JSR CODECOMMA to store the value"]
+    PushNum --> INTERPRET
+    CompileLit --> INTERPRET
+
+    IDONE -.->|"normal return,<br/>no THROW"| CATCHRET["CATCH returns 0"]
+    CATCH --> CATCHRET
+    CATCHRET --> ThrowCheck{"CATCH result = 0?"}
+
+    ThrowCheck -- "no (something threw)" --> Rollback["restore saved DPHERE/<br/>CODEHERE/VARHERE/LATEST"]
+    Rollback --> PrintErr["JSR CRW, JSR TYPE ERRMSG,<br/>JSR DOT (print throw code)"]
+    PrintErr --> QUIT
+
+    ThrowCheck -- yes --> QOK["QOK"]
+    QOK --> StateCheck3{"STATE ≠ 0?<br/>(still mid-definition)"}
+    StateCheck3 -- yes --> QUIT
+    StateCheck3 -- no --> PrintOK["JSR CRW, JSR TYPE OKMSG"]
+    PrintOK --> QUIT
