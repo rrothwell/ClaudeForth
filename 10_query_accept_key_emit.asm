@@ -1,11 +1,7 @@
 ; ============================================================
-; 6809 FORTH - 10_query_accept_key_emit
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 10: QUERY / ACCEPT / EXPECT / KEY / KEY? / EMIT
 ; ============================================================
+         IFEQ SERIALPOLL  ; >>>>>>>>>>
 KEY:     LDA   INHEAD
          CMPA  INTAIL
          BEQ   KEY
@@ -57,6 +53,41 @@ EMITWT:  LDB   OUTHEAD
          LDA   #CR_RXTX
          STA   ACIACR
 EMITNORTS: RTS
+
+         ELSE  ; <<<<<>>>>>
+; ------------------------------------------------------------
+; Polling versions of KEY/KEYQ/EMIT (SERIALPOLL=1) - no ring
+; buffers, no interrupts, no RTS/CTS handshaking. Each blocks
+; (KEY, EMIT) or checks once (KEYQ) directly against ACIASR.
+; ------------------------------------------------------------
+KEY:     LDA   ACIASR
+         BITA  #SR_RDRF
+         BEQ   KEY
+         LDA   ACIADR
+         TFR   A,B
+         CLRA
+         PSHU  D
+         RTS
+
+KEYQ:    LDA   ACIASR
+         BITA  #SR_RDRF
+         BEQ   KQFALSE
+         LDD   #TRUEV
+         PSHU  D
+         RTS
+KQFALSE: LDD   #FALSEV
+         PSHU  D
+         RTS
+
+EMIT:    PULU  D
+         STB   EMITCH
+EMITWT:  LDA   ACIASR
+         BITA  #SR_TDRE
+         BEQ   EMITWT
+         LDA   EMITCH
+         STA   ACIADR
+         RTS
+         ENDC  ; <<<<<<<<<<
 
 ACCEPT:  PULU  D
          STD   AMAX
@@ -135,4 +166,3 @@ QUERY:   LDX   #TIBBUF
          STD   TOIN
          RTS
 
-; ============================================================

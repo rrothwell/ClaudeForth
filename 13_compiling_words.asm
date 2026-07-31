@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 13_compiling_words
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 13: COMPILING WORDS (IMMEDIATE/[/]/'/COMPILE,/
 ; LITERAL/[']/POSTPONE/>BODY, SLITERAL, ABORT")
 ; ============================================================
@@ -204,4 +199,3 @@ NTIBW:   LDD   #NTIB
          PSHU  D
          RTS
 
-; ============================================================

@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 05_inner_interpreter_support
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 5: INNER-INTERPRETER SUPPORT (LIT, ZBRANCH, BRANCH,
 ; DODOES, DODEFER, EXECUTE)
 ; ============================================================
@@ -91,4 +86,3 @@ EXECUTE: PULU  X
          JSR   ,X
          RTS
 
-; ============================================================

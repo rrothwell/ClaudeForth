@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 06_comma_family
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 6: COMMA FAMILY (factored via APPENDCELL/APPENDBYTE)
 ; ============================================================
 APPENDCELL: PULU D
@@ -71,4 +66,3 @@ VUNUSEDW: LDD  #APPVARSEND    ; was #APPCODE - a real bug, not just a
           PSHU D              ; distance to an unrelated region instead
           RTS                 ; of remaining APPVARS space
 
-; ============================================================

@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 01_vectors
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 1: HARDWARE VECTOR TABLE
 ; ============================================================
          ORG   VECTORS       ; VECTORS is $FFF0
@@ -19,4 +14,6 @@ VRESET   FDB   COLDSTRT
 VECTOREND  EQU   *          ; Verify vectors size, value should match $10.
 VECTORSIZE EQU   VECTOREND-VECTORS
 
+; ============================================================
+; END OF CONSOLIDATED SOURCE
 ; ============================================================

@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 15_arithmetic
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 15: ARITHMETIC (single + double + mixed precision)
 ; ============================================================
 PLUS:    PULU  D
@@ -669,4 +664,3 @@ DMND1:   LDD   MSCR4
          PSHU  D
          RTS
 
-; ============================================================

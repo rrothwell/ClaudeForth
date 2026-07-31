@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 16_logic_shifts_address_arith
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 16: LOGIC / SHIFTS / ADDRESS ARITHMETIC
 ; ============================================================
 ANDW:    PULU  D
@@ -72,4 +67,3 @@ CHARPLUS: LDD  ,U
 ALIGNW:  RTS
 ALIGNEDW: RTS
 
-; ============================================================

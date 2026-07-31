@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 12_control_flow
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 12: CONTROL FLOW (IF/THEN/ELSE, BEGIN family,
 ; DO/LOOP/+LOOP/I/J/LEAVE/UNLOOP/?DO, EXIT, CASE family)
 ; ============================================================
@@ -475,4 +470,3 @@ ECPATCH: PULU  X
          BRA   ECLOOP
 ECDONE:  RTS
 
-; ============================================================

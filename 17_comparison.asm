@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 17_comparison
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 17: COMPARISON
 ; ============================================================
 EQUALW:  PULU  D
@@ -190,4 +185,3 @@ DULTRUE:  LDD  #TRUEV
           PSHU D
           RTS
 
-; ============================================================

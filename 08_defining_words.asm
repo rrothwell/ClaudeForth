@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 08_defining_words
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 8: DEFINING WORDS
 ; ============================================================
 COLON:   LDD   #TRUEV
@@ -307,4 +302,3 @@ MARKERW: LDD   DPHERE
          JSR   COMMA
          RTS
 
-; ============================================================

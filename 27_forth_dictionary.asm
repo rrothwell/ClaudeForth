@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 27_forth_dictionary
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 27: FORTH DICTIONARY (ROM base dictionary headers)
 ; Every primitive word in the Glossary gets a real header here,
 ; chained via LINK, living in BASEDICT ($D85D-$E011, an exact fit
@@ -38,7 +33,7 @@
 ; escaped inside FCC - see emit_name's comment for why.
 ; ============================================================
 
-         ORG   BASEDICT       ; BASEDICT is $E000
+         ORG   BASEDICT       ; BASEDICT is $D83F
 
 H_KEY:
          FCB   $03
@@ -1138,4 +1133,3 @@ DICTTOP  EQU   H_FALSE   ; newest entry in this base chain
 BASEDICTEND  EQU   *
 BASEDICTSIZE EQU   BASEDICTEND-BASEDICT
 
-; ============================================================

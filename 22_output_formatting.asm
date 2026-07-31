@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 22_output_formatting
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 22: OUTPUT FORMATTING (CR/SPACE/SPACES)
 ; ============================================================
 CRW:     LDD   #13
@@ -32,4 +27,3 @@ SPLOOP:  LDD   SHCNT2
          BRA   SPLOOP
 SPDONE:  RTS
 
-; ============================================================

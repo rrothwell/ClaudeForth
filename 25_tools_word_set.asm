@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 25_tools_word_set
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 25: TOOLS WORD SET (.S / WORDS / DUMP)
 ; ============================================================
 DOTS:    TFR   U,D
@@ -159,4 +154,3 @@ DULEND:  JSR  CRW
          LBNE DULINE           ; was BNE - out of short-branch range
 DUDONE:  RTS
 
-; ============================================================

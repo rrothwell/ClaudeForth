@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 20_numeric_output
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 20: NUMERIC OUTPUT (pictured + direct)
 ; ============================================================
 LTNUM:   JSR   PADW
@@ -279,4 +274,3 @@ DRDNOPAD: LDX  DRADDR
           JSR  TYPE
           RTS
 
-; ============================================================

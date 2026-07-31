@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 04_cold_abort_quit
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 4: COLD / ABORT / QUIT  (with CATCH-wrapped INTERPRET)
 ; ============================================================
 COLD:    LDD   #APPVARS
@@ -97,4 +92,3 @@ OKMSGL   EQU   *-OKMSG
 ERRMSG:  FCC   "  ERROR "
 ERRMSGL  EQU   *-ERRMSG
 
-; ============================================================

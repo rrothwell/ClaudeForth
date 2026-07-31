@@ -1,12 +1,7 @@
 ; ============================================================
-; 6809 FORTH - 03_irqh
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 3: ACIA INTERRUPT HANDLER
 ; ============================================================
-         ORG   BASECODE       ; BASECODE is $E800. This ORG was missing
+         ORG   BASECODE       ; BASECODE is $DFF4. This ORG was missing
                                ; entirely - every routine from here through
                                ; SECTION 26 (IRQH, COLD/ABORT/QUIT, and
                                ; every primitive) would otherwise have
@@ -16,6 +11,7 @@
                                ; overflowing directly into VECTORS ($FFF0)
                                ; instead of landing in BASECODE at all
 
+         IFEQ SERIALPOLL  ; >>>>>>>>>>
 ; ------------------------------------------------------------
 ; INFILL - ( -- A=fill level, 0-63 ) input ring's current fill
 ; level. INBUFSZ is a power of two, and both indices are always
@@ -114,6 +110,14 @@ TXOFF:   TST   RTSSTATE
 
 IRQDONE: RTI
 
+         ELSE  ; <<<<<>>>>>
+IRQH:    RTI                 ; polling mode (SERIALPOLL=1) - ACIA
+                              ; interrupts are never enabled (see
+                              ; COLDSTRT's CR_POLL init), so this should
+                              ; never fire; kept as a safe stub matching
+                              ; the other unused vectors below
+         ENDC  ; <<<<<<<<<<
+
 SWI3H:   RTI
 SWI2H:   RTI
 FIRQH:   RTI
@@ -122,4 +126,3 @@ SWIH:    LDD   #-99             ; placeholder hardware-trap code; push and
          PSHU  D                 ; JMP THROW, per the CATCH/THROW turn
          JMP   THROW
 
-; ============================================================

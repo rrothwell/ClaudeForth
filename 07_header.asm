@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 07_header
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 7: HEADER (factored from :/CREATE/VARIABLE)
 ; ============================================================
 HEADER:  LDD   #32
@@ -42,4 +37,3 @@ HDNONM:  LDD   LATEST
          STD   LATEST
          RTS
 
-; ============================================================

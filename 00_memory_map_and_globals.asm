@@ -1,10 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 00_memory_map_and_globals
-; Part of the consolidated build; every other split file
-; depends on the constants and GLOBALS layout defined here.
-; ============================================================
-
-; ============================================================
 ; 6809 ANS FORTH - consolidated source
 ; Assembled from the full design conversation.
 ;
@@ -78,6 +72,12 @@
 ; ------------------------------------------------------------
 ; MEMORY MAP
 ; ------------------------------------------------------------
+ROMSTRT  EQU $C000     ; true physical start of the 16K EPROM's own
+                        ; address decode (distinct from USROMSTRT
+                        ; below, which excludes INOUT's 256-byte
+                        ; shadow) - see the ROM Size Required section
+                        ; of the documentation, and the ROM: padding
+                        ; block right before SECTION 27
 USROMSTRT EQU $C100     ; Usable ROM start. Beginning of the usable
                          ; EPROM address range. INITCODE, BASECODE,
                          ; and BASEDICT must all fall within
@@ -195,40 +195,21 @@ INBUF    EQU  SERBUF+4
 OUTBUF   EQU  SERBUF+4+INBUFSZ
 GLOBALS  EQU  $0000
 
-; ------------------------------------------------------------
-; MVSCRATCH - three cells shared, one at a time, by routine
-; families that never call each other or run concurrently in
-; this single-threaded interpreter: MOVE/CMOVE/CMOVE>, FILL, and
-; HOLDS (plus the single-cell multiply routine). Sharing avoids
-; needing 3x the physical storage for what is provably the same
-; scratch need at different times; the tradeoff is that these
-; three cells use ordinary extended addressing (3-byte LDD/STD),
-; not direct-page (2-byte), since page zero has no room left.
-;
-;   MVCNT    - MOVE/CMOVE's remaining-byte count
-;     FILLCNT  EQU MVCNT   - FILL's remaining-byte count
-;     HSLEN    EQU MVCNT   - HOLDS's remaining-char count
-;   MVDST    - MOVE/CMOVE's destination address
-;     FILLADDR EQU MVDST   - FILL's target address
-;     HSADDR   EQU MVDST   - HOLDS's source address
-;   MVSRC    - MOVE/CMOVE's source address
-;     MRESULT  EQU MVSRC   - single-cell multiply's 16-bit result
-;     FILLCHR  EQU MVSRC   - FILL's fill character (1 byte, uses
-;                            MVSRC's first byte only)
-; ------------------------------------------------------------
-         ORG   $0100
-MVCNT      RMB   2
-MVDST      RMB   2
-MVSRC      RMB   2
-FILLCNT  EQU  MVCNT
-HSLEN    EQU  MVCNT
-FILLADDR EQU  MVDST
-HSADDR   EQU  MVDST
-MRESULT  EQU  MVSRC
-FILLCHR  EQU  MVSRC
-
 SP0      EQU  DSTACK+1
 RP0      EQU  RSTACK+1
+
+; ------------------------------------------------------------
+; SERIALPOLL - conditional-assembly switch for serial I/O.
+; 1 (default): KEY/KEYQ/EMIT poll ACIASR directly, no interrupts,
+; no ring buffers, no RTS/CTS handshaking - IRQH is a harmless RTI
+; stub, matching the other unused vectors (NMIH/FIRQH/SWI2H/
+; SWI3H). 0: the original interrupt-driven implementation, with
+; INBUF/OUTBUF ring buffers serviced by IRQH and RTS-based flow
+; control via INFILL/RTSCHECKHI/RTSCHECKLO. Uses LWASM's IFEQ/
+; ELSE/ENDC (a numeric-expression test, not IFDEF/IFNDEF, since
+; this is a value to compare, not a symbol's mere presence).
+; ------------------------------------------------------------
+SERIALPOLL EQU 1
 
 ; ------------------------------------------------------------
 ; ACIA (6850) constants - the chip sits at INOUT+8, not at the
@@ -245,6 +226,12 @@ SR_IRQ   EQU  $80
 CR_RESET EQU  $03
 CR_RXON  EQU  $95
 CR_RXTX  EQU  $B5
+CR_POLL  EQU  $15     ; bit7=0 (RX interrupt disabled), bits6-5=00 (RTS
+                       ; low, TX interrupt disabled) - CR_RXON ($95) with
+                       ; only the RX-interrupt-enable bit cleared. Used
+                       ; only when SERIALPOLL=1; RTS stays permanently
+                       ; low (asserted), since polling mode has no ring
+                       ; buffer to overflow and so needs no flow control
 CR_RTSHI EQU  $D5     ; bits6-5=10: RTS high, TX int disabled, RX int enabled -
                        ; derived from CR_RXON ($95) with bits6-5 changed from
                        ; 00 to 10; the ACIA has no combination offering RTS
@@ -441,4 +428,41 @@ RTSSTATE   RMB   1   ; offset $FF - 0 = RTS low (normal), nonzero = RTS
 
 GLOBALS_USED EQU 256  ; total bytes used, of 256 available - fully packed
 
-; ============================================================
+; ------------------------------------------------------------
+; MVSCRATCH - three cells shared, one at a time, by routine
+; families that never call each other or run concurrently in
+; this single-threaded interpreter: MOVE/CMOVE/CMOVE>, FILL, and
+; HOLDS (plus the single-cell multiply routine). Sharing avoids
+; needing 3x the physical storage for what is provably the same
+; scratch need at different times; the tradeoff is that these
+; three cells use ordinary extended addressing (3-byte LDD/STD),
+; not direct-page (2-byte), since page zero has no room left.
+;
+;   MVCNT    - MOVE/CMOVE's remaining-byte count
+;     FILLCNT  EQU MVCNT   - FILL's remaining-byte count
+;     HSLEN    EQU MVCNT   - HOLDS's remaining-char count
+;   MVDST    - MOVE/CMOVE's destination address
+;     FILLADDR EQU MVDST   - FILL's target address
+;     HSADDR   EQU MVDST   - HOLDS's source address
+;   MVSRC    - MOVE/CMOVE's source address
+;     MRESULT  EQU MVSRC   - single-cell multiply's 16-bit result
+;     FILLCHR  EQU MVSRC   - FILL's fill character (1 byte, uses
+;                            MVSRC's first byte only)
+; ------------------------------------------------------------
+         ORG   $0100
+MVCNT      RMB   2
+MVDST      RMB   2
+MVSRC      RMB   2
+FILLCNT  EQU  MVCNT
+HSLEN    EQU  MVCNT
+FILLADDR EQU  MVDST
+HSADDR   EQU  MVDST
+MRESULT  EQU  MVSRC
+FILLCHR  EQU  MVSRC
+
+; Provide padding, to ensure the correct ROM & .bin file size (and
+; opcode offsets) for the MAME emulation and flash memory burn.
+         ORG USROMSTRT
+ROM:
+         FILL $FF,BASEDICT-USROMSTRT
+

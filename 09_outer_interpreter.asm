@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 09_outer_interpreter
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 9: OUTER INTERPRETER (INTERPRET / WORD / FIND / NUMBER?)
 ; ============================================================
 INTERPRET:
@@ -301,4 +296,3 @@ NQBAD:    LDX   CADDR
           PSHU  D
           RTS
 
-; ============================================================

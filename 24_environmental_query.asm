@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 24_environmental_query
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 24: ENVIRONMENTAL QUERY / SOURCE / REFILL / EVALUATE
 ; ============================================================
 SOURCEW: LDD   SRCADDR
@@ -104,4 +99,3 @@ EN3L     EQU   *-EN3
 EN6:     FCC   "ADDRESS-UNIT-BITS"
 EN6L     EQU   *-EN6
 
-; ============================================================

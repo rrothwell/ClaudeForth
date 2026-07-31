@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 11_catch_throw
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 11: COLON / SEMICOLON support already in section 8
 ; (COLON/SEMI) - CATCH/THROW, CFERR
 ; ============================================================
@@ -51,4 +46,3 @@ THUNCAU: LDD   THROWN
          PSHU  D
          JMP   ABORT
 
-; ============================================================

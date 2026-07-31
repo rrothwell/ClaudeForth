@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 18_memory
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 18: MEMORY (fetch/store, block ops)
 ; ============================================================
 STOREW:  PULU  X
@@ -127,4 +122,3 @@ ERASEW:  LDD   #0
          PSHU  D
          JMP   FILLW
 
-; ============================================================

@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 14_stack_manipulation
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 14: STACK MANIPULATION (Core + Core Ext + return stack)
 ; ============================================================
 DUP:     LDD   ,U
@@ -189,4 +184,3 @@ TWORFETCH: PULS X
            PSHU D
            RTS
 
-; ============================================================

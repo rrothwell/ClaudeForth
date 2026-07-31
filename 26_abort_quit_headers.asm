@@ -1,9 +1,4 @@
 ; ============================================================
-; 6809 FORTH - 26_abort_quit_headers
-; Part of the consolidated build; see 00_memory_map_and_globals.asm
-; for shared constants and the GLOBALS layout this file depends on.
-; ============================================================
-
 ; SECTION 26: ABORT / QUIT hand-built headers (findable at
 ; the prompt) - see source conversation for why HEADER/CREATE
 ; couldn't be used directly for these two.
@@ -57,4 +52,9 @@ FALSEVAL:  FDB   0
 BASECODEEND  EQU   *
 BASECODESIZE EQU   BASECODEEND-BASECODE
 
-; ============================================================
+; Prevent the assembler from extinguishing the gap between the
+; BASECODE block and the INITCODE block when it generates the
+; .bin file.
+BASEND:
+         FILL $FF,INITCODE-BASEND
+
