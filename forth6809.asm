@@ -199,6 +199,19 @@ SP0      EQU  DSTACK+1
 RP0      EQU  RSTACK+1
 
 ; ------------------------------------------------------------
+; SERIALPOLL - conditional-assembly switch for serial I/O.
+; 1 (default): KEY/KEYQ/EMIT poll ACIASR directly, no interrupts,
+; no ring buffers, no RTS/CTS handshaking - IRQH is a harmless RTI
+; stub, matching the other unused vectors (NMIH/FIRQH/SWI2H/
+; SWI3H). 0: the original interrupt-driven implementation, with
+; INBUF/OUTBUF ring buffers serviced by IRQH and RTS-based flow
+; control via INFILL/RTSCHECKHI/RTSCHECKLO. Uses LWASM's IFEQ/
+; ELSE/ENDC (a numeric-expression test, not IFDEF/IFNDEF, since
+; this is a value to compare, not a symbol's mere presence).
+; ------------------------------------------------------------
+SERIALPOLL EQU 1
+
+; ------------------------------------------------------------
 ; ACIA (6850) constants - the chip sits at INOUT+8, not at the
 ; base of the I/O block, leaving INOUT+0..INOUT+7 free for other
 ; memory-mapped devices sharing this 256-byte region
@@ -213,6 +226,12 @@ SR_IRQ   EQU  $80
 CR_RESET EQU  $03
 CR_RXON  EQU  $95
 CR_RXTX  EQU  $B5
+CR_POLL  EQU  $15     ; bit7=0 (RX interrupt disabled), bits6-5=00 (RTS
+                       ; low, TX interrupt disabled) - CR_RXON ($95) with
+                       ; only the RX-interrupt-enable bit cleared. Used
+                       ; only when SERIALPOLL=1; RTS stays permanently
+                       ; low (asserted), since polling mode has no ring
+                       ; buffer to overflow and so needs no flow control
 CR_RTSHI EQU  $D5     ; bits6-5=10: RTS high, TX int disabled, RX int enabled -
                        ; derived from CR_RXON ($95) with bits6-5 changed from
                        ; 00 to 10; the ACIA has no combination offering RTS
@@ -1595,6 +1614,7 @@ BASEDICTSIZE EQU   BASEDICTEND-BASEDICT
                                ; overflowing directly into VECTORS ($FFF0)
                                ; instead of landing in BASECODE at all
 
+         IFEQ SERIALPOLL  ; >>>>>>>>>>
 ; ------------------------------------------------------------
 ; INFILL - ( -- A=fill level, 0-63 ) input ring's current fill
 ; level. INBUFSZ is a power of two, and both indices are always
@@ -1692,6 +1712,14 @@ TXOFF:   TST   RTSSTATE
          STA   ACIACR
 
 IRQDONE: RTI
+
+         ELSE  ; <<<<<>>>>>
+IRQH:    RTI                 ; polling mode (SERIALPOLL=1) - ACIA
+                              ; interrupts are never enabled (see
+                              ; COLDSTRT's CR_POLL init), so this should
+                              ; never fire; kept as a safe stub matching
+                              ; the other unused vectors below
+         ENDC  ; <<<<<<<<<<
 
 SWI3H:   RTI
 SWI2H:   RTI
@@ -2595,6 +2623,7 @@ NQBAD:    LDX   CADDR
 ; ============================================================
 ; SECTION 10: QUERY / ACCEPT / EXPECT / KEY / KEY? / EMIT
 ; ============================================================
+         IFEQ SERIALPOLL  ; >>>>>>>>>>
 KEY:     LDA   INHEAD
          CMPA  INTAIL
          BEQ   KEY
@@ -2646,6 +2675,41 @@ EMITWT:  LDB   OUTHEAD
          LDA   #CR_RXTX
          STA   ACIACR
 EMITNORTS: RTS
+
+         ELSE  ; <<<<<>>>>>
+; ------------------------------------------------------------
+; Polling versions of KEY/KEYQ/EMIT (SERIALPOLL=1) - no ring
+; buffers, no interrupts, no RTS/CTS handshaking. Each blocks
+; (KEY, EMIT) or checks once (KEYQ) directly against ACIASR.
+; ------------------------------------------------------------
+KEY:     LDA   ACIASR
+         BITA  #SR_RDRF
+         BEQ   KEY
+         LDA   ACIADR
+         TFR   A,B
+         CLRA
+         PSHU  D
+         RTS
+
+KEYQ:    LDA   ACIASR
+         BITA  #SR_RDRF
+         BEQ   KQFALSE
+         LDD   #TRUEV
+         PSHU  D
+         RTS
+KQFALSE: LDD   #FALSEV
+         PSHU  D
+         RTS
+
+EMIT:    PULU  D
+         STB   EMITCH
+EMITWT:  LDA   ACIASR
+         BITA  #SR_TDRE
+         BEQ   EMITWT
+         LDA   EMITCH
+         STA   ACIADR
+         RTS
+         ENDC  ; <<<<<<<<<<
 
 ACCEPT:  PULU  D
          STD   AMAX
@@ -5920,7 +5984,11 @@ CLRGLOB: CLR   ,X+
          STA   ACIACR         ; was "STA ACIA" - only correct by
                                ; coincidence while ACIA and ACIACR were
                                ; the same address; now genuinely distinct
-         LDA   #CR_RXON
+         IFEQ SERIALPOLL  ; >>>>>>>>>>
+         LDA   #CR_RXON        ; interrupt-driven mode: RX interrupt on
+         ELSE  ; <<<<<>>>>>
+         LDA   #CR_POLL        ; polling mode: no interrupts, RTS held low
+         ENDC  ; <<<<<<<<<<
          STA   ACIACR         ; was "STA ACIA" - same fix
 
          JMP   COLD
