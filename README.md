@@ -38,13 +38,28 @@ brew install binutils
 |Refine the documentation| |
 
 ## Assets
-
+### Manifest
 + Documentation
 + A unified assembler file.
 + A collection of assembler files
   obtained by splitting the above file.
 + A file listing remaining issues.
 + The ANS test suit.
+
+### File types
+| File extension             | Description of contents   |
+|:-----------------|------------:|
+|.asm|:6809 assembly language:|
+|.lst|:6809 assembly listing :|
+|.bin|:6809 raw binary opcodes as ROM content:|
+|.svg|:vectorgraphics:|
+|.png|:Portable Network Graphics raster image format:|
+|.pdf|:portable document format:|
+|.docx|:Microsoft Word XML format:|
+|.mmd|:Mermaid graphics text format for UML:|
+
+
+
 
 ![alt Memory Map](forth6809_memory_map.svg)
 
