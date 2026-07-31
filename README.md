@@ -48,11 +48,11 @@ brew install binutils
 
 ### File types
 | File extension             | Description of contents   |
-|:-----------------|------------:|
+|-----------------:|:------------|
 |.asm| 6809 assembly language [lwasm syntax](https://www.lwtools.ca)|
 |.lst| 6809 assembly listing  |
 |.bin| 6809 raw binary opcodes as ROM content |
-|.svg| vectorgraphics |
+|.svg| Scalable Vector Graphics text XML format |
 |.png| Portable Network Graphics raster image format |
 |.pdf| Portable Document Format |
 |.docx| Microsoft Word XML format |
