@@ -49,14 +49,14 @@ brew install binutils
 ### File types
 | File extension             | Description of contents   |
 |:-----------------|------------:|
-|.asm|:6809 assembly language:|
+|.asm|:6809 assembly language ([lwasm syntax](https://www.lwtools.ca):|
 |.lst|:6809 assembly listing :|
 |.bin|:6809 raw binary opcodes as ROM content:|
 |.svg|:vectorgraphics:|
 |.png|:Portable Network Graphics raster image format:|
 |.pdf|:portable document format:|
 |.docx|:Microsoft Word XML format:|
-|.mmd|:Mermaid graphics text format for UML:|
+|.mmd|:[Mermaid](https://mermaid.js.org) graphics text format for UML:|
 
 
 ### Documentation
