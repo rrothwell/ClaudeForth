@@ -61,9 +61,11 @@ brew install binutils
 
 ### Documentation
 
-#### Memory Map
+#### Portable Document format
 
-[alt ClaudeForth Document](https://github.com/rrothwell/ClaudeForth/blob/master/ClaudeForth_preview.pdf)
+[ClaudeForth Document](https://github.com/rrothwell/ClaudeForth/blob/master/ClaudeForth_preview.pdf)
+
+#### Memory Map
 
 ![alt Memory Map](forth6809_memory_map.svg)
 
