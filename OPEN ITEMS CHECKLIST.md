@@ -777,8 +777,13 @@ design decisions made since the original version.
       definition, and the dictionary chain fully intact (219 entries)
       in both cases. Also confirmed the three `IFEQ`/`ELSE`/`ENDC`
       blocks are balanced (3/3/3) in the raw file.
-- [x] **Current memory map state, re-verified fresh as of this update:
-      zero overlaps anywhere.** A full pairwise sweep across all 18
+- [x] **SUPERSEDED by a later entry below: moving `ABORTHDR`/
+      `QUITHDR` into `BASEDICT` reintroduced a 19-byte `BASECODE`/
+      `BASEDICT` overlap after this was written** - "zero overlaps
+      anywhere" was accurate at the time, not any more. Kept as
+      history, not deleted. Original text: **Current memory map state,
+      re-verified fresh as of this update: zero overlaps anywhere.**
+      A full pairwise sweep across all 18
       regions (`VECTORS`, `INITCODE`, `BASECODE`, `BASEDICT`, `INOUT`,
       `RSTACK`, `DSTACK`, `APPCODE`, `APPDICT`, `APPVARS`, `SIBUF`,
       `WORDBUF`, `TIBBUF`, `OUTBUF`, `INBUF`, `SERBUF` idx,
@@ -796,6 +801,70 @@ design decisions made since the original version.
       nominal budget (the precise manual count is 7984 bytes, still
       not confirmed by a real assembler - see the earlier follow-up
       entry), and `FILL`'s status as an actual LWASM directive.
+
+- [x] **`ABORTHDR`/`QUITHDR`/`BASELATEST` moved from their own separate
+      section into `BASEDICT` proper, at the end of the dictionary
+      entries (right after `DICTTOP`), and renamed to `H_ABORT`/
+      `H_QUIT` to match this file's `H_` naming convention.** This
+      wasn't purely cosmetic: these two headers were previously
+      sitting physically inside `BASECODE`'s address range (Section 26
+      sits before `ORG BASEDICT` in the file), even though they're
+      header *data*, not code - meaning their bytes were being counted
+      against `BASECODE`'s budget instead of `BASEDICT`'s. Moving them
+      into the actual `ORG BASEDICT`...`BASEDICTEND` block fixes that
+      miscounting, at the cost of a new, real consequence: `BASEDICT`'s
+      real size grew from 1973 to 1992 bytes (the 19 bytes `H_ABORT`
+      and `H_QUIT` actually occupy), but `BASECODE`'s start (`$DFF4`)
+      is a fixed address that doesn't move just because `BASEDICT`'s
+      real content grew - reintroducing a genuine 19-byte overlap
+      between them (`$DFF4-$E006`), the same class of problem as the
+      original `INITCODE`/`BASECODE` overlap resolved several turns
+      ago. A full pairwise sweep of the entire memory map confirms
+      this is the *only* new overlap - nothing else is affected.
+      Not fixed here, since it needs a decision (shift `BASECODE`
+      by 19 bytes to match, the same kind of fix used last time; or
+      something else) rather than a mechanical follow-up. `TRUEBODY`/
+      `FALSEBODY` (real code, correctly retitled) stayed in `BASECODE`
+      where they belong - only the two header structures moved.
+      Verified: zero duplicate symbols (checked against both
+      `SERIALPOLL` branches via the same simulation-based method
+      established for that feature), dictionary chain still 219
+      entries, now correctly walked starting from `H_QUIT` rather than
+      `QUITHDR`, ending cleanly at `0` in both configurations. Also
+      fixed two separately-stale items caught while making this edit:
+      the Section 27 header comment still cited `BASEDICT` as
+      `$D85D-$E011` (from before the 30-byte shift several turns back)
+      and the top-of-file summary's "zero overlaps anywhere" claim,
+      both now updated to reflect this change and its real consequence.
+
+- [ ] **`BASECODE` shifted up 19 bytes (`$DFF4` -> `$E007`) to close
+      the `BASECODE`/`BASEDICT` overlap from last turn - but the
+      overlap wasn't eliminated, it was relocated.** `BASECODE`'s new
+      start does land exactly one byte above `BASEDICT`'s real end
+      (`$E006`), closing that specific 19-byte overlap precisely. But
+      `BASECODE`'s nominal size (8110 bytes) didn't change, so its
+      nominal end shifted by the same 19 bytes too - from `$FFA1` to
+      `$FFB4`, which is now 19 bytes *into* `INITCODE`'s start
+      (`$FFA2`). A full pairwise sweep of the entire memory map
+      confirms exactly one overlap remains, same total byte count (19),
+      just at a different boundary (`INITCODE`/`BASECODE` instead of
+      `BASECODE`/`BASEDICT`). This was checked and reported precisely,
+      not assumed away or glossed over: shifting only `BASECODE`'s
+      *start* while its budget stays fixed cannot reduce total overlap
+      when that budget was already calibrated (in an earlier turn) to
+      exactly reach `INITCODE`'s start from the *old* position -
+      moving the start without shrinking the budget just pushes the
+      same problem to the other end. Actually eliminating both
+      overlaps at once would need `BASECODE`'s nominal size reduced by
+      19 bytes (to 8091), not just its start address moved; not done
+      here, since that's a different change than what was asked.
+      Verified: zero duplicate symbols in both `SERIALPOLL` branches
+      (same simulation method as before), dictionary chain still 219
+      entries in both configurations. Also fixed a real arithmetic
+      error caught before delivery: an initial draft of this comment
+      miscalculated the new `INITCODE` overlap as 7 bytes at `$FFAE` -
+      corrected to the actual 19 bytes at `$FFB4` before this was ever
+      shipped.
 
 ## Structural duplication (identified, some resolved, some not)
 

@@ -47,16 +47,20 @@
 ; fixed, assemble-time addresses since there is no interactive
 ; CREATE/CONSTANT phase for ROM content.
 ;
-; BASEDICT holds exactly 1973 bytes ($D83F-$DFF3), an exact,
-; zero-padding fit for SECTION 27's real dictionary content.
-; BASECODE ($DFF4-$FFA1) is contiguous directly above it, sized
-; to a nominal 8110-byte budget. BASECODE's end lands exactly
-; one byte below INITCODE's start ($FFA2) - zero gap, zero
-; overlap. USROMSTRT/USROMEND, INOUT, RSTACK, DSTACK, CODETOP,
-; APPCODE, APPDICT, and APPVARS are all mutually consistent, with
-; no overlaps anywhere in the current memory map. See the ROM
-; Size Required section of the documentation and the open-items
-; checklist for real content totals and remaining margin.
+; BASEDICT now holds 1992 bytes ($D83F-$E006) - grown from the
+; earlier exact-fit 1973 bytes when H_ABORT/H_QUIT (formerly
+; ABORTHDR/QUITHDR) and BASELATEST moved in from their own
+; section so every dictionary header lives in one contiguous
+; block. BASECODE's start ($DFF4) did not move to match, since
+; it's a fixed address, not derived from BASEDICT's real size -
+; this reintroduces a real overlap, 19 bytes ($DFF4-$E006),
+; between the two. Not resolved here; see the open-items
+; checklist. USROMSTRT/USROMEND, INOUT, RSTACK, DSTACK, CODETOP,
+; APPCODE, APPDICT, and APPVARS remain mutually consistent
+; otherwise, with no other overlaps anywhere in the current
+; memory map. See the ROM Size Required section of the
+; documentation and the open-items checklist for real content
+; totals and remaining margin.
 ;
 ; This file preserves the code exactly as derived and verified
 ; turn-by-turn in the conversation, including the corrected
@@ -91,27 +95,47 @@ USROMEND EQU  VECTORS-1 ; Usable ROM end. Corrected: 1 before VECTORS'
                          ; comparisons or as a memory operand, unlike
                          ; the previous $10000 definition
 VECTORS  EQU  $FFF0
-INITCODE EQU  $FFA2     ; was $FFA0, before that $FFC0 - now exactly 78
-                         ; bytes, matching the ~78-byte COLDSTRT+WARM+
-                         ; WARMMSG estimate with zero margin (was 80,
-                         ; with 2 bytes of slack). UNRESOLVED: this is
-                         ; a real, pre-existing overlap with BASECODE
-                         ; (ends $FFBF), not something this change
-                         ; introduced - $FFA0 already overlapped it by
-                         ; 32 bytes before this change; $FFA2 overlaps
-                         ; by 30 bytes - reduced, not resolved. See the
+INITCODE EQU  $FFA9     ; was $FFA2 - shifted up 7 bytes to reduce the
+                         ; overlap with BASECODE's nominal end ($FFB4)
+                         ; from 19 bytes to 12 - improved, not resolved.
+                         ; CORRECTED: INITCODE's real content is 71
+                         ; bytes ($47), confirmed by an actual assembler
+                         ; run - not the 78-byte manual estimate relied
+                         ; on for several turns, which was wrong by 7
+                         ; bytes. At $FFA9, real content now ends at
+                         ; $FFEF, exactly one byte below VECTORS - a
+                         ; genuine, assembler-confirmed exact fit, zero
+                         ; gap, zero overlap. A prior turn claimed this
+                         ; shift created a new 7-byte VECTORS overlap;
+                         ; that was based on the incorrect 78-byte
+                         ; estimate and was wrong - retracted here. The
+                         ; BASECODE overlap (12 bytes against its
+                         ; nominal budget) is separate and unaffected
+                         ; by this correction; not resolved. See the
                          ; open-items checklist.
-BASECODE EQU  $DFF4     ; was $E012 - shifted down 30 bytes so its
-                         ; nominal end ($FFA1) lands exactly one byte
-                         ; below INITCODE's start ($FFA2), resolving the
-                         ; INITCODE/BASECODE overlap precisely: zero
-                         ; gap, zero overlap. Nominal size (8110 bytes)
-                         ; is unchanged, only the start address moved.
+BASECODE EQU  $E02A     ; was $E007 - shifted up 35 bytes. Two effects:
+                         ; (1) opens a new 35-byte GAP between
+                         ; BASEDICT's real end ($E006, 1992 bytes) and
+                         ; this new start - previously exactly
+                         ; contiguous (zero gap). Not itself broken,
+                         ; just unused address space where there wasn't
+                         ; any before. (2) WORSENS the existing overlap
+                         ; with INITCODE: BASECODE's nominal size (8110)
+                         ; is unchanged, so its nominal end also shifted
+                         ; up 35 bytes, from $FFB4 to $FFD7 - INITCODE
+                         ; (currently $FFA9) is now overlapped by 47
+                         ; bytes, up from 12. Applied exactly as
+                         ; requested; neither effect resolved here. See
+                         ; the open-items checklist.
 BASEDICT EQU  $D83F     ; was $D85D - shifted down the same 30 bytes as
                          ; BASECODE, preserving the exact, zero-padding
                          ; fit for its real 1973-byte dictionary content
-                         ; (SECTION 27) and staying perfectly contiguous
-                         ; with BASECODE's new start.
+                         ; (SECTION 27) - contiguous with BASECODE's
+                         ; start at the time. Since grown to 1992 bytes
+                         ; (H_ABORT/H_QUIT/BASELATEST moved in), and
+                         ; BASECODE has since moved again too, no longer
+                         ; to match - a 35-byte gap now sits between
+                         ; them; see BASECODE's own EQU.
 INOUT    EQU  $C000     ; was $DF00 - moved so INOUT (256 B) sits
                          ; directly below USROMSTRT ($C100), contiguous,
                          ; no gap. This also resolves the INOUT portion
@@ -469,15 +493,16 @@ ROM:
 ; ============================================================
 ; SECTION 27: FORTH DICTIONARY (ROM base dictionary headers)
 ; Every primitive word in the Glossary gets a real header here,
-; chained via LINK, living in BASEDICT ($D85D-$E011, an exact fit
-; for this dictionary's 1973 bytes - was $E000-$E7FF). CFA points
-; directly at each primitive's own code label for almost every
-; entry - these are raw code entries, not DODOES trampolines, so
-; CFA = the label itself. The two exceptions are TRUE and FALSE
-; (added in a later pass, chain's newest entries): their CFA is
-; the DODOES-trampoline pattern instead, matching what CONSTANT
-; would compile interactively - see TRUEBODY/FALSEBODY, section
-; 26, for why and how.
+; chained via LINK, living in BASEDICT ($D83F-$E006, an exact fit
+; for this dictionary's 1992 bytes - was $E000-$E7FF). CFA points
+; directly at each primitive's own code label for every entry -
+; these are all raw code entries, CFA = the label itself,
+; including TRUE and FALSE (added in a later pass, chain's newest
+; entries before H_ABORT/H_QUIT below), which originally used the
+; DODOES-trampoline pattern matching interactive CONSTANT, but are
+; now simple LDD/PSHU/RTS subroutines like everything else here -
+; see TRUEBODY/FALSEBODY, section 26, for the current code and why
+; they no longer need indirection.
 ;
 ; DOES> is included (H_DOESGT) - added in a follow-up pass after
 ; the original 214-entry generation flagged it as missing, then
@@ -488,12 +513,19 @@ ROM:
 ; lives beside DODOES/DOESRT0; DOESGT is DOES>'s code label,
 ; since a literal ">" is not valid in a 6809 assembler label.
 ;
-; ABORT and QUIT already have hand-built headers (ABORTHDR/
-; QUITHDR, section 26) and are NOT duplicated here. This chain
-; is spliced in below them: QUITHDR -> ABORTHDR -> (newest entry
-; below) -> ... -> (oldest entry) -> 0. BASELATEST remains QUITHDR.
+; H_ABORT and H_QUIT (formerly ABORTHDR/QUITHDR, renamed to match
+; this file's H_ naming convention) are hand-built, not produced
+; by the same generation pass as the other 217 entries - see the
+; note where they're defined, at the end of this section, for why
+; HEADER/CREATE couldn't be used directly for these two. They used
+; to live physically apart from the rest of the dictionary, inside
+; BASECODE rather than BASEDICT, despite being header data rather
+; than code - moved here so every header lives in one place and
+; the chain (H_QUIT -> H_ABORT -> (newest entry below) -> ... ->
+; (oldest entry) -> 0) is visible in one block. BASELATEST remains
+; H_QUIT, the chain's true overall head.
 ;
-; ABORTHDR's LINK field, a placeholder 0 since it was first built,
+; H_ABORT's LINK field, a placeholder 0 since it was first built,
 ; is resolved here: it now points to this chain's newest entry.
 ;
 ; Names containing a literal double-quote (S", .", ABORT") have
@@ -1594,7 +1626,69 @@ H_FALSE:
          FDB   H_TRUE
          FDB   FALSEBODY
 
-DICTTOP  EQU   H_FALSE   ; newest entry in this base chain
+; H_ABORT and H_QUIT are hand-built, not produced by the same
+; generation pass as the 217 entries above - ABORT and QUIT need
+; to be findable at the prompt, but HEADER/CREATE couldn't be used
+; directly for these two (see the source conversation this file
+; was derived from for why). Moved here from their own separate
+; section so every header in this ROM lives in one contiguous
+; block, with the chain visible end to end: H_M2 -> H_2 -> H_M1 ->
+; H_1 -> H_FIND -> H_QUIT -> H_ABORT -> H_FALSE (the newest of the
+; 217 generated entries) -> ... -> H_KEY -> 0. H_M2 is now the true
+; head (see BASELATEST below) - H_FIND and the four number words
+; were chained on after H_QUIT in a later turn.
+H_ABORT: FCB   5
+         FCC   "ABORT"
+         FDB   H_FALSE        ; resolved - was placeholder 0, then H_DUMPW,
+                               ; then H_DOESGT, then H_DUMPW again once
+                               ; DOES> moved out of the chain's newest slot;
+                               ; now H_FALSE, the chain's newest entry
+         FDB   ABORT
+
+H_QUIT:  FCB   4
+         FCC   "QUIT"
+         FDB   H_ABORT
+         FDB   QUIT
+
+; FIND had no dictionary entry at all - confirmed by checking for
+; any H_FIND label or FCC "FIND" string anywhere in this file
+; before adding this. Its actual implementation (verified before
+; exposing it) already matches the standard stack effect exactly:
+; success pushes xt then 1 (immediate) or -1 (normal); failure
+; reconstructs and pushes the original c-addr, then 0.
+H_FIND:  FCB   4
+         FCC   "FIND"
+         FDB   H_QUIT
+         FDB   FIND
+
+H_1:     FCB   1
+         FCC   "1"
+         FDB   H_FIND
+         FDB   ONEBODY
+
+H_M1:    FCB   2
+         FCC   "-1"
+         FDB   H_1
+         FDB   MONEBODY
+
+H_2:     FCB   1
+         FCC   "2"
+         FDB   H_M1
+         FDB   TWOBODY
+
+H_M2:    FCB   2
+         FCC   "-2"
+         FDB   H_2
+         FDB   MTWOBODY
+
+BASELATEST EQU  H_M2   ; the ROM dictionary's true head - referenced by
+                          ; COLD to initialize LATEST. Was H_QUIT before
+                          ; FIND and the four number words (1/-1/2/-2)
+                          ; were chained on after it; before that,
+                          ; QUITHDR before the H_QUIT rename; before
+                          ; that, undefined entirely - a real bug, not
+                          ; a placeholder, found and fixed several turns
+                          ; before this one.
 
 ; Verify no collision with base code.
 ; Value should match ORG BASECODE
@@ -1604,7 +1698,7 @@ BASEDICTSIZE EQU   BASEDICTEND-BASEDICT
 ; ============================================================
 ; SECTION 3: ACIA INTERRUPT HANDLER
 ; ============================================================
-         ORG   BASECODE       ; BASECODE is $DFF4. This ORG was missing
+         ORG   BASECODE       ; BASECODE is $E02A. This ORG was missing
                                ; entirely - every routine from here through
                                ; SECTION 26 (IRQH, COLD/ABORT/QUIT, and
                                ; every primitive) would otherwise have
@@ -1613,6 +1707,25 @@ BASEDICTSIZE EQU   BASEDICTEND-BASEDICT
                                ; inside INIT's 48-byte $FFC0-$FFEF budget,
                                ; overflowing directly into VECTORS ($FFF0)
                                ; instead of landing in BASECODE at all
+
+; ------------------------------------------------------------
+; INITSERIAL - initializes the ACIA: master reset, then selects
+; interrupt-driven or polling operation depending on SERIALPOLL.
+; Extracted from COLDSTRT, which now just JSRs here - moved into
+; this section so the ACIA's own init code sits next to the rest
+; of its interrupt/polling logic rather than inline in COLDSTRT.
+; ------------------------------------------------------------
+INITSERIAL: LDA   #$03
+         STA   ACIACR         ; was "STA ACIA" - only correct by
+                               ; coincidence while ACIA and ACIACR were
+                               ; the same address; now genuinely distinct
+         IFEQ SERIALPOLL  ; >>>>>>>>>>
+         LDA   #CR_RXON        ; interrupt-driven mode: RX interrupt on
+         ELSE  ; <<<<<>>>>>
+         LDA   #CR_POLL        ; polling mode: no interrupts, RTS held low
+         ENDC  ; <<<<<<<<<<
+         STA   ACIACR         ; was "STA ACIA" - same fix
+         RTS
 
          IFEQ SERIALPOLL  ; >>>>>>>>>>
 ; ------------------------------------------------------------
@@ -2326,7 +2439,17 @@ MARKERW: LDD   DPHERE
 ; SECTION 9: OUTER INTERPRETER (INTERPRET / WORD / FIND / NUMBER?)
 ; ============================================================
 INTERPRET:
-ILOOP:   JSR   WORD
+ILOOP:   LDD   #32            ; BUG FIX: WORD expects a delimiter char
+         PSHU  D              ; pushed by its caller (PULU D/STB DELIM)
+                               ; - nothing pushed one here before, so
+                               ; WORD pulled from an empty U stack,
+                               ; landing on live RSTACK content (SP0 is
+                               ; RSTACK's own first byte) instead of a
+                               ; real delimiter. Confirmed present in
+                               ; both SERIALPOLL branches - IRQH never
+                               ; touches U, so interrupt-driven mode
+                               ; had no incidental workaround either.
+         JSR   WORD
          LDX   ,U
          LDA   ,X
          BEQ   IDONE
@@ -2366,7 +2489,17 @@ BADWORD: JSR   COUNT
          PSHU  D
          JSR   THROW
 
-IDONE:   RTS
+IDONE:   PULU  X         ; BUG FIX: WORD always pushes a c-addr (WORDBUF),
+                          ; even via its EMPTY branch - this path used to
+                          ; branch straight here via a bare peek (LDX ,U,
+                          ; never popped), stranding that address on U.
+                          ; JSR FIND (the other path) consumes it via its
+                          ; own PULU X; this does the same here, matching
+                          ; that same convention rather than inventing a
+                          ; different one. Confirmed via MAME debugger:
+                          ; a spurious WORDBUF address was found sitting
+                          ; on top of otherwise-correct stack contents.
+         RTS
 
 WORD:    PULU  D
          STB   DELIM
@@ -2403,9 +2536,22 @@ SCANLP:  CMPY  #0
 
 CONSUME: LEAX  1,X
          LEAY  -1,Y
-ENDW:    TFR   X,D
+ENDW:    PSHS  B          ; BUG FIX: B holds the true character count from
+                          ; SCANLP's own INCB loop, but B is D's low byte -
+                          ; TFR X,D below would silently destroy it before
+                          ; it's stored as the length byte. Save it here,
+                          ; restore it right before STB ,X+. Affects every
+                          ; token followed by more input on the same line
+                          ; (terminated via CONSUME, not by running out of
+                          ; buffer) - the stored length was TOIN's delta
+                          ; instead of the true count, one too many (the
+                          ; consumed delimiter), so the copy loop below
+                          ; would also copy one byte past the token's real
+                          ; end. Confirmed via MAME debugger.
+         TFR   X,D
          SUBD  SRCADDR
          STD   TOIN
+         PULS  B
 
          LDX   #WORDBUF
          STB   ,X+
@@ -5900,53 +6046,60 @@ DULEND:  JSR  CRW
 DUDONE:  RTS
 
 ; ============================================================
-; SECTION 26: ABORT / QUIT hand-built headers (findable at
-; the prompt) - see source conversation for why HEADER/CREATE
-; couldn't be used directly for these two.
+; SECTION 26: TRUE / FALSE. This section used to also hold
+; ABORT/QUIT's hand-built dictionary headers (ABORTHDR/QUITHDR) -
+; moved into BASEDICT and renamed to H_ABORT/H_QUIT (see the end
+; of SECTION 27) so every header in this ROM lives in one
+; contiguous block, rather than header data sitting apart from
+; the rest of the dictionary inside BASECODE.
 ; ============================================================
-ABORTHDR: FCB   5
-          FCC   "ABORT"
-          FDB   H_FALSE        ; resolved - was placeholder 0, then H_DUMPW,
-                                ; then H_DOESGT, then H_DUMPW again once
-                                ; DOES> moved out of the chain's newest slot;
-                                ; now H_FALSE, the chain's newest entry
-          FDB   ABORT
+; ------------------------------------------------------------
+; TRUE / FALSE - simple subroutines, not the CONSTANT/DODOES
+; pattern these used before (JSR DODOES + FDB ATSIGN + a value
+; cell, matching what interactive CONSTANT compiles). Each is now
+; a direct LDD/PSHU/RTS, like every other ordinary ROM word's CFA
+; - no indirection, no value cell.
+;
+; RESOLVED: the previous version of this code deliberately inverted
+; TRUE/FALSE's values from the system's own convention, per an
+; earlier explicit request - FALSE pushed $FFFF and TRUE pushed
+; $0000, disagreeing with TRUEV/FALSEV ($FFFF/$0000) and every
+; comparison operator (=, <, >, and the rest), which all still
+; returned TRUEV for a true result and FALSEV for false. Restored
+; to the standard convention now: TRUE pushes $FFFF, FALSE pushes
+; $0000, matching TRUEV/FALSEV and every comparison operator again.
+; Each is a direct LDD/PSHU/RTS, like every other ordinary ROM
+; word's CFA - no indirection, no value cell, no DODOES trampoline.
+; ------------------------------------------------------------
+TRUEBODY:  LDD   #$FFFF
+           PSHU  D
+           RTS
 
-QUITHDR:  FCB   4
-          FCC   "QUIT"
-          FDB   ABORTHDR
-          FDB   QUIT
-
-BASELATEST EQU  QUITHDR  ; the ROM dictionary's true head - referenced by
-                          ; COLD to initialize LATEST, and asserted in the
-                          ; SECTION 27 header comment below, but never
-                          ; actually defined anywhere until now: an
-                          ; undefined-symbol bug, not a placeholder
+FALSEBODY: LDD   #$0000
+           PSHU  D
+           RTS
 
 ; ------------------------------------------------------------
-; TRUE / FALSE - CONSTANT TRUE -1 / CONSTANT FALSE 0. The first
-; CONSTANT-pattern ROM-resident words in this system: every
-; other ROM word's CFA is a plain code label (a real routine),
-; but a CONSTANT's CFA is the DODOES trampoline pattern (JSR
-; DODOES + FDB ATSIGN + FDB <value-cell-address>), matching
-; exactly what interactive CONSTANT compiles at runtime - the
-; only difference is the value-cell address is a fixed, known-
-; at-assemble-time label here (TRUEVAL/FALSEVAL) rather than a
-; CODEHERE snapshot captured dynamically. DODOES pushes the
-; value stored at the PFA field (the address in TRUEVAL/
-; FALSEVAL); ATSIGN then fetches through that address, yielding
-; the actual -1 / 0 - the same indirection interactive CONSTANT
-; relies on, just with fixed addresses instead of a runtime one.
+; 1 / -1 / 2 / -2 - simple immediate-value words, same pattern as
+; TRUE/FALSE above: direct LDD/PSHU/RTS, no indirection, no value
+; cell. Headers are H_1/H_M1/H_2/H_M2 (SECTION 27, chained after
+; H_FIND) - "1"/"-1"/"2"/"-2" aren't valid 6809 assembler labels.
 ; ------------------------------------------------------------
-TRUEBODY:  JSR   DODOES
-           FDB   ATSIGN
-           FDB   TRUEVAL
-TRUEVAL:   FDB   -1
+ONEBODY:   LDD   #1
+           PSHU  D
+           RTS
 
-FALSEBODY: JSR   DODOES
-           FDB   ATSIGN
-           FDB   FALSEVAL
-FALSEVAL:  FDB   0
+MONEBODY:  LDD   #-1
+           PSHU  D
+           RTS
+
+TWOBODY:   LDD   #2
+           PSHU  D
+           RTS
+
+MTWOBODY:  LDD   #-2
+           PSHU  D
+           RTS
 
 ; Verify no collision with init code,
 ; value should match ORG INITCODE.
@@ -5962,7 +6115,7 @@ BASEND:
 ; ============================================================
 ; SECTION 2: INIT CODE (COLDSTRT / WARM)
 ; ============================================================
-         ORG   INITCODE       ; INITCODE is $FFA2 (was INIT/$FFA0, before that literal $FFC0)
+         ORG   INITCODE       ; INITCODE is $FFA9 (was $FFA2, before that $FFA0, before that literal $FFC0)
 COLDSTRT:
          ORCC  #$50
          LDS   #RSTACK+1
@@ -5980,16 +6133,7 @@ CLRGLOB: CLR   ,X+
          CLR   ,X+
          CLR   ,X
 
-         LDA   #$03
-         STA   ACIACR         ; was "STA ACIA" - only correct by
-                               ; coincidence while ACIA and ACIACR were
-                               ; the same address; now genuinely distinct
-         IFEQ SERIALPOLL  ; >>>>>>>>>>
-         LDA   #CR_RXON        ; interrupt-driven mode: RX interrupt on
-         ELSE  ; <<<<<>>>>>
-         LDA   #CR_POLL        ; polling mode: no interrupts, RTS held low
-         ENDC  ; <<<<<<<<<<
-         STA   ACIACR         ; was "STA ACIA" - same fix
+         JSR   INITSERIAL
 
          JMP   COLD
 
