@@ -2215,9 +2215,17 @@ CONSTANT: LDD  #0
           LDD  #ATSIGN
           PSHU D
           JSR  CODECOMMA
-          LDD  CODEHERE
-          PSHU D
-          JSR  CODECOMMA
+          LDD  CODEHERE   ; BUG FIX: was storing CODEHERE's value as-is,
+          ADDD #2         ; but at this point CODEHERE points at THIS
+          PSHU D          ; very cell, about to be written by the next
+          JSR  CODECOMMA  ; CODECOMMA - self-referential, not pointing
+                          ; at the value cell 2 bytes further on where
+                          ; the JSR COMMA below actually appends 1234.
+                          ; +2 accounts for this FDB field's own width,
+                          ; landing correctly on the value that follows.
+                          ; Confirmed via MAME debugger: executing the
+                          ; constant returned its own compile-time
+                          ; CODEHERE address instead of the real value.
           JSR  COMMA
           RTS
 
@@ -3491,11 +3499,16 @@ TICKOK:  RTS
 
 COMPILECOMMA: JMP  CCALL
 
-CCALL:   PULU  D
-         LDX   CODEHERE
-         LDA   #OPJSR
-         STA   ,X+
-         STD   ,X++
+CCALL:   LDX   CODEHERE   ; BUG FIX: was PULU D first, then LDA #OPJSR -
+         LDA   #OPJSR     ; but A is D's high byte, so that LDA silently
+         STA   ,X+        ; destroyed the top byte of the address PULU D
+         PULU  D          ; had just pulled, and the STD below wrote out
+         STD   ,X++       ; the corrupted result - a JSR to a garbage
+                          ; target address. Deferring PULU D until after
+                          ; STA ,X+ means D is never live at the same time
+                          ; A gets reused for the opcode, so nothing
+                          ; clobbers it. Confirmed via MAME debugger:
+                          ; execution jumped to random memory.
          STX   CODEHERE
          RTS
 
