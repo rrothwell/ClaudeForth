@@ -306,7 +306,14 @@ design decisions made since the original version.
       label, which doesn't exist in this file - used the actual
       existing label `COLDSTRT` instead of introducing a new undefined
       symbol.
-- [x] **`INITEND`'s comment now states the invariant explicitly
+- [x] **CORRECTED: the manual 78-byte count below was wrong - a real
+      assembler run reports `INITCODE`'s actual size as 71 bytes
+      (`$47`).** This entry's own last line said to trust `INITSIZE`
+      once the file was actually assembled rather than this manual
+      count - that's now happened, and the manual count was off by 7
+      bytes. See the later entry recording the correction in full;
+      kept here as history, not rewritten. Original text: **`INITEND`'s
+      comment now states the invariant explicitly
       ("value should match vector ORG") - and checking it confirms
       it currently holds.** The precise instruction-by-instruction
       byte count from when the `VECTORS` collision was first found
@@ -865,6 +872,394 @@ design decisions made since the original version.
       miscalculated the new `INITCODE` overlap as 7 bytes at `$FFAE` -
       corrected to the actual 19 bytes at `$FFB4` before this was ever
       shipped.
+
+- [x] **`DICTTOP` confirmed genuinely unused and removed, along with
+      the one comment that named it.** Checked precisely before
+      touching anything: defined once (`DICTTOP EQU H_FALSE`), and
+      referenced exactly one other place in the whole file - inside a
+      prose comment describing the dictionary chain, not by any real
+      code. No `EQU` depended on it, nothing `JSR`'d or `FDB`'d it.
+      Confirms the suspicion that raised this: `BASELATEST` (`EQU
+      H_QUIT`, the true overall chain head used by `COLD` to
+      initialize `LATEST`) is what's actually used at runtime;
+      `DICTTOP` was a separate, distinct value (`H_FALSE`, the newest
+      of the 217 generation-pass entries specifically, not the true
+      head) that nothing ever consumed. Removed the `EQU` line and
+      rewrote the one comment that named it to describe `H_FALSE`
+      directly instead. Verified: zero duplicate symbols and
+      dictionary chain still 219 entries intact in both `SERIALPOLL`
+      branches (same simulation method as the last two turns).
+
+- [x] **Serial init code (`LDA #$03` through `STA ACIACR`, including the
+      `SERIALPOLL` mode-select) extracted from `COLDSTRT` into a new
+      subroutine, `INITSERIAL`, and moved into the ACIA Interrupt
+      section (`SECTION 3`), right before the `IFEQ SERIALPOLL` that
+      gates `INFILL`.** `COLDSTRT` now just does `JSR INITSERIAL` where
+      the inline code used to sit. The extracted block keeps its
+      internal `SERIALPOLL` conditional (`CR_RXON` vs `CR_POLL`)
+      exactly as it was, just relocated and given an `RTS`. Small,
+      bounded side effect worth naming rather than silently ignoring:
+      this shifts roughly 10 bytes of real content from `INITCODE` to
+      `BASECODE` (the subroutine itself, plus the shrink from removing
+      the inline code and adding a 3-byte `JSR` in its place) - well
+      within the existing, already-acknowledged estimation uncertainty
+      for both regions, not something that changes the tracked
+      overlap numbers meaningfully. Verified: `IFEQ`/`ELSE`/`ENDC`
+      still balanced (3/3/3 - moving a conditional block doesn't add a
+      new one), `INITSERIAL` defined exactly once and correctly
+      resolved by its `JSR`, zero duplicate symbols and dictionary
+      chain still 219 entries intact in both `SERIALPOLL` branches
+      (same simulation method as the last several turns).
+
+- [x] **Real bug fixed: `INTERPRET` called `WORD` without pushing a
+      delimiter character first, unlike every other caller of `WORD`
+      in this file.** Found while tracing a full character-by-
+      character simulation of the ACIA receiving "ABC"+CR under
+      polling mode. `WORD`'s calling convention (`PULU D / STB DELIM`)
+      requires its caller to push a delimiter char first - confirmed
+      by checking all 7 call sites: `HEADER`, `TOW`, `ISW`, `SQUOTE`,
+      `CHARW`, and `LPAREN` all correctly push one (`LDD #32/#34/#')'`
+      then `PSHU D`) immediately before `JSR WORD`. `INTERPRET` was
+      the only one that didn't. Traced the actual consequence: `QUIT`
+      invokes the interpreter via `CATCH`, which only pulls the xt off
+      `U` and pushes nothing back (its bookkeeping goes on `S`, the
+      return stack, not `U`) - so `WORD`'s stray `PULU D` reads from
+      an empty `U` stack. `SP0` (`U`'s empty/reset value) is exactly
+      `RSTACK`'s first byte, not unused margin, so `DELIM` ended up
+      holding live return-stack content instead of a real delimiter -
+      unpredictable, not necessarily space, meaning `WORD` couldn't
+      reliably find token boundaries at all. Confirmed this is not
+      polling-specific, per instruction: `IRQH` (the interrupt-driven
+      receive path) never touches `U` at all, so interrupt-driven mode
+      had no incidental workaround either - same bug, both branches.
+      Fixed by pushing `LDD #32 / PSHU D` right at the `ILOOP:` label
+      before `JSR WORD`, matching every other call site's convention
+      exactly rather than inventing a different approach - this single
+      insertion covers every iteration of the loop, since every branch
+      back to `ILOOP` (from `DOEXEC`, `CCALL`, `TRYNUM`'s success path)
+      re-enters at this exact point. Verified: zero duplicate symbols
+      and dictionary chain still 219 entries intact in both
+      `SERIALPOLL` branches (same simulation method as recent turns).
+
+- [x] **CORRECTED the same turn this was written, by real assembler
+      data: the "new VECTORS overlap" claimed below did not actually
+      exist - it was computed from a 78-byte manual estimate that
+      turned out to be wrong by 7 bytes.** A real assembler run
+      reports `INITCODE`'s actual size as 71 bytes (`$47`), not 78.
+      At `$FFA9`, 71 real bytes end at exactly `$FFEF` - one byte
+      below `VECTORS`, zero gap, zero overlap. The `BASECODE` overlap
+      described below (12 bytes against its nominal budget) is
+      unaffected by this correction and remains open. Kept as history,
+      not deleted - this was a real, reasoned finding at the time,
+      just based on the best information available before a real
+      assembler had actually been run against this specific figure.
+      Original text: **`INITCODE` shifted up 7 bytes (`$FFA2` ->
+      `$FFA9`) - reduces
+      one overlap but introduces a different, new one.** Computed
+      precisely before and after: against `BASECODE`'s nominal
+      8110-byte budget, the overlap shrinks from 19 bytes to 12
+      (`$FFA9`-`$FFB4`) - real progress, not a fix. But `INITCODE`'s
+      real content (78 bytes, an established figure from
+      `COLDSTRT`+`WARM`+`WARMMSG`, not an estimate) used to end at
+      `$FFEF`, exactly one byte below `VECTORS`' start (`$FFF0`) -
+      zero gap. At `$FFA9` it now ends at `$FFF6`, 7 bytes *into*
+      `VECTORS`' own territory - a brand new overlap that didn't exist
+      before this change, and arguably more certain than the
+      `BASECODE` one, since it's based on solid content rather than a
+      budget estimate. Worth noting: checked what happens using
+      `BASECODE`'s *real* 7984-byte content instead of its nominal
+      budget - the `INITCODE`/`BASECODE` overlap disappears entirely
+      under that assumption, leaving only the new `VECTORS` overlap.
+      Applied exactly as requested; neither overlap resolved here.
+      Verified: zero duplicate symbols and dictionary chain still 219
+      entries intact in both `SERIALPOLL` branches.
+- [ ] **The real, assembler-confirmed figure: `INITCODE` is 71 bytes
+      (`$47`), told directly rather than derived from a manual count -
+      the first genuine assembler-reported figure in this whole
+      project, as opposed to every prior byte count in this file,
+      which has been a manual estimate with an explicitly acknowledged
+      margin of error.** Corrected the one place in `forth6809.asm`
+      that cited the old, wrong 78-byte figure (`INITCODE`'s own `EQU`
+      comment), and the checklist entries above. Left two older,
+      already-properly-hedged entries alone rather than edit them -
+      they already said "still an estimate... not a real assembler's
+      output" at the time, so nothing in them is actually wrong, just
+      superseded. `BASECODE`'s real size (7984 bytes, from the
+      instruction-by-instruction manual count) remains unconfirmed by
+      an actual assembler run - this correction applies specifically
+      to `INITCODE`, not the other regions' still-estimated figures.
+
+- [ ] **`TRUE` and `FALSE` replaced with simple subroutines, per
+      explicit request - but the requested values are inverted from
+      the rest of the system's true/false convention, and this was
+      applied exactly as asked, not corrected.** `TRUEBODY` is now
+      `LDD #$0000 / PSHU D / RTS`; `FALSEBODY` is now `LDD #$FFFF /
+      PSHU D / RTS` - both simple, direct subroutines (matching the
+      style of e.g. `BLW`), replacing the DODOES-trampoline
+      CONSTANT-pattern implementation they used before (`TRUEVAL`/
+      `FALSEVAL`, the value cells that pattern needed, removed along
+      with it - confirmed unreferenced anywhere else first). Flagging
+      this prominently rather than as a routine note: `TRUEV EQU
+      $FFFF` / `FALSEV EQU $0000`, defined near `GLOBALS`, are what
+      every comparison operator in this system (`=`, `<`, `>`, and
+      the rest) actually pushes for a true/false result - that
+      convention is unchanged. `TRUE` and `FALSE`, the two words,
+      now push the opposite of what those operators mean by "true"
+      and "false." Any code that does something like `TRUE IF ... 
+      THEN` would behave backwards from what every comparison-based
+      conditional in the same program does, since `0` is
+      false-for-branching on this CPU regardless of which named
+      constant produced it. Verified: zero duplicate symbols and
+      dictionary chain still 219 entries intact in both `SERIALPOLL`
+      branches; confirmed `DODOES` and `ATSIGN` remain genuinely used
+      elsewhere (by `CREATE`/`CONSTANT`/`VARIABLE`'s own runtime code)
+      and were not left orphaned by this change.
+
+- [x] **`TRUE`/`FALSE` corrected to the standard convention: `TRUE`
+      pushes `$FFFF`, `FALSE` pushes `$0000` - each a direct
+      `LDD #value / PSHU D / RTS`, no indirection.** The code found at
+      the start of this turn had these inverted (`TRUEBODY` loaded
+      `$0000`, `FALSEBODY` loaded `$FFFF`), with a comment explicitly
+      documenting that inversion as deliberate, from an earlier
+      request not captured in this checklist - likely predating a
+      context boundary, since no corresponding entry exists above to
+      mark as superseded. That comment also correctly flagged the
+      consequence at the time: `TRUE`/`FALSE` disagreed with `TRUEV`/
+      `FALSEV` (`$FFFF`/`$0000`) and every comparison operator (`=`,
+      `<`, `>`, and the rest), which all return `TRUEV` for true and
+      `FALSEV` for false. This turn's request restores the standard
+      values, resolving that inconsistency. `TRUEVAL`/`FALSEVAL` (the
+      old DODOES-trampoline value cells) were already removed in the
+      prior change - nothing further to clean up there. Verified: `H_TRUE`/
+      `H_FALSE`'s `FDB TRUEBODY`/`FDB FALSEBODY` CFA fields unaffected
+      (only the pushed values changed, not the labels), zero duplicate
+      symbols, dictionary chain still 219 entries intact in both
+      `SERIALPOLL` branches.
+
+- [x] **`FIND` confirmed genuinely missing a dictionary entry - added.**
+      Checked first, not assumed: searched for any `H_FIND` label or
+      `FCC "FIND"` string anywhere in the file, found neither. Before
+      adding a header, verified `FIND`'s actual implementation against
+      the standard ANS stack effect (`c-addr -- c-addr 0 | xt 1 | xt
+      -1`) rather than assuming it matched: traced the success path
+      (`FMATCH`/`FPUSH`) - pushes the xt, then checks the header's bit
+      7 flag, pushing `1` if set or `-1` (via `FISNORM`) if clear,
+      matching immediate-vs-normal exactly - and the failure path
+      (`NOTFOUND`) - reconstructs the original `c-addr` (`SNAMEP-1`)
+      and pushes it alongside `0`. Both match the standard exactly;
+      no code changes needed, only the header. Also added four simple
+      number words - `1`, `-1`, `2`, `-2` - same pattern as `TRUE`/
+      `FALSE`: direct `LDD #value / PSHU D / RTS`, no indirection.
+      Code labels `ONEBODY`/`MONEBODY`/`TWOBODY`/`MTWOBODY`, since
+      `1`/`-1`/`2`/`-2` aren't valid 6809 assembler labels. All five
+      new headers (`H_FIND`, `H_1`, `H_M1`, `H_2`, `H_M2`) chained
+      after `H_QUIT`, with `H_M2` now the true chain head -
+      `BASELATEST` updated accordingly (still referenced symbolically
+      by `COLD`, so no code change needed there either). Updated the
+      two comments that named `H_QUIT` as the head to reflect the new
+      one. Verified: zero duplicate symbols, dictionary chain now 224
+      entries (was 219), correctly ordered and ending at `0`, in both
+      `SERIALPOLL` branches; byte-exact split-file reassembly.
+
+- [ ] **`BASECODE` shifted up 35 bytes (`$E007` -> `$E02A`) - two
+      effects, neither an improvement.** (1) Opens a new 35-byte gap
+      between `BASEDICT`'s real end (`$E006`, 1992 bytes) and
+      `BASECODE`'s new start - previously exactly contiguous, zero
+      gap. Not itself broken (a gap isn't a collision), just unused
+      address space where there wasn't any before. (2) Worsens the
+      existing `BASECODE`/`INITCODE` overlap: `BASECODE`'s nominal
+      size (8110 bytes) is unchanged, so its nominal end shifted up
+      the same 35 bytes too, from `$FFB4` to `$FFD7` - against
+      `INITCODE` (`$FFA9`), the overlap grows from 12 bytes to 47.
+      Full pairwise sweep confirms this is the only overlap anywhere
+      in the memory map, just larger than before. Applied exactly as
+      requested; neither effect resolved here. Also fixed two
+      separately-stale comments caught while making this change: the
+      `ORG BASECODE` line still cited `$DFF4` (two shifts behind), and
+      `BASEDICT`'s own comment still claimed `BASECODE` "moved again
+      to match," which is no longer true now that a gap exists between
+      them. Verified: zero duplicate symbols and dictionary chain
+      still 224 entries intact in both `SERIALPOLL` branches;
+      byte-exact split-file reassembly.
+
+- [x] **Real bug, found via actual MAME debugger single-stepping (not
+      static analysis) and fixed: `WORD`'s `EMPTY` branch pushes a
+      c-addr (`WORDBUF`'s address, matching its normal contract) that
+      `INTERPRET` never consumed when the parsed token was empty.**
+      `INTERPRET`'s check after `JSR WORD` was `LDX ,U` (a peek, not a
+      pop) `/ LDA ,X / BEQ IDONE`, and `IDONE` was a bare `RTS` -
+      meaning on every line, once nothing remains to parse, the final
+      `WORD` call's returned address gets stranded on `U` instead of
+      being consumed the way the `JSR FIND` path does (via `FIND`'s
+      own `PULU X`). This happens on *every* line, including
+      successful single-word ones - it's just invisible there since
+      nothing inspects the stack afterward. On lines with more
+      content, the stranded address sits underneath legitimate values
+      and accumulates across lines with nothing ever cleaning it up.
+      Diagnosed collaboratively: static tracing of `WORD`/`FIND`/
+      `EXECUTE`/`DOT`'s entire numeric chain across several turns kept
+      coming back clean (correctly - none of them had the bug), before
+      an actual MAME debugger session found a spurious address sitting
+      on top of an otherwise-correctly-pushed value, which pointed
+      straight at this exact mechanism once checked against the code.
+      Fixed by changing `IDONE` to `PULU X / RTS`, matching the same
+      convention `FIND` already uses to consume a c-addr, rather than
+      inventing a different fix. `IDONE` is referenced from exactly
+      one place, so the fix at the label covers the only path that
+      reaches it; confirmed `CATCH` (the caller once `INTERPRET`
+      returns) doesn't rely on `X` at that point either. Verified:
+      zero duplicate symbols, dictionary chain still 224 entries
+      intact in both `SERIALPOLL` branches; byte-exact split-file
+      reassembly.
+
+- [x] **Real, serious bug found via MAME debugger and fixed: `WORD`
+      stored the wrong length byte for every token followed by more
+      input on the same line - `TFR X,D` (part of the `TOIN`
+      calculation) silently destroyed `B`, which is `D`'s low byte and
+      also where `SCANLP`'s own `INCB` loop had been counting the
+      token's true character count.** `STB ,X+` then stored `TOIN`'s
+      delta instead of that true count - one too many, since the
+      delta includes the consumed trailing delimiter. The copy loop
+      then copied one byte past the token's real end, corrupting
+      every multi-token line's first N-1 tokens (the last token on a
+      line is terminated by running out of buffer, not by `CONSUME`,
+      so its `TOIN` delta happens to equal its true length - which is
+      exactly why every single-token-line test earlier in this
+      conversation, including my own manual traces, never surfaced
+      this). This also means my own earlier traces of this exact
+      routine, across several turns, were themselves quietly wrong in
+      this specific respect - not because the routine's overall logic
+      was mis-modeled, but because I treated `B` and `D` as if they
+      could independently hold different values, when `B` is `D`'s
+      low byte and any write to `D` clobbers it. Diagnosed
+      collaboratively: found via actual MAME debugger single-stepping,
+      not static tracing - confirmed against the source once precisely
+      described. Fixed by saving `B` (`PSHS B`) before the `TFR X,D`/
+      `SUBD SRCADDR`/`STD TOIN` sequence and restoring it (`PULS B`)
+      immediately after, right before `STB ,X+` - placed at the
+      `ENDW` label itself, which both paths that reach it (`CONSUME`'s
+      fall-through and `SCANLP`'s direct branch when the buffer runs
+      out) correctly pass through. Verified: zero duplicate symbols,
+      dictionary chain still 224 entries intact in both `SERIALPOLL`
+      branches; byte-exact split-file reassembly.
+
+- [x] **Real, serious bug found via MAME debugger and fixed: `CCALL`
+      (compiles a `JSR` to a given xt - used by every colon
+      definition to compile a call to each word it contains)
+      corrupted the target address on every single call.** `PULU D`
+      pulled the xt first; `LDA #OPJSR` (loading the opcode to
+      compile) then overwrote `A` - which is `D`'s high byte, so this
+      silently destroyed the top byte of the address just pulled.
+      `STA ,X+` correctly wrote the opcode (A happened to hold the
+      right value for that specific write), but `STD ,X++` then wrote
+      the corrupted `D` out as the call target - a `JSR` to a garbage
+      address, one wrong byte away from the real target. This affects
+      every colon definition unconditionally, not an edge case -
+      `: tv . ;` failed exactly this way, confirmed via MAME debugger
+      as "attempted execution of random memory." Fixed by deferring
+      `PULU D` until after `STA ,X+`: `LDX CODEHERE / LDA #OPJSR / STA
+      ,X+ / PULU D / STD ,X++ / STX CODEHERE / RTS` - `D` is never
+      live at the same time `A` gets reused for the opcode, so nothing
+      clobbers it. The external calling convention (caller pushes the
+      target address, then `JSR CCALL`) is unchanged - only the
+      internal instruction order moved, confirmed by checking a caller
+      still correctly pushes the address before the call. Verified:
+      zero duplicate symbols, dictionary chain still 224 entries
+      intact in both `SERIALPOLL` branches; byte-exact split-file
+      reassembly.
+
+- [x] **Real bug found via MAME debugger and fixed: `CONSTANT` compiled
+      a self-referential PFA field instead of one pointing at the
+      actual value cell.** `LDD CODEHERE` read `CODEHERE`'s value
+      *before* the `JSR CODECOMMA` that writes the PFA field itself -
+      at that point `CODEHERE` is the address of that very cell, not
+      of the value 2 bytes further on where the subsequent `JSR COMMA`
+      appends the real number. The compiled structure ended up as
+      `[JSR DODOES][FDB ATSIGN][FDB <address of itself>][value]` -
+      `DODOES`/`@` correctly fetches through the PFA, but the PFA
+      pointed at itself, so executing the constant returned its own
+      compile-time address instead of the stored value. `1234
+      CONSTANT c1` then executing `c1` returned the `CODEHERE` address,
+      not `1234`, exactly matching the debugger trace. Checked
+      `VALUEW` (the structurally similar routine right below
+      `CONSTANT`) for the same issue and confirmed it's genuinely
+      different, not just superficially similar - its PFA points into
+      `VARHERE` (a separate mutable region), and the value is stored
+      at that same `VARHERE` position via `VCOMMA`, so no self-
+      reference exists there; left unchanged. Fixed `CONSTANT` by
+      adding `ADDD #2` after `LDD CODEHERE`, accounting for the PFA
+      field's own 2-byte width so it correctly lands on the value cell
+      that follows rather than on itself. Verified: zero duplicate
+      symbols, dictionary chain still 224 entries intact in both
+      `SERIALPOLL` branches; byte-exact split-file reassembly.
+
+- [x] **Real bug found via MAME debugger and fixed in three places:
+      `DOTEST` (the `LOOP` runtime), `DOPLUSTEST` (the `+LOOP`
+      runtime), and `LEAVE` all popped the return address off `S`
+      (`PULS X`) before finishing their fixed-offset reads/writes of
+      the loop-control cells `DOSETUP` had pushed - shifting every
+      subsequent `2,S`/`4,S`/`6,S` access by 2 bytes.** Confirmed the
+      exact layout `DOSETUP` pushes (`0,S`=return addr, `2,S`=index,
+      `4,S`=limit, `6,S`=leave-flag) and that those specific offsets
+      were correctly designed for that unshifted layout - the only
+      bug was the premature pop happening before they were read.
+      `: lpy 10 3 DO I . LOOP ;` failed exactly this way: `DOTEST`'s
+      `LDD 6,S` (meant to check the leave-flag) instead read straight
+      through into whatever return address was already on `S` below
+      the loop cells (`EXECUTE`'s own, in this case) - almost always
+      nonzero, so `BNE DTEXIT` fired on the very first pass, exiting
+      the loop immediately. Fixed all three by deferring `PULS X`
+      until each path (continue vs. exit) actually needs it, rather
+      than popping once up front - `DOTEST`/`DOPLUSTEST` each need it
+      in two separate places (the normal-continue path and the
+      exit/`DTEXIT`/`DPTEXIT` path), so it's deferred separately in
+      each rather than moved to one shared spot. Checked `?DO` for a
+      separate copy of this bug and confirmed it reuses the same,
+      now-fixed `DOTEST` via `LOOP`'s own compilation - no separate
+      fix needed there. Verified: zero duplicate symbols, dictionary
+      chain still 224 entries intact in both `SERIALPOLL` branches;
+      byte-exact split-file reassembly.
+
+- [x] **Real, systemic bug found via MAME debugger and fixed in seven
+      places: `LOOP`, `+LOOP`, `UNTIL`, `AGAIN`, `REPEAT`, `ELSE`, and
+      `ENDOF` all saved a branch target in `X` (`PULU X`), then called
+      `CCALL` and/or `CODECOMMA` before using it - both of which
+      internally reload `X` (`LDX CODEHERE` / `LDX #CODEHERE` via
+      `APPENDCELL`), silently destroying the saved target before it
+      was ever used.** Found while confirming a specific report on
+      `LOOP`: `: lpy 10 3 DO I . LOOP ;` compiled a branch displacement
+      of `+8` instead of `-8`, since `TFR X,D` read the address of the
+      `CODEHERE` variable itself (left there by `CODECOMMA`'s internal
+      `APPENDCELL`) instead of the real loop-body target `PATCH` needed
+      - `DOTEST` then returned to a near-zero, invalid address. This
+      had been masked until the `DOTEST` return-stack-offset bug (an
+      earlier turn this session) was fixed - the loop never previously
+      executed far enough to reach this code path. Once confirmed on
+      `LOOP`, swept every other `PULU X` in the file rather than fix
+      only the reported case: found the identical pattern in `+LOOP`
+      (`DOPLUSTEST`'s compile side), `UNTIL`, `AGAIN`, `REPEAT`,
+      `ELSE`, and `ENDOF` - seven total. Two different fixes depending
+      on structure: where nothing else touched `U` between the pop and
+      the eventual use (`LOOP`, `+LOOP`, `UNTIL`, `AGAIN`, `REPEAT`),
+      parked the target on `U` itself (immune to `CCALL`/`CODECOMMA`,
+      which only touch `D`/`X`/`A`) and retrieved it via a later
+      `PULU D` in place of `TFR X,D`. Where something else (`CODEHERE`)
+      got pushed onto `U` in between (`ELSE`, `ENDOF`), parking on `U`
+      would have retrieved the wrong value - used the `MSCR` scratch
+      variable instead. Caught this distinction the hard way: an
+      initial attempt at the `ELSE`/`ENDOF` fix incorrectly reused the
+      park-on-`U` approach and would have retrieved `CODEHERE` instead
+      of the saved target; caught and corrected before delivery by
+      re-tracing the exact `U` sequence rather than assuming the same
+      fix pattern applied uniformly. Verified every other `PULU X` in
+      the file individually and confirmed none of the remainder are
+      vulnerable - either no `CCALL`/`CODECOMMA` call sits between the
+      pop and the use (`ECPATCH`, `THEN`, the `?DO`-forward-patch tails
+      in `LOOP`/`+LOOP`, `ISFOUND`/`AOFOUND`), or the routine doesn't
+      compile code at all (the plain runtime memory/stack words).
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact in both `SERIALPOLL` branches; byte-exact
+      split-file reassembly.
 
 ## Structural duplication (identified, some resolved, some not)
 

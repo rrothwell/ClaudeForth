@@ -35,11 +35,16 @@ TICKOK:  RTS
 
 COMPILECOMMA: JMP  CCALL
 
-CCALL:   PULU  D
-         LDX   CODEHERE
-         LDA   #OPJSR
-         STA   ,X+
-         STD   ,X++
+CCALL:   LDX   CODEHERE   ; BUG FIX: was PULU D first, then LDA #OPJSR -
+         LDA   #OPJSR     ; but A is D's high byte, so that LDA silently
+         STA   ,X+        ; destroyed the top byte of the address PULU D
+         PULU  D          ; had just pulled, and the STD below wrote out
+         STD   ,X++       ; the corrupted result - a JSR to a garbage
+                          ; target address. Deferring PULU D until after
+                          ; STA ,X+ means D is never live at the same time
+                          ; A gets reused for the opcode, so nothing
+                          ; clobbers it. Confirmed via MAME debugger:
+                          ; execution jumped to random memory.
          STX   CODEHERE
          RTS
 

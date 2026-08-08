@@ -3032,7 +3032,12 @@ ELSE:    PULU  D
          CMPD  #TAGFWD
          BEQ   ELOK
          JSR   CFERR
-ELOK:    PULU  X
+ELOK:    PULU  D          ; BUG FIX: same class as LOOP/EOFOK - was PULU X
+         STD   MSCR       ; then used via PSHU X after CCALL/CODECOMMA
+                          ; below, both of which clobber X internally.
+                          ; Saved to scratch (not parked on U, since
+                          ; CODEHERE gets pushed onto U further down,
+                          ; between the save and the retrieve).
          LDD   #BRANCH
          PSHU  D
          JSR   CCALL
@@ -3044,7 +3049,8 @@ ELOK:    PULU  X
          STD   NEWFLD
          LDD   CODEHERE
          PSHU  D
-         PSHU  X
+         LDD   MSCR
+         PSHU  D
          JSR   PATCH
          LDD   NEWFLD
          PSHU  D
@@ -3062,7 +3068,9 @@ UNTIL:   PULU  D
          CMPD  #TAGBACK
          BEQ   UNOK
          JSR   CFERR
-UNOK:    PULU  X
+UNOK:    PULU  D          ; BUG FIX: same class as LOOP - was PULU X then
+         PSHU  D          ; TFR X,D after CCALL/CODECOMMA, both of which
+                          ; clobber X internally. Parked on U instead.
          LDD   #ZBRANCH
          PSHU  D
          JSR   CCALL
@@ -3072,7 +3080,7 @@ UNOK:    PULU  X
          LDD   CODEHERE
          SUBD  #2
          STD   PFIELD
-         TFR   X,D
+         PULU  D
          PSHU  D
          LDD   PFIELD
          PSHU  D
@@ -3083,7 +3091,9 @@ AGAIN:   PULU  D
          CMPD  #TAGBACK
          BEQ   AGOK
          JSR   CFERR
-AGOK:    PULU  X
+AGOK:    PULU  D          ; BUG FIX: same class as LOOP - was PULU X then
+         PSHU  D          ; TFR X,D after CCALL/CODECOMMA, both of which
+                          ; clobber X internally. Parked on U instead.
          LDD   #BRANCH
          PSHU  D
          JSR   CCALL
@@ -3093,7 +3103,7 @@ AGOK:    PULU  X
          LDD   CODEHERE
          SUBD  #2
          STD   PFIELD
-         TFR   X,D
+         PULU  D
          PSHU  D
          LDD   PFIELD
          PSHU  D
@@ -3123,7 +3133,9 @@ RPOK1:   PULU  X
          CMPD  #TAGBACK
          BEQ   RPOK2
          JSR   CFERR
-RPOK2:   PULU  X
+RPOK2:   PULU  D          ; BUG FIX: same class as LOOP - was PULU X then
+         PSHU  D          ; TFR X,D after CCALL/CODECOMMA, both of which
+                          ; clobber X internally. Parked on U instead.
          LDD   #BRANCH
          PSHU  D
          JSR   CCALL
@@ -3133,7 +3145,7 @@ RPOK2:   PULU  X
          LDD   CODEHERE
          SUBD  #2
          STD   PFIELD
-         TFR   X,D
+         PULU  D
          PSHU  D
          LDD   PFIELD
          PSHU  D
@@ -3204,7 +3216,21 @@ LOOP:    PULU  D
          CMPD  #TAGDO
          BEQ   LOOPOK
          JSR   CFERR
-LOOPOK:  PULU  X
+LOOPOK:  PULU  D          ; BUG FIX: was PULU X, then TFR X,D to retrieve
+         PSHU  D          ; it after CCALL/CODECOMMA below - but both of
+                          ; those clobber X internally (CCALL's own LDX
+                          ; CODEHERE, CODECOMMA's LDX #CODEHERE via
+                          ; APPENDCELL), so X no longer held the target
+                          ; by the time TFR X,D ran - it held the address
+                          ; of the CODEHERE variable itself, corrupting
+                          ; the branch displacement PATCH computed.
+                          ; Parking the target on U instead (untouched by
+                          ; CCALL/CODECOMMA, which only use D/X/A) keeps
+                          ; it safe across both calls; retrieved below via
+                          ; PULU D in place of the old TFR X,D. Confirmed
+                          ; via MAME debugger: the compiled displacement
+                          ; came out as +8, executing DOTEST's return to
+                          ; a near-zero, invalid address.
          LDD   #DOTEST
          PSHU  D
          JSR   CCALL
@@ -3214,7 +3240,7 @@ LOOPOK:  PULU  X
          LDD   CODEHERE
          SUBD  #2
          STD   PFIELD
-         TFR   X,D
+         PULU  D
          PSHU  D
          LDD   PFIELD
          PSHU  D
@@ -3256,7 +3282,10 @@ PLUSLOOP: PULU D
           CMPD #TAGDO
           BEQ  PLOOPOK
           JSR  CFERR
-PLOOPOK:  PULU X
+PLOOPOK:  PULU D          ; BUG FIX: same class as LOOP above - was PULU X
+          PSHU D          ; then TFR X,D after CCALL/CODECOMMA, both of
+                          ; which clobber X internally. Parked on U
+                          ; instead, retrieved below via PULU D.
           LDD  #DOPLUSTEST
           PSHU D
           JSR  CCALL
@@ -3266,7 +3295,7 @@ PLOOPOK:  PULU X
           LDD  CODEHERE
           SUBD #2
           STD  PFIELD
-          TFR  X,D
+          PULU D
           PSHU D
           LDD  PFIELD
           PSHU D
@@ -3430,7 +3459,13 @@ ENDOF:   PULU  D
          CMPD  #TAGOF
          BEQ   EOFOK
          JSR   CFERR
-EOFOK:   PULU  X
+EOFOK:   PULU  D          ; BUG FIX: same class as LOOP - was PULU X then
+         STD   MSCR       ; used via PSHU X after CCALL/CODECOMMA below,
+                          ; both of which clobber X internally. Saved to
+                          ; scratch instead (not parked on U, since
+                          ; CODEHERE gets pushed onto U further down,
+                          ; between the save and the retrieve below -
+                          ; parking on U would retrieve that instead).
          LDD   #BRANCH
          PSHU  D
          JSR   CCALL
@@ -3442,7 +3477,8 @@ EOFOK:   PULU  X
          STD   NEWFLD
          LDD   CODEHERE
          PSHU  D
-         PSHU  X
+         LDD   MSCR
+         PSHU  D
          JSR   PATCH
          LDD   NEWFLD
          PSHU  D
