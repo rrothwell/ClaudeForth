@@ -3194,11 +3194,11 @@ JWORD:   PULS  X
          PSHU  D
          RTS
 
-LEAVE:   PULS  X
-         LDD   #TRUEV
-         STD   6,S
-         PSHS  X
-         RTS
+LEAVE:   LDD   #TRUEV    ; BUG FIX: same class as DOTEST above - PULS X
+         STD   6,S       ; used to run first, shifting S by 2 before this
+         PULS  X         ; write, landing 2 bytes past the LEAVE flag
+         PSHS  X         ; DOSETUP actually pushed. Deferred PULS X to
+         RTS             ; after the write, matching DOTEST's fix.
 
 LOOP:    PULU  D
          CMPD  #TAGDO
@@ -3231,19 +3231,23 @@ LOOPOK:  PULU  X
          JSR   PATCH
 LOOPDONE: RTS
 
-DOTEST:  PULS  X
-         LDD   6,S
-         BNE   DTEXIT
-         LDD   2,S
-         ADDD  #1
-         STD   2,S
-         CMPD  4,S
-         BEQ   DTEXIT
-         LDD   ,X
-         LEAX  D,X
-         PSHS  X
-         RTS
-DTEXIT:  LEAX  2,X
+DOTEST:  LDD   6,S       ; BUG FIX: PULS X used to run FIRST, shifting S
+         BNE   DTEXIT    ; by 2 before these offset reads - "6,S" ended
+         LDD   2,S       ; up reading past the 3 cells DOSETUP pushed,
+         ADDD  #1        ; into whatever return address was already on
+         STD   2,S       ; S below them (e.g. EXECUTE's own), which is
+         CMPD  4,S       ; almost always nonzero - so BNE DTEXIT fired
+         BEQ   DTEXIT    ; on the very first pass, exiting immediately.
+         PULS  X         ; X (the return address to the FDB <offset>
+         LDD   ,X        ; field, needed for the back-branch) is only
+         LEAX  D,X       ; actually needed here and in DTEXIT below -
+         PSHS  X         ; deferred to each path separately instead of
+         RTS             ; popped once up front. Confirmed via MAME
+                          ; debugger: DOTEST was tested at $E184, a
+                          ; leftover EXECUTE return address, instead of
+                          ; the intended $0000 LEAVE flag.
+DTEXIT:  PULS  X
+         LEAX  2,X
          LEAS  6,S
          PSHS  X
          RTS
@@ -3279,12 +3283,11 @@ PLOOPOK:  PULU X
           JSR  PATCH
 PLOOPDONE: RTS
 
-DOPLUSTEST: PULS X
-            LDD  6,S
-            BNE  DPTEXIT
-            PULU D
-            STD  MSCR
-            LDD  2,S
+DOPLUSTEST: LDD  6,S      ; BUG FIX: same class as DOTEST - PULS X used to
+            BNE  DPTEXIT  ; run first, shifting S by 2 before every one of
+            PULU D        ; these offset reads (6,S/2,S/4,S), landing past
+            STD  MSCR     ; the 3 cells DOSETUP pushed. Deferred PULS X to
+            LDD  2,S      ; each path separately below, same fix as DOTEST.
             SUBD 4,S
             STD  MSCR2
             LDD  2,S
@@ -3302,11 +3305,13 @@ DOPLUSTEST: PULS X
             BMI  DPTEXIT
             LDD  MSCR3
             BEQ  DPTEXIT
+            PULS X
             LDD  ,X
             LEAX D,X
             PSHS X
             RTS
-DPTEXIT:    LEAX 2,X
+DPTEXIT:    PULS X
+            LEAX 2,X
             LEAS 6,S
             PSHS X
             RTS
