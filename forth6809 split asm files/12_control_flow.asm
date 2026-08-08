@@ -202,17 +202,23 @@ DOSETUP: PULU  D
          PSHS  X
          RTS
 
-IWORD:   PULS  X
-         LDD   2,S
-         PSHS  X
-         PSHU  D
-         RTS
+IWORD:   LDD   2,S        ; BUG FIX: PULS X/PSHS X used to bracket this
+         PSHU  D          ; read, shifting S by 2 first - so "2,S" landed
+         RTS              ; on the limit (what's really at 4,S unshifted)
+                          ; instead of the index. The pair served no
+                          ; purpose (nothing needed offset 0 for anything
+                          ; here) - removed, so 2,S directly and
+                          ; correctly targets the index DOSETUP pushed
+                          ; there. Confirmed via MAME debugger: "I"
+                          ; returned the loop limit on every iteration.
 
-JWORD:   PULS  X
-         LDD   10,S
-         PSHS  X
-         PSHU  D
-         RTS
+JWORD:   LDD   10,S       ; BUG FIX: same class as IWORD above - the
+         PSHU  D          ; PULS X/PSHS X pair shifted S by 2 first, so
+         RTS              ; "10,S" landed on the outer loop's limit
+                          ; instead of its index. Removed for the same
+                          ; reason - 10,S unshifted already correctly
+                          ; targets the outer index across a nested nest
+                          ; of nested DOSETUP frames.
 
 LEAVE:   LDD   #TRUEV    ; BUG FIX: same class as DOTEST above - PULS X
          STD   6,S       ; used to run first, shifting S by 2 before this

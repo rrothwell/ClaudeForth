@@ -1261,6 +1261,36 @@ design decisions made since the original version.
       entries intact in both `SERIALPOLL` branches; byte-exact
       split-file reassembly.
 
+- [x] **Real bug found via MAME debugger and fixed: `IWORD` (`I`) and
+      `JWORD` (`J`) each bracketed a fixed-offset return-stack read
+      with an unnecessary `PULS X`/`PSHS X` pair, shifting `S` by 2
+      before the read - so `I` returned the loop limit instead of the
+      index, on every iteration.** `: lpy 10 3 DO I . LOOP ;` now
+      runs the correct number of iterations (the `DOTEST`/register-
+      clobbering fixes from earlier this session), but printed the
+      limit (10) ten times instead of the index (3..9). Traced against
+      the layout established while fixing `DOTEST`: `DOSETUP` pushes
+      `[return-addr@0,S][index@2,S][limit@4,S][leave-flag@6,S]`, and
+      `2,S` unshifted already correctly targets the index - the
+      `PULS X`/`PSHS X` pair served no purpose (nothing needed offset
+      0 for anything in either routine) and only shifted every
+      subsequent offset by 2, landing one field over. `JWORD` had the
+      identical bug at its own offset (`10,S`, correct for the outer
+      loop's index in a nested `DOSETUP` layout, but wrong once
+      shifted). Fixed both by removing the pop/push pair entirely, per
+      the suggested fix, leaving the existing offsets (`2,S`, `10,S`)
+      unchanged since they were already correct for the unshifted
+      stack. Swept every other `PULS X` in the file for the same
+      bracketing pattern before concluding the fix was complete:
+      checked `UNLOOP` and `EXITUNLOOP` specifically, since both are
+      directly related to loop-frame teardown - confirmed both are
+      structurally different and correct as-is, since they discard
+      *counted blocks* of bytes (`LEAS 6,S` / `LEAS 8,S` in a loop)
+      rather than reading a value at one fixed offset, so they're
+      unaffected by any temporary shift regardless. Verified: zero
+      duplicate symbols, dictionary chain still 224 entries intact in
+      both `SERIALPOLL` branches; byte-exact split-file reassembly.
+
 ## Structural duplication (identified, some resolved, some not)
 
 - [x] `:`/`CREATE`/`VARIABLE`'s header-building — resolved via `HEADER`
