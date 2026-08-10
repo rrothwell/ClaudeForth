@@ -19,6 +19,6 @@
 | SM/REM | SMSLASHREM  | 0 (0)  | `ok70 5 2 SM/REM .S -32733 0`<br />`ok5 70 2 SM/REM .S 2 1`<br />`ok`|:negative_squared_cross_mark:[^3]|
 
                                                     
-[^1] UM/MOD in GFORTH produces a divide by zero exception.
-[^2] FM/MOD in GFORTH produces a divide by zero exception.
-[^3] SM/REM in GFORTH produces a divide by zero exception.
+[^1]: UM/MOD in GFORTH produces a divide by zero exception.
+[^2]: FM/MOD in GFORTH produces a divide by zero exception.
+[^3]: SM/REM in GFORTH produces a divide by zero exception.
