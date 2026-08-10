@@ -2,7 +2,7 @@
 
 | Test        | Assembly Routine | Bug Count (Fixes)| Example        | Success ? |
 |:------------|:-----------------|:--------------|:------------------|----------:|
-| **Mixed & double precision arithmetic** |        |      |                       ||
+| **Mixed & double<br />precision arithmetic** |        |      |                       ||
 | S>D| STOD  | 0 (0)  | `ok36 S>D .S 0 36`<br />`ok-15 S>D .S 0 -15 0 36`<br />`ok`|:white_check_mark:|
 | D>S | DTOS  | 0 (0)  | `ok-13 12 D>S .S -13`<br />`ok13 -12 D>S .S 13 -13`<br />`ok`|:white_check_mark:|
 | D+| DPLUS  | 0 (0)  | `ok1 2 3 4 D+ .S 6 4`<br />`ok`|:white_check_mark:|
