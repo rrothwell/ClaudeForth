@@ -13,7 +13,6 @@
 | ?DO LOOP   | QDO LOOP | 0(0) |`ok : lpy 0 ?DO ." Y" LOOP ;`<br />`ok 0 lpy`<br />`ok 2 lpyYY`<br />`ok`|:white_check_mark:|
 | DO I +LOOP   | DO IWORD PLUSLOOP | 0(0) |`ok: lpy 4 DO I . 2 +LOOP ; `<br />`ok 6 lpy 4`<br />`ok 9 lpy 4 6 8`<br />`ok`|:white_check_mark:[^2]|
 | DO I LEAVE LOOP   | DO IWORD LEAVE LOOP | 0(0) |`: lpy 0 DO I DUP . 2 > IF LEAVE THEN LOOP ; `<br />`ok3 lpy 0 1 2`<br />`ok4 lpy 0 1 2 3`<br />`ok5 lpy 0 1 2 3`<br />`ok`|:white_check_mark:|
-
 | BEGIN UNTIL   | BEGIN UNTIL | 0(0) |`ok : lpy BEGIN TRUE UNTIL ;`<br />`ok lpy`<br />`ok.S`<br />`ok`|:white_check_mark:|
 | BEGIN UNTIL   | BEGIN UNTIL | 0(0) |`ok : lpy 2 BEGIN DUP . 1- DUP 0= UNTIL DROP ;`<br />`ok lpy2 1`<br />`ok.S`<br />`ok`|:white_check_mark:|
 | BEGIN LEAVE UNTIL   | BEGIN LEAVE UNTIL | 0(0) |`ok : lpy 4 BEGIN DUP . 1- DUP 2 = IF LEAVE THEN DUP 0= UNTIL DROP ;`<br />`ok lpy 4 3 2 1 6809 FORTH v1.0`|:white_check_mark:[^3]|
