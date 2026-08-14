@@ -38,3 +38,7 @@
      Via MAME this was tracked down to a CSP mismatch reported by SEMICOLON. 
      The mismatch occurs as CASE was placing a spurious 0 on the stack that was never used or consumed.
      A bugfix is coming. 
+
+Extras:
+( - ) is not compiling properly inside a colon definition
+.R is not printing correctly. Eg, 33 instead of 3.
