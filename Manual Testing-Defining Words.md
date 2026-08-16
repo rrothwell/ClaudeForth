@@ -21,10 +21,10 @@
 
 [^1]: DOES> is returning a self reference 
       instead of a reference to the numerical value 1 cell further on. 
-      Bugfix is fixed. 
+      Bug is fixed. 
 [^2]: Originally cc0 is returning the lower address value then the address 
       instead of the lower address then the higher address value.                                                    
-      Bugfix is fixed. 
+      Bug is fixed. 
 [^3]: BUFFER: tested by examining memeory effect in mutable variable area.                                                
 [^4]: Setup is: DEFER df0. : w0 ." hi" ;.: w1 ." ho" ;. 
 
