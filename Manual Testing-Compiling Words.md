@@ -33,7 +33,7 @@
         THEN ;
    
        .state
-       ```
+      ```
 
 [^2]: COMPILE, is tested using the setup below: 
       ```
