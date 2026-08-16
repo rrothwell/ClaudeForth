@@ -2,7 +2,7 @@
 
 | Test        | Assembly Routine | Bug Count (Fixes)| Example        | Success ? |
 |:------------|:-----------------|:--------------|:------------------|----------:|
-| **Defining Words** |        |      |                       ||
+| **Compiling Words** |        |      |                       ||
 | IMMEDIATE   | IMMEDIATE | 0(0) |`ok: im0   ." Im not " ; `<br />`ok: im1   ." Im immediate " ; IMMEDIATE`<br />`ok: tstimm im0 im1 ;Im immediate`<br />`ok`|:white_check_mark:|
 | STATE   | STATEW | 2(2) |`ok .stateNow interpreting`<br />`ok`|:white_check_mark:[^1]|
 | [ ]  | LBRACKET RBRACKET | 0(0) |`ok: c144 [ 12 12 * ] LITERAL ;`<br />`ok c144 . 144`<br />`ok`|:white_check_mark:|
