@@ -20,9 +20,8 @@
 [^1]: STATE was tested using the word definition below. 
       This exposed 2 bugs in multiline word definitions. 
       Only single line definitions were used previously.
-      1. The QLOOP was reseting the interpreter mode on each line.
-      1. The compilation mode was not echoing the CR.
-      Bug is fixed. 
+      1. The QLOOP was reseting the interpreter mode on each line. Bug is fixed. 
+      1. The compilation mode was not echoing the CR. Bug is fixed. 
       ```
       : .state
           STATE @ 
