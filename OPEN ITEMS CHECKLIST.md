@@ -1291,6 +1291,617 @@ design decisions made since the original version.
       duplicate symbols, dictionary chain still 224 entries intact in
       both `SERIALPOLL` branches; byte-exact split-file reassembly.
 
+- [ ] **New capability, not a bug fix: an assembly-level unit test
+      framework added, with its first test (`TSTDUP`) written.**
+      Gated by a new conditional-assembly flag, `UNITTESTS`, matching
+      this file's established `IFEQ` convention (`0` = included, `1`
+      = excluded entirely). Two insertion points: a `JSR TSTRUNNER`
+      call at the true end of `COLDSTRT` (after `INITSERIAL`, before
+      `JMP COLD` - at that point `U`/`S` are already valid, since
+      `COLDSTRT` sets them at its very start, but nothing else -
+      `APPVARS`/`DPHERE`/`CODEHERE`/`LATEST`/`BASE` - has been
+      initialized yet), and the test framework's own body, living in
+      what was previously unused ROM space right after `INOUT`'s
+      shadow (`USROMSTRT`, `$C100`) - pure `FILL` padding before this
+      existed. `UNITTESTS=1` reverts this block to exactly that
+      padding, computed automatically via the `ROM` label rather than
+      a fixed byte count (`FILL $FF,BASEDICT-ROM`, was `BASEDICT-
+      USROMSTRT`), so it stays correct either way without needing
+      hand-adjustment when the test code's size changes.
+      Each test is independent by construction, per the stated design
+      principle: it saves the data stack pointer (`U`) before
+      touching anything and unconditionally restores it at the end
+      regardless of pass or fail, so a failed assertion mid-test can
+      never leave stack residue for the next test to inherit. Test
+      scratch variables live at the very start of `APPVARS` - safe
+      only because tests run strictly before `COLD` initializes
+      `VARHERE` to that same address, which correctly and immediately
+      re-purposes that space afterward; this is a real constraint
+      worth remembering if the call site ever moves. Reporting is
+      shared across every test via `TSTREPORT` rather than duplicated
+      per test: prints the test's name (a counted string, via
+      `COUNT`+`TYPE` - the same mechanism `BADWORD` itself uses to
+      print a failing word), then " OK" or " FAIL", then a `CR`.
+      `TSTDUP` verifies both the stack's contents after `DUP` (the
+      duplicate and the original both equal a deliberately non-
+      trivial pushed test value - not `0`, `1`, or `-1`, so a test
+      that only appears to pass due to a special-cased value would be
+      caught - and a sentinel pushed beneath is confirmed undisturbed)
+      and the data stack pointer's movement (exactly one cell, 2
+      bytes - `DUP`'s own net effect, isolated from the two setup
+      pushes by capturing `U` immediately before and after the `JSR
+      DUP` specifically, not around the whole test). `TSTRUNNER` and
+      `TSTSTACK` are structured as extensible dispatchers (`JSR` a
+      list of test groups, `JSR` a list of tests within each group)
+      so more tests and more groups can be added without restructuring
+      what's here. Verified across the full 2x2 matrix of
+      `SERIALPOLL`/`UNITTESTS` combinations: zero duplicate symbols,
+      dictionary chain intact (224 entries) in all four; byte-exact
+      split-file reassembly. Not yet run on real MAME hardware - this
+      is a first try, per the request, with exactly one test written;
+      the framework's own correctness (not just `DUP`'s) still needs
+      confirming against actual execution.
+
+- [x] **Three real bugs found by inspection (not MAME) and fixed:
+      `DEFER`, `2CONSTANT`, and `MARKER` all had the identical
+      self-referential PFA bug already confirmed and fixed in
+      `CONSTANT` via the MAME debugger.** Flagged by a parallel 68000
+      port of this codebase, which spotted the same construction
+      pattern (`LDD CODEHERE / PSHU D / JSR CODECOMMA`, writing the
+      PFA field's own current address into itself before the real
+      value is appended two bytes later) recurring in these three
+      defining words, unfixed. Verified each by inspection rather
+      than deferred to hardware testing, since this is a deterministic
+      compile-time address computation, not a timing/register-
+      interaction issue - the same reasoning already used to confirm
+      `VALUEW` was *not* affected when `CONSTANT` was first fixed.
+      Traced both the compile-time construction and the runtime
+      consumer for each: `DODEFER`'s `LDD ,X` would have jumped to the
+      PFA's own address on execution of any `DEFER`'d word (crash);
+      `DOMARKER`'s four fixed-offset reads (`,X`/`2,X`/`4,X`/`6,X`)
+      would have restored garbage `DPHERE`/`CODEHERE`/`VARHERE`/
+      `LATEST` values - the most severe of the three, since using a
+      `MARKER`-created word would corrupt live dictionary state, not
+      just misbehave locally. Also checked, and confirmed genuinely
+      unaffected rather than assumed safe by association: `DEFER@`/
+      `DEFER!` (go through `TOBODY`, a runtime offset computation from
+      an existing xt - structurally immune, never compiles a self-
+      referential field), `IS`/`ACTION-OF` (construct no PFA at all,
+      just locate a word and call `DEFERSTORE`/`DEFERFETCH`), and
+      `BUFFER:` (`BUFFERCOLON`, checked because it sits directly next
+      to `2CONSTANT` in the source - uses the `VALUEW`-style pattern,
+      PFA into `VARHERE` rather than `CODEHERE`, and `VALLOT` only
+      advances `VARHERE` without ever writing through the PFA, so no
+      self-reference exists there either). Fixed all three with the
+      same `ADDD #2` pattern already established for `CONSTANT`.
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly. Not yet
+      confirmed via MAME - the mechanism is identical to the already-
+      hardware-confirmed `CONSTANT` bug, but these three fixes
+      themselves are still unverified against real execution.
+
+- [x] **Real bug found by inspection (not MAME) and fixed: `2@`
+      (`DFETCH`) read the two cells in the opposite order `2!`
+      (`DSTORE`) actually writes them, so a `2! 2@` round trip swapped
+      the values.** Flagged by the parallel 68000 port. Traced both
+      routines precisely: `DSTORE` writes `x1` to the low address and
+      `x2` to the high address; `DFETCH` was reading the high address
+      first (pushing it deep) and the low address second (pushing it
+      on top) - the reverse order. Confirmed via a concrete round-trip
+      trace (`[x1, x2, a-addr]` before `2!` came back as `[x2, x1]`
+      after `2@`), which is deterministic and fully verifiable from
+      source - no MAME needed to establish it, same reasoning as the
+      `MARKER`/`2CONSTANT`/`DEFER` PFA bugs. `2!` itself was already
+      correct and internally consistent; only `2@`'s read order was
+      wrong. Fixed by swapping `DFETCH`'s two `LDD`/`PSHU` pairs to
+      read low-then-high instead of high-then-low. Verified: zero
+      duplicate symbols, dictionary chain still 224 entries intact
+      across all four `SERIALPOLL`x`UNITTESTS` combinations;
+      byte-exact split-file reassembly. Not yet confirmed via MAME.
+
+- [x] **Simplification (not a bug fix): the `PULS X`/`PSHS X` pair left
+      over in `LEAVE` from the earlier `DOTEST`-class fix was a
+      genuine no-op and has been removed.** Flagged by the parallel
+      68000 port, which dropped it rather than port a verified no-op
+      forward. Confirmed by inspection: nothing runs between the pop
+      and the push (no call, no other touch of `S` or `X`), so `X`
+      held exactly what it held before the pop and `PSHS X` restored
+      `S` to exactly where it already was - `RTS` would find the same
+      return address there either way. Unlike `DOTEST`'s own deferred
+      `PULS X` (genuinely load-bearing - its value feeds `LDD ,X`/
+      `LEAX D,X` afterward), `LEAVE` never uses `X`'s value for
+      anything; the pair was vestige of the pre-fix structure (where
+      `PULS X` ran first and `PSHS X` was needed to restore `S`
+      afterward), not something the fix itself required. `LEAVE` is
+      now just `LDD #TRUEV / STD 6,S / RTS`. Verified: zero duplicate
+      symbols, dictionary chain still 224 entries intact across all
+      four `SERIALPOLL`x`UNITTESTS` combinations; byte-exact
+      split-file reassembly.
+
+- [x] **Simplification (not a bug fix): `U.` (`UDOT`) and `U.R`
+      (`UDOTR`) each had a literal pop-then-immediate-push-back on the
+      value being formatted - a genuine no-op, removed.** Flagged by
+      the parallel 68000 port, same class as the `LEAVE` finding
+      immediately above. Confirmed by inspection: in both routines,
+      `PULU D` immediately followed by `PSHU D` with nothing in
+      between leaves `U` exactly as it was: the following `LDD #0 /
+      PSHU D` (building the double-number `NUMGT` needs) pushes `0` on
+      top of the value either way, whether or not it was ever
+      popped and pushed back first. In `UDOTR` specifically, only the
+      *second* pop/push pair (the value) was the no-op - the first
+      (`PULU D / STD DRWIDTH`, consuming the width argument) is
+      genuinely functional and was left untouched. `UDOT` now starts
+      directly with `LDD #0`; `UDOTR` now goes straight from the width
+      pop to `LDD #0`. Verified: zero duplicate symbols, dictionary
+      chain still 224 entries intact across all four `SERIALPOLL`x
+      `UNITTESTS` combinations; byte-exact split-file reassembly.
+
+- [x] **Real bug found by inspection (not MAME) and fixed:
+      `UNESCAPEW` double-decremented `UESRCLEN` for a lone trailing
+      backslash, underflowing the counter so the loop would run past
+      the end of the intended input.** Flagged by the parallel 68000
+      port. Traced precisely: on encountering `\`, the escape-handling
+      path decrements `UESRCLEN` once (correctly, accounting for the
+      backslash itself) and checks `BEQ` - if the backslash was the
+      *last* character in the input, `UESRCLEN` is now correctly `0`,
+      but the branch fell into the shared `UEPLAIN` (plain-character)
+      path, which decrements `UESRCLEN` a second time for a character
+      that doesn't exist. `0 - 1` underflows to `$FFFF` (nonzero), so
+      the next `UELOOP` pass's `BEQ UEDONE` never fires and the loop
+      reads memory past the intended input. Confirmed the normal paths
+      are unaffected: an ordinary plain character decrements exactly
+      once (`BNE UEPLAIN` from the top); a real two-character escape
+      like `\n` decrements once for the backslash and once more via
+      the shared `UEEMIT` path for the second character - correctly 2
+      total for 2 characters consumed. The bug is specific to the
+      lone-trailing-backslash case, where the escape branch's own
+      decrement already accounted for the backslash before falling
+      into a path that decrements again. Fixed by giving that one case
+      its own landing point, `UELASTBS` - emits the backslash literally
+      (`A` still holds it from the earlier `LDA ,X+`, so nothing needs
+      reloading) without re-decrementing `UESRCLEN`, since it's already
+      correctly `0`. `UEPLAIN` itself, still used by the normal
+      plain-character path, was left completely untouched. Verified:
+      zero duplicate symbols, dictionary chain still 224 entries
+      intact across all four `SERIALPOLL`x`UNITTESTS` combinations;
+      byte-exact split-file reassembly. Not yet confirmed via MAME.
+
+- [x] **Design change (not a bug fix): `UNLOOP` is now a true no-op,
+      resolving the `UNLOOP`/`EXIT` return-stack corruption from the
+      prior turn.** Reasoning: traced `EXIT` (via `EXITUNLOOP`) across
+      every scenario - no enclosing `DO` (compiled count `0`, the
+      unwind loop never executes, falls straight through to a plain
+      return), one enclosing `DO` with no prior manual `UNLOOP`
+      (discards the correct, still-intact 8-byte frame). Both correct.
+      The only broken combination was `UNLOOP` immediately before
+      `EXIT`: `UNLOOP`'s own discard (6 of 8 bytes) left the frame
+      partially gone, then `EXITUNLOOP` unconditionally discarded a
+      full 8 more, overshooting into whatever sat beneath - typically
+      the enclosing word's own caller's return address - branching
+      into random memory on return, requiring a soft reboot to
+      recover. Given `UNLOOP` has no legitimate use other than
+      immediately preceding an exit from the definition, and `EXIT`
+      already handles that correctly and automatically on its own,
+      the conflict is resolved by removing the second, redundant
+      discard mechanism rather than by making `EXIT`'s runtime detect
+      how much of the frame remains (a more complex, riskier change).
+      Checked for a new failure mode before applying: `UNLOOP` called
+      without an immediate exit, then falling through to `LOOP`/
+      `+LOOP` again - already broken before this change too (`DOTEST`/
+      `DOPLUSTEST` already expect the frame to still be there), so
+      this introduces no new risk, and actually removes one instance
+      of it. `UNLOOP` is now just `RTS`. Documentation updated to
+      match: `UNLOOP`'s glossary entry rewritten to describe the
+      no-op and why, kept in the dictionary for source compatibility
+      with code written for other Forth systems where `EXIT` doesn't
+      auto-unwind; `EXIT`'s own entry given a cross-reference noting
+      `UNLOOP` isn't required beforehand. The Assembler Source
+      appendix (Section 8.13, Control Flow) was updated to match the
+      real source rather than left stale. Verified: zero duplicate
+      symbols, dictionary chain still 224 entries intact across all
+      four `SERIALPOLL`x`UNITTESTS` combinations; byte-exact
+      split-file reassembly; both new documentation passages confirmed
+      present in the rendered PDF. Not yet confirmed via MAME.
+
+- [x] **Real bug found by inspection (not MAME) and fixed: `CASE`
+      pushed a `0` onto the compile-time `U` stack that nothing
+      downstream ever consumed, causing every `CASE...ENDCASE`
+      construct - even the simplest, with no `OF` clauses at all - to
+      throw `-22` at the closing `;`.** Reported via `: Nname CASE 0
+      OF ENDOF ENDCASE ;`; traced with the debugger to a `CSP`
+      mismatch of exactly one stray cell. Verified the full compile-
+      time lifecycle: `CASE` pushes `[0, TAGCASE]`; `OF` pushes
+      `[placeholder-addr, TAGOF]`; `ENDOF` pops exactly those two and
+      pushes its own `[NEWFLD, TAGENDOF]`; `ENDCASE` loops popping
+      `TAGENDOF`/`NEWFLD` pairs until it sees `TAGCASE`, then stops.
+      None of `OF`/`ENDOF`/`ENDCASE` ever read or pop past `TAGCASE` -
+      the `0` `CASE` pushed beneath it is structurally unreachable by
+      every consumer, leaving it permanently stranded one cell below
+      where `CSP` (set by `:` before `CASE` ever runs) expects the
+      depth to return to. `;` compares against `CSP` and correctly
+      detects the mismatch every time. This implementation's `ENDCASE`
+      uses a `TAGCASE`-scan approach entirely, with no counter
+      involved anywhere in its actual logic - the stray `0` looks like
+      a genuine leftover from an earlier, counter-based design that
+      was never fully removed when the scan-based approach replaced
+      it. Fixed by removing `CASEW`'s `LDD #0 / PSHU D` - now just
+      `LDD #TAGCASE / PSHU D / RTS`. Verified: zero duplicate symbols,
+      dictionary chain still 224 entries intact across all four
+      `SERIALPOLL`x`UNITTESTS` combinations; byte-exact split-file
+      reassembly. Not yet confirmed via MAME.
+
+- [x] **Correction to an earlier fix, found via a real MAME test
+      (`MULT-TABLE`) and confirmed by inspection: `JWORD`'s offset,
+      "fixed" to `10,S` a few turns ago, was itself wrong.** `J`
+      returned a fixed value (the outer loop's limit) on every
+      iteration instead of the progressing index - `11 1 DO 11 1 DO I
+      J * . LOOP CR LOOP` printed the same row ten times instead of a
+      real multiplication table. The earlier fix incorrectly assumed
+      `DOSETUP`'s own `JSR`-pushed return address persists on `S`
+      after each nesting level - it doesn't, since `DOSETUP`'s own
+      `RTS` pops and consumes it to jump into the loop body, so it
+      never actually occupies a slot for `J` to count past. Re-traced
+      by counting every real push and pop across a nested `DO` rather
+      than assuming a fixed frame size per level: after the inner
+      `DOSETUP` finishes, `S` is `[inner-index@0][inner-limit@2]
+      [inner-leave@4][outer-index@6][outer-limit@8][outer-leave@10]`;
+      `J`'s own `JSR` pushes one more cell on top, landing outer-index
+      at `8`. Offset `10` (the earlier fix) lands on outer-limit
+      instead - a value that never changes across outer iterations,
+      exactly matching the observed symptom. `IWORD`'s own offset (`2`)
+      was re-checked against this same corrected reasoning and
+      confirmed still correct - it only ever sits one frame deep, not
+      two, so the earlier error (specific to counting across a second,
+      nested `DOSETUP` call) doesn't apply there. `JWORD` is now `LDD
+      8,S`. This is being logged transparently as a correction to a
+      prior fix, not presented as if it were right the first time -
+      worth being honest that even a change I was confident in and
+      verified structurally at the time turned out to need real
+      hardware testing to actually confirm. Verified: zero duplicate
+      symbols, dictionary chain still 224 entries intact across all
+      four `SERIALPOLL`x`UNITTESTS` combinations; byte-exact
+      split-file reassembly.
+
+- [x] **Real bug found via a real MAME test (`CREATE DOES>`) and fixed:
+      `CREATE` had the same self-referential PFA-pointer bug already
+      confirmed and fixed in `CONSTANT`, `DEFER`, `2CONSTANT`, and
+      `MARKER` - but was never on the previously-flagged list, so it
+      went unfixed until now.** Reported via `: ENUM CREATE , DOES>
+      @ ;` - `DOES>` returned the address one cell before the value
+      `,` actually stored, instead of the value's own address.
+      Traced precisely: `CREATE` compiles `[JSR DODOES][FDB DOESRT0]
+      [FDB <CODEHERE's current value>]` - the same `LDD CODEHERE`-
+      without-`+2` pattern as the other four, so the PFA-pointer field
+      pointed at itself instead of two bytes further on, where `,`
+      appends the real value next. Confirmed the runtime consequence
+      through `DODOES` itself: it reads the *value stored at* the
+      PFA-pointer field and pushes that (by design - this is how
+      `CONSTANT`'s indirection works correctly, `DODOES` following a
+      pointer to the real data rather than holding the data directly).
+      With the field self-referencing, `DODOES` pushed the field's own
+      address instead of following through to where the real value
+      lives - exactly "the address before the 16-bit constant" instead
+      of "the address 1 cell further on," matching the report
+      precisely. Checked `VARIABLE` (the structurally similar
+      routine immediately below `CREATE`, sharing the same `DOESRT0`
+      trampoline setup) for the same bug rather than assume safety
+      from resemblance alone - confirmed genuinely unaffected, since
+      it uses the `VALUEW`-style pattern (`VARHERE`, a separate
+      region) rather than `CODEHERE` self-reference. Also confirmed
+      `SETDOES` needs no change - it patches a different field
+      entirely (the behavior field, 2 bytes past `JSR DODOES`), fully
+      independent of the PFA-pointer field this bug affects. Fixed
+      with the same `ADDD #2` pattern already established for the
+      other four. Verified: zero duplicate symbols, dictionary chain
+      still 224 entries intact across all four `SERIALPOLL`x
+      `UNITTESTS` combinations; byte-exact split-file reassembly.
+
+- [x] **False alarm, resolved: a reported `2CONSTANT`/`2@` discrepancy
+      (`666 777 2CONSTANT cc0` returning `666 $700C` instead of `666
+      777`; a separate `2@` test on a `2VARIABLE` appearing to read
+      back in reverse order) turned out to be testing against a stale
+      binary, not a live bug.** Traced the reported symptom carefully
+      against the current source before this was resolved: `CREATE`'s
+      `+2` fix (this session, correcting the same self-referential
+      PFA-pointer class as `CONSTANT`/`DEFER`/`2CONSTANT`/`MARKER`)
+      and `DFETCH`'s low-then-high read order (fixed to match `DSTORE`
+      several turns earlier, flagged by the parallel 68000 port) both
+      checked out correctly on paper against the reported symptom -
+      neither reproduced the described behavior in static trace,
+      which was the first signal something didn't add up. Confirmed
+      only one `DFETCH` definition exists in the file (no stale
+      duplicate). Resolved once the user rebuilt against the current
+      `forth6809.asm`/split files and re-tested: the updated binary
+      shows neither problem. Both are confirmed fixed by the prior
+      `CREATE` and `DFETCH` changes already logged above - no
+      additional code change was needed. Recorded here explicitly so
+      the history is clear: this was a real, reasonable bug report at
+      the time, not a mistake in reporting it - the fix had simply
+      already landed in a turn the tested binary predated.
+
+- [x] **Real, significant bug found via MAME debugger and fixed:
+      `QLOOP` unconditionally reset `STATE` to interpret mode at the
+      start of every line, silently breaking any colon definition
+      split across more than one line of input.** Reported via
+      `: test0 TRUE IF ." Hy" ELSE ." Hee" THEN ;` compiling correctly
+      on one line but failing with a `-22` (CSP mismatch) when split
+      across several. `COLON` sets `STATE=-1` and `SEMI` sets it back
+      to `0` (after checking `CSP`) - the correct, sole places `STATE`
+      should change during normal operation. `QLOOP`'s own `LDD #0 /
+      STD STATE`, run at the top of the per-line loop, was a third,
+      redundant reset that fired every time `QUERY` read a new line -
+      including lines in the middle of an still-open colon definition,
+      regardless of whether `;` had actually been reached. `TRUE`
+      (and everything after it on a continuation line) got interpreted
+      and, for anything with a stack effect, executed instead of
+      compiled - `TRUE` pushing `TRUEV` onto the data stack instead of
+      being compiled, leaving a stray cell `CSP` correctly caught as a
+      mismatch at `;`. Confirmed the fix's placement carefully rather
+      than just deleting the reset outright: `QUIT` is only re-entered
+      on cold boot or an uncaught error routing back through `ABORT` -
+      confirmed ordinary successful lines loop back to `QLOOP`
+      directly, never `QUIT` - so moving the reset to run once at
+      `QUIT` (rather than removing it entirely) still correctly forces
+      interpret state exactly when ANS's own `QUIT` semantics call for
+      it (including recovering from an error that aborts an unfinished
+      colon definition, which deleting the reset outright would have
+      left permanently stuck in compile mode), just not on every
+      single line of an otherwise-uninterrupted session. Verified:
+      zero duplicate symbols, dictionary chain still 224 entries
+      intact across all four `SERIALPOLL`x`UNITTESTS` combinations;
+      byte-exact split-file reassembly.
+
+- [x] **Real bug found via MAME testing and fixed, surfaced directly
+      by the prior QLOOP/STATE fix: `QOK` skipped the `CR` echo
+      together with the "ok" message whenever `STATE` was nonzero,
+      silently dropping the line ending for every line of a multi-line
+      colon definition after the first.** Once the QLOOP fix let
+      multi-line colon definitions actually compile successfully, the
+      echoed source no longer resembled what was typed - every
+      continuation line ran together onto one visual line, since the
+      terminal never saw the `CR` the user had genuinely pressed.
+      Traced to `QOK: LDD STATE / BNE QLOOP` running *before*
+      `JSR CRW` - while compiling, the branch away skipped both the
+      `CR` and the "ok" message together, when only the "ok" message
+      is actually supposed to be conditional (correctly not shown
+      mid-definition). The error path just above `QOK` already got
+      this right (unconditional `JSR CRW` before printing the error
+      message) - only the success path had the bug. Fixed by moving
+      `JSR CRW` to run unconditionally, first, with the `STATE` check
+      (and the "ok" message it guards) coming after. Verified: zero
+      duplicate symbols, dictionary chain still 224 entries intact
+      across all four `SERIALPOLL`x`UNITTESTS` combinations;
+      byte-exact split-file reassembly.
+
+- [x] **Real bug found via MAME debugger and fixed: `FILL` corrupted
+      its own remaining-byte count on the very first iteration,
+      running far past the requested length.** Same register-clobber
+      class as `CCALL`'s original bug: `FILLOOP` loaded `D` with the
+      count, then `LDA FILLCHR` (needed for the fill byte) overwrote
+      `A` - `D`'s high byte - before `SUBD #1` decremented what it
+      believed was still the true count. The high byte took on the
+      fill character's value instead, so the count almost never
+      reached zero at the intended point. Fixed by keeping the count
+      in `Y` instead of round-tripping it through `D`/memory each
+      iteration - `Y` is untouched by loading the fill character into
+      `A`, so the conflict is structurally impossible now, not just
+      avoided by careful ordering. Also addressed the redundant
+      scratch-register usage flagged alongside the bug report: the
+      target address is now kept directly in `X` (via `TFR D,X`)
+      rather than round-tripping through `FILLADDR` first, matching
+      the same treatment given to the count. `FILLCNT`/`FILLADDR`
+      (aliases for the shared `MVCNT`/`MVDST` scratch cells) became
+      genuinely unused once the loop no longer touches memory for
+      them - confirmed via search before removing, and removed along
+      with their comment-block entries, consistent with how `DICTTOP`
+      was handled earlier this session. `MVCNT`/`MVDST`/`MVSRC`
+      themselves are untouched, since `HSLEN`/`HSADDR`/`MRESULT`/
+      `FILLCHR` still alias them for other routines. `ERASEW` (which
+      `JMP`s into `FILLW`) confirmed unaffected, since only the
+      internal loop changed, not the external calling convention.
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly.
+
+- [x] **Real bug found via MAME debugger and fixed: `HEXBYTE` (used by
+      `DUMP`'s hex column) read from `MSCR+1` instead of `MSCR`,
+      formatting whatever stale byte happened to be at the never-
+      written address instead of the byte actually passed in.**
+      `STB MSCR` writes one byte, at `MSCR` itself; both subsequent
+      reads (`LDB MSCR+1`, once for the high nibble via four `LSRB`s,
+      once for the low nibble via `ANDB #$0F`) used the wrong address
+      - a cell `HEXBYTE` never writes at all, so both nibbles were
+      derived from stale scratch content rather than the real value.
+      Reported via `MOVE` + `DUMP`: a fill character of `$7B` showed
+      as `$03` in the hex column, while the ASCII column (a separate
+      code path, unaffected) correctly showed `}`. Confirmed `MSCR`
+      is shared, general-purpose scratch used pervasively elsewhere
+      via full 16-bit `STD`/`LDD` - `HEXBYTE`'s single-byte `STB`/`LDB`
+      pattern was the outlier, and nothing else depends on `MSCR+1`
+      holding anything meaningful at the point `HEXBYTE` runs. Fixed
+      by changing both `LDB MSCR+1` occurrences to `LDB MSCR`, reading
+      from where the byte was actually stored. Verified: zero
+      duplicate symbols, dictionary chain still 224 entries intact
+      across all four `SERIALPOLL`x`UNITTESTS` combinations;
+      byte-exact split-file reassembly.
+
+- [ ] **Formatting change, not a bug fix: `DUMP` now emits a leading
+      `CR` before its first line of output, matching the trailing `CR`
+      `DULEND` already emits after every line (including the last).**
+      Requested for consistent vertical alignment - without a leading
+      `CR`, the first line started wherever the cursor already was
+      (e.g. right after the echoed command itself), while every
+      subsequent line correctly started at column 0 via the existing
+      trailing `CR`. Added `JSR CRW` as the first thing `DUMPW` does,
+      right after popping its two arguments and before the per-line
+      loop begins. Verified: zero duplicate symbols, dictionary chain
+      still 224 entries intact across all four `SERIALPOLL`x
+      `UNITTESTS` combinations; byte-exact split-file reassembly.
+
+- [x] **Real bug found via MAME debugger and fixed: `CMOVE` never
+      terminated - same register-clobber class as `FILL`'s bug
+      earlier this session.** `CMVLOOP` loaded `D` with the count,
+      then `LDA ,X+` (needed to fetch the byte being copied) clobbered
+      `A` - `D`'s high byte - before `SUBD #1` decremented what it
+      believed was still the true count, so the terminating condition
+      almost never fired. Checked the two adjacent, structurally
+      similar routines rather than assume they shared the bug:
+      `CMOVEGT` (the reverse-direction, overlap-safe variant) is
+      genuinely unaffected, since its own copy (`LDA ,X`) happens
+      *before* `LDD MVCNT` reloads the count fresh from memory each
+      iteration, rather than after - the clobber happens, but the
+      count is correctly reloaded afterward, overwriting it, not
+      corrupted by it. `MOVEW` has no copy loop of its own at all -
+      it's purely a dispatcher choosing `CMOVEW` or `CMOVEGT` based on
+      overlap direction, so it's correct automatically once `CMOVEW`
+      is. Fixed `CMOVEW` differently than `FILL`: unlike `FILL` (which
+      only needed one address, leaving a register free for the
+      count), `CMOVEW` already commits both `X` (source) and `Y`
+      (destination) to the two addresses, leaving no spare 16-bit
+      register to hold the count in in the same way. Fixed instead by
+      reordering - decrement and store the count while `D` still
+      holds the true value, before the byte copy is free to clobber
+      `A`. Verified: zero duplicate symbols, dictionary chain still
+      224 entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly.
+
+- [x] **Real design gap found via MAME testing and fixed: `SUBSTITUTE`
+      never returned the ANS-required substitution count, and its
+      core algorithm was a plain substring search-and-replace on the
+      bare registered name rather than the ANS `%`-delimited scan.**
+      Confirmed against the actual spec (forth-standard.org/standard/
+      string/SUBSTITUTE and .../REPLACES, both fetched and read in
+      full): `SUBSTITUTE` must scan for text between `%` (ASCII `$25`)
+      delimiter pairs specifically - `%%` collapses to a single `%`
+      (count unchanged); a name matching the `REPLACES` registration
+      has the *entire* `%name%` span, delimiters included, replaced
+      by the substitution text (count incremented); a non-matching
+      name is passed through unchanged, delimiters and all (count
+      unchanged); a trailing `%` with no closing delimiter passes the
+      residue through unchanged. Rewrote `SUBSTITUTEW` completely to
+      implement this scan, no longer calling `SEARCHW` at all -
+      confirmed `SEARCHW` still has its own dictionary header
+      (`H_SEARCHW`) and remains a legitimate standalone word (`SEARCH`)
+      independent of this change. Reused the existing `COMPAREW` for
+      the name-matching step rather than writing a new comparison
+      loop. `GLOBALS` is fully packed (256/256 bytes, confirmed) - the
+      rewrite reuses `MSCR`/`MSCR2`/`MSCR3`/`MSCR4` (confirmed
+      untouched by `SUBCOPY`) for the new algorithm's scan state
+      rather than adding dedicated cells. Also fixed the missing
+      third return value - `SUBSTITUTEW` now pushes the substitution
+      count (`0` or positive on success) alongside the destination
+      address and length, matching `( addr1 len1 addr2 len2 -- addr2
+      len3 n )`. The destination-overflow behavior (`THROW -1`) was
+      left unchanged - the ANS spec explicitly permits throwing for
+      negative-`n` cases in the standard THROW-code table.
+
+      **Separately identified, and deliberately NOT fixed on request:**
+      `S"`, when interpreted (not compiled - i.e. typed directly at
+      the prompt rather than inside a colon definition), always
+      writes into the same fixed, shared buffer (`SIBUF`), returning
+      that same address every time. `REPLACES` only stores the
+      addresses it's given, not copies of the text - so two `S"`
+      calls used to register a name/value pair (and a third `S"` for
+      `SUBSTITUTE`'s own source string) all silently overwrite the
+      same buffer, corrupting earlier registrations before
+      `SUBSTITUTE` ever runs. Traced precisely enough to reproduce a
+      reported garbled MAME output (`Dancinging, %girl%!`) by hand,
+      confirming the exact mechanism. User's explicit decision: don't
+      add dedicated copy-on-register storage to `REPLACES` - instead,
+      wrap each string in its own colon definition (`: name S"
+      text" ;`) for stable, independent storage, and document this
+      requirement in the glossary instead of changing the code. Done -
+      see the `REPLACES`/`SUBSTITUTE` glossary entries in
+      ClaudeForth.docx, now also corrected to match the real ANS stack
+      effects and behavior rather than the previous, inaccurate
+      descriptions.
+
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly. Given the size
+      of the rewrite, long branches (`LBRA`/`LBHS`/`LBNE`) were used
+      liberally for loop-backs and larger jumps as a safety margin -
+      structural verification confirms label integrity and well-
+      formedness but does not check actual assembled branch-range
+      byte counts, so this is worth confirming on real assembly. Not
+      yet re-tested against a real MAME run with the `%`-delimiter
+      fix in place (the prior confirmation was against the
+      pre-rewrite version, which the user had already worked around
+      via colon-definition wrapping before this rewrite existed).
+
+- [x] **Verification task, requested and completed: confirmed PAD's
+      current offset satisfies all three ANS transient-region
+      minimums (forth-standard.org/standard/usage, section 3.3.3.6),
+      added named equates documenting them, and redesigned S" to use
+      PAD instead of a fixed, retired SIBUF.** Verification result:
+      already satisfied, no numeric adjustment required.
+      - PAD's own scratch region (>=84 chars): `PADW` computes `PAD =
+        CODEHERE + 84` - meets the minimum exactly, with the usual
+        ANS-expected transient/dynamic behavior (moves as CODEHERE
+        advances).
+      - WORD's transient region (>=33 chars): `WORDBUF` spans `$01DA`
+        to `$01FA` (up to where the now-retired `SIBUF` began) -
+        computed precisely via address subtraction (`$01FB - $01DA =
+        33`), meeting the minimum exactly. Unrelated to the PAD
+        offset - this system's `WORD` uses its own separate, fixed
+        buffer rather than HERE-relative storage.
+      - Pictured numeric output buffer (>= (2*16)+2 = 34 chars):
+        traced `LTNUM` ("<#") and `HOLD` precisely - `HLD` anchors to
+        `PADW`'s own return value, and `HOLD` decrements *before*
+        storing, so this buffer grows downward from PAD into the
+        CODEHERE-to-PAD gap, not into PAD's own region above it.
+        34 <= 84, comfortably satisfied with 50 bytes of margin.
+
+      Added `PADMINSIZE`/`WORDMINSIZE`/`HOLDMINSIZE`/`PADOFFSET` as
+      named, documented equates, replacing the bare `84` that used to
+      sit directly inside `PADW`.
+
+      Redesigned `S"`'s interpreted-mode path (`SQINTERP`) to write
+      into PAD (computed fresh via `PADW` on every call) instead of
+      the old, fixed `SIBUF` - giving interpreted `S"` access to
+      PAD's full 84-character region instead of the previous fixed
+      32-character limit. Confirmed `SIBUF` was used exclusively by
+      `S"` (matching the user's own stated assumption, verified by
+      search) before retiring its `EQU` definition; left its old
+      32-byte address range ($01FB-$021A) unclaimed rather than
+      shifting `APPVARS` down to reclaim it, to avoid any risk to the
+      rest of this carefully-verified memory map for the sake of 32
+      bytes on a system with headroom to spare.
+
+      **Difficulties check, as requested:** confirmed no conflict
+      with the pictured-numeric-output buffer (opposite growth
+      directions from the same PAD anchor - traced precisely, they
+      don't overlap). Confirmed a genuine, expected trade-off instead:
+      per ANS's own allowance ("non-standard words... may use PAD, but
+      such use shall be documented"), PAD is now shared between the
+      user's own general-purpose use and interpreted S" - using one
+      right after the other will overwrite one with the other, same
+      as any other transient-region interaction the standard itself
+      anticipates. Also identified and documented a subtler point: PAD
+      redesign does NOT eliminate the need for the user's own
+      colon-definition-wrapping workaround (established two turns
+      ago) - PAD's address only changes when something is compiled or
+      allocated between calls, so two interpreted S" calls in a row
+      (e.g. REPLACES's two arguments) still collide, just via PAD
+      instead of SIBUF. Compiled S" (inside a colon definition) never
+      touches PAD at all, writing directly into the definition's own
+      permanent storage instead - this remains the correct approach
+      for anything needing more than one string to coexist. Confirmed
+      `SIBUF` referenced nowhere else in the file before retiring it.
+
+      Glossary entries for `PAD`, `S"`, and `REPLACES` updated to
+      match - the `REPLACES` entry's prior `SIBUF`-specific wording
+      (from the previous SUBSTITUTE fix) was stale and has been
+      corrected to describe the current PAD-based mechanism instead.
+
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly; both updated
+      Assembler Source appendix subsections (8.1 Memory Map and 8.20
+      String Words) and all three updated glossary entries confirmed
+      present in the rendered PDF.
+
 ## Structural duplication (identified, some resolved, some not)
 
 - [x] `:`/`CREATE`/`VARIABLE`'s header-building — resolved via `HEADER`
