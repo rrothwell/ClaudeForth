@@ -35,16 +35,16 @@ Comments:
 
 | Word	| Bugs found | Nature |
 | ----- | -----------| ------ |
-| WORD	| 2	(1) Register-clobber: TFR X,D destroyed the true scan count, corrupting the stored length for any token followed by more input. (2) Buffer undersized below even the ANS minimum: fixed 31-character cap via a separate WORDBUF, below the standard’s own 33-character floor — redesigned to use the CODEHERE-to-PAD gap, now 46 characters. |
-| S"	| 1	Compiled-mode collision, self-introduced and caught before delivery: the runtime trampoline compiled at CODEHERE overwrote the text WORD had just staged there, once WORD’s own redesign made both use the same address. |
-| ."	| 1	Identical collision to S"’s, same root cause, fixed the same way. |
-| ABORT"	| 1	Identical collision again, third instance of the same class. |
-| CREATE	| 1	Self-referential PFA pointer — the field meant to point to the value area pointed at itself instead, off by one cell. |
-| SUBSTITUTE	| 2	(1) Missing third return value (substitution count) — ANS requires ( -- addr len n ), only addr len was returned. (2) Wrong algorithm entirely — plain substring search-and-replace on the bare registered name, instead of scanning for %-delimited pairs as the spec requires. |
-| UNESCAPE	| 2	(1) Argument-popping order completely wrong — only one of three arguments was ever popped, into the wrong variable. (2) Wrong algorithm entirely — decoded backslash escape sequences (\n, \t, etc.), which has nothing to do with what UNESCAPE actually does (doubling % characters). |
-| FILL	| 1	Register-clobber: loading the fill character into A corrupted the in-progress count held in D, running the fill far past the requested length. |
-| CMOVE	| 1	Same register-clobber class as FILL — fetching the byte to copy corrupted the count. |
-| SEARCH	| 0	Checked directly while tracing SUBSTITUTE’s original bug — logic was correct. |
-| COMPARE	| 0	Reused as a helper in the SUBSTITUTE rewrite — no defect found. |
+| WORD	| 2 |	(1) Register-clobber: TFR X,D destroyed the true scan count, corrupting the stored length for any token followed by more input. (2) Buffer undersized below even the ANS minimum: fixed 31-character cap via a separate WORDBUF, below the standard’s own 33-character floor — redesigned to use the CODEHERE-to-PAD gap, now 46 characters. |
+| S"	| 1	| Compiled-mode collision, self-introduced and caught before delivery: the runtime trampoline compiled at CODEHERE overwrote the text WORD had just staged there, once WORD’s own redesign made both use the same address. |
+| ."	| 1	| Identical collision to S"’s, same root cause, fixed the same way. |
+| ABORT"	| 1	| Identical collision again, third instance of the same class. |
+| CREATE	| 1	| Self-referential PFA pointer — the field meant to point to the value area pointed at itself instead, off by one cell. |
+| SUBSTITUTE	| 2 (1) | Missing third return value (substitution count) — ANS requires ( -- addr len n ), only addr len was returned. (2) Wrong algorithm entirely — plain substring search-and-replace on the bare registered name, instead of scanning for %-delimited pairs as the spec requires. |
+| UNESCAPE	| 2	(1) | Argument-popping order completely wrong — only one of three arguments was ever popped, into the wrong variable. (2) Wrong algorithm entirely — decoded backslash escape sequences (\n, \t, etc.), which has nothing to do with what UNESCAPE actually does (doubling % characters). |
+| FILL	| 1	| Register-clobber: loading the fill character into A corrupted the in-progress count held in D, running the fill far past the requested length. |
+| CMOVE	| 1	| Same register-clobber class as FILL — fetching the byte to copy corrupted the count. |
+| SEARCH	| 0	| Checked directly while tracing SUBSTITUTE’s original bug — logic was correct. |
+| COMPARE	| 0	| Reused as a helper in the SUBSTITUTE rewrite — no defect found. |
 
 Total: 12 distinct bugs across 9 words, plus 
