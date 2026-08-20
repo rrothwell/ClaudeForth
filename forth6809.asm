@@ -113,7 +113,8 @@ INITCODE EQU  $FFA9     ; was $FFA2 - shifted up 7 bytes to reduce the
                          ; nominal budget) is separate and unaffected
                          ; by this correction; not resolved. See the
                          ; open-items checklist.
-BASECODE EQU  $E02A     ; was $E007 - shifted up 35 bytes. Two effects:
+BASECODE EQU  $E00A     ; was $E007 - shifted up 35 bytes. Two effects:
+; BASECODE EQU  $E02A     ; was $E007 - shifted up 35 bytes. Two effects:
                          ; (1) opens a new 35-byte GAP between
                          ; BASEDICT's real end ($E006, 1992 bytes) and
                          ; this new start - previously exactly
@@ -127,7 +128,8 @@ BASECODE EQU  $E02A     ; was $E007 - shifted up 35 bytes. Two effects:
                          ; bytes, up from 12. Applied exactly as
                          ; requested; neither effect resolved here. See
                          ; the open-items checklist.
-BASEDICT EQU  $D83F     ; was $D85D - shifted down the same 30 bytes as
+BASEDICT EQU  $D81F     ; was $D85D - shifted down the same 30 bytes as
+; BASEDICT EQU  $D83F     ; was $D85D - shifted down the same 30 bytes as
                          ; BASECODE, preserving the exact, zero-padding
                          ; fit for its real 1973-byte dictionary content
                          ; (SECTION 27) - contiguous with BASECODE's
@@ -167,6 +169,65 @@ CODETOP  EQU  $B900     ; was $B800 - code space ceiling (data stack
                          ; $B700, a 512-byte mismatch) - now that DSTACK
                          ; moved up $200 to $B900, CODETOP matches it
                          ; exactly again
+
+; ANS transient-region minimums (forth-standard.org/standard/usage,
+; section 3.3.3.6 "Other transient regions"), verified against this
+; system's actual layout and used to replace the bare "84" that used
+; to sit directly inside PADW with a named, documented constant:
+;   PADMINSIZE  - PAD's own scratch region, size in characters. WORD
+;                 originally used a separate, fixed WORDBUF that
+;                 happened to meet its own 33-character minimum
+;                 exactly (WORDBUF's span up to where SIBUF used to
+;                 begin was precisely 33 bytes, confirmed by address
+;                 subtraction) - but WORD has since been redesigned
+;                 (see below, and WORD itself in the Header/Compiling
+;                 section) to use this same CODEHERE-to-PAD gap
+;                 instead, matching the traditional fig-Forth layout,
+;                 so WORDBUF itself is retired along with SIBUF.
+;   HOLDMINSIZE - pictured numeric output buffer, size in characters,
+;                 (2 * n) + 2 where n = bits per cell (16 here) = 34.
+;                 LTNUM ("<#") anchors HLD to PADW's own return value
+;                 and HOLD decrements before storing, so this buffer
+;                 grows downward from PAD into the CODEHERE-to-PAD
+;                 gap, not into PAD's own region above it - confirmed
+;                 by tracing LTNUM/HOLD. The gap must be at least
+;                 HOLDMINSIZE wide for this to fit.
+; PADOFFSET (below) satisfies both: it equals PADMINSIZE, which is
+; itself well above HOLDMINSIZE (84 vs 34, 50 bytes of margin) - kept
+; as a single, larger-than-either-strict-minimum offset rather than
+; two separately-tuned numbers, matching "larger than minimum is
+; satisfactory" for a small system.
+PADMINSIZE  EQU 84
+WORDMINSIZE EQU 33
+HOLDMINSIZE EQU 34
+PADOFFSET   EQU PADMINSIZE  ; CODEHERE-to-PAD gap; also governs how
+                            ; much of PAD's own upward-growing region
+                            ; (now used by both the user and, per this
+                            ; change, interpreted-mode S" text) is
+                            ; guaranteed available before something
+                            ; else might claim it
+WORDMAXCHARS EQU PADOFFSET-HOLDMINSIZE-1-3  ; max characters WORD can
+                            ; scan when using the CODEHERE-to-PAD gap
+                            ; (see WORD, below) - reserves HOLDMINSIZE
+                            ; bytes at the PAD end for the pictured
+                            ; numeric output buffer (which grows
+                            ; downward from PAD into this same gap),
+                            ; using the remaining space at the
+                            ; CODEHERE end, less 1 byte for WORD's own
+                            ; leading count byte, less a further 3
+                            ; bytes for the worst case: S"/."/ABORT"
+                            ; all reserve 3 bytes ahead of CODEHERE
+                            ; before calling WORD (see SQUOTE/
+                            ; DOTQUOTE/AQSTOK), so their text lands 3
+                            ; bytes further into this same gap than
+                            ; plain WORD-parsing (e.g. a dictionary
+                            ; name for FIND) does. Sized for that
+                            ; worst case uniformly, rather than giving
+                            ; different callers different effective
+                            ; limits - simpler and safer than trying
+                            ; to track which caller needs which cap.
+                            ; 84-34-1-3 = 46.
+
 APPCODE  EQU  $7000     ; was $5000 - back to its original address.
                          ; RESOLVED: this once overlapped DSTACK's true
                          ; range by 512 bytes ($B700-$B8FF), a direct
@@ -196,19 +257,34 @@ APPVARSEND EQU APPDICT-1 ; was APPVARS+8000 ($215B) - now derives
                          ; again, unlike the previous fixed-size
                          ; definition. VUNUSEDW (below) is unchanged -
                          ; it already computed against APPVARSEND
-SIBUF    EQU  $01FB     ; was $0300
-WORDBUF  EQU  $01DA     ; was $02D4
+; SIBUF EQU $01FB retired - was interpreted-mode S"'s fixed, dedicated
+; 32-byte scratch buffer; S" now writes into PAD instead (see SQINTERP,
+; String Words section), which is both larger and correctly per-call
+; rather than a single buffer shared by every S" call in a session.
+; The $01FB-$021A range it used to occupy is left unclaimed rather
+; than reassigned - APPVARS below still starts at its own, unchanged
+; address ($021B) - to avoid any risk to the rest of this carefully-
+; verified memory map for the sake of reclaiming 32 bytes on a system
+; with headroom to spare; reclaiming it would need APPVARS to move,
+; a separate, larger change not undertaken here.
+; WORDBUF EQU $01DA also retired, for the same reason as SIBUF above -
+; WORD now uses the CODEHERE-to-PAD gap directly (see WORD in the
+; Header/Compiling section, and WORDMAXCHARS above) rather than a
+; fixed, separately-allocated buffer capped at 31 characters. The
+; $01DA-$01FA range it used to occupy is left unclaimed, same
+; reasoning as SIBUF's retirement above.
 TIBBUF   EQU  $018A     ; was $0284
 TIBBUFL  EQU  80
 SERBUF   EQU  $0106     ; was $0200 - USER0/USER1 removed entirely (see
-                         ; below); the 6 buffers (SERBUF's 4-byte index
-                         ; block, INBUF, OUTBUF, TIBBUF, WORDBUF, SIBUF)
-                         ; now sit contiguously right after MVSCRATCH,
-                         ; with no gap - this also closes a pre-existing
-                         ; 11-byte gap that used to sit between WORDBUF
-                         ; and SIBUF ($02F5-$02FF), unrelated to USER0/
-                         ; USER1 but caught while making this region
-                         ; genuinely contiguous end to end
+                         ; below); the 4 buffers (SERBUF's 4-byte index
+                         ; block, INBUF, OUTBUF, TIBBUF) still sit
+                         ; contiguously right after MVSCRATCH, with no
+                         ; gap - WORDBUF and SIBUF, which used to sit
+                         ; right after TIBBUF and WORDBUF respectively
+                         ; (closing what was once an 11-byte gap,
+                         ; $02F5-$02FF, in an earlier address scheme),
+                         ; are now both retired (see above) rather than
+                         ; part of this contiguous run
 INHEAD   EQU  SERBUF
 INTAIL   EQU  SERBUF+1
 OUTHEAD  EQU  SERBUF+2
@@ -463,23 +539,22 @@ GLOBALS_USED EQU 256  ; total bytes used, of 256 available - fully packed
 ; not direct-page (2-byte), since page zero has no room left.
 ;
 ;   MVCNT    - MOVE/CMOVE's remaining-byte count
-;     FILLCNT  EQU MVCNT   - FILL's remaining-byte count
 ;     HSLEN    EQU MVCNT   - HOLDS's remaining-char count
 ;   MVDST    - MOVE/CMOVE's destination address
-;     FILLADDR EQU MVDST   - FILL's target address
 ;     HSADDR   EQU MVDST   - HOLDS's source address
 ;   MVSRC    - MOVE/CMOVE's source address
 ;     MRESULT  EQU MVSRC   - single-cell multiply's 16-bit result
 ;     FILLCHR  EQU MVSRC   - FILL's fill character (1 byte, uses
 ;                            MVSRC's first byte only)
+; FILLCNT/FILLADDR (formerly aliasing MVCNT/MVDST) were removed once
+; genuinely unused - FILLW now keeps its count and address directly
+; in Y/X rather than round-tripping through memory each iteration.
 ; ------------------------------------------------------------
          ORG   $0100
 MVCNT      RMB   2
 MVDST      RMB   2
 MVSRC      RMB   2
-FILLCNT  EQU  MVCNT
 HSLEN    EQU  MVCNT
-FILLADDR EQU  MVDST
 HSADDR   EQU  MVDST
 MRESULT  EQU  MVSRC
 FILLCHR  EQU  MVSRC
@@ -487,8 +562,154 @@ FILLCHR  EQU  MVSRC
 ; Provide padding, to ensure the correct ROM & .bin file size (and
 ; opcode offsets) for the MAME emulation and flash memory burn.
          ORG USROMSTRT
+
+; ============================================================
+; UNIT TEST FRAMEWORK
+;
+; Self-checking assembly-level tests for this ROM's own
+; primitives, gated by UNITTESTS below and run once at cold
+; boot, right after INITSERIAL and before COLD (so U/S are
+; already valid - COLDSTRT sets them at its very start - but
+; nothing else has been initialized yet: APPVARS/DPHERE/
+; CODEHERE/LATEST/BASE all still hold whatever COLD is about to
+; set them to). Lives here, in previously-unused ROM space right
+; after INOUT's shadow, since this was pure FILL padding before
+; this existed - UNITTESTS=1 removes it entirely and this block
+; reverts to exactly that padding, computed automatically below
+; via the ROM label rather than a fixed byte count, so it's
+; correct either way without needing to be hand-adjusted.
+;
+; Each test is independent by construction: it saves the data
+; stack pointer (U) before touching anything, and unconditionally
+; restores it at the end regardless of pass or fail - so one
+; test's assertions failing can never leave stack residue for the
+; next test to inherit. Test scratch variables live in the very
+; start of APPVARS - safe only because tests run strictly before
+; COLD initializes VARHERE to that same address; COLD immediately
+; and correctly re-purposes that space afterward.
+;
+; Reporting: each test's name (a counted string, matching how
+; BADWORD itself prints a failing word) is printed via COUNT+TYPE,
+; followed by " OK" or " FAIL", followed by a CR - all via
+; TSTREPORT, shared by every test rather than duplicated in each.
+; ============================================================
+UNITTESTS EQU 1   ; 0 = included (matches this file's established
+                  ; IFEQ convention, e.g. SERIALPOLL); 1 = excluded
+                  ; entirely, reverting to plain FILL padding.
+
+         IFEQ  UNITTESTS  ; >>>>>>>>>>
+
+TSTU0    EQU   APPVARS       ; saved U, before a test touches it
+TSTUB4   EQU   APPVARS+2     ; U immediately before the op under test
+TSTUAF   EQU   APPVARS+4     ; U immediately after the op under test
+TSTFLAG  EQU   APPVARS+6     ; scratch for TSTREPORT's pass/fail arg
+
+TSTGUARD EQU   $3C7A         ; sentinel value, pushed below the value
+                              ; under test, to prove an operation
+                              ; doesn't disturb what's beneath it
+TSTVAL1  EQU   $59E1         ; the value under test itself - neither
+                              ; constant is 0, 1, or -1, so a test
+                              ; that only appears to pass due to a
+                              ; trivial/special-cased value would be
+                              ; caught rather than masked
+
+; ------------------------------------------------------------
+; TSTREPORT - ( testname-caddr passflag -- ) shared by every
+; test. Prints the test's name (via COUNT+TYPE), then " OK" or
+; " FAIL" depending on passflag (TRUEV = pass, FALSEV = fail),
+; then a CR, readying the terminal for the next test's line.
+; ------------------------------------------------------------
+TSTREPORT: PULU  D
+           STD   TSTFLAG
+           JSR   COUNT
+           JSR   TYPE
+           LDD   TSTFLAG
+           BEQ   TSTFAILR
+           LDD   #TSTOKMSG
+           PSHU  D
+           LDD   #TSTOKMSGL
+           PSHU  D
+           BRA   TSTPRINT
+TSTFAILR:  LDD   #TSTFAILMSG
+           PSHU  D
+           LDD   #TSTFAILMSGL
+           PSHU  D
+TSTPRINT:  JSR   TYPE
+           JSR   CRW
+           RTS
+
+TSTOKMSG:    FCC " OK"
+TSTOKMSGL    EQU  *-TSTOKMSG
+TSTFAILMSG:  FCC " FAIL"
+TSTFAILMSGL  EQU  *-TSTFAILMSG
+
+; ------------------------------------------------------------
+; TSTRUNNER - calls each test group in turn. Add new groups
+; here as they're written.
+; ------------------------------------------------------------
+TSTRUNNER: JSR   TSTSTACK
+           RTS
+
+; ------------------------------------------------------------
+; TSTSTACK - data stack operation tests. Add new tests here as
+; they're written.
+; ------------------------------------------------------------
+TSTSTACK:  JSR   TSTDUP
+           RTS
+
+; ------------------------------------------------------------
+; TSTDUP - unit test for DUP ( x -- x x ). Verifies both the
+; stack's contents (the duplicate and the original both equal
+; the pushed test value, and the guard beneath is undisturbed)
+; and the data stack pointer's movement (exactly one cell, 2
+; bytes - DUP's own net effect, not conflated with the two
+; pushes that set the test up).
+; ------------------------------------------------------------
+TSTDUP:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DUP
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   TDFAIL
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   TDFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   TDFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #2
+           BNE   TDFAIL
+
+           LDD   #TRUEV
+           BRA   TDDONE
+TDFAIL:    LDD   #FALSEV
+TDDONE:    LDX   #TSTDUPNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDUPNAME: FCB  6
+            FCC  "TSTDUP"
+
+         ENDC  ; <<<<<<<<<<
+
 ROM:
-         FILL $FF,BASEDICT-USROMSTRT
+         FILL $FF,BASEDICT-ROM
 
 ; ============================================================
 ; SECTION 27: FORTH DICTIONARY (ROM base dictionary headers)
@@ -1875,11 +2096,39 @@ ABORT:   LDU   #SP0
          ; falls through into QUIT
 
 QUIT:    LDS   #RP0
+         LDD   #0        ; BUG FIX: this reset used to live at QLOOP
+         STD   STATE     ; below, running on EVERY line - including
+                          ; lines in the middle of a colon definition
+                          ; that spans more than one line of input.
+                          ; COLON (sets STATE=-1) and SEMI (sets
+                          ; STATE=0, after checking CSP) are the
+                          ; correct, sole places STATE should change
+                          ; during normal operation - the old QLOOP
+                          ; reset was a third, redundant one that
+                          ; silently dropped back to interpret mode
+                          ; every time QUERY read a new line,
+                          ; regardless of whether ";" had actually
+                          ; been reached. A colon definition split
+                          ; across multiple lines would have every
+                          ; word on every line after the first
+                          ; interpreted (and, for anything with a
+                          ; stack effect, executed) instead of
+                          ; compiled - "TRUE" pushing TRUEV onto the
+                          ; data stack instead of being compiled,
+                          ; leaving a stray cell CSP would correctly
+                          ; catch as a mismatch at ";" (-22). Moved
+                          ; here rather than removed outright: QUIT is
+                          ; only re-entered on cold boot or an
+                          ; uncaught error routing back through ABORT
+                          ; (confirmed - ordinary successful lines
+                          ; loop back to QLOOP directly, never QUIT),
+                          ; so this still correctly forces interpret
+                          ; state exactly when ANS's own QUIT
+                          ; semantics call for it - just not on every
+                          ; single line of an otherwise-uninterrupted
+                          ; session. Confirmed via MAME debugger.
 
-QLOOP:   LDD   #0
-         STD   STATE
-
-         JSR   QUERY
+QLOOP:   JSR   QUERY
 
          LDD   DPHERE
          STD   QSAVEDP
@@ -1919,9 +2168,24 @@ QLOOP:   LDD   #0
          JSR   DOT
          BRA   QLOOP
 
-QOK:     LDD   STATE
+QOK:     JSR   CRW        ; BUG FIX: was JSR CRW AFTER the STATE check
+                          ; below, so "BNE QLOOP" (still compiling)
+                          ; skipped both the CR echo and the ok
+                          ; message together. The CR reflects a real
+                          ; keystroke - the user genuinely pressed
+                          ; Enter for that line - and should echo
+                          ; regardless of interpret/compile state;
+                          ; only the "ok" message itself should stay
+                          ; conditional (correctly not shown mid-
+                          ; definition). Previously, every line of a
+                          ; multi-line colon definition after the
+                          ; first had its line ending silently
+                          ; dropped, so the echoed source ran
+                          ; together onto one line with no
+                          ; resemblance to what was actually typed.
+                          ; Confirmed via MAME debugger.
+         LDD   STATE
          BNE   QLOOP
-         JSR   CRW
          LDX   #OKMSG
          PSHU  X
          LDD   #OKMSGL
@@ -2078,7 +2342,7 @@ VHEREW:  LDD   VARHERE
          RTS
 
 PADW:    LDD   CODEHERE
-         ADDD  #84
+         ADDD  #PADOFFSET
          PSHU  D
          RTS
 
@@ -2167,9 +2431,21 @@ CREATE:  LDD   #0
          LDD   #DOESRT0
          PSHU  D
          JSR   CODECOMMA
-         LDD   CODEHERE
-         PSHU  D
-         JSR   CODECOMMA
+         LDD   CODEHERE  ; BUG FIX: same self-referential PFA bug as
+         ADDD  #2        ; CONSTANT/DEFER/2CONSTANT/MARKER (CONSTANT's
+         PSHU  D         ; instance confirmed via MAME debugger) -
+         JSR   CODECOMMA ; without +2 this pointed at itself instead
+                          ; of the value cell that "," appends next.
+                          ; Never on the previously-flagged list (only
+                          ; DEFER/2CONSTANT/MARKER were), so it went
+                          ; unfixed until confirmed by inspection here.
+                          ; Confirmed via MAME: ": ENUM CREATE , DOES>
+                          ; @ ;" returned the PFA-pointer field's own
+                          ; address instead of the value COMMA stored
+                          ; one cell further on - exactly "the address
+                          ; before the 16-bit constant" instead of the
+                          ; address 1 cell further on, matching a
+                          ; user-reported MAME trace precisely.
          RTS
 
 ; ----------------------------------------------------------
@@ -2302,9 +2578,11 @@ TWOCONSTANT: LDD #0
              LDD #DFETCH
              PSHU D
              JSR CODECOMMA
-             LDD CODEHERE
-             PSHU D
-             JSR CODECOMMA
+             LDD CODEHERE  ; BUG FIX: same self-referential PFA bug as
+             ADDD #2       ; CONSTANT (confirmed via MAME debugger) -
+             PSHU D        ; without +2 this pointed at itself instead
+             JSR CODECOMMA ; of the two-cell value that COMMA appends
+                            ; below.
              PULU D              ; x2, off the top
              STD  MSCR
              JSR  COMMA            ; x1 -> lower address
@@ -2341,9 +2619,14 @@ DEFERW:  LDD   #0
          LDD   #DODEFER
          PSHU  D
          JSR   CODECOMMA
-         LDD   CODEHERE
-         PSHU  D
-         JSR   CODECOMMA
+         LDD   CODEHERE  ; BUG FIX: same self-referential PFA bug as
+         ADDD  #2        ; CONSTANT (confirmed via MAME debugger) -
+         PSHU  D         ; without +2 this pointed at itself instead
+         JSR   CODECOMMA ; of the value cell DOABORTUNDEF lands in
+                          ; below. Confirmed by inspection: DODEFER's
+                          ; own "LDD ,X" would have read the PFA's own
+                          ; address and jumped there, crashing on
+                          ; execution of any newly-DEFER'd word.
          LDD   #DOABORTUNDEF
          PSHU  D
          JSR   COMMA
@@ -2426,9 +2709,17 @@ MARKERW: LDD   DPHERE
          LDD   #DOMARKER
          PSHU  D
          JSR   CODECOMMA
-         LDD   CODEHERE
-         PSHU  D
-         JSR   CODECOMMA
+         LDD   CODEHERE  ; BUG FIX: same self-referential PFA bug as
+         ADDD  #2        ; CONSTANT (confirmed via MAME debugger) -
+         PSHU  D         ; without +2 this pointed at itself instead
+         JSR   CODECOMMA ; of the four snapshot cells COMMA appends
+                          ; below. Confirmed by inspection: DOMARKER's
+                          ; own fixed-offset reads (,X / 2,X / 4,X /
+                          ; 6,X) would have read garbage relative to
+                          ; the intended MKDP/MKCODE/MKVAR/MKLATEST -
+                          ; the most severe of the three, since using
+                          ; a MARKER-created word would restore
+                          ; corrupted dictionary-state pointers.
          LDD   MKDP
          PSHU  D
          JSR   COMMA
@@ -2535,7 +2826,34 @@ SCANLP:  CMPY  #0
          LDA   ,X
          CMPA  DELIM
          BEQ   CONSUME
-         CMPB  #31
+         CMPB  #WORDMAXCHARS  ; REDESIGN: was "CMPB #31", capping WORD
+                          ; at 31 characters regardless of what it was
+                          ; parsing - a plain word, a defined name, or
+                          ; the text of a compiled/interpreted S"
+                          ; string, all fed through the same scan.
+                          ; That cap came from WORDBUF's own fixed
+                          ; 33-byte allocation (1 count byte + 32 data
+                          ; bytes, with 1 byte of that never actually
+                          ; used by this check), entirely unrelated to
+                          ; CODEHERE or PAD. Traced via MAME: a longer
+                          ; S" string was truncated during WORD's own
+                          ; scan, before either S"'s interpreted-mode
+                          ; (PAD) or compiled-mode (CODEHERE) storage
+                          ; path ever got a chance to matter - the
+                          ; PAD-based S" redesign a few turns ago
+                          ; didn't help here because this is an
+                          ; earlier stage entirely. Now uses the
+                          ; CODEHERE-to-PAD gap directly, matching the
+                          ; traditional fig-Forth layout (WORD's own
+                          ; buffer at HERE, growing toward PAD, with
+                          ; the pictured numeric output buffer at the
+                          ; opposite end growing back toward HERE) -
+                          ; WORDMAXCHARS reserves HOLDMINSIZE bytes at
+                          ; the PAD end for that buffer, so the two
+                          ; don't collide even though ANS itself would
+                          ; permit them to (3.3.3.6: "the regions
+                          ; returned by WORD and #> may overlap in
+                          ; memory"). Confirmed via MAME debugger.
          BEQ   ENDW
          LEAX  1,X
          LEAY  -1,Y
@@ -2561,7 +2879,13 @@ ENDW:    PSHS  B          ; BUG FIX: B holds the true character count from
          STD   TOIN
          PULS  B
 
-         LDX   #WORDBUF
+         LDX   CODEHERE   ; REDESIGN: was "LDX #WORDBUF" - now writes
+                          ; at CODEHERE directly (see SCANLP above for
+                          ; the full reasoning). CODEHERE itself is
+                          ; NOT advanced by this - matches the ANS
+                          ; transient-region contract, where WORD's
+                          ; region is expected to be overwritten by
+                          ; whatever gets compiled/allocated next.
          STB   ,X+
          LDY   WSTART
 COPYLP:  TSTB
@@ -2570,11 +2894,12 @@ COPYLP:  TSTB
          STA   ,X+
          DECB
          BRA   COPYLP
-COPYDONE: LDX  #WORDBUF
+COPYDONE: LDX  CODEHERE   ; REDESIGN: was "LDX #WORDBUF", matching
+                          ; the copy destination above.
           PSHU X
           RTS
 
-EMPTY:   LDX   #WORDBUF
+EMPTY:   LDX   CODEHERE   ; REDESIGN: was "LDX #WORDBUF" - same reason.
          CLR   ,X
          PSHU  X
          RTS
@@ -3194,23 +3519,48 @@ DOSETUP: PULU  D
          PSHS  X
          RTS
 
-IWORD:   PULS  X
-         LDD   2,S
-         PSHS  X
-         PSHU  D
-         RTS
+IWORD:   LDD   2,S        ; BUG FIX: PULS X/PSHS X used to bracket this
+         PSHU  D          ; read, shifting S by 2 first - so "2,S" landed
+         RTS              ; on the limit (what's really at 4,S unshifted)
+                          ; instead of the index. The pair served no
+                          ; purpose (nothing needed offset 0 for anything
+                          ; here) - removed, so 2,S directly and
+                          ; correctly targets the index DOSETUP pushed
+                          ; there. Confirmed via MAME debugger: "I"
+                          ; returned the loop limit on every iteration.
 
-JWORD:   PULS  X
-         LDD   10,S
-         PSHS  X
-         PSHU  D
-         RTS
+JWORD:   LDD   8,S        ; CORRECTION: an earlier turn changed this to
+         PSHU  D          ; 10,S, which was itself wrong - it assumed
+         RTS              ; DOSETUP's own JSR-pushed return address
+                          ; persists on S once each DOSETUP finishes.
+                          ; It doesn't: DOSETUP's own RTS pops and
+                          ; consumes it to jump into the loop body, so
+                          ; it never actually sits on S for J to count
+                          ; past. Re-traced by counting every real
+                          ; push/pop across a nested DO: after the
+                          ; inner DOSETUP finishes, S is [inner-index@0]
+                          ; [inner-limit@2][inner-leave@4][outer-
+                          ; index@6][outer-limit@8][outer-leave@10] -
+                          ; J's own JSR pushes one more cell on top,
+                          ; landing outer-index at 8, not 10. Offset 10
+                          ; read the outer loop's limit instead - a
+                          ; fixed value every iteration, exactly
+                          ; matching the observed bug (J stuck at the
+                          ; limit, never progressing). Confirmed via a
+                          ; real MULT-TABLE test on MAME.
 
-LEAVE:   LDD   #TRUEV    ; BUG FIX: same class as DOTEST above - PULS X
-         STD   6,S       ; used to run first, shifting S by 2 before this
-         PULS  X         ; write, landing 2 bytes past the LEAVE flag
-         PSHS  X         ; DOSETUP actually pushed. Deferred PULS X to
-         RTS             ; after the write, matching DOTEST's fix.
+LEAVE:   LDD   #TRUEV    ; BUG FIX (earlier): was PULS X first, shifting
+         STD   6,S       ; S by 2 before this write, landing 2 bytes
+         RTS             ; past the LEAVE flag DOSETUP actually pushed.
+                          ; Fixed by deferring PULS X to after the
+                          ; write - but that left a PULS X/PSHS X pair
+                          ; that had become a genuine no-op (nothing
+                          ; between them touches S or X, and this
+                          ; routine never uses X's value for anything,
+                          ; unlike DOTEST's own deferred PULS X, which
+                          ; feeds LDD ,X/LEAX D,X afterward). Removed,
+                          ; per the parallel 68000 port's observation,
+                          ; confirmed by inspection.
 
 LOOP:    PULU  D
          CMPD  #TAGDO
@@ -3384,10 +3734,27 @@ QDBUILD:  LEAX 2,X
           PSHS X
           RTS
 
-UNLOOP:  PULS  X
-         LEAS  6,S
-         PSHS  X
-         RTS
+UNLOOP:  RTS             ; DESIGN CHANGE: was PULS X/LEAS 6,S/PSHS X/RTS
+                          ; (a real discard of the loop-control frame).
+                          ; EXIT's own EXITUNLOOP mechanism already
+                          ; discards the frame automatically and
+                          ; correctly on every path - traced and
+                          ; confirmed: with no enclosing DO (compiled
+                          ; count 0), with one enclosing DO and no
+                          ; prior UNLOOP (discards the full 8-byte
+                          ; frame correctly). The one combination that
+                          ; broke was UNLOOP immediately before EXIT -
+                          ; UNLOOP discarding 6 of the 8 bytes itself,
+                          ; then EXITUNLOOP unconditionally discarding
+                          ; a full 8 more, overshooting into whatever
+                          ; sat below (typically the caller's own
+                          ; return address) and branching into random
+                          ; memory on return. Since UNLOOP has no
+                          ; other legitimate use than immediately
+                          ; preceding an exit from the definition, and
+                          ; EXIT already handles that correctly on its
+                          ; own, UNLOOP is now a true no-op rather than
+                          ; a second, conflicting discard mechanism.
 
 EXIT:    LDD   #0
          STD   EXITCNT
@@ -3427,11 +3794,18 @@ EULOOP:     CMPY #0
 EUDONE:     PULS Y
             JMP  ,Y
 
-CASEW:   LDD   #0
-         PSHU  D
-         LDD   #TAGCASE
-         PSHU  D
-         RTS
+CASEW:   LDD   #TAGCASE  ; BUG FIX: was LDD #0/PSHU D here first, pushing
+         PSHU  D         ; a value nothing downstream ever consumes -
+         RTS             ; OF/ENDOF never read this deep, and ENDCASE's
+                          ; scan loop stops the instant it sees TAGCASE,
+                          ; never popping past it. Left one cell
+                          ; permanently stranded below CSP's expected
+                          ; depth, so ";" always saw a mismatch and
+                          ; threw -22, even for the simplest CASE...
+                          ; ENDCASE with no OF clauses at all. Removed;
+                          ; confirmed by inspection that nothing reads
+                          ; or depends on it anywhere in OF/ENDOF/
+                          ; ENDCASE's logic.
 
 OF:      LDD   #OVER
          PSHU  D
@@ -3667,12 +4041,19 @@ ABORTQUOTE: LDD  STATE
             JSR  THROW
 AQSTOK:     LDD  #34
             PSHU D
+            LDD  CODEHERE  ; BUG FIX: same class as SQUOTE/DOTQUOTE -
+            ADDD #3        ; reserve 3 bytes ahead of WORD's write so
+            STD  CODEHERE  ; the trampoline compiled below doesn't
+                          ; overwrite the text it's about to stage.
             JSR  WORD
             PULU X
             LDA  ,X
             STA  SCNT
             LEAX 1,X
             STX  SPTR
+            LDD  CODEHERE  ; restore
+            SUBD #3
+            STD  CODEHERE
             LDD  #DOABORTQUOTE
             PSHU D
             JSR  CCALL
@@ -4842,12 +5223,16 @@ PLUSSTORE: PULU X
            STD  ,X
            RTS
 
-DFETCH:  PULU  X
-         LDD   2,X
-         PSHU  D
-         LDD   ,X
-         PSHU  D
-         RTS
+DFETCH:  PULU  X          ; BUG FIX: was reading high address first
+         LDD   ,X         ; (pushed deep) then low address second
+         PSHU  D          ; (pushed on top) - the reverse of what
+         LDD   2,X        ; DSTORE actually writes (x1 low, x2 high),
+         PSHU  D          ; so a 2! 2@ round trip swapped the two
+         RTS              ; values. Now reads low first (x1, pushed
+                          ; deep) then high second (x2, pushed on
+                          ; top), matching DSTORE and correctly
+                          ; round-tripping. Flagged by the parallel
+                          ; 68000 port, confirmed by inspection.
 
 DSTORE:  PULU  X
          PULU  D
@@ -4866,10 +5251,20 @@ CMOVEW:  PULU  D
          LDY   MVDST
 CMVLOOP: LDD   MVCNT
          BEQ   CMDONE
+         SUBD  #1         ; BUG FIX: was after the byte copy below -
+         STD   MVCNT      ; LDA ,X+ (needed for the byte itself)
+                          ; clobbers A, D's high byte, corrupting the
+                          ; count before SUBD used it. Unlike FILL,
+                          ; there's no spare 16-bit register to keep
+                          ; the count in instead - X and Y are both
+                          ; already committed to the source and
+                          ; destination addresses - so the fix here is
+                          ; reordering: decrement and store while D
+                          ; still holds the true count, before the
+                          ; copy is free to clobber A. Confirmed via
+                          ; MAME debugger: the loop never terminated.
          LDA   ,X+
          STA   ,Y+
-         SUBD  #1
-         STD   MVCNT
          BRA   CMVLOOP
 CMDONE:  RTS
 
@@ -4924,16 +5319,31 @@ MVLOW:   LDD   MVSRC
 FILLW:   PULU  D
          STB   FILLCHR
          PULU  D
-         STD   FILLCNT
+         TFR   D,Y        ; BUG FIX: was STD FILLCNT/LDD FILLCNT each
+                          ; iteration - and inside the loop, LDA
+                          ; FILLCHR (needed for the fill byte) clobbers
+                          ; A, which is D's high byte, corrupting the
+                          ; count that SUBD #1 then decremented from.
+                          ; The high byte took on the fill character's
+                          ; value instead of the count's real high
+                          ; byte, so the count almost never reached
+                          ; zero at the intended point - FILL ran far
+                          ; past the requested length. Keeping the
+                          ; count in Y instead removes the conflict
+                          ; entirely (Y is untouched by loading the
+                          ; fill character into A) and removes the
+                          ; per-iteration memory round-trip - also
+                          ; addresses the redundant scratch usage
+                          ; flagged alongside this bug. Confirmed via
+                          ; MAME debugger.
          PULU  D
-         STD   FILLADDR
-         LDX   FILLADDR
-FILLOOP: LDD   FILLCNT
+         TFR   D,X        ; address, kept directly in X rather than
+                          ; round-tripping through FILLADDR too
+FILLOOP: CMPY  #0
          BEQ   FDONE
          LDA   FILLCHR
          STA   ,X+
-         SUBD  #1
-         STD   FILLCNT
+         LEAY  -1,Y
          BRA   FILLOOP
 FDONE:   RTS
 
@@ -4956,12 +5366,28 @@ DOSTR:   PULS  X
 
 SQUOTE:  LDD   #34
          PSHU  D
+         LDD   CODEHERE   ; BUG FIX (caught while verifying the WORD
+         ADDD  #3         ; redesign above): reserve 3 bytes ahead of
+         STD   CODEHERE   ; where WORD is about to write its parsed
+                          ; text. Without this, the compiled path
+                          ; below would compile "JSR DOSTR" (3 bytes)
+                          ; directly at CODEHERE - the same address
+                          ; WORD just used - overwriting the first 2
+                          ; characters of the very text being staged,
+                          ; before the copy loop even runs. Reserving
+                          ; the gap first means the text lands exactly
+                          ; where it needs to end up, and the trampoline
+                          ; safely goes in front of it instead of on
+                          ; top of it.
          JSR   WORD
          PULU  X
          LDA   ,X
          STA   SCNT
          LEAX  1,X
          STX   SPTR
+         LDD   CODEHERE   ; restore - undo the temporary reserve
+         SUBD  #3
+         STD   CODEHERE
          LDD   STATE
          BEQ   SQINTERP
 
@@ -4981,15 +5407,45 @@ SQCPY:   LDA   ,Y+
 SQEND:   STX   CODEHERE
          RTS
 
-SQINTERP: LDY  SPTR
+SQINTERP: ; REDESIGN: was a fixed "LDX #SIBUF" here and at SQIEND -
+                          ; SIBUF was a dedicated, fixed 32-byte buffer,
+                          ; capping every interpreted S" string at 32
+                          ; characters and (worse) shared identically
+                          ; by every S" call, so a second S" call before
+                          ; the first string was actually used (e.g.
+                          ; registering two REPLACES strings, or a
+                          ; SUBSTITUTE template argument) silently
+                          ; overwrote the first - confirmed via MAME
+                          ; testing and traced precisely earlier this
+                          ; session. Retired per user's own follow-up
+                          ; testing/design decision: rather than give
+                          ; REPLACES its own dedicated copy-on-register
+                          ; storage, wrap each string in its own colon
+                          ; definition for stable storage instead - but
+                          ; that still leaves interpreted S" itself
+                          ; capped at SIBUF's 32 characters for any
+                          ; single string. Now computes PAD's current
+                          ; address fresh via PADW (dynamic - depends
+                          ; on CODEHERE, per ANS's own transient-region
+                          ; semantics) and writes there instead, giving
+                          ; interpreted S" access to PAD's full
+                          ; PADMINSIZE-character region (84, comfortably
+                          ; above the old 32-character SIBUF limit) -
+                          ; SIBUF itself is now unused and retired (see
+                          ; the GLOBALS layout notes above).
+          JSR  PADW
+          PULU X
+          STX  MSCR4        ; save PAD's own address - X gets advanced
+                             ; by the copy loop below, need the
+                             ; original back for the return value
+          LDY  SPTR
           LDB  SCNT
-          LDX  #SIBUF
           BEQ  SQIEND
 SQICPY:   LDA  ,Y+
           STA  ,X+
           DECB
           BNE  SQICPY
-SQIEND:   LDX  #SIBUF
+SQIEND:   LDX  MSCR4
           PSHU X
           CLRA
           LDB  SCNT
@@ -5013,12 +5469,19 @@ DOTSTR:  PULS  X
 
 DOTQUOTE: LDD  #34
           PSHU D
+          LDD  CODEHERE   ; BUG FIX: same class as SQUOTE above -
+          ADDD #3         ; reserve 3 bytes ahead of WORD's write so
+          STD  CODEHERE   ; the trampoline compiled below doesn't
+                          ; overwrite the text it's about to stage.
           JSR  WORD
           PULU X
           LDA  ,X
           STA  SCNT
           LEAX 1,X
           STX  SPTR
+          LDD  CODEHERE   ; restore
+          SUBD #3
+          STD  CODEHERE
           LDD  #DOTSTR
           PSHU D
           JSR  CCALL
@@ -5339,62 +5802,80 @@ SNNOTFOUND: LDD #0
             PSHU D
             RTS
 
-UNESCAPEW: PULU D
+UNESCAPEW: PULU D        ; BUG FIX: was PULU D/STD UESRCLEN (storing
+           STD  UEDST     ; the popped dest-addr into the SOURCE-
+                          ; length variable), then LDD ,U (a PEEK, not
+                          ; a pop) into BOTH UEADDR and UEDST - so the
+                          ; real source length was misread as an
+                          ; address, the real source address was never
+                          ; popped at all, and the true destination
+                          ; address never reached UEDST. Correct
+                          ; ANS order is ( c-addr1 u1 c-addr2 -- ):
+                          ; c-addr2 (dest) is on top, popped first.
+           PULU D         ; next: u1 (source length)
            STD  UESRCLEN
-           LDD  ,U
+           PULU D         ; next: c-addr1 (source address)
            STD  UEADDR
-           STD  UEDST
            LDD  #0
            STD  UEOUTLEN
            LDX  UEADDR
            LDY  UEDST
+
+           ; ALGORITHM REPLACED (caught by MAME testing after the
+           ; argument-order fix above): the entire body below used
+           ; to decode backslash escape sequences (\n, \t, \\, \") -
+           ; a plausible-looking but entirely wrong reading of what
+           ; ANS UNESCAPE does. Confirmed against the actual spec and
+           ; its canonical reference implementation (forth-standard.
+           ; org/standard/string/UNESCAPE and complang.tuwien.ac.at's
+           ; ANS Forth reference text): UNESCAPE has nothing to do
+           ; with backslash sequences at all - it replaces every '%'
+           ; character with two '%' characters, and nothing else, so
+           ; that a literal '%' in text survives an eventual
+           ; SUBSTITUTE pass unchanged ("If you pass a string through
+           ; UNESCAPE and then SUBSTITUTE, you get the original
+           ; string"). Every character that ISN'T '%' passes straight
+           ; through, one-for-one. Confirmed via MAME: doubling a
+           ; single '%' wasn't happening at all, and the returned
+           ; count didn't grow to reflect the added characters -
+           ; both are direct, expected consequences of this being the
+           ; wrong algorithm entirely, not a smaller bug within it.
 UELOOP:    LDD  UESRCLEN
            BEQ  UEDONE
            LDA  ,X+
-           CMPA #'\'
-           BNE  UEPLAIN
-           LDD  UESRCLEN
-           SUBD #1
-           STD  UESRCLEN
-           BEQ  UEPLAIN
-           LDA  ,X+
-           CMPA #'n'
-           BNE  UECKT
-           LDA  #10
-           BRA  UEEMIT
-UECKT:     CMPA #'t'
-           BNE  UECKBS
-           LDA  #9
-           BRA  UEEMIT
-UECKBS:    CMPA #'\'
-           BEQ  UEEMIT
-           CMPA #'"'
-           BEQ  UEEMIT
-           PSHS A
-           LDA  #'\'
-           STA  ,Y+
-           LDD  UEOUTLEN
-           ADDD #1
-           STD  UEOUTLEN
-           PULS A
-UEEMIT:    STA  ,Y+
-           LDD  UEOUTLEN
-           ADDD #1
-           STD  UEOUTLEN
+           CMPA #'%'
+           BNE  UENOTPCT
+           LDB  #'%'      ; write the extra '%' first - the character
+           STB  ,Y+       ; itself still gets written once more below,
+                          ; giving two '%' total for each one in the
+                          ; source. Handles multiple '%' characters in
+                          ; the same string correctly, since this runs
+                          ; independently for each one the loop visits.
+UENOTPCT:  STA  ,Y+       ; write the actual character - always, for
+                          ; every character, '%' or not
            LDD  UESRCLEN
            SUBD #1
            STD  UESRCLEN
            BRA  UELOOP
-UEPLAIN:   STA  ,Y+
+UEDONE:    TFR  Y,D       ; BUG FIX: was "LDD UEOUTLEN / STD ,U" -
+           SUBD UEDST     ; overwriting whatever was left on top of
+           STD  UEOUTLEN  ; the stack rather than pushing both
+                          ; required return values, and separately,
+                          ; UEOUTLEN itself was never correctly
+                          ; tracked by the old backslash-decoding
+                          ; loop's own per-character bookkeeping in a
+                          ; way that accounted for doubled '%'
+                          ; characters. Now computed directly as the
+                          ; final write pointer (Y) minus the
+                          ; original destination address (UEDST) -
+                          ; correct regardless of how many characters
+                          ; were doubled, since it's derived from
+                          ; where writing actually stopped rather than
+                          ; incremented alongside it.
+           LDD  UEDST
+           PSHU D         ; push c-addr2 (destination address)
            LDD  UEOUTLEN
-           ADDD #1
-           STD  UEOUTLEN
-           LDD  UESRCLEN
-           SUBD #1
-           STD  UESRCLEN
-           BRA  UELOOP
-UEDONE:    LDD  UEOUTLEN
-           STD  ,U
+           PSHU D         ; push u2 (actual unescaped length)
            RTS
 
 ; REPLACES/SUBSTITUTE - single-slot simplified version, per
@@ -5431,7 +5912,30 @@ SUBCPLP: LDD  SUBCOPYCNT
          BRA  SUBCPLP
 SUBCPDONE: RTS
 
-SUBSTITUTEW: PULU D
+SUBSTITUTEW: ; REWRITE: was a plain substring search-and-replace on
+             ; the bare registered name (via SEARCHW), which found
+             ; "girl" and replaced only that span, leaving surrounding
+             ; "%...%" delimiters untouched in the output - and never
+             ; returned the substitution count ANS requires as a
+             ; third stack item. Per the ANS spec (forth-standard.org/
+             ; standard/string/SUBSTITUTE), SUBSTITUTE must scan for
+             ; text between '%' (ASCII $25) delimiter pairs
+             ; specifically: "%%" collapses to a single '%' (count
+             ; unchanged); a name matching the REPLACES registration
+             ; has the ENTIRE "%name%" span - delimiters included -
+             ; replaced by the substitution text (count incremented);
+             ; a non-matching name is passed through unchanged,
+             ; delimiters and all (count unchanged); an unpaired
+             ; trailing '%' with no closing delimiter passes the
+             ; residue through unchanged. Confirmed via MAME testing
+             ; against a real template. GLOBALS is fully packed
+             ; (256/256), so this reuses MSCR/MSCR2/MSCR3/MSCR4
+             ; (confirmed untouched by SUBCOPY) rather than adding
+             ; dedicated cells: MSCR = current read position, MSCR2 =
+             ; running substitution count, MSCR3/MSCR4 = local scratch
+             ; per %-pair found. Reuses the existing COMPAREW for name
+             ; matching rather than a new comparison loop.
+             PULU D
              STD  SUBDESTCAP
              PULU D
              STD  SUBDESTADR
@@ -5440,65 +5944,116 @@ SUBSTITUTEW: PULU D
              PULU D
              STD  SUBSRCADR
 
-             LDD  SUBSRCADR
-             PSHU D
+             LDY  SUBDESTADR
+             STY  SUBWPTR
+             LDD  #0
+             STD  SUBOUTLEN
+             STD  MSCR        ; read position, starts at 0
+             STD  MSCR2       ; substitution count, starts at 0
+
+SUBSCAN:     LDD  MSCR
+             CMPD SUBSRCLEN
+             LBHS SUBSDONE
+             LDX  SUBSRCADR
+             LEAX D,X
+             LDA  ,X
+             CMPA #$25         ; '%' delimiter
+             BEQ  SUBPCT
+             LDD  #1
+             JSR  SUBCOPY
+             LDD  MSCR
+             ADDD #1
+             STD  MSCR
+             LBRA SUBSCAN
+
+SUBPCT:      LDD  MSCR
+             ADDD #1
+             STD  MSCR3        ; scan for the closing '%'
+SUBFINDCL:   LDD  MSCR3
+             CMPD SUBSRCLEN
+             BLO  SUBFC2
+             ; no closing delimiter found - residue passed unchanged
+             LDD  MSCR
+             LDX  SUBSRCADR
+             LEAX D,X
              LDD  SUBSRCLEN
+             SUBD MSCR
+             JSR  SUBCOPY
+             LDD  SUBSRCLEN
+             STD  MSCR
+             LBRA SUBSCAN
+SUBFC2:      LDD  MSCR3
+             LDX  SUBSRCADR
+             LEAX D,X
+             LDA  ,X
+             CMPA #$25
+             BEQ  SUBFOUNDCL
+             LDD  MSCR3
+             ADDD #1
+             STD  MSCR3
+             LBRA SUBFINDCL
+
+SUBFOUNDCL:  LDD  MSCR3
+             SUBD MSCR
+             SUBD #1
+             STD  MSCR4         ; enclosed name length
+             LBNE SUBHASNAME
+             ; namelen 0: "%%" -> single '%' to output, count unchanged
+             LDD  MSCR
+             LDX  SUBSRCADR
+             LEAX D,X
+             LDD  #1
+             JSR  SUBCOPY
+             LDD  MSCR3
+             ADDD #1
+             STD  MSCR
+             LBRA SUBSCAN
+
+SUBHASNAME:  LDD  MSCR
+             ADDD #1
+             LDX  SUBSRCADR
+             LEAX D,X
+             PSHU X
+             LDD  MSCR4
              PSHU D
              LDD  REPLNAME
              PSHU D
              LDD  REPLNLEN
              PSHU D
-             JSR  SEARCHW
+             JSR  COMPAREW
              PULU D
              CMPD #0
-             BEQ  SUBNOTFOUND
-             PULU D
-             PULU D
-             STD  MSCR4
-
-             LDY  SUBDESTADR
-             STY  SUBWPTR
-             LDD  #0
-             STD  SUBOUTLEN
-
-             LDD  MSCR4
-             SUBD SUBSRCADR
-             STD  MSCR3
-             LDX  SUBSRCADR
-             LDD  MSCR3
-             JSR  SUBCOPY
-
+             BNE  SUBNOMATCH
+             ; valid name - replace the whole %name% span
              LDX  REPLVAL
              LDD  REPLVLEN
              JSR  SUBCOPY
-
-             LDD  MSCR4
-             ADDD REPLNLEN
+             LDD  MSCR2
+             ADDD #1
              STD  MSCR2
-             LDD  SUBSRCLEN
-             SUBD MSCR3
-             SUBD REPLNLEN
+             LDD  MSCR3
+             ADDD #1
              STD  MSCR
-             LDX  MSCR2
-             LDD  MSCR
-             JSR  SUBCOPY
+             LBRA SUBSCAN
 
-             LDX  SUBDESTADR
+SUBNOMATCH:  ; not a registered name - pass %name% through unchanged
+             LDD  MSCR
+             LDX  SUBSRCADR
+             LEAX D,X
+             LDD  MSCR3
+             SUBD MSCR
+             ADDD #1
+             JSR  SUBCOPY
+             LDD  MSCR3
+             ADDD #1
+             STD  MSCR
+             LBRA SUBSCAN
+
+SUBSDONE:    LDX  SUBDESTADR
              PSHU X
              LDD  SUBOUTLEN
              PSHU D
-             RTS
-
-SUBNOTFOUND: LDY SUBDESTADR
-             STY SUBWPTR
-             LDD #0
-             STD SUBOUTLEN
-             LDX SUBSRCADR
-             LDD SUBSRCLEN
-             JSR SUBCOPY
-             LDX SUBDESTADR
-             PSHU X
-             LDD SUBOUTLEN
+             LDD  MSCR2
              PSHU D
              RTS
 
@@ -5624,9 +6179,15 @@ DABSOK:  PSHU  D
          JSR   EMIT
          RTS
 
-UDOT:    PULU  D
-         PSHU  D
-         LDD   #0
+UDOT:    LDD   #0        ; SIMPLIFICATION: was PULU D/PSHU D here first -
+                          ; a literal no-op (pop the value, immediately
+                          ; push it back, nothing in between), leftover
+                          ; rather than functional. The value being
+                          ; formatted was never actually consumed here;
+                          ; this line already pushes 0 on top of it
+                          ; unchanged either way. Removed per the
+                          ; parallel 68000 port's observation, confirmed
+                          ; by inspection.
          PSHU  D
          JSR   LTNUM
          JSR   NUMSIGNS
@@ -5679,9 +6240,11 @@ DRNOPAD: LDX   DRADDR
 
 UDOTR:   PULU  D
          STD   DRWIDTH
-         PULU  D
-         PSHU  D
-         LDD   #0
+         LDD   #0        ; SIMPLIFICATION: was PULU D/PSHU D here first -
+                          ; a literal no-op on the value being formatted
+                          ; (the width above is a real, separate pop -
+                          ; unaffected). Removed per the parallel 68000
+                          ; port's observation, confirmed by inspection.
          PSHU  D
          JSR   LTNUM
          JSR   NUMSIGNS
@@ -5999,19 +6562,19 @@ HDEMIT:   PSHU D
           RTS
 
 HEXBYTE: PULU  D
-         STB   MSCR
-         LDB   MSCR+1
-         LSRB
-         LSRB
-         LSRB
-         LSRB
-         CLRA
-         PSHU  D
-         JSR   HEXDIGIT
-         LDB   MSCR+1
-         ANDB  #$0F
-         CLRA
-         PSHU  D
+         STB   MSCR      ; BUG FIX: STB writes ONE byte, at MSCR
+         LDB   MSCR      ; itself - both reads below used to read
+         LSRB             ; MSCR+1 instead, a byte this routine never
+         LSRB             ; writes at all, so both the high and low
+         LSRB             ; nibble extraction ran on whatever stale
+         LSRB             ; value happened to be sitting there, not
+         CLRA             ; the byte actually passed in. Now reads
+         PSHU  D           ; from MSCR, where STB actually put it.
+         JSR   HEXDIGIT    ; Confirmed via MAME debugger: DUMP showed
+         LDB   MSCR        ; $03 instead of $7B for a memory fill
+         ANDB  #$0F        ; character, with the ASCII column (a
+         CLRA              ; separate code path) correctly showing
+         PSHU  D           ; "}".
          JSR   HEXDIGIT
          RTS
 
@@ -6020,6 +6583,13 @@ DUMPW:   PULU  D
          STD   DUMPCNT
          PULU  D
          STD   DUMPADDR
+         JSR   CRW        ; FORMATTING: leading CR, so the first line
+                          ; starts on its own fresh line - matches
+                          ; DULEND's existing trailing CR after every
+                          ; line (including the last), giving
+                          ; consistent vertical alignment from the
+                          ; first line to the last regardless of
+                          ; where the cursor was when DUMP was called.
 DULINE:  LDD   DUMPCNT
          LBEQ  DUDONE          ; was BEQ - out of short-branch range
          LDD   DUMPADDR
@@ -6188,6 +6758,10 @@ CLRGLOB: CLR   ,X+
          CLR   ,X
 
          JSR   INITSERIAL
+
+         IFEQ  UNITTESTS  ; >>>>>>>>>>
+         JSR   TSTRUNNER
+         ENDC  ; <<<<<<<<<<
 
          JMP   COLD
 
