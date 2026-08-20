@@ -52,7 +52,7 @@ VHEREW:  LDD   VARHERE
          RTS
 
 PADW:    LDD   CODEHERE
-         ADDD  #84
+         ADDD  #PADOFFSET
          PSHU  D
          RTS
 

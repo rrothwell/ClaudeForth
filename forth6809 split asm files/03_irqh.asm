@@ -1,7 +1,7 @@
 ; ============================================================
 ; SECTION 3: ACIA INTERRUPT HANDLER
 ; ============================================================
-         ORG   BASECODE       ; BASECODE is $DFF4. This ORG was missing
+         ORG   BASECODE       ; BASECODE is $E02A. This ORG was missing
                                ; entirely - every routine from here through
                                ; SECTION 26 (IRQH, COLD/ABORT/QUIT, and
                                ; every primitive) would otherwise have
@@ -10,6 +10,25 @@
                                ; inside INIT's 48-byte $FFC0-$FFEF budget,
                                ; overflowing directly into VECTORS ($FFF0)
                                ; instead of landing in BASECODE at all
+
+; ------------------------------------------------------------
+; INITSERIAL - initializes the ACIA: master reset, then selects
+; interrupt-driven or polling operation depending on SERIALPOLL.
+; Extracted from COLDSTRT, which now just JSRs here - moved into
+; this section so the ACIA's own init code sits next to the rest
+; of its interrupt/polling logic rather than inline in COLDSTRT.
+; ------------------------------------------------------------
+INITSERIAL: LDA   #$03
+         STA   ACIACR         ; was "STA ACIA" - only correct by
+                               ; coincidence while ACIA and ACIACR were
+                               ; the same address; now genuinely distinct
+         IFEQ SERIALPOLL  ; >>>>>>>>>>
+         LDA   #CR_RXON        ; interrupt-driven mode: RX interrupt on
+         ELSE  ; <<<<<>>>>>
+         LDA   #CR_POLL        ; polling mode: no interrupts, RTS held low
+         ENDC  ; <<<<<<<<<<
+         STA   ACIACR         ; was "STA ACIA" - same fix
+         RTS
 
          IFEQ SERIALPOLL  ; >>>>>>>>>>
 ; ------------------------------------------------------------

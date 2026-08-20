@@ -54,19 +54,19 @@ HDEMIT:   PSHU D
           RTS
 
 HEXBYTE: PULU  D
-         STB   MSCR
-         LDB   MSCR+1
-         LSRB
-         LSRB
-         LSRB
-         LSRB
-         CLRA
-         PSHU  D
-         JSR   HEXDIGIT
-         LDB   MSCR+1
-         ANDB  #$0F
-         CLRA
-         PSHU  D
+         STB   MSCR      ; BUG FIX: STB writes ONE byte, at MSCR
+         LDB   MSCR      ; itself - both reads below used to read
+         LSRB             ; MSCR+1 instead, a byte this routine never
+         LSRB             ; writes at all, so both the high and low
+         LSRB             ; nibble extraction ran on whatever stale
+         LSRB             ; value happened to be sitting there, not
+         CLRA             ; the byte actually passed in. Now reads
+         PSHU  D           ; from MSCR, where STB actually put it.
+         JSR   HEXDIGIT    ; Confirmed via MAME debugger: DUMP showed
+         LDB   MSCR        ; $03 instead of $7B for a memory fill
+         ANDB  #$0F        ; character, with the ASCII column (a
+         CLRA              ; separate code path) correctly showing
+         PSHU  D           ; "}".
          JSR   HEXDIGIT
          RTS
 
@@ -75,6 +75,13 @@ DUMPW:   PULU  D
          STD   DUMPCNT
          PULU  D
          STD   DUMPADDR
+         JSR   CRW        ; FORMATTING: leading CR, so the first line
+                          ; starts on its own fresh line - matches
+                          ; DULEND's existing trailing CR after every
+                          ; line (including the last), giving
+                          ; consistent vertical alignment from the
+                          ; first line to the last regardless of
+                          ; where the cursor was when DUMP was called.
 DULINE:  LDD   DUMPCNT
          LBEQ  DUDONE          ; was BEQ - out of short-branch range
          LDD   DUMPADDR

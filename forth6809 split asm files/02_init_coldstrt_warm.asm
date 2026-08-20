@@ -1,7 +1,7 @@
 ; ============================================================
 ; SECTION 2: INIT CODE (COLDSTRT / WARM)
 ; ============================================================
-         ORG   INITCODE       ; INITCODE is $FFA2 (was INIT/$FFA0, before that literal $FFC0)
+         ORG   INITCODE       ; INITCODE is $FFA9 (was $FFA2, before that $FFA0, before that literal $FFC0)
 COLDSTRT:
          ORCC  #$50
          LDS   #RSTACK+1
@@ -19,16 +19,11 @@ CLRGLOB: CLR   ,X+
          CLR   ,X+
          CLR   ,X
 
-         LDA   #$03
-         STA   ACIACR         ; was "STA ACIA" - only correct by
-                               ; coincidence while ACIA and ACIACR were
-                               ; the same address; now genuinely distinct
-         IFEQ SERIALPOLL  ; >>>>>>>>>>
-         LDA   #CR_RXON        ; interrupt-driven mode: RX interrupt on
-         ELSE  ; <<<<<>>>>>
-         LDA   #CR_POLL        ; polling mode: no interrupts, RTS held low
+         JSR   INITSERIAL
+
+         IFEQ  UNITTESTS  ; >>>>>>>>>>
+         JSR   TSTRUNNER
          ENDC  ; <<<<<<<<<<
-         STA   ACIACR         ; was "STA ACIA" - same fix
 
          JMP   COLD
 

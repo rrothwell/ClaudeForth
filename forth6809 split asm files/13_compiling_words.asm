@@ -162,12 +162,19 @@ ABORTQUOTE: LDD  STATE
             JSR  THROW
 AQSTOK:     LDD  #34
             PSHU D
+            LDD  CODEHERE  ; BUG FIX: same class as SQUOTE/DOTQUOTE -
+            ADDD #3        ; reserve 3 bytes ahead of WORD's write so
+            STD  CODEHERE  ; the trampoline compiled below doesn't
+                          ; overwrite the text it's about to stage.
             JSR  WORD
             PULU X
             LDA  ,X
             STA  SCNT
             LEAX 1,X
             STX  SPTR
+            LDD  CODEHERE  ; restore
+            SUBD #3
+            STD  CODEHERE
             LDD  #DOABORTQUOTE
             PSHU D
             JSR  CCALL

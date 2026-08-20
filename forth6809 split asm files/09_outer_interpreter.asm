@@ -2,7 +2,17 @@
 ; SECTION 9: OUTER INTERPRETER (INTERPRET / WORD / FIND / NUMBER?)
 ; ============================================================
 INTERPRET:
-ILOOP:   JSR   WORD
+ILOOP:   LDD   #32            ; BUG FIX: WORD expects a delimiter char
+         PSHU  D              ; pushed by its caller (PULU D/STB DELIM)
+                               ; - nothing pushed one here before, so
+                               ; WORD pulled from an empty U stack,
+                               ; landing on live RSTACK content (SP0 is
+                               ; RSTACK's own first byte) instead of a
+                               ; real delimiter. Confirmed present in
+                               ; both SERIALPOLL branches - IRQH never
+                               ; touches U, so interrupt-driven mode
+                               ; had no incidental workaround either.
+         JSR   WORD
          LDX   ,U
          LDA   ,X
          BEQ   IDONE
@@ -42,7 +52,17 @@ BADWORD: JSR   COUNT
          PSHU  D
          JSR   THROW
 
-IDONE:   RTS
+IDONE:   PULU  X         ; BUG FIX: WORD always pushes a c-addr (WORDBUF),
+                          ; even via its EMPTY branch - this path used to
+                          ; branch straight here via a bare peek (LDX ,U,
+                          ; never popped), stranding that address on U.
+                          ; JSR FIND (the other path) consumes it via its
+                          ; own PULU X; this does the same here, matching
+                          ; that same convention rather than inventing a
+                          ; different one. Confirmed via MAME debugger:
+                          ; a spurious WORDBUF address was found sitting
+                          ; on top of otherwise-correct stack contents.
+         RTS
 
 WORD:    PULU  D
          STB   DELIM
@@ -70,7 +90,34 @@ SCANLP:  CMPY  #0
          LDA   ,X
          CMPA  DELIM
          BEQ   CONSUME
-         CMPB  #31
+         CMPB  #WORDMAXCHARS  ; REDESIGN: was "CMPB #31", capping WORD
+                          ; at 31 characters regardless of what it was
+                          ; parsing - a plain word, a defined name, or
+                          ; the text of a compiled/interpreted S"
+                          ; string, all fed through the same scan.
+                          ; That cap came from WORDBUF's own fixed
+                          ; 33-byte allocation (1 count byte + 32 data
+                          ; bytes, with 1 byte of that never actually
+                          ; used by this check), entirely unrelated to
+                          ; CODEHERE or PAD. Traced via MAME: a longer
+                          ; S" string was truncated during WORD's own
+                          ; scan, before either S"'s interpreted-mode
+                          ; (PAD) or compiled-mode (CODEHERE) storage
+                          ; path ever got a chance to matter - the
+                          ; PAD-based S" redesign a few turns ago
+                          ; didn't help here because this is an
+                          ; earlier stage entirely. Now uses the
+                          ; CODEHERE-to-PAD gap directly, matching the
+                          ; traditional fig-Forth layout (WORD's own
+                          ; buffer at HERE, growing toward PAD, with
+                          ; the pictured numeric output buffer at the
+                          ; opposite end growing back toward HERE) -
+                          ; WORDMAXCHARS reserves HOLDMINSIZE bytes at
+                          ; the PAD end for that buffer, so the two
+                          ; don't collide even though ANS itself would
+                          ; permit them to (3.3.3.6: "the regions
+                          ; returned by WORD and #> may overlap in
+                          ; memory"). Confirmed via MAME debugger.
          BEQ   ENDW
          LEAX  1,X
          LEAY  -1,Y
@@ -79,11 +126,30 @@ SCANLP:  CMPY  #0
 
 CONSUME: LEAX  1,X
          LEAY  -1,Y
-ENDW:    TFR   X,D
+ENDW:    PSHS  B          ; BUG FIX: B holds the true character count from
+                          ; SCANLP's own INCB loop, but B is D's low byte -
+                          ; TFR X,D below would silently destroy it before
+                          ; it's stored as the length byte. Save it here,
+                          ; restore it right before STB ,X+. Affects every
+                          ; token followed by more input on the same line
+                          ; (terminated via CONSUME, not by running out of
+                          ; buffer) - the stored length was TOIN's delta
+                          ; instead of the true count, one too many (the
+                          ; consumed delimiter), so the copy loop below
+                          ; would also copy one byte past the token's real
+                          ; end. Confirmed via MAME debugger.
+         TFR   X,D
          SUBD  SRCADDR
          STD   TOIN
+         PULS  B
 
-         LDX   #WORDBUF
+         LDX   CODEHERE   ; REDESIGN: was "LDX #WORDBUF" - now writes
+                          ; at CODEHERE directly (see SCANLP above for
+                          ; the full reasoning). CODEHERE itself is
+                          ; NOT advanced by this - matches the ANS
+                          ; transient-region contract, where WORD's
+                          ; region is expected to be overwritten by
+                          ; whatever gets compiled/allocated next.
          STB   ,X+
          LDY   WSTART
 COPYLP:  TSTB
@@ -92,11 +158,12 @@ COPYLP:  TSTB
          STA   ,X+
          DECB
          BRA   COPYLP
-COPYDONE: LDX  #WORDBUF
+COPYDONE: LDX  CODEHERE   ; REDESIGN: was "LDX #WORDBUF", matching
+                          ; the copy destination above.
           PSHU X
           RTS
 
-EMPTY:   LDX   #WORDBUF
+EMPTY:   LDX   CODEHERE   ; REDESIGN: was "LDX #WORDBUF" - same reason.
          CLR   ,X
          PSHU  X
          RTS

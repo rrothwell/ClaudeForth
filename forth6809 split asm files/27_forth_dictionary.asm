@@ -1,15 +1,16 @@
 ; ============================================================
 ; SECTION 27: FORTH DICTIONARY (ROM base dictionary headers)
 ; Every primitive word in the Glossary gets a real header here,
-; chained via LINK, living in BASEDICT ($D85D-$E011, an exact fit
-; for this dictionary's 1973 bytes - was $E000-$E7FF). CFA points
-; directly at each primitive's own code label for almost every
-; entry - these are raw code entries, not DODOES trampolines, so
-; CFA = the label itself. The two exceptions are TRUE and FALSE
-; (added in a later pass, chain's newest entries): their CFA is
-; the DODOES-trampoline pattern instead, matching what CONSTANT
-; would compile interactively - see TRUEBODY/FALSEBODY, section
-; 26, for why and how.
+; chained via LINK, living in BASEDICT ($D83F-$E006, an exact fit
+; for this dictionary's 1992 bytes - was $E000-$E7FF). CFA points
+; directly at each primitive's own code label for every entry -
+; these are all raw code entries, CFA = the label itself,
+; including TRUE and FALSE (added in a later pass, chain's newest
+; entries before H_ABORT/H_QUIT below), which originally used the
+; DODOES-trampoline pattern matching interactive CONSTANT, but are
+; now simple LDD/PSHU/RTS subroutines like everything else here -
+; see TRUEBODY/FALSEBODY, section 26, for the current code and why
+; they no longer need indirection.
 ;
 ; DOES> is included (H_DOESGT) - added in a follow-up pass after
 ; the original 214-entry generation flagged it as missing, then
@@ -20,12 +21,19 @@
 ; lives beside DODOES/DOESRT0; DOESGT is DOES>'s code label,
 ; since a literal ">" is not valid in a 6809 assembler label.
 ;
-; ABORT and QUIT already have hand-built headers (ABORTHDR/
-; QUITHDR, section 26) and are NOT duplicated here. This chain
-; is spliced in below them: QUITHDR -> ABORTHDR -> (newest entry
-; below) -> ... -> (oldest entry) -> 0. BASELATEST remains QUITHDR.
+; H_ABORT and H_QUIT (formerly ABORTHDR/QUITHDR, renamed to match
+; this file's H_ naming convention) are hand-built, not produced
+; by the same generation pass as the other 217 entries - see the
+; note where they're defined, at the end of this section, for why
+; HEADER/CREATE couldn't be used directly for these two. They used
+; to live physically apart from the rest of the dictionary, inside
+; BASECODE rather than BASEDICT, despite being header data rather
+; than code - moved here so every header lives in one place and
+; the chain (H_QUIT -> H_ABORT -> (newest entry below) -> ... ->
+; (oldest entry) -> 0) is visible in one block. BASELATEST remains
+; H_QUIT, the chain's true overall head.
 ;
-; ABORTHDR's LINK field, a placeholder 0 since it was first built,
+; H_ABORT's LINK field, a placeholder 0 since it was first built,
 ; is resolved here: it now points to this chain's newest entry.
 ;
 ; Names containing a literal double-quote (S", .", ABORT") have
@@ -1126,7 +1134,69 @@ H_FALSE:
          FDB   H_TRUE
          FDB   FALSEBODY
 
-DICTTOP  EQU   H_FALSE   ; newest entry in this base chain
+; H_ABORT and H_QUIT are hand-built, not produced by the same
+; generation pass as the 217 entries above - ABORT and QUIT need
+; to be findable at the prompt, but HEADER/CREATE couldn't be used
+; directly for these two (see the source conversation this file
+; was derived from for why). Moved here from their own separate
+; section so every header in this ROM lives in one contiguous
+; block, with the chain visible end to end: H_M2 -> H_2 -> H_M1 ->
+; H_1 -> H_FIND -> H_QUIT -> H_ABORT -> H_FALSE (the newest of the
+; 217 generated entries) -> ... -> H_KEY -> 0. H_M2 is now the true
+; head (see BASELATEST below) - H_FIND and the four number words
+; were chained on after H_QUIT in a later turn.
+H_ABORT: FCB   5
+         FCC   "ABORT"
+         FDB   H_FALSE        ; resolved - was placeholder 0, then H_DUMPW,
+                               ; then H_DOESGT, then H_DUMPW again once
+                               ; DOES> moved out of the chain's newest slot;
+                               ; now H_FALSE, the chain's newest entry
+         FDB   ABORT
+
+H_QUIT:  FCB   4
+         FCC   "QUIT"
+         FDB   H_ABORT
+         FDB   QUIT
+
+; FIND had no dictionary entry at all - confirmed by checking for
+; any H_FIND label or FCC "FIND" string anywhere in this file
+; before adding this. Its actual implementation (verified before
+; exposing it) already matches the standard stack effect exactly:
+; success pushes xt then 1 (immediate) or -1 (normal); failure
+; reconstructs and pushes the original c-addr, then 0.
+H_FIND:  FCB   4
+         FCC   "FIND"
+         FDB   H_QUIT
+         FDB   FIND
+
+H_1:     FCB   1
+         FCC   "1"
+         FDB   H_FIND
+         FDB   ONEBODY
+
+H_M1:    FCB   2
+         FCC   "-1"
+         FDB   H_1
+         FDB   MONEBODY
+
+H_2:     FCB   1
+         FCC   "2"
+         FDB   H_M1
+         FDB   TWOBODY
+
+H_M2:    FCB   2
+         FCC   "-2"
+         FDB   H_2
+         FDB   MTWOBODY
+
+BASELATEST EQU  H_M2   ; the ROM dictionary's true head - referenced by
+                          ; COLD to initialize LATEST. Was H_QUIT before
+                          ; FIND and the four number words (1/-1/2/-2)
+                          ; were chained on after it; before that,
+                          ; QUITHDR before the H_QUIT rename; before
+                          ; that, undefined entirely - a real bug, not
+                          ; a placeholder, found and fixed several turns
+                          ; before this one.
 
 ; Verify no collision with base code.
 ; Value should match ORG BASECODE

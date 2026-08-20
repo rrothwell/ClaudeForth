@@ -13,12 +13,28 @@ DOSTR:   PULS  X
 
 SQUOTE:  LDD   #34
          PSHU  D
+         LDD   CODEHERE   ; BUG FIX (caught while verifying the WORD
+         ADDD  #3         ; redesign above): reserve 3 bytes ahead of
+         STD   CODEHERE   ; where WORD is about to write its parsed
+                          ; text. Without this, the compiled path
+                          ; below would compile "JSR DOSTR" (3 bytes)
+                          ; directly at CODEHERE - the same address
+                          ; WORD just used - overwriting the first 2
+                          ; characters of the very text being staged,
+                          ; before the copy loop even runs. Reserving
+                          ; the gap first means the text lands exactly
+                          ; where it needs to end up, and the trampoline
+                          ; safely goes in front of it instead of on
+                          ; top of it.
          JSR   WORD
          PULU  X
          LDA   ,X
          STA   SCNT
          LEAX  1,X
          STX   SPTR
+         LDD   CODEHERE   ; restore - undo the temporary reserve
+         SUBD  #3
+         STD   CODEHERE
          LDD   STATE
          BEQ   SQINTERP
 
@@ -38,15 +54,45 @@ SQCPY:   LDA   ,Y+
 SQEND:   STX   CODEHERE
          RTS
 
-SQINTERP: LDY  SPTR
+SQINTERP: ; REDESIGN: was a fixed "LDX #SIBUF" here and at SQIEND -
+                          ; SIBUF was a dedicated, fixed 32-byte buffer,
+                          ; capping every interpreted S" string at 32
+                          ; characters and (worse) shared identically
+                          ; by every S" call, so a second S" call before
+                          ; the first string was actually used (e.g.
+                          ; registering two REPLACES strings, or a
+                          ; SUBSTITUTE template argument) silently
+                          ; overwrote the first - confirmed via MAME
+                          ; testing and traced precisely earlier this
+                          ; session. Retired per user's own follow-up
+                          ; testing/design decision: rather than give
+                          ; REPLACES its own dedicated copy-on-register
+                          ; storage, wrap each string in its own colon
+                          ; definition for stable storage instead - but
+                          ; that still leaves interpreted S" itself
+                          ; capped at SIBUF's 32 characters for any
+                          ; single string. Now computes PAD's current
+                          ; address fresh via PADW (dynamic - depends
+                          ; on CODEHERE, per ANS's own transient-region
+                          ; semantics) and writes there instead, giving
+                          ; interpreted S" access to PAD's full
+                          ; PADMINSIZE-character region (84, comfortably
+                          ; above the old 32-character SIBUF limit) -
+                          ; SIBUF itself is now unused and retired (see
+                          ; the GLOBALS layout notes above).
+          JSR  PADW
+          PULU X
+          STX  MSCR4        ; save PAD's own address - X gets advanced
+                             ; by the copy loop below, need the
+                             ; original back for the return value
+          LDY  SPTR
           LDB  SCNT
-          LDX  #SIBUF
           BEQ  SQIEND
 SQICPY:   LDA  ,Y+
           STA  ,X+
           DECB
           BNE  SQICPY
-SQIEND:   LDX  #SIBUF
+SQIEND:   LDX  MSCR4
           PSHU X
           CLRA
           LDB  SCNT
@@ -70,12 +116,19 @@ DOTSTR:  PULS  X
 
 DOTQUOTE: LDD  #34
           PSHU D
+          LDD  CODEHERE   ; BUG FIX: same class as SQUOTE above -
+          ADDD #3         ; reserve 3 bytes ahead of WORD's write so
+          STD  CODEHERE   ; the trampoline compiled below doesn't
+                          ; overwrite the text it's about to stage.
           JSR  WORD
           PULU X
           LDA  ,X
           STA  SCNT
           LEAX 1,X
           STX  SPTR
+          LDD  CODEHERE   ; restore
+          SUBD #3
+          STD  CODEHERE
           LDD  #DOTSTR
           PSHU D
           JSR  CCALL
@@ -396,62 +449,80 @@ SNNOTFOUND: LDD #0
             PSHU D
             RTS
 
-UNESCAPEW: PULU D
+UNESCAPEW: PULU D        ; BUG FIX: was PULU D/STD UESRCLEN (storing
+           STD  UEDST     ; the popped dest-addr into the SOURCE-
+                          ; length variable), then LDD ,U (a PEEK, not
+                          ; a pop) into BOTH UEADDR and UEDST - so the
+                          ; real source length was misread as an
+                          ; address, the real source address was never
+                          ; popped at all, and the true destination
+                          ; address never reached UEDST. Correct
+                          ; ANS order is ( c-addr1 u1 c-addr2 -- ):
+                          ; c-addr2 (dest) is on top, popped first.
+           PULU D         ; next: u1 (source length)
            STD  UESRCLEN
-           LDD  ,U
+           PULU D         ; next: c-addr1 (source address)
            STD  UEADDR
-           STD  UEDST
            LDD  #0
            STD  UEOUTLEN
            LDX  UEADDR
            LDY  UEDST
+
+           ; ALGORITHM REPLACED (caught by MAME testing after the
+           ; argument-order fix above): the entire body below used
+           ; to decode backslash escape sequences (\n, \t, \\, \") -
+           ; a plausible-looking but entirely wrong reading of what
+           ; ANS UNESCAPE does. Confirmed against the actual spec and
+           ; its canonical reference implementation (forth-standard.
+           ; org/standard/string/UNESCAPE and complang.tuwien.ac.at's
+           ; ANS Forth reference text): UNESCAPE has nothing to do
+           ; with backslash sequences at all - it replaces every '%'
+           ; character with two '%' characters, and nothing else, so
+           ; that a literal '%' in text survives an eventual
+           ; SUBSTITUTE pass unchanged ("If you pass a string through
+           ; UNESCAPE and then SUBSTITUTE, you get the original
+           ; string"). Every character that ISN'T '%' passes straight
+           ; through, one-for-one. Confirmed via MAME: doubling a
+           ; single '%' wasn't happening at all, and the returned
+           ; count didn't grow to reflect the added characters -
+           ; both are direct, expected consequences of this being the
+           ; wrong algorithm entirely, not a smaller bug within it.
 UELOOP:    LDD  UESRCLEN
            BEQ  UEDONE
            LDA  ,X+
-           CMPA #'\'
-           BNE  UEPLAIN
-           LDD  UESRCLEN
-           SUBD #1
-           STD  UESRCLEN
-           BEQ  UEPLAIN
-           LDA  ,X+
-           CMPA #'n'
-           BNE  UECKT
-           LDA  #10
-           BRA  UEEMIT
-UECKT:     CMPA #'t'
-           BNE  UECKBS
-           LDA  #9
-           BRA  UEEMIT
-UECKBS:    CMPA #'\'
-           BEQ  UEEMIT
-           CMPA #'"'
-           BEQ  UEEMIT
-           PSHS A
-           LDA  #'\'
-           STA  ,Y+
-           LDD  UEOUTLEN
-           ADDD #1
-           STD  UEOUTLEN
-           PULS A
-UEEMIT:    STA  ,Y+
-           LDD  UEOUTLEN
-           ADDD #1
-           STD  UEOUTLEN
+           CMPA #'%'
+           BNE  UENOTPCT
+           LDB  #'%'      ; write the extra '%' first - the character
+           STB  ,Y+       ; itself still gets written once more below,
+                          ; giving two '%' total for each one in the
+                          ; source. Handles multiple '%' characters in
+                          ; the same string correctly, since this runs
+                          ; independently for each one the loop visits.
+UENOTPCT:  STA  ,Y+       ; write the actual character - always, for
+                          ; every character, '%' or not
            LDD  UESRCLEN
            SUBD #1
            STD  UESRCLEN
            BRA  UELOOP
-UEPLAIN:   STA  ,Y+
+UEDONE:    TFR  Y,D       ; BUG FIX: was "LDD UEOUTLEN / STD ,U" -
+           SUBD UEDST     ; overwriting whatever was left on top of
+           STD  UEOUTLEN  ; the stack rather than pushing both
+                          ; required return values, and separately,
+                          ; UEOUTLEN itself was never correctly
+                          ; tracked by the old backslash-decoding
+                          ; loop's own per-character bookkeeping in a
+                          ; way that accounted for doubled '%'
+                          ; characters. Now computed directly as the
+                          ; final write pointer (Y) minus the
+                          ; original destination address (UEDST) -
+                          ; correct regardless of how many characters
+                          ; were doubled, since it's derived from
+                          ; where writing actually stopped rather than
+                          ; incremented alongside it.
+           LDD  UEDST
+           PSHU D         ; push c-addr2 (destination address)
            LDD  UEOUTLEN
-           ADDD #1
-           STD  UEOUTLEN
-           LDD  UESRCLEN
-           SUBD #1
-           STD  UESRCLEN
-           BRA  UELOOP
-UEDONE:    LDD  UEOUTLEN
-           STD  ,U
+           PSHU D         ; push u2 (actual unescaped length)
            RTS
 
 ; REPLACES/SUBSTITUTE - single-slot simplified version, per
@@ -488,7 +559,30 @@ SUBCPLP: LDD  SUBCOPYCNT
          BRA  SUBCPLP
 SUBCPDONE: RTS
 
-SUBSTITUTEW: PULU D
+SUBSTITUTEW: ; REWRITE: was a plain substring search-and-replace on
+             ; the bare registered name (via SEARCHW), which found
+             ; "girl" and replaced only that span, leaving surrounding
+             ; "%...%" delimiters untouched in the output - and never
+             ; returned the substitution count ANS requires as a
+             ; third stack item. Per the ANS spec (forth-standard.org/
+             ; standard/string/SUBSTITUTE), SUBSTITUTE must scan for
+             ; text between '%' (ASCII $25) delimiter pairs
+             ; specifically: "%%" collapses to a single '%' (count
+             ; unchanged); a name matching the REPLACES registration
+             ; has the ENTIRE "%name%" span - delimiters included -
+             ; replaced by the substitution text (count incremented);
+             ; a non-matching name is passed through unchanged,
+             ; delimiters and all (count unchanged); an unpaired
+             ; trailing '%' with no closing delimiter passes the
+             ; residue through unchanged. Confirmed via MAME testing
+             ; against a real template. GLOBALS is fully packed
+             ; (256/256), so this reuses MSCR/MSCR2/MSCR3/MSCR4
+             ; (confirmed untouched by SUBCOPY) rather than adding
+             ; dedicated cells: MSCR = current read position, MSCR2 =
+             ; running substitution count, MSCR3/MSCR4 = local scratch
+             ; per %-pair found. Reuses the existing COMPAREW for name
+             ; matching rather than a new comparison loop.
+             PULU D
              STD  SUBDESTCAP
              PULU D
              STD  SUBDESTADR
@@ -497,65 +591,116 @@ SUBSTITUTEW: PULU D
              PULU D
              STD  SUBSRCADR
 
-             LDD  SUBSRCADR
-             PSHU D
+             LDY  SUBDESTADR
+             STY  SUBWPTR
+             LDD  #0
+             STD  SUBOUTLEN
+             STD  MSCR        ; read position, starts at 0
+             STD  MSCR2       ; substitution count, starts at 0
+
+SUBSCAN:     LDD  MSCR
+             CMPD SUBSRCLEN
+             LBHS SUBSDONE
+             LDX  SUBSRCADR
+             LEAX D,X
+             LDA  ,X
+             CMPA #$25         ; '%' delimiter
+             BEQ  SUBPCT
+             LDD  #1
+             JSR  SUBCOPY
+             LDD  MSCR
+             ADDD #1
+             STD  MSCR
+             LBRA SUBSCAN
+
+SUBPCT:      LDD  MSCR
+             ADDD #1
+             STD  MSCR3        ; scan for the closing '%'
+SUBFINDCL:   LDD  MSCR3
+             CMPD SUBSRCLEN
+             BLO  SUBFC2
+             ; no closing delimiter found - residue passed unchanged
+             LDD  MSCR
+             LDX  SUBSRCADR
+             LEAX D,X
              LDD  SUBSRCLEN
+             SUBD MSCR
+             JSR  SUBCOPY
+             LDD  SUBSRCLEN
+             STD  MSCR
+             LBRA SUBSCAN
+SUBFC2:      LDD  MSCR3
+             LDX  SUBSRCADR
+             LEAX D,X
+             LDA  ,X
+             CMPA #$25
+             BEQ  SUBFOUNDCL
+             LDD  MSCR3
+             ADDD #1
+             STD  MSCR3
+             LBRA SUBFINDCL
+
+SUBFOUNDCL:  LDD  MSCR3
+             SUBD MSCR
+             SUBD #1
+             STD  MSCR4         ; enclosed name length
+             LBNE SUBHASNAME
+             ; namelen 0: "%%" -> single '%' to output, count unchanged
+             LDD  MSCR
+             LDX  SUBSRCADR
+             LEAX D,X
+             LDD  #1
+             JSR  SUBCOPY
+             LDD  MSCR3
+             ADDD #1
+             STD  MSCR
+             LBRA SUBSCAN
+
+SUBHASNAME:  LDD  MSCR
+             ADDD #1
+             LDX  SUBSRCADR
+             LEAX D,X
+             PSHU X
+             LDD  MSCR4
              PSHU D
              LDD  REPLNAME
              PSHU D
              LDD  REPLNLEN
              PSHU D
-             JSR  SEARCHW
+             JSR  COMPAREW
              PULU D
              CMPD #0
-             BEQ  SUBNOTFOUND
-             PULU D
-             PULU D
-             STD  MSCR4
-
-             LDY  SUBDESTADR
-             STY  SUBWPTR
-             LDD  #0
-             STD  SUBOUTLEN
-
-             LDD  MSCR4
-             SUBD SUBSRCADR
-             STD  MSCR3
-             LDX  SUBSRCADR
-             LDD  MSCR3
-             JSR  SUBCOPY
-
+             BNE  SUBNOMATCH
+             ; valid name - replace the whole %name% span
              LDX  REPLVAL
              LDD  REPLVLEN
              JSR  SUBCOPY
-
-             LDD  MSCR4
-             ADDD REPLNLEN
+             LDD  MSCR2
+             ADDD #1
              STD  MSCR2
-             LDD  SUBSRCLEN
-             SUBD MSCR3
-             SUBD REPLNLEN
+             LDD  MSCR3
+             ADDD #1
              STD  MSCR
-             LDX  MSCR2
-             LDD  MSCR
-             JSR  SUBCOPY
+             LBRA SUBSCAN
 
-             LDX  SUBDESTADR
+SUBNOMATCH:  ; not a registered name - pass %name% through unchanged
+             LDD  MSCR
+             LDX  SUBSRCADR
+             LEAX D,X
+             LDD  MSCR3
+             SUBD MSCR
+             ADDD #1
+             JSR  SUBCOPY
+             LDD  MSCR3
+             ADDD #1
+             STD  MSCR
+             LBRA SUBSCAN
+
+SUBSDONE:    LDX  SUBDESTADR
              PSHU X
              LDD  SUBOUTLEN
              PSHU D
-             RTS
-
-SUBNOTFOUND: LDY SUBDESTADR
-             STY SUBWPTR
-             LDD #0
-             STD SUBOUTLEN
-             LDX SUBSRCADR
-             LDD SUBSRCLEN
-             JSR SUBCOPY
-             LDX SUBDESTADR
-             PSHU X
-             LDD SUBOUTLEN
+             LDD  MSCR2
              PSHU D
              RTS
 

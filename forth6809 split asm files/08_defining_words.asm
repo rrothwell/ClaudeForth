@@ -34,9 +34,21 @@ CREATE:  LDD   #0
          LDD   #DOESRT0
          PSHU  D
          JSR   CODECOMMA
-         LDD   CODEHERE
-         PSHU  D
-         JSR   CODECOMMA
+         LDD   CODEHERE  ; BUG FIX: same self-referential PFA bug as
+         ADDD  #2        ; CONSTANT/DEFER/2CONSTANT/MARKER (CONSTANT's
+         PSHU  D         ; instance confirmed via MAME debugger) -
+         JSR   CODECOMMA ; without +2 this pointed at itself instead
+                          ; of the value cell that "," appends next.
+                          ; Never on the previously-flagged list (only
+                          ; DEFER/2CONSTANT/MARKER were), so it went
+                          ; unfixed until confirmed by inspection here.
+                          ; Confirmed via MAME: ": ENUM CREATE , DOES>
+                          ; @ ;" returned the PFA-pointer field's own
+                          ; address instead of the value COMMA stored
+                          ; one cell further on - exactly "the address
+                          ; before the 16-bit constant" instead of the
+                          ; address 1 cell further on, matching a
+                          ; user-reported MAME trace precisely.
          RTS
 
 ; ----------------------------------------------------------
@@ -82,9 +94,17 @@ CONSTANT: LDD  #0
           LDD  #ATSIGN
           PSHU D
           JSR  CODECOMMA
-          LDD  CODEHERE
-          PSHU D
-          JSR  CODECOMMA
+          LDD  CODEHERE   ; BUG FIX: was storing CODEHERE's value as-is,
+          ADDD #2         ; but at this point CODEHERE points at THIS
+          PSHU D          ; very cell, about to be written by the next
+          JSR  CODECOMMA  ; CODECOMMA - self-referential, not pointing
+                          ; at the value cell 2 bytes further on where
+                          ; the JSR COMMA below actually appends 1234.
+                          ; +2 accounts for this FDB field's own width,
+                          ; landing correctly on the value that follows.
+                          ; Confirmed via MAME debugger: executing the
+                          ; constant returned its own compile-time
+                          ; CODEHERE address instead of the real value.
           JSR  COMMA
           RTS
 
@@ -161,9 +181,11 @@ TWOCONSTANT: LDD #0
              LDD #DFETCH
              PSHU D
              JSR CODECOMMA
-             LDD CODEHERE
-             PSHU D
-             JSR CODECOMMA
+             LDD CODEHERE  ; BUG FIX: same self-referential PFA bug as
+             ADDD #2       ; CONSTANT (confirmed via MAME debugger) -
+             PSHU D        ; without +2 this pointed at itself instead
+             JSR CODECOMMA ; of the two-cell value that COMMA appends
+                            ; below.
              PULU D              ; x2, off the top
              STD  MSCR
              JSR  COMMA            ; x1 -> lower address
@@ -200,9 +222,14 @@ DEFERW:  LDD   #0
          LDD   #DODEFER
          PSHU  D
          JSR   CODECOMMA
-         LDD   CODEHERE
-         PSHU  D
-         JSR   CODECOMMA
+         LDD   CODEHERE  ; BUG FIX: same self-referential PFA bug as
+         ADDD  #2        ; CONSTANT (confirmed via MAME debugger) -
+         PSHU  D         ; without +2 this pointed at itself instead
+         JSR   CODECOMMA ; of the value cell DOABORTUNDEF lands in
+                          ; below. Confirmed by inspection: DODEFER's
+                          ; own "LDD ,X" would have read the PFA's own
+                          ; address and jumped there, crashing on
+                          ; execution of any newly-DEFER'd word.
          LDD   #DOABORTUNDEF
          PSHU  D
          JSR   COMMA
@@ -285,9 +312,17 @@ MARKERW: LDD   DPHERE
          LDD   #DOMARKER
          PSHU  D
          JSR   CODECOMMA
-         LDD   CODEHERE
-         PSHU  D
-         JSR   CODECOMMA
+         LDD   CODEHERE  ; BUG FIX: same self-referential PFA bug as
+         ADDD  #2        ; CONSTANT (confirmed via MAME debugger) -
+         PSHU  D         ; without +2 this pointed at itself instead
+         JSR   CODECOMMA ; of the four snapshot cells COMMA appends
+                          ; below. Confirmed by inspection: DOMARKER's
+                          ; own fixed-offset reads (,X / 2,X / 4,X /
+                          ; 6,X) would have read garbage relative to
+                          ; the intended MKDP/MKCODE/MKVAR/MKLATEST -
+                          ; the most severe of the three, since using
+                          ; a MARKER-created word would restore
+                          ; corrupted dictionary-state pointers.
          LDD   MKDP
          PSHU  D
          JSR   COMMA

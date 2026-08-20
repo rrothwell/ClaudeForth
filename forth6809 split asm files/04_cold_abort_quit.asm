@@ -31,11 +31,39 @@ ABORT:   LDU   #SP0
          ; falls through into QUIT
 
 QUIT:    LDS   #RP0
+         LDD   #0        ; BUG FIX: this reset used to live at QLOOP
+         STD   STATE     ; below, running on EVERY line - including
+                          ; lines in the middle of a colon definition
+                          ; that spans more than one line of input.
+                          ; COLON (sets STATE=-1) and SEMI (sets
+                          ; STATE=0, after checking CSP) are the
+                          ; correct, sole places STATE should change
+                          ; during normal operation - the old QLOOP
+                          ; reset was a third, redundant one that
+                          ; silently dropped back to interpret mode
+                          ; every time QUERY read a new line,
+                          ; regardless of whether ";" had actually
+                          ; been reached. A colon definition split
+                          ; across multiple lines would have every
+                          ; word on every line after the first
+                          ; interpreted (and, for anything with a
+                          ; stack effect, executed) instead of
+                          ; compiled - "TRUE" pushing TRUEV onto the
+                          ; data stack instead of being compiled,
+                          ; leaving a stray cell CSP would correctly
+                          ; catch as a mismatch at ";" (-22). Moved
+                          ; here rather than removed outright: QUIT is
+                          ; only re-entered on cold boot or an
+                          ; uncaught error routing back through ABORT
+                          ; (confirmed - ordinary successful lines
+                          ; loop back to QLOOP directly, never QUIT),
+                          ; so this still correctly forces interpret
+                          ; state exactly when ANS's own QUIT
+                          ; semantics call for it - just not on every
+                          ; single line of an otherwise-uninterrupted
+                          ; session. Confirmed via MAME debugger.
 
-QLOOP:   LDD   #0
-         STD   STATE
-
-         JSR   QUERY
+QLOOP:   JSR   QUERY
 
          LDD   DPHERE
          STD   QSAVEDP
@@ -75,9 +103,24 @@ QLOOP:   LDD   #0
          JSR   DOT
          BRA   QLOOP
 
-QOK:     LDD   STATE
+QOK:     JSR   CRW        ; BUG FIX: was JSR CRW AFTER the STATE check
+                          ; below, so "BNE QLOOP" (still compiling)
+                          ; skipped both the CR echo and the ok
+                          ; message together. The CR reflects a real
+                          ; keystroke - the user genuinely pressed
+                          ; Enter for that line - and should echo
+                          ; regardless of interpret/compile state;
+                          ; only the "ok" message itself should stay
+                          ; conditional (correctly not shown mid-
+                          ; definition). Previously, every line of a
+                          ; multi-line colon definition after the
+                          ; first had its line ending silently
+                          ; dropped, so the echoed source ran
+                          ; together onto one line with no
+                          ; resemblance to what was actually typed.
+                          ; Confirmed via MAME debugger.
+         LDD   STATE
          BNE   QLOOP
-         JSR   CRW
          LDX   #OKMSG
          PSHU  X
          LDD   #OKMSGL

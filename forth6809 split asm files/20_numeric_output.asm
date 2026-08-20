@@ -116,9 +116,15 @@ DABSOK:  PSHU  D
          JSR   EMIT
          RTS
 
-UDOT:    PULU  D
-         PSHU  D
-         LDD   #0
+UDOT:    LDD   #0        ; SIMPLIFICATION: was PULU D/PSHU D here first -
+                          ; a literal no-op (pop the value, immediately
+                          ; push it back, nothing in between), leftover
+                          ; rather than functional. The value being
+                          ; formatted was never actually consumed here;
+                          ; this line already pushes 0 on top of it
+                          ; unchanged either way. Removed per the
+                          ; parallel 68000 port's observation, confirmed
+                          ; by inspection.
          PSHU  D
          JSR   LTNUM
          JSR   NUMSIGNS
@@ -171,9 +177,11 @@ DRNOPAD: LDX   DRADDR
 
 UDOTR:   PULU  D
          STD   DRWIDTH
-         PULU  D
-         PSHU  D
-         LDD   #0
+         LDD   #0        ; SIMPLIFICATION: was PULU D/PSHU D here first -
+                          ; a literal no-op on the value being formatted
+                          ; (the width above is a real, separate pop -
+                          ; unaffected). Removed per the parallel 68000
+                          ; port's observation, confirmed by inspection.
          PSHU  D
          JSR   LTNUM
          JSR   NUMSIGNS

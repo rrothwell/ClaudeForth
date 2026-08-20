@@ -212,19 +212,38 @@ IWORD:   LDD   2,S        ; BUG FIX: PULS X/PSHS X used to bracket this
                           ; there. Confirmed via MAME debugger: "I"
                           ; returned the loop limit on every iteration.
 
-JWORD:   LDD   10,S       ; BUG FIX: same class as IWORD above - the
-         PSHU  D          ; PULS X/PSHS X pair shifted S by 2 first, so
-         RTS              ; "10,S" landed on the outer loop's limit
-                          ; instead of its index. Removed for the same
-                          ; reason - 10,S unshifted already correctly
-                          ; targets the outer index across a nested nest
-                          ; of nested DOSETUP frames.
+JWORD:   LDD   8,S        ; CORRECTION: an earlier turn changed this to
+         PSHU  D          ; 10,S, which was itself wrong - it assumed
+         RTS              ; DOSETUP's own JSR-pushed return address
+                          ; persists on S once each DOSETUP finishes.
+                          ; It doesn't: DOSETUP's own RTS pops and
+                          ; consumes it to jump into the loop body, so
+                          ; it never actually sits on S for J to count
+                          ; past. Re-traced by counting every real
+                          ; push/pop across a nested DO: after the
+                          ; inner DOSETUP finishes, S is [inner-index@0]
+                          ; [inner-limit@2][inner-leave@4][outer-
+                          ; index@6][outer-limit@8][outer-leave@10] -
+                          ; J's own JSR pushes one more cell on top,
+                          ; landing outer-index at 8, not 10. Offset 10
+                          ; read the outer loop's limit instead - a
+                          ; fixed value every iteration, exactly
+                          ; matching the observed bug (J stuck at the
+                          ; limit, never progressing). Confirmed via a
+                          ; real MULT-TABLE test on MAME.
 
-LEAVE:   LDD   #TRUEV    ; BUG FIX: same class as DOTEST above - PULS X
-         STD   6,S       ; used to run first, shifting S by 2 before this
-         PULS  X         ; write, landing 2 bytes past the LEAVE flag
-         PSHS  X         ; DOSETUP actually pushed. Deferred PULS X to
-         RTS             ; after the write, matching DOTEST's fix.
+LEAVE:   LDD   #TRUEV    ; BUG FIX (earlier): was PULS X first, shifting
+         STD   6,S       ; S by 2 before this write, landing 2 bytes
+         RTS             ; past the LEAVE flag DOSETUP actually pushed.
+                          ; Fixed by deferring PULS X to after the
+                          ; write - but that left a PULS X/PSHS X pair
+                          ; that had become a genuine no-op (nothing
+                          ; between them touches S or X, and this
+                          ; routine never uses X's value for anything,
+                          ; unlike DOTEST's own deferred PULS X, which
+                          ; feeds LDD ,X/LEAX D,X afterward). Removed,
+                          ; per the parallel 68000 port's observation,
+                          ; confirmed by inspection.
 
 LOOP:    PULU  D
          CMPD  #TAGDO
@@ -398,10 +417,27 @@ QDBUILD:  LEAX 2,X
           PSHS X
           RTS
 
-UNLOOP:  PULS  X
-         LEAS  6,S
-         PSHS  X
-         RTS
+UNLOOP:  RTS             ; DESIGN CHANGE: was PULS X/LEAS 6,S/PSHS X/RTS
+                          ; (a real discard of the loop-control frame).
+                          ; EXIT's own EXITUNLOOP mechanism already
+                          ; discards the frame automatically and
+                          ; correctly on every path - traced and
+                          ; confirmed: with no enclosing DO (compiled
+                          ; count 0), with one enclosing DO and no
+                          ; prior UNLOOP (discards the full 8-byte
+                          ; frame correctly). The one combination that
+                          ; broke was UNLOOP immediately before EXIT -
+                          ; UNLOOP discarding 6 of the 8 bytes itself,
+                          ; then EXITUNLOOP unconditionally discarding
+                          ; a full 8 more, overshooting into whatever
+                          ; sat below (typically the caller's own
+                          ; return address) and branching into random
+                          ; memory on return. Since UNLOOP has no
+                          ; other legitimate use than immediately
+                          ; preceding an exit from the definition, and
+                          ; EXIT already handles that correctly on its
+                          ; own, UNLOOP is now a true no-op rather than
+                          ; a second, conflicting discard mechanism.
 
 EXIT:    LDD   #0
          STD   EXITCNT
@@ -441,11 +477,18 @@ EULOOP:     CMPY #0
 EUDONE:     PULS Y
             JMP  ,Y
 
-CASEW:   LDD   #0
-         PSHU  D
-         LDD   #TAGCASE
-         PSHU  D
-         RTS
+CASEW:   LDD   #TAGCASE  ; BUG FIX: was LDD #0/PSHU D here first, pushing
+         PSHU  D         ; a value nothing downstream ever consumes -
+         RTS             ; OF/ENDOF never read this deep, and ENDCASE's
+                          ; scan loop stops the instant it sees TAGCASE,
+                          ; never popping past it. Left one cell
+                          ; permanently stranded below CSP's expected
+                          ; depth, so ";" always saw a mismatch and
+                          ; threw -22, even for the simplest CASE...
+                          ; ENDCASE with no OF clauses at all. Removed;
+                          ; confirmed by inspection that nothing reads
+                          ; or depends on it anywhere in OF/ENDOF/
+                          ; ENDCASE's logic.
 
 OF:      LDD   #OVER
          PSHU  D
