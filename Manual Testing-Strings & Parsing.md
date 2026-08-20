@@ -47,4 +47,4 @@ Comments:
 | SEARCH	| 0	| Checked directly while tracing SUBSTITUTE’s original bug — logic was correct. |
 | COMPARE	| 0	| Reused as a helper in the SUBSTITUTE rewrite — no defect found. |
 
-Total: 12 distinct bugs across 9 words, plus 
+Total: 12 distinct bugs across 9 words. 
