@@ -1821,14 +1821,14 @@ design decisions made since the original version.
       entries intact across all four `SERIALPOLL`x`UNITTESTS`
       combinations; byte-exact split-file reassembly. Given the size
       of the rewrite, long branches (`LBRA`/`LBHS`/`LBNE`) were used
-      liberally for loop-backs and larger jumps as a safety margin -
-      structural verification confirms label integrity and well-
-      formedness but does not check actual assembled branch-range
-      byte counts, so this is worth confirming on real assembly. Not
-      yet re-tested against a real MAME run with the `%`-delimiter
-      fix in place (the prior confirmation was against the
-      pre-rewrite version, which the user had already worked around
-      via colon-definition wrapping before this rewrite existed).
+      liberally for loop-backs and larger jumps as a safety margin.
+      **MAME-CONFIRMED** (single and double substitution both
+      correct: `S" Dancing, %girl%!" poem 80 SUBSTITUTE` -> "Dancing,
+      Agnetha!"; `S" Two dancing girls- %girl%! %girl%!" poem 80
+      SUBSTITUTE` -> "Two dancing girls- Agnetha! Agnetha!", with
+      `.S` showing `2` as the substitution count) - real assembly and
+      execution confirm the long-branch margin was sufficient and the
+      `%`-delimiter algorithm itself is correct.
 
 - [x] **Verification task, requested and completed: confirmed PAD's
       current offset satisfies all three ANS transient-region
@@ -1900,7 +1900,426 @@ design decisions made since the original version.
       combinations; byte-exact split-file reassembly; both updated
       Assembler Source appendix subsections (8.1 Memory Map and 8.20
       String Words) and all three updated glossary entries confirmed
-      present in the rendered PDF.
+      present in the rendered PDF. **MAME-CONFIRMED** as part of the
+      full substitution chain below - the PAD-based interpreted-mode
+      S" storage this entry introduced is exercised correctly by
+      every scenario in that confirmation.
+
+- [x] **Confirmed and fixed at the user's request: WORD had its own,
+      separate, fixed 31-character-capped buffer (WORDBUF), entirely
+      unrelated to CODEHERE or PAD - the PAD-based S" redesign two
+      turns ago didn't help long S" strings because WORD truncates
+      during parsing, an earlier stage than either S"'s storage
+      path.** Redesigned WORD to scan directly into the CODEHERE-to-
+      PAD gap instead, matching the traditional fig-Forth layout
+      (WORD's buffer at the CODEHERE end, the pictured numeric output
+      buffer at the PAD end, growing toward each other) - added
+      `WORDMAXCHARS` as a named constant reserving `HOLDMINSIZE` bytes
+      at the PAD end for that buffer, so the two don't collide even
+      though ANS itself would permit the overlap (3.3.3.6). `WORDBUF`
+      confirmed genuinely unused before retiring it, same treatment
+      as `SIBUF`'s retirement two turns ago.
+
+      **Serious collision bug caught and fixed while verifying this
+      redesign, before delivery - not reported by the user, found by
+      tracing the change's own consequences.** `SQUOTE` (S"),
+      `DOTQUOTE` ("."), and `AQSTOK` (ABORT") all compile a 3-byte
+      runtime trampoline (`JSR CCALL`) directly at `CODEHERE` *after*
+      calling `WORD` but *before* copying the parsed text - with
+      `WORD` now writing that same text at `CODEHERE` too, the
+      trampoline would overwrite the first bytes of the very text
+      being staged, before the copy loop ever ran. Checked every
+      other caller of `WORD` in the file systematically (`TO`, `IS`,
+      `ACTION-OF`, the main interpreter loop, `'`, `POSTPONE`,
+      `[']`, `CHAR`, `[CHAR]`, `(` ) - confirmed none of them share
+      this pattern, since they either resolve to an xt via `FIND`
+      immediately (never needing the raw text again) or extract a
+      single character into a register before any compilation runs.
+      `HEADER` (used by every defining word) is also unaffected,
+      since it writes into `DPHERE`, a completely separate region
+      from `CODEHERE`. Fixed all three affected words identically:
+      reserve 3 bytes ahead of `CODEHERE` before calling `WORD`, so
+      the parsed text naturally lands exactly where it needs to end
+      up, with the trampoline safely compiled into the reserved gap
+      in front of it rather than on top of it - the existing copy
+      loop becomes a harmless no-op (reading and writing the same
+      address) rather than needing to move anything.
+
+      Caught a further, related overflow while finishing this: the
+      3-byte reservation itself pushes the compiled path's text 3
+      bytes further into the CODEHERE-to-PAD gap than plain WORD-
+      parsing does (e.g. a dictionary name for FIND) - the original
+      `WORDMAXCHARS=49` would have let the worst case (S"/./ABORT",
+      at the cap) overflow 3 bytes into the pictured-numeric buffer's
+      reserved space. Corrected to `WORDMAXCHARS=46`, sized uniformly
+      for the worst case across all callers rather than tracking a
+      different effective limit per caller - simpler and safer.
+
+      Also caught and fixed a transcription error in my own edit
+      before it was ever delivered: while inserting an explanatory
+      comment into WORD's scan loop, the `BEQ ENDW` branch instruction
+      immediately following the length-cap comparison was
+      accidentally dropped, which would have made the length check
+      compare but never actually branch - re-verified against the
+      live file and corrected before proceeding further.
+
+      Glossary entries for `WORD`, `S"`, `."`, and `ABORT"` updated to
+      match - `S"`'s entry from the previous turn specifically is
+      corrected here, since its claimed "up to PADMINSIZE (84
+      characters)" limit was always inaccurate: WORD's own separate
+      cap (31 at the time, now 46) was still the binding constraint,
+      never 84.
+
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly; all four
+      updated Assembler Source appendix subsections (8.1 Memory Map,
+      8.10 Outer Interpreter, 8.14 Compiling Words, 8.20 String
+      Words) and all four updated glossary entries confirmed present
+      in the rendered PDF.
+
+      **MAME-CONFIRMED across every scenario that mattered**,
+      including the highest-risk one: `: expand S" Two dancing
+      girls- %girl%! %girl%!" poem 80 SUBSTITUTE DROP SPACE TYPE ;`
+      then `expand` -> "Two dancing girls- Agnetha! Agnetha!" -
+      this specifically exercises the compiled-mode collision fix in
+      `SQUOTE` (the reserve-3-bytes-before-calling-WORD pattern),
+      confirming the runtime trampoline and the parsed text no longer
+      overwrite each other. Also confirmed: the 34-character (and
+      longer, 36-character) strings that originally exposed WORD's
+      old 31-character cap now parse in full, in both interpreted
+      (`S" ..." poem 80 SUBSTITUTE`) and colon-definition-wrapped
+      (`: template S" ..." ;` then `template poem 80 SUBSTITUTE`)
+      forms, with correct output in every case.
+
+      `DOTQUOTE` (`."`) separately MAME-confirmed too - its own
+      reserve-3-bytes fix, applied identically to SQUOTE's but as a
+      distinct edit, exercised independently: `: .message ." <text>
+      " ;` then `.message` types the text correctly, unmodified.
+
+      `AQSTOK` (`ABORT"`) also separately MAME-confirmed, completing
+      independent confirmation of all three fixed words: `: over18 18
+      < ABORT" Must be > 18" ;` - `3 over18` correctly types the
+      message and throws -2 (the true-flag path); `18 over18`
+      correctly falls through with no message and no throw (the
+      false-flag path). Both branches of ABORT"'s own conditional
+      logic exercised, not just the message-compilation mechanics
+      shared with SQUOTE/DOTQUOTE.
+
+- [x] **Real, significant bug found via MAME testing and fixed:
+      `UNESCAPE`'s argument popping was completely wrong - only one
+      of its three arguments was ever popped, and even that one went
+      into the wrong variable.** ANS signature is `( c-addr1 u1
+      c-addr2 -- c-addr2 u2 )`. The code did `PULU D / STD UESRCLEN`
+      (storing the popped `c-addr2`, the real destination address,
+      into the *source-length* variable), then `LDD ,U` - a peek, not
+      a pop - into *both* `UEADDR` and `UEDST` (misreading `u1`, the
+      real source length, as an address, and never popping it off the
+      stack at all). `c-addr1`, the actual source address, was never
+      touched - left sitting on the stack the entire time. Net
+      effect: `UEADDR`/`UEDST` both ended up holding a small length
+      value misread as an address, the copy loop read and wrote
+      through whatever garbage that pointed at (low memory, within
+      GLOBALS itself, given typical string lengths), and the real
+      source/dest addresses were either misfiled or left stranded on
+      the stack - matching the reported symptom precisely (two
+      addresses left on the stack, no real count, buffer untouched).
+      Also fixed `UEDONE`'s return: it used to do `LDD UEOUTLEN / STD
+      ,U`, overwriting whatever was left on top of the stack rather
+      than pushing both required return values; now correctly pushes
+      `c-addr2` (destination address) then `u2` (actual unescaped
+      length), matching the ANS stack effect. Confirmed `UNESCAPEW` is
+      referenced nowhere else in the file before applying the fix.
+      The escape-processing loop itself (the `\n`/`\t`/`\\`/`\"`
+      handling, including the lone-trailing-backslash fix from
+      earlier this session) was untouched and unaffected - it operates
+      correctly once its input variables are actually populated
+      correctly. Verified: zero duplicate symbols, dictionary chain
+      still 224 entries intact across all four `SERIALPOLL`x
+      `UNITTESTS` combinations; byte-exact split-file reassembly. Not
+      yet confirmed via MAME.
+
+- [x] **Major finding, well beyond the prior turn's argument-order fix:
+      `UNESCAPE`'s entire algorithm was wrong from the start, not just
+      its argument popping.** After the previous fix corrected the
+      broken argument order, MAME testing showed doubling a single
+      `%` wasn't happening at all, and the returned count didn't grow
+      to account for it. Investigated against the actual spec rather
+      than assuming a smaller bug within the existing logic - fetched
+      both forth-standard.org/standard/string/UNESCAPE and the
+      complang.tuwien.ac.at ANS Forth reference text, which includes
+      the canonical reference implementation. Confirmed: `UNESCAPE`
+      has nothing to do with backslash escape sequences (`\n`, `\t`,
+      `\\`, `\"`) at all - the entire pre-existing implementation
+      (predating this session) was decoding a plausible-sounding but
+      entirely wrong operation. The real ANS `UNESCAPE` replaces every
+      `%` character with two `%` characters and passes everything
+      else through unchanged, specifically so that a literal `%` in
+      text survives an eventual `SUBSTITUTE` pass unchanged ("If you
+      pass a string through UNESCAPE and then SUBSTITUTE, you get the
+      original string"). Replaced the entire routine body accordingly
+      - confirmed the old backslash-handling labels
+      (`UELASTBS`/`UEPLAIN`/`UECKT`/`UECKBS`/`UEEMIT`) were internal
+      to this one routine before removing them. New output length is
+      computed directly as the final write pointer minus the starting
+      destination address, correct regardless of how many `%`
+      characters were doubled, rather than incrementally tracked
+      per-character the way the old (wrong) loop did it. Manually
+      traced the new algorithm against the ANS reference's own test
+      case (`"aaa%bbb"` `UNESCAPE` should equal `"aaa%%bbb"`) before
+      delivery - confirmed matching exactly, including the length
+      (7 characters in, 8 out). No destination-buffer-overflow check
+      added, matching the ANS reference implementation, which also
+      has none (an ambiguous condition per the standard, not a
+      required error case). Glossary entry corrected completely - the
+      prior entry's stack effect, description, and even its "result
+      length is always <= input length" side-effect claim were all
+      wrong, describing the old, incorrect algorithm rather than the
+      real one (output can now be longer than input, by design).
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly; updated
+      Assembler Source appendix subsection (8.20 String Words) and
+      the corrected glossary entry both confirmed present in the
+      rendered PDF. **MAME-CONFIRMED**: correctly escapes `%`
+      characters as required.
+
+- [ ] **Feature gap confirmed and addressed: the text interpreter had
+      no support for ANS's double-number input convention (trailing
+      '.') - "123." was silently treated identically to "123",
+      leaving no way to get a genuine ud1 onto the stack for use with
+      # and friends.** Confirmed against the precise spec text (forth-
+      standard.org/standard/usage#usage:numbers, 3.4.1.3: "When the
+      text interpreter processes a number... that is immediately
+      followed by a decimal point... the text interpreter shall
+      convert it to a double-cell number. For example, entering
+      DECIMAL 1234 leaves the single-cell number 1234 on the stack,
+      and entering DECIMAL 1234. leaves the double-cell number 1234
+      0 on the stack."). Traced `NUMBERQ` and found it already
+      accumulated a full 32-bit value internally (`UDHI`:`UDLO`, via
+      `NUMLOOP`) for every number parsed, single or not - but only
+      ever returned the low cell, discarding `UDHI` unconditionally,
+      and had no detection of a trailing '.' at all. Also found the
+      existing negation only negated the low 16 bits - harmless while
+      only ever returning a single cell, but wrong once a genuine
+      32-bit value needed returning.
+
+      Redesigned `NUMBERQ`: detects a trailing '.' early (excluding
+      it from the digit count before `NUMLOOP` runs), performs full
+      32-bit two's-complement negation (low cell negated first, any
+      carry out of that addition propagated into the high cell,
+      manually traced against both a normal case and the zero-wraps-
+      to-zero edge case before delivery), and re-derives the double-
+      vs-single decision independently at the very end of the routine
+      by re-reading from `CADDR` and the original count - both
+      confirmed unchanged throughout the routine's entire execution,
+      including through `NUMLOOP`/`UDMULADD` - rather than remembering
+      the decision in a new persistent flag. This was a deliberate
+      choice: `GLOBALS` is fully packed at 256/256 bytes (the 6809's
+      own direct-page addressing limit, not an arbitrary number), so
+      avoiding a new flag byte avoided touching that boundary at all.
+      Return convention on success now distinguishes double (pushes
+      low, high, then success code `1`) from single (pushes value,
+      then the original `-1`, completely unchanged) - chosen so
+      `TRYNUM` doesn't need a separate flag either, and so single-
+      number behavior is provably identical to before by construction,
+      not just by testing.
+
+      Updated `TRYNUM` to handle both codes: on double success while
+      compiling, `UDHI` (on top of `U`) is stashed in `MSCR4` so `UDLO`
+      can be compiled as the first of two `LIT` literals, then `UDHI`
+      as the second - ensuring they execute in the order needed to
+      land correctly on the stack at runtime (low deep, high on top,
+      per 3.1.4.1's "the cell containing the most significant part...
+      shall be above the cell containing the least significant
+      part"). While interpreting, both cells are already correctly
+      placed by `NUMBERQ` and need no further handling.
+
+      Confirmed `TONUMBER` (`>NUMBER`) is untouched - it calls the
+      same shared `NUMLOOP`, but neither its own code nor `NUMLOOP`
+      itself needed any change; only `NUMBERQ`'s own wrapper logic
+      and `TRYNUM`'s consumption of it were modified.
+
+      Manually traced three cases by hand before delivery, beyond
+      structural verification alone: "123." (interpreted) -> [123, 0]
+      correctly, matching the ANS example exactly; "123" (no dot) ->
+      [123, -1] internally, correctly falling through to the original,
+      unchanged single-cell path, confirming backward compatibility;
+      "-123." -> UDHI=$FFFF/UDLO=$FF85, confirmed by hand to equal
+      $FFFFFF85 (i.e. -123 as a 32-bit value).
+
+      Glossary entries for `<#` and `#` updated with a note on how to
+      get a proper ud1 onto the stack from typed input, since that was
+      the specific gap originally reported.
+
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly; updated
+      Assembler Source appendix subsection (8.10 Outer Interpreter)
+      and both updated glossary entries confirmed present in the
+      rendered PDF. Not yet confirmed via MAME - this is a
+      substantial, multi-path change (single/double x interpret/
+      compile x positive/negative all interact) and deserves thorough
+      real-hardware testing across that full matrix before being
+      considered settled.
+
+- [x] **Two real bugs found via a very thorough MAME test matrix
+      (interpret and compile mode, both signs, single and double,
+      cumulative `.S` traces across many lines) and fixed - both in
+      the 32-bit negation logic delivered last turn for double-number
+      input, and both only visible on negative doubles specifically.**
+      Positive cases (`123.` -> `0 123`, `123456.` -> `1 -7616`) were
+      already confirmed correct by the trace, matching the design
+      exactly - the negation path (which only positive numbers skip
+      entirely) was where the actual problems were.
+
+      **Bug 1**: the 6809's `COM` instruction (one's complement)
+      unconditionally sets the carry flag to 1, regardless of its
+      operand - a documented CPU quirk. The negation code computed
+      the real carry from the low cell's `ADDD #1`, but then ran
+      `COMA`/`COMB` on the high cell before checking that carry - and
+      `COMB` silently overwrote it with its own, always-set value, so
+      the intended "only propagate carry into the high cell when the
+      low cell actually overflowed" check never worked. `-123.`
+      returned high cell `0` instead of `-1`; `-123456.` returned `-1`
+      instead of `-2` - both exactly matching "always add 1"
+      regardless of the true carry, not the intended conditional
+      behavior. Fixed by saving the true carry via `PSHS CC`
+      immediately after the low-cell addition, before the high-cell
+      `COM` can destroy it, then `PULS CC` to restore it right before
+      the branch that depends on it.
+
+      **Bug 2, only exposed by fixing Bug 1**: with the carry check
+      now actually working, the branch it guarded (`BCC`) turned out
+      to jump all the way past `STD UDHI` itself when there's no
+      carry - not just past the `+1`. The complemented high-cell value
+      was computed in D but never actually stored back to UDHI in
+      that case, leaving it at its stale, pre-negation value. This was
+      completely masked by Bug 1 in practice - since carry was always
+      corrupted to "set," the branch was never actually taken, so the
+      store always ran (with the wrong value, per Bug 1, but it did
+      run). Fixing Bug 1 alone would have made this second, previously
+      -latent bug live and produced a different set of wrong answers.
+      Restructured so the store always runs, with the conditional
+      `+1` applied before it rather than gating whether it happens at
+      all.
+
+      Manually re-traced both negative-double test cases against the
+      fully corrected code before delivery: `-123.` -> carry clear on
+      the low cell, branch skips only the `+1`, raw complement `$FFFF`
+      gets stored -> high cell `-1`, correct. `-123456.` -> same
+      pattern, raw complement `$FFFE` stored -> high cell `-2`,
+      correct (matches the true 32-bit value `$FFFE1DC0` computed by
+      hand). Also re-traced the carry-set path (negating 0, as a
+      sanity check) to confirm that branch still correctly falls
+      through to the `+1` before storing.
+
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly; updated
+      Assembler Source appendix subsection (8.10 Outer Interpreter)
+      confirmed present in the rendered PDF. Glossary entries (`<#`,
+      `#`) needed no further changes - this fix doesn't alter the
+      stack effect or usage, only the underlying correctness.
+
+      **MAME-CONFIRMED**, both interpret and compile mode, across the
+      full t0-t7 matrix: `-123.` -> high `-1` / low `-123`; `-123456.`
+      -> high `-2` / low `7616` - both matching the hand-traced
+      prediction from the prior turn exactly (high `$FFFF`/`$FFFE`
+      respectively, confirmed independently against `$FFFFFF85` and
+      `$FFFE1DC0`). Positive cases (`123.` -> `0 123`, `123456.` ->
+      `1 -7616`) and single-cell cases (unaffected by either bug, per
+      the negation code being skipped entirely) also confirmed
+      correct. Both the carry-corruption bug and the masked missing-
+      store bug are now verified fixed on real hardware, not just by
+      static hand-tracing.
+
+- [x] **Two explicit, requested adjustments applied: `BASECODE` and
+      `BASEDICT` origins shifted down $40 (64 bytes) each, to make
+      room for growth since they were last positioned; `UNITTESTS`
+      set to 1 (excluded) since unit tests don't work yet and
+      resolution has been postponed.** `BASECODE`: `$E02A` ->
+      `$DFEA`. `BASEDICT`: `$D83F` -> `$D7FF`. Applied exactly as
+      requested, without independently recomputing the resulting
+      gaps/overlaps against `INITCODE` and each other - this region's
+      comments have historically tracked those in precise byte
+      counts, but doing so accurately requires real assembled sizes
+      (`BASECODESIZE`/`BASEDICTSIZE`, computed via `*-start` at each
+      section's end), which structural verification here cannot
+      determine - it checks label integrity and dictionary-chain
+      structure, not location-counter arithmetic. The comments at
+      both `EQU`s now say this explicitly rather than presenting a
+      static estimate as if it were a real assembled count - confirm
+      the resulting gaps/overlaps on real assembly.
+
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations (checked with both `UNITTESTS` values regardless
+      of the file's own new default); byte-exact split-file
+      reassembly.
+
+- [x] **Real bug found via MAME debugger and fixed: `S>D` performed
+      no sign extension at all - the same register-flag class of bug
+      already documented once this session in `TRYNUM`.** `PULU`
+      does not affect condition codes on genuine 6809 - `STOD` did
+      `PULU D` then immediately `BPL SDPOS`, testing whatever flags
+      an unrelated, earlier instruction happened to leave set, not
+      the sign of the value just popped. `-123 S>D` returned high
+      cell `0` instead of `-1`. Fixed by adding an explicit `TSTA`
+      (testing D's high byte, whose bit 7 reflects the full 16-bit
+      value's sign) immediately before the branch that depends on it.
+      Confirmed `STOD` is referenced only via its own dictionary
+      header before applying the fix - nothing else calls it
+      directly. Checked the neighboring routines (`DTOS`, `DMAXW`)
+      for the same pattern rather than assume they're clean by
+      proximity alone - both confirmed unaffected: `DTOS` has no
+      branch at all, and `DMAXW` already uses an explicit `CMPD`
+      before its own branch. Verified: zero duplicate symbols,
+      dictionary chain still 224 entries intact across all four
+      `SERIALPOLL`x`UNITTESTS` combinations; byte-exact split-file
+      reassembly. Not yet confirmed via MAME.
+
+- [x] **Real bug found via MAME testing and fixed: `SIGN` had the same
+      `PULU`-doesn't-set-flags defect already found in `STOD` -
+      plus a separate, genuine usage-pattern issue in the reported
+      test definition, diagnosed but not a code bug.** Reported via
+      `: format DUP ABS S>D <# #S SIGN #> TYPE ;` never printing a
+      minus sign for either sign of input.
+
+      **Code bug**: `SIGN` did `PULU D` then immediately `BPL
+      SIGNDONE` - `PULU` doesn't affect condition codes on genuine
+      6809, so the branch tested whatever flags an unrelated, earlier
+      instruction happened to leave set, not the sign of the value
+      just popped. Fixed with the same `TSTA` pattern used for `STOD`.
+      Checked all four existing internal callers (`DOT`/`DOTR`/
+      `DDOT`/`DDOTR`, i.e. `.`/`.R`/`D.`/`D.R`) before concluding
+      anything about their own correctness - all four turned out to
+      be accidentally unaffected, since each runs `LDD SAVEN` (a
+      flag-setting load of the true signed value) immediately before
+      `PSHU D`/`JSR SIGN`, and `PSHU` doesn't disturb flags. This was
+      fragile, caller-side luck rather than `SIGN` being correct on
+      its own - confirmed precisely by the fact that a direct,
+      standalone use (the reported test word) had no such protection
+      and failed outright.
+
+      **Separate, non-code issue identified in the reported
+      definition itself**: even with `SIGN` fixed, `DUP ABS S>D <#
+      #S SIGN #>` would still never add a minus sign, traced
+      precisely - `#S` fully consumes its `ud` down to `0 0`, so
+      whatever sits on top of the stack immediately after `#S` is
+      always `0`, genuinely not negative, regardless of the original
+      number's sign. The true signed value (left underneath by `DUP
+      ABS`) never reaches the top of the stack in that sequence at
+      all. Standard idiom needs the signed value stashed on the
+      return stack and restored right before `SIGN`: `DUP >R ABS
+      S>D <# #S R> SIGN #>`. Not a defect - flagged so the fix to
+      `SIGN` itself isn't mistaken for resolving this specific
+      definition's own behavior too.
+
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly. Not yet
+      confirmed via MAME.
 
 ## Structural duplication (identified, some resolved, some not)
 

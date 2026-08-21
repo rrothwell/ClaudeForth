@@ -79,6 +79,27 @@ NUMSIGNS: JSR  NUMSIGN
           RTS
 
 SIGN:    PULU  D
+         TSTA          ; BUG FIX: was a bare "BPL SIGNDONE" right
+                         ; after PULU - PULU doesn't affect condition
+                         ; codes on genuine 6809 (same class as STOD's
+                         ; own fix elsewhere in this file), so BPL was
+                         ; testing whatever flags an unrelated, earlier
+                         ; instruction happened to leave set, not the
+                         ; sign of the value just popped. TSTA
+                         ; explicitly tests D's high byte immediately
+                         ; before the branch that depends on it. The
+                         ; four existing internal callers (DOT/DOTR/
+                         ; DDOT/DDOTR, i.e. . / .R / D. / D.R) were
+                         ; accidentally unaffected - each happens to
+                         ; run "LDD SAVEN" (a flag-setting load of the
+                         ; true signed value) immediately before PSHU
+                         ; D/JSR SIGN, and PSHU doesn't disturb flags -
+                         ; but this was fragile, caller-side luck, not
+                         ; SIGN being correct on its own. Confirmed via
+                         ; MAME: a direct, standalone use of SIGN (not
+                         ; preceded by an unrelated flag-setting
+                         ; instruction) never added the minus sign for
+                         ; either sign of input.
          BPL   SIGNDONE
          LDD   #'-'
          PSHU  D

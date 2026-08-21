@@ -602,6 +602,19 @@ MPHIDONE: STD MSCR3
 
 STOD:    PULU  D
          PSHU  D
+         TSTA          ; BUG FIX: was a bare "BPL SDPOS" right after
+                         ; PULU - PULU doesn't affect condition codes
+                         ; on genuine 6809 (same class as TRYNUM's own
+                         ; PULU-then-compare fix elsewhere in this
+                         ; file), so BPL was testing whatever flags an
+                         ; unrelated, earlier instruction happened to
+                         ; leave set, not the sign of the value just
+                         ; popped. TSTA explicitly tests D's high byte
+                         ; (bit 7 of A reflects the full 16-bit value's
+                         ; sign) immediately before the branch that
+                         ; depends on it. Confirmed via MAME debugger:
+                         ; "-123 S>D" returned high cell 0 instead of
+                         ; -1 - no sign extension was happening at all.
          BPL   SDPOS
          LDD   #-1
          BRA   SDPUSH

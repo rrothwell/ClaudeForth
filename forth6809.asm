@@ -113,31 +113,23 @@ INITCODE EQU  $FFA9     ; was $FFA2 - shifted up 7 bytes to reduce the
                          ; nominal budget) is separate and unaffected
                          ; by this correction; not resolved. See the
                          ; open-items checklist.
-BASECODE EQU  $E00A     ; was $E007 - shifted up 35 bytes. Two effects:
-; BASECODE EQU  $E02A     ; was $E007 - shifted up 35 bytes. Two effects:
-                         ; (1) opens a new 35-byte GAP between
-                         ; BASEDICT's real end ($E006, 1992 bytes) and
-                         ; this new start - previously exactly
-                         ; contiguous (zero gap). Not itself broken,
-                         ; just unused address space where there wasn't
-                         ; any before. (2) WORSENS the existing overlap
-                         ; with INITCODE: BASECODE's nominal size (8110)
-                         ; is unchanged, so its nominal end also shifted
-                         ; up 35 bytes, from $FFB4 to $FFD7 - INITCODE
-                         ; (currently $FFA9) is now overlapped by 47
-                         ; bytes, up from 12. Applied exactly as
-                         ; requested; neither effect resolved here. See
-                         ; the open-items checklist.
-BASEDICT EQU  $D81F     ; was $D85D - shifted down the same 30 bytes as
-; BASEDICT EQU  $D83F     ; was $D85D - shifted down the same 30 bytes as
-                         ; BASECODE, preserving the exact, zero-padding
-                         ; fit for its real 1973-byte dictionary content
-                         ; (SECTION 27) - contiguous with BASECODE's
-                         ; start at the time. Since grown to 1992 bytes
-                         ; (H_ABORT/H_QUIT/BASELATEST moved in), and
-                         ; BASECODE has since moved again too, no longer
-                         ; to match - a 35-byte gap now sits between
-                         ; them; see BASECODE's own EQU.
+BASECODE EQU  $DFEA     ; was $E02A - shifted down $40 (64 bytes) as
+                         ; requested, to make room for growth since this
+                         ; was last positioned. The exact gap against
+                         ; BASEDICT below and the exact overlap against
+                         ; INITCODE above (both previously tracked here
+                         ; in precise byte counts) depend on each
+                         ; section's real, current assembled size -
+                         ; both have grown since those counts were last
+                         ; taken, per the reason for this change. Not
+                         ; recomputed here without a real assembler run;
+                         ; confirm on assembly/MAME rather than trust a
+                         ; static estimate. See the open-items checklist.
+BASEDICT EQU  $D7FF     ; was $D83F - shifted down $40 (64 bytes) as
+                         ; requested, same reason as BASECODE above.
+                         ; Not recomputed against real, current
+                         ; assembled sizes here - confirm on assembly/
+                         ; MAME. See the open-items checklist.
 INOUT    EQU  $C000     ; was $DF00 - moved so INOUT (256 B) sits
                          ; directly below USROMSTRT ($C100), contiguous,
                          ; no gap. This also resolves the INOUT portion
@@ -593,9 +585,12 @@ FILLCHR  EQU  MVSRC
 ; followed by " OK" or " FAIL", followed by a CR - all via
 ; TSTREPORT, shared by every test rather than duplicated in each.
 ; ============================================================
-UNITTESTS EQU 1   ; 0 = included (matches this file's established
-                  ; IFEQ convention, e.g. SERIALPOLL); 1 = excluded
-                  ; entirely, reverting to plain FILL padding.
+UNITTESTS EQU 1   ; was 0 (included) - set to 1 (excluded) per explicit
+                  ; request: unit tests don't work yet and resolution
+                  ; has been postponed. 0 = included (matches this
+                  ; file's established IFEQ convention, e.g.
+                  ; SERIALPOLL); 1 = excluded entirely, reverting to
+                  ; plain FILL padding.
 
          IFEQ  UNITTESTS  ; >>>>>>>>>>
 
@@ -2774,12 +2769,43 @@ TRYNUM:  JSR   NUMBERQ
                               ; genuine 6809, so compare D against 0 directly
          BEQ   BADWORD
 
+         CMPD  #1            ; NEW: distinguishes NUMBERQ's double-number
+         BEQ   TNDOUBLE      ; success code (1) from single (-1), added
+                              ; to support ANS's double-number input
+                              ; convention (forth-standard.org/standard/
+                              ; usage#usage:numbers) - "123." parses as
+                              ; a double-cell number, "123" as single.
+
          LDD   STATE
          BEQ   ILOOP
          LDD   #LIT
          PSHU  D
          JSR   CCALL
          JSR   CODECOMMA
+         BRA   ILOOP
+
+TNDOUBLE: ; U currently holds [UDLO(bottom), UDHI(top)], matching
+                              ; ANS's (ud1) stack order directly.
+         LDD   STATE
+         BEQ   ILOOP          ; interpreting: already correctly placed,
+                              ; nothing more to do
+         ; compiling: need two literals compiled in the order they
+         ; must execute at runtime - low first (lands deep), high
+         ; second (lands on top). UDHI is currently on top of U, so
+         ; pop it aside first, freeing UDLO to be compiled first.
+         PULU  D
+         STD   MSCR4          ; stash UDHI - confirmed safe scratch,
+                              ; untouched by CCALL/CODECOMMA
+         LDD   #LIT
+         PSHU  D
+         JSR   CCALL
+         JSR   CODECOMMA      ; compiles UDLO (still on U underneath)
+         LDD   #LIT
+         PSHU  D
+         JSR   CCALL
+         LDD   MSCR4
+         PSHU  D
+         JSR   CODECOMMA      ; compiles UDHI
          BRA   ILOOP
 
 BADWORD: JSR   COUNT
@@ -3060,16 +3086,37 @@ NUMBERQ: PULU  X
          STA   CNTREM
          LEAX  1,X
 
-         CLR   NUMNEG
+         ; NEW: ANS double-number input convention (forth-standard.org/
+         ; standard/usage#usage:numbers, 3.4.1.3) - a number immediately
+         ; followed by a decimal point converts to a double-cell number
+         ; instead of single-cell ("1234" -> 1234; "1234." -> 1234 0).
+         ; Detected here to exclude the trailing '.' from CNTREM before
+         ; NUMLOOP runs, so it isn't mistaken for a digit. The decision
+         ; itself is re-derived independently at the end of this routine
+         ; (from CADDR and the original count, both still unchanged at
+         ; that point - confirmed nothing else in this routine, including
+         ; NUMLOOP/UDMULADD, ever touches CADDR) rather than remembered
+         ; in a new persistent flag here - GLOBALS is fully packed at
+         ; 256/256 bytes, and this avoids needing to carve out a byte
+         ; for it.
+         LDB   CNTREM
+         DECB
+         LDA   B,X
+         CMPA  #'.'
+         BNE   NQNOSIGN
+         DEC   CNTREM
+         BEQ   NQBAD          ; lone "." with nothing before it
+
+NQNOSIGN: CLR   NUMNEG
          LDA   ,X
          CMPA  #'-'
-         BNE   NQNOSIGN
+         BNE   NQNOSIGN2
          COM   NUMNEG
          LEAX  1,X
          DEC   CNTREM
          BEQ   NQBAD
 
-NQNOSIGN: STX  NADDR
+NQNOSIGN2: STX  NADDR
           CLRA
           LDB   CNTREM
           STD   NCNT
@@ -3082,13 +3129,83 @@ NQNOSIGN: STX  NADDR
           LDD   NCNT
           BNE   NQBAD
 
-          LDD   UDLO
+          ; BUG FIX (as part of this same change): was "LDD UDLO / TST
+          ; NUMNEG / BEQ NQPOS / COMA / COMB / ADDD #1" - negated only
+          ; the low 16 bits. Harmless for single-cell numbers (the high
+          ; cell was never returned before), but wrong once returning a
+          ; genuine 32-bit value for the double case - a negative double
+          ; needs the full 32-bit two's-complement negation, with any
+          ; carry out of the low-cell increment propagated into the
+          ; high cell.
           TST   NUMNEG
-          BEQ   NQPOS
+          BEQ   NQPOS32
+          LDD   UDLO
           COMA
           COMB
           ADDD  #1
-NQPOS:    PSHU  D
+          STD   UDLO
+          PSHS  CC          ; BUG FIX: save the TRUE carry from the
+                             ; addition above, before it gets destroyed.
+                             ; COM (used on UDHI just below) unconditionally
+                             ; SETS carry=1 on the 6809, regardless of its
+                             ; operand - a documented quirk, but one that
+                             ; silently overwrote the real carry here
+                             ; before the BCC check could ever read it,
+                             ; making the high-cell increment run
+                             ; UNCONDITIONALLY instead of only when the
+                             ; low-cell addition actually overflowed.
+                             ; Confirmed via MAME: "-123." returned high
+                             ; cell 0 instead of -1, and "-123456."
+                             ; returned -1 instead of -2 - both exactly
+                             ; matching "always increment" rather than
+                             ; "increment only on genuine carry".
+          LDD   UDHI
+          COMA
+          COMB
+          PULS  CC          ; restore the TRUE carry
+          BCC   NQSTOREHI   ; BUG FIX: this used to be "BCC NQPOS32",
+                             ; branching all the way PAST "STD UDHI"
+                             ; when there's no carry - the complemented
+                             ; value was computed in D but never
+                             ; actually stored back to UDHI in that
+                             ; case, leaving it at its stale, pre-
+                             ; negation value. Masked by the carry bug
+                             ; above in practice (that bug meant carry
+                             ; was always seen as set, so this branch
+                             ; was never actually taken, and STD UDHI
+                             ; always ran) - fixing the carry check
+                             ; alone would have made this second,
+                             ; previously-latent bug live. Now branches
+                             ; only past the "+1", never past the
+                             ; store itself - the store always runs,
+                             ; either way.
+          ADDD  #1
+NQSTOREHI: STD  UDHI
+
+NQPOS32:  ; re-derive from CADDR whether the ORIGINAL last character
+          ; was '.' - determines which return convention to use
+          LDX   CADDR
+          LDB   ,X
+          DECB
+          LEAX  1,X
+          LDA   B,X
+          CMPA  #'.'
+          BNE   NQSINGLE
+
+          ; DOUBLE success: push low, high, then a distinct success
+          ; code (1, not -1) so TRYNUM can tell single and double
+          ; apart without needing a separate flag of its own either
+          LDD   UDLO
+          PSHU  D
+          LDD   UDHI
+          PSHU  D
+          LDD   #1
+          PSHU  D
+          RTS
+
+NQSINGLE: ; SINGLE success - unchanged from the original convention
+          LDD   UDLO
+          PSHU  D
           LDD   #-1
           PSHU  D
           RTS
@@ -4880,6 +4997,19 @@ MPHIDONE: STD MSCR3
 
 STOD:    PULU  D
          PSHU  D
+         TSTA          ; BUG FIX: was a bare "BPL SDPOS" right after
+                         ; PULU - PULU doesn't affect condition codes
+                         ; on genuine 6809 (same class as TRYNUM's own
+                         ; PULU-then-compare fix elsewhere in this
+                         ; file), so BPL was testing whatever flags an
+                         ; unrelated, earlier instruction happened to
+                         ; leave set, not the sign of the value just
+                         ; popped. TSTA explicitly tests D's high byte
+                         ; (bit 7 of A reflects the full 16-bit value's
+                         ; sign) immediately before the branch that
+                         ; depends on it. Confirmed via MAME debugger:
+                         ; "-123 S>D" returned high cell 0 instead of
+                         ; -1 - no sign extension was happening at all.
          BPL   SDPOS
          LDD   #-1
          BRA   SDPUSH
@@ -6142,6 +6272,27 @@ NUMSIGNS: JSR  NUMSIGN
           RTS
 
 SIGN:    PULU  D
+         TSTA          ; BUG FIX: was a bare "BPL SIGNDONE" right
+                         ; after PULU - PULU doesn't affect condition
+                         ; codes on genuine 6809 (same class as STOD's
+                         ; own fix elsewhere in this file), so BPL was
+                         ; testing whatever flags an unrelated, earlier
+                         ; instruction happened to leave set, not the
+                         ; sign of the value just popped. TSTA
+                         ; explicitly tests D's high byte immediately
+                         ; before the branch that depends on it. The
+                         ; four existing internal callers (DOT/DOTR/
+                         ; DDOT/DDOTR, i.e. . / .R / D. / D.R) were
+                         ; accidentally unaffected - each happens to
+                         ; run "LDD SAVEN" (a flag-setting load of the
+                         ; true signed value) immediately before PSHU
+                         ; D/JSR SIGN, and PSHU doesn't disturb flags -
+                         ; but this was fragile, caller-side luck, not
+                         ; SIGN being correct on its own. Confirmed via
+                         ; MAME: a direct, standalone use of SIGN (not
+                         ; preceded by an unrelated flag-setting
+                         ; instruction) never added the minus sign for
+                         ; either sign of input.
          BPL   SIGNDONE
          LDD   #'-'
          PSHU  D
