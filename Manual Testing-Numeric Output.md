@@ -4,7 +4,7 @@
 |:------------|:-----------------|:--------------|:------------------|----------:|
 | **Numeric Output** |        |      |                       ||
 | <#   | LTNUM    | 0(0) |`ok : least2digits <# # # #> ;`<br />`ok 123. least2digits TYPE 23`<br />`ok`|:white_check_mark:|
-| #    | NUMSIGN  | 2(2) |`ok : least5digits <# # # # # # #> ;`<br />`ok 1234567. least5digits TYPE 34567`<br />`ok`|:white_check_mark:^1]|
+| #    | NUMSIGN  | 2(2) |`ok : least5digits <# # # # # # #> ;`<br />`ok 1234567. least5digits TYPE 34567`<br />`ok`|:white_check_mark:[^1]|
 | #S   | NUMSIGNS | 0(0) |`ok : alldigits <# #S #> ;`<br />`ok 12345678. alldigits TYPE 12345678`<br />`ok`|:white_check_mark:|
 | #>   | NUMGT    | 0(0) |`ok : alldigits <# #S #> ;`<br />`ok 123 S>D alldigits TYPE 123`<br />`ok`|:white_check_mark:|
 | HOLD | HOLD     | 0(0) |`ok : .dollars <# # # [CHAR]  . HOLD #S  [CHAR] $ HOLD #> ;`<br />`ok 65789012. .dollars TYPE $657890.12`<br />`ok`|:white_check_mark:|
