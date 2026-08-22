@@ -2505,34 +2505,34 @@ DF16                  (    forth6809.asm):01762         H_BACKSLASH:
 DF16 81               (    forth6809.asm):01763                  FCB   $81
 DF17 5C               (    forth6809.asm):01764                  FCC   "\"
 DF18 DF10             (    forth6809.asm):01765                  FDB   H_LPAREN
-DF1A FD67             (    forth6809.asm):01766                  FDB   BACKSLASH
+DF1A FD69             (    forth6809.asm):01766                  FDB   BACKSLASH
 DF1C                  (    forth6809.asm):01767         H_ENVQUERY:
 DF1C 0C               (    forth6809.asm):01768                  FCB   $0C
 DF1D 454E5649524F4E4D (    forth6809.asm):01769                  FCC   "ENVIRONMENT?"
      454E543F
 DF29 DF16             (    forth6809.asm):01770                  FDB   H_BACKSLASH
-DF2B FDC3             (    forth6809.asm):01771                  FDB   ENVQUERY
+DF2B FDC5             (    forth6809.asm):01771                  FDB   ENVQUERY
 DF2D                  (    forth6809.asm):01772         H_SOURCEW:
 DF2D 06               (    forth6809.asm):01773                  FCB   $06
 DF2E 534F55524345     (    forth6809.asm):01774                  FCC   "SOURCE"
 DF34 DF1C             (    forth6809.asm):01775                  FDB   H_ENVQUERY
-DF36 FD6C             (    forth6809.asm):01776                  FDB   SOURCEW
+DF36 FD6E             (    forth6809.asm):01776                  FDB   SOURCEW
 DF38                  (    forth6809.asm):01777         H_SOURCEID:
 DF38 09               (    forth6809.asm):01778                  FCB   $09
 DF39 534F555243452D49 (    forth6809.asm):01779                  FCC   "SOURCE-ID"
      44
 DF42 DF2D             (    forth6809.asm):01780                  FDB   H_SOURCEW
-DF44 FD75             (    forth6809.asm):01781                  FDB   SOURCEID
+DF44 FD77             (    forth6809.asm):01781                  FDB   SOURCEID
 DF46                  (    forth6809.asm):01782         H_REFILLW:
 DF46 06               (    forth6809.asm):01783                  FCB   $06
 DF47 524546494C4C     (    forth6809.asm):01784                  FCC   "REFILL"
 DF4D DF38             (    forth6809.asm):01785                  FDB   H_SOURCEID
-DF4F FD7A             (    forth6809.asm):01786                  FDB   REFILLW
+DF4F FD7C             (    forth6809.asm):01786                  FDB   REFILLW
 DF51                  (    forth6809.asm):01787         H_EVALUATEW:
 DF51 08               (    forth6809.asm):01788                  FCB   $08
 DF52 4556414C55415445 (    forth6809.asm):01789                  FCC   "EVALUATE"
 DF5A DF46             (    forth6809.asm):01790                  FDB   H_REFILLW
-DF5C FD8D             (    forth6809.asm):01791                  FDB   EVALUATEW
+DF5C FD8F             (    forth6809.asm):01791                  FDB   EVALUATEW
 DF5E                  (    forth6809.asm):01792         H_TIBW:
 DF5E 03               (    forth6809.asm):01793                  FCB   $03
 DF5F 544942           (    forth6809.asm):01794                  FCC   "TIB"
@@ -2562,29 +2562,29 @@ DF87                  (    forth6809.asm):01817         H_DOTS:
 DF87 02               (    forth6809.asm):01818                  FCB   $02
 DF88 2E53             (    forth6809.asm):01819                  FCC   ".S"
 DF8A DF80             (    forth6809.asm):01820                  FDB   H_BLW
-DF8C FE47             (    forth6809.asm):01821                  FDB   DOTS
+DF8C FE49             (    forth6809.asm):01821                  FDB   DOTS
 DF8E                  (    forth6809.asm):01822         H_WORDSW:
 DF8E 05               (    forth6809.asm):01823                  FCB   $05
 DF8F 574F524453       (    forth6809.asm):01824                  FCC   "WORDS"
 DF94 DF87             (    forth6809.asm):01825                  FDB   H_DOTS
-DF96 FE66             (    forth6809.asm):01826                  FDB   WORDSW
+DF96 FE68             (    forth6809.asm):01826                  FDB   WORDSW
 DF98                  (    forth6809.asm):01827         H_DUMPW:
 DF98 04               (    forth6809.asm):01828                  FCB   $04
 DF99 44554D50         (    forth6809.asm):01829                  FCC   "DUMP"
 DF9D DF8E             (    forth6809.asm):01830                  FDB   H_WORDSW
-DF9F FECB             (    forth6809.asm):01831                  FDB   DUMPW
+DF9F FECD             (    forth6809.asm):01831                  FDB   DUMPW
                       (    forth6809.asm):01832         
 DFA1                  (    forth6809.asm):01833         H_TRUE:
 DFA1 04               (    forth6809.asm):01834                  FCB   $04
 DFA2 54525545         (    forth6809.asm):01835                  FCC   "TRUE"
 DFA6 DF98             (    forth6809.asm):01836                  FDB   H_DUMPW
-DFA8 FF80             (    forth6809.asm):01837                  FDB   TRUEBODY
+DFA8 FF82             (    forth6809.asm):01837                  FDB   TRUEBODY
                       (    forth6809.asm):01838         
 DFAA                  (    forth6809.asm):01839         H_FALSE:
 DFAA 05               (    forth6809.asm):01840                  FCB   $05
 DFAB 46414C5345       (    forth6809.asm):01841                  FCC   "FALSE"
 DFB0 DFA1             (    forth6809.asm):01842                  FDB   H_TRUE
-DFB2 FF86             (    forth6809.asm):01843                  FDB   FALSEBODY
+DFB2 FF88             (    forth6809.asm):01843                  FDB   FALSEBODY
                       (    forth6809.asm):01844         
                       (    forth6809.asm):01845         ; H_ABORT and H_QUIT are hand-built, not produced by the same
                       (    forth6809.asm):01846         ; generation pass as the 217 entries above - ABORT and QUIT need
@@ -2624,22 +2624,22 @@ DFCE E576             (    forth6809.asm):01878                  FDB   FIND
 DFD0 01               (    forth6809.asm):01880         H_1:     FCB   1
 DFD1 31               (    forth6809.asm):01881                  FCC   "1"
 DFD2 DFC7             (    forth6809.asm):01882                  FDB   H_FIND
-DFD4 FF8C             (    forth6809.asm):01883                  FDB   ONEBODY
+DFD4 FF8E             (    forth6809.asm):01883                  FDB   ONEBODY
                       (    forth6809.asm):01884         
 DFD6 02               (    forth6809.asm):01885         H_M1:    FCB   2
 DFD7 2D31             (    forth6809.asm):01886                  FCC   "-1"
 DFD9 DFD0             (    forth6809.asm):01887                  FDB   H_1
-DFDB FF92             (    forth6809.asm):01888                  FDB   MONEBODY
+DFDB FF94             (    forth6809.asm):01888                  FDB   MONEBODY
                       (    forth6809.asm):01889         
 DFDD 01               (    forth6809.asm):01890         H_2:     FCB   1
 DFDE 32               (    forth6809.asm):01891                  FCC   "2"
 DFDF DFD6             (    forth6809.asm):01892                  FDB   H_M1
-DFE1 FF98             (    forth6809.asm):01893                  FDB   TWOBODY
+DFE1 FF9A             (    forth6809.asm):01893                  FDB   TWOBODY
                       (    forth6809.asm):01894         
 DFE3 02               (    forth6809.asm):01895         H_M2:    FCB   2
 DFE4 2D32             (    forth6809.asm):01896                  FCC   "-2"
 DFE6 DFDD             (    forth6809.asm):01897                  FDB   H_2
-DFE8 FF9E             (    forth6809.asm):01898                  FDB   MTWOBODY
+DFE8 FFA0             (    forth6809.asm):01898                  FDB   MTWOBODY
                       (    forth6809.asm):01899         
      DFE3             (    forth6809.asm):01900         BASELATEST EQU  H_M2   ; the ROM dictionary's true head - referenced by
                       (    forth6809.asm):01901                                   ; COLD to initialize LATEST. Was H_QUIT before
@@ -7295,410 +7295,423 @@ FD5D 39               (    forth6809.asm):06545         SPDONE:  RTS
 FD5E CC0029           (    forth6809.asm):06550         LPAREN:  LDD   #')'
 FD61 3606             (    forth6809.asm):06551                  PSHU  D
 FD63 BDE50E           (    forth6809.asm):06552                  JSR   WORD
-FD66 39               (    forth6809.asm):06553                  RTS
-                      (    forth6809.asm):06554         
-FD67 DCDD             (    forth6809.asm):06555         BACKSLASH: LDD  SRCLEN
-FD69 DD10             (    forth6809.asm):06556                    STD  TOIN
-FD6B 39               (    forth6809.asm):06557                    RTS
-                      (    forth6809.asm):06558         
-                      (    forth6809.asm):06559         ; ============================================================
-                      (    forth6809.asm):06560         ; SECTION 24: ENVIRONMENTAL QUERY / SOURCE / REFILL / EVALUATE
-                      (    forth6809.asm):06561         ; ============================================================
-FD6C DCDB             (    forth6809.asm):06562         SOURCEW: LDD   SRCADDR
-FD6E 3606             (    forth6809.asm):06563                  PSHU  D
-FD70 DCDD             (    forth6809.asm):06564                  LDD   SRCLEN
-FD72 3606             (    forth6809.asm):06565                  PSHU  D
-FD74 39               (    forth6809.asm):06566                  RTS
+FD66 3706             (    forth6809.asm):06553                  PULU  D      ; BUG FIX: WORD always pushes a c-addr at the
+                      (    forth6809.asm):06554                                ; end (the parsed text's address), which this
+                      (    forth6809.asm):06555                                ; word never consumed - "(" only needs WORD's
+                      (    forth6809.asm):06556                                ; side effect of advancing >IN past the closing
+                      (    forth6809.asm):06557                                ; delimiter, not the address itself, but that
+                      (    forth6809.asm):06558                                ; address was left stranded on the stack every
+                      (    forth6809.asm):06559                                ; time. Explains both reported symptoms: a
+                      (    forth6809.asm):06560                                ; stray value visible after a comment in
+                      (    forth6809.asm):06561                                ; interpret mode, and a CSP mismatch (-22) for
+                      (    forth6809.asm):06562                                ; any colon definition containing one, since
+                      (    forth6809.asm):06563                                ; the leftover throws off the compile-time
+                      (    forth6809.asm):06564                                ; stack-depth check between ":" and ";".
+                      (    forth6809.asm):06565                                ; Confirmed via MAME debugger.
+FD68 39               (    forth6809.asm):06566                  RTS
                       (    forth6809.asm):06567         
-FD75 DCDF             (    forth6809.asm):06568         SOURCEID: LDD  SRCID
-FD77 3606             (    forth6809.asm):06569                   PSHU D
-FD79 39               (    forth6809.asm):06570                   RTS
+FD69 DCDD             (    forth6809.asm):06568         BACKSLASH: LDD  SRCLEN
+FD6B DD10             (    forth6809.asm):06569                    STD  TOIN
+FD6D 39               (    forth6809.asm):06570                    RTS
                       (    forth6809.asm):06571         
-FD7A DCDF             (    forth6809.asm):06572         REFILLW: LDD   SRCID
-FD7C 2706             (    forth6809.asm):06573                  BEQ   RFTERM
-FD7E CC0000           (    forth6809.asm):06574                  LDD   #FALSEV
-FD81 3606             (    forth6809.asm):06575                  PSHU  D
-FD83 39               (    forth6809.asm):06576                  RTS
-FD84 BDE7B6           (    forth6809.asm):06577         RFTERM:  JSR   QUERY
-FD87 CCFFFF           (    forth6809.asm):06578                  LDD   #TRUEV
-FD8A 3606             (    forth6809.asm):06579                  PSHU  D
-FD8C 39               (    forth6809.asm):06580                  RTS
-                      (    forth6809.asm):06581         
-FD8D DCDB             (    forth6809.asm):06582         EVALUATEW: LDD  SRCADDR
-FD8F DDD3             (    forth6809.asm):06583                    STD  EVSAVEA
-FD91 DCDD             (    forth6809.asm):06584                    LDD  SRCLEN
-FD93 DDD5             (    forth6809.asm):06585                    STD  EVSAVEL
-FD95 DCDF             (    forth6809.asm):06586                    LDD  SRCID
-FD97 DDD7             (    forth6809.asm):06587                    STD  EVSAVEI
-FD99 DC10             (    forth6809.asm):06588                    LDD  TOIN
-FD9B DDD9             (    forth6809.asm):06589                    STD  EVSAVET
-FD9D 3706             (    forth6809.asm):06590                    PULU D
-FD9F DDDD             (    forth6809.asm):06591                    STD  SRCLEN
-FDA1 3706             (    forth6809.asm):06592                    PULU D
-FDA3 DDDB             (    forth6809.asm):06593                    STD  SRCADDR
-FDA5 CCFFFF           (    forth6809.asm):06594                    LDD  #-1
-FDA8 DDDF             (    forth6809.asm):06595                    STD  SRCID
-FDAA CC0000           (    forth6809.asm):06596                    LDD  #0
-FDAD DD10             (    forth6809.asm):06597                    STD  TOIN
-FDAF BDE48E           (    forth6809.asm):06598                    JSR  INTERPRET
-FDB2 DCD3             (    forth6809.asm):06599                    LDD  EVSAVEA
-FDB4 DDDB             (    forth6809.asm):06600                    STD  SRCADDR
-FDB6 DCD5             (    forth6809.asm):06601                    LDD  EVSAVEL
-FDB8 DDDD             (    forth6809.asm):06602                    STD  SRCLEN
-FDBA DCD7             (    forth6809.asm):06603                    LDD  EVSAVEI
-FDBC DDDF             (    forth6809.asm):06604                    STD  SRCID
-FDBE DCD9             (    forth6809.asm):06605                    LDD  EVSAVET
-FDC0 DD10             (    forth6809.asm):06606                    STD  TOIN
-FDC2 39               (    forth6809.asm):06607                    RTS
-                      (    forth6809.asm):06608         
-                      (    forth6809.asm):06609         ; ENVIRONMENT? - dispatcher complete; table has only the
-                      (    forth6809.asm):06610         ; entries that could be derived without fabricating unfixed
-                      (    forth6809.asm):06611         ; capacities (/HOLD, /PAD were explicitly left out - see the
-                      (    forth6809.asm):06612         ; source conversation's ENVTABLE discussion). MAX-D/MAX-UD
-                      (    forth6809.asm):06613         ; and WORDLISTS/FLOORED need dispatcher extensions not yet
-                      (    forth6809.asm):06614         ; built (single-cell-only ENVFOUND path).
-FDC3 3706             (    forth6809.asm):06615         ENVQUERY: PULU D
-FDC5 DDEF             (    forth6809.asm):06616                   STD  ENVLEN
-FDC7 3706             (    forth6809.asm):06617                   PULU D
-FDC9 DDF1             (    forth6809.asm):06618                   STD  ENVADDR
-FDCB 8EFE03           (    forth6809.asm):06619                   LDX  #ENVTABLE
-FDCE EC84             (    forth6809.asm):06620         ENVLOOP:  LDD  ,X
-FDD0 10830000         (    forth6809.asm):06621                   CMPD #0
-FDD4 2727             (    forth6809.asm):06622                   BEQ  ENVNOTFOUND
-FDD6 3606             (    forth6809.asm):06623                   PSHU D
-FDD8 EC02             (    forth6809.asm):06624                   LDD  2,X
-FDDA 3606             (    forth6809.asm):06625                   PSHU D
-FDDC DCF1             (    forth6809.asm):06626                   LDD  ENVADDR
-FDDE 3606             (    forth6809.asm):06627                   PSHU D
-FDE0 DCEF             (    forth6809.asm):06628                   LDD  ENVLEN
-FDE2 3606             (    forth6809.asm):06629                   PSHU D
-FDE4 BDF848           (    forth6809.asm):06630                   JSR  COMPAREW
-FDE7 3706             (    forth6809.asm):06631                   PULU D
-FDE9 10830000         (    forth6809.asm):06632                   CMPD #0
-FDED 2704             (    forth6809.asm):06633                   BEQ  ENVFOUND
-FDEF 3006             (    forth6809.asm):06634                   LEAX 6,X
-FDF1 20DB             (    forth6809.asm):06635                   BRA  ENVLOOP
-FDF3 EC04             (    forth6809.asm):06636         ENVFOUND: LDD  4,X
-FDF5 3606             (    forth6809.asm):06637                   PSHU D
-FDF7 CCFFFF           (    forth6809.asm):06638                   LDD  #TRUEV
-FDFA 3606             (    forth6809.asm):06639                   PSHU D
-FDFC 39               (    forth6809.asm):06640                   RTS
-FDFD CC0000           (    forth6809.asm):06641         ENVNOTFOUND: LDD #FALSEV
-FE00 3606             (    forth6809.asm):06642                      PSHU D
-FE02 39               (    forth6809.asm):06643                      RTS
-                      (    forth6809.asm):06644         
-FE03                  (    forth6809.asm):06645         ENVTABLE:
-FE03 FE1D000F001F     (    forth6809.asm):06646                  FDB   EN1,EN1L,31
-FE09 FE2C00057FFF     (    forth6809.asm):06647                  FDB   EN2,EN2L,32767
-FE0F FE310005FFFF     (    forth6809.asm):06648                  FDB   EN3,EN3L,65535
-FE15 FE3600110008     (    forth6809.asm):06649                  FDB   EN6,EN6L,8
-FE1B 0000             (    forth6809.asm):06650                  FDB   0
-FE1D 2F434F554E544544 (    forth6809.asm):06651         EN1:     FCC   "/COUNTED-STRING"
+                      (    forth6809.asm):06572         ; ============================================================
+                      (    forth6809.asm):06573         ; SECTION 24: ENVIRONMENTAL QUERY / SOURCE / REFILL / EVALUATE
+                      (    forth6809.asm):06574         ; ============================================================
+FD6E DCDB             (    forth6809.asm):06575         SOURCEW: LDD   SRCADDR
+FD70 3606             (    forth6809.asm):06576                  PSHU  D
+FD72 DCDD             (    forth6809.asm):06577                  LDD   SRCLEN
+FD74 3606             (    forth6809.asm):06578                  PSHU  D
+FD76 39               (    forth6809.asm):06579                  RTS
+                      (    forth6809.asm):06580         
+FD77 DCDF             (    forth6809.asm):06581         SOURCEID: LDD  SRCID
+FD79 3606             (    forth6809.asm):06582                   PSHU D
+FD7B 39               (    forth6809.asm):06583                   RTS
+                      (    forth6809.asm):06584         
+FD7C DCDF             (    forth6809.asm):06585         REFILLW: LDD   SRCID
+FD7E 2706             (    forth6809.asm):06586                  BEQ   RFTERM
+FD80 CC0000           (    forth6809.asm):06587                  LDD   #FALSEV
+FD83 3606             (    forth6809.asm):06588                  PSHU  D
+FD85 39               (    forth6809.asm):06589                  RTS
+FD86 BDE7B6           (    forth6809.asm):06590         RFTERM:  JSR   QUERY
+FD89 CCFFFF           (    forth6809.asm):06591                  LDD   #TRUEV
+FD8C 3606             (    forth6809.asm):06592                  PSHU  D
+FD8E 39               (    forth6809.asm):06593                  RTS
+                      (    forth6809.asm):06594         
+FD8F DCDB             (    forth6809.asm):06595         EVALUATEW: LDD  SRCADDR
+FD91 DDD3             (    forth6809.asm):06596                    STD  EVSAVEA
+FD93 DCDD             (    forth6809.asm):06597                    LDD  SRCLEN
+FD95 DDD5             (    forth6809.asm):06598                    STD  EVSAVEL
+FD97 DCDF             (    forth6809.asm):06599                    LDD  SRCID
+FD99 DDD7             (    forth6809.asm):06600                    STD  EVSAVEI
+FD9B DC10             (    forth6809.asm):06601                    LDD  TOIN
+FD9D DDD9             (    forth6809.asm):06602                    STD  EVSAVET
+FD9F 3706             (    forth6809.asm):06603                    PULU D
+FDA1 DDDD             (    forth6809.asm):06604                    STD  SRCLEN
+FDA3 3706             (    forth6809.asm):06605                    PULU D
+FDA5 DDDB             (    forth6809.asm):06606                    STD  SRCADDR
+FDA7 CCFFFF           (    forth6809.asm):06607                    LDD  #-1
+FDAA DDDF             (    forth6809.asm):06608                    STD  SRCID
+FDAC CC0000           (    forth6809.asm):06609                    LDD  #0
+FDAF DD10             (    forth6809.asm):06610                    STD  TOIN
+FDB1 BDE48E           (    forth6809.asm):06611                    JSR  INTERPRET
+FDB4 DCD3             (    forth6809.asm):06612                    LDD  EVSAVEA
+FDB6 DDDB             (    forth6809.asm):06613                    STD  SRCADDR
+FDB8 DCD5             (    forth6809.asm):06614                    LDD  EVSAVEL
+FDBA DDDD             (    forth6809.asm):06615                    STD  SRCLEN
+FDBC DCD7             (    forth6809.asm):06616                    LDD  EVSAVEI
+FDBE DDDF             (    forth6809.asm):06617                    STD  SRCID
+FDC0 DCD9             (    forth6809.asm):06618                    LDD  EVSAVET
+FDC2 DD10             (    forth6809.asm):06619                    STD  TOIN
+FDC4 39               (    forth6809.asm):06620                    RTS
+                      (    forth6809.asm):06621         
+                      (    forth6809.asm):06622         ; ENVIRONMENT? - dispatcher complete; table has only the
+                      (    forth6809.asm):06623         ; entries that could be derived without fabricating unfixed
+                      (    forth6809.asm):06624         ; capacities (/HOLD, /PAD were explicitly left out - see the
+                      (    forth6809.asm):06625         ; source conversation's ENVTABLE discussion). MAX-D/MAX-UD
+                      (    forth6809.asm):06626         ; and WORDLISTS/FLOORED need dispatcher extensions not yet
+                      (    forth6809.asm):06627         ; built (single-cell-only ENVFOUND path).
+FDC5 3706             (    forth6809.asm):06628         ENVQUERY: PULU D
+FDC7 DDEF             (    forth6809.asm):06629                   STD  ENVLEN
+FDC9 3706             (    forth6809.asm):06630                   PULU D
+FDCB DDF1             (    forth6809.asm):06631                   STD  ENVADDR
+FDCD 8EFE05           (    forth6809.asm):06632                   LDX  #ENVTABLE
+FDD0 EC84             (    forth6809.asm):06633         ENVLOOP:  LDD  ,X
+FDD2 10830000         (    forth6809.asm):06634                   CMPD #0
+FDD6 2727             (    forth6809.asm):06635                   BEQ  ENVNOTFOUND
+FDD8 3606             (    forth6809.asm):06636                   PSHU D
+FDDA EC02             (    forth6809.asm):06637                   LDD  2,X
+FDDC 3606             (    forth6809.asm):06638                   PSHU D
+FDDE DCF1             (    forth6809.asm):06639                   LDD  ENVADDR
+FDE0 3606             (    forth6809.asm):06640                   PSHU D
+FDE2 DCEF             (    forth6809.asm):06641                   LDD  ENVLEN
+FDE4 3606             (    forth6809.asm):06642                   PSHU D
+FDE6 BDF848           (    forth6809.asm):06643                   JSR  COMPAREW
+FDE9 3706             (    forth6809.asm):06644                   PULU D
+FDEB 10830000         (    forth6809.asm):06645                   CMPD #0
+FDEF 2704             (    forth6809.asm):06646                   BEQ  ENVFOUND
+FDF1 3006             (    forth6809.asm):06647                   LEAX 6,X
+FDF3 20DB             (    forth6809.asm):06648                   BRA  ENVLOOP
+FDF5 EC04             (    forth6809.asm):06649         ENVFOUND: LDD  4,X
+FDF7 3606             (    forth6809.asm):06650                   PSHU D
+FDF9 CCFFFF           (    forth6809.asm):06651                   LDD  #TRUEV
+FDFC 3606             (    forth6809.asm):06652                   PSHU D
+FDFE 39               (    forth6809.asm):06653                   RTS
+FDFF CC0000           (    forth6809.asm):06654         ENVNOTFOUND: LDD #FALSEV
+FE02 3606             (    forth6809.asm):06655                      PSHU D
+FE04 39               (    forth6809.asm):06656                      RTS
+                      (    forth6809.asm):06657         
+FE05                  (    forth6809.asm):06658         ENVTABLE:
+FE05 FE1F000F001F     (    forth6809.asm):06659                  FDB   EN1,EN1L,31
+FE0B FE2E00057FFF     (    forth6809.asm):06660                  FDB   EN2,EN2L,32767
+FE11 FE330005FFFF     (    forth6809.asm):06661                  FDB   EN3,EN3L,65535
+FE17 FE3800110008     (    forth6809.asm):06662                  FDB   EN6,EN6L,8
+FE1D 0000             (    forth6809.asm):06663                  FDB   0
+FE1F 2F434F554E544544 (    forth6809.asm):06664         EN1:     FCC   "/COUNTED-STRING"
      2D535452494E47
-     000F             (    forth6809.asm):06652         EN1L     EQU   *-EN1
-FE2C 4D41582D4E       (    forth6809.asm):06653         EN2:     FCC   "MAX-N"
-     0005             (    forth6809.asm):06654         EN2L     EQU   *-EN2
-FE31 4D41582D55       (    forth6809.asm):06655         EN3:     FCC   "MAX-U"
-     0005             (    forth6809.asm):06656         EN3L     EQU   *-EN3
-FE36 414444524553532D (    forth6809.asm):06657         EN6:     FCC   "ADDRESS-UNIT-BITS"
+     000F             (    forth6809.asm):06665         EN1L     EQU   *-EN1
+FE2E 4D41582D4E       (    forth6809.asm):06666         EN2:     FCC   "MAX-N"
+     0005             (    forth6809.asm):06667         EN2L     EQU   *-EN2
+FE33 4D41582D55       (    forth6809.asm):06668         EN3:     FCC   "MAX-U"
+     0005             (    forth6809.asm):06669         EN3L     EQU   *-EN3
+FE38 414444524553532D (    forth6809.asm):06670         EN6:     FCC   "ADDRESS-UNIT-BITS"
      554E49542D424954
      53
-     0011             (    forth6809.asm):06658         EN6L     EQU   *-EN6
-                      (    forth6809.asm):06659         
-                      (    forth6809.asm):06660         ; ============================================================
-                      (    forth6809.asm):06661         ; SECTION 25: TOOLS WORD SET (.S / WORDS / DUMP)
-                      (    forth6809.asm):06662         ; ============================================================
-FE47 1F30             (    forth6809.asm):06663         DOTS:    TFR   U,D
-FE49 DDE3             (    forth6809.asm):06664                  STD   DSPTMP
-FE4B DCE3             (    forth6809.asm):06665         DSLOOP:  LDD   DSPTMP
-FE4D 1083BD00         (    forth6809.asm):06666                  CMPD  #SP0
-FE51 2712             (    forth6809.asm):06667                  BEQ   DSDONE
-FE53 9EE3             (    forth6809.asm):06668                  LDX   DSPTMP
-FE55 EC84             (    forth6809.asm):06669                  LDD   ,X
-FE57 3606             (    forth6809.asm):06670                  PSHU  D
-FE59 BDFB99           (    forth6809.asm):06671                  JSR   DOT
-FE5C DCE3             (    forth6809.asm):06672                  LDD   DSPTMP
-FE5E C30002           (    forth6809.asm):06673                  ADDD  #2
-FE61 DDE3             (    forth6809.asm):06674                  STD   DSPTMP
-FE63 20E6             (    forth6809.asm):06675                  BRA   DSLOOP
-FE65 39               (    forth6809.asm):06676         DSDONE:  RTS
-                      (    forth6809.asm):06677         
-FE66 DC04             (    forth6809.asm):06678         WORDSW:  LDD   LATEST
-FE68 DDE5             (    forth6809.asm):06679                  STD   WWALK
-FE6A DCE5             (    forth6809.asm):06680         WWLOOP:  LDD   WWALK
-FE6C 2728             (    forth6809.asm):06681                  BEQ   WWDONE
-FE6E 9EE5             (    forth6809.asm):06682                  LDX   WWALK
-FE70 A684             (    forth6809.asm):06683                  LDA   ,X
-FE72 971E             (    forth6809.asm):06684                  STA   HDRFLAGS
-FE74 3001             (    forth6809.asm):06685                  LEAX  1,X
-FE76 3610             (    forth6809.asm):06686                  PSHU  X
-FE78 D61E             (    forth6809.asm):06687                  LDB   HDRFLAGS
-FE7A C41F             (    forth6809.asm):06688                  ANDB  #$1F
-FE7C 4F               (    forth6809.asm):06689                  CLRA
-FE7D 3606             (    forth6809.asm):06690                  PSHU  D
-FE7F BDF70A           (    forth6809.asm):06691                  JSR   TYPE
-FE82 BDFD3B           (    forth6809.asm):06692                  JSR   SPACEW
-FE85 9EE5             (    forth6809.asm):06693                  LDX   WWALK
-FE87 3001             (    forth6809.asm):06694                  LEAX  1,X
-FE89 D61E             (    forth6809.asm):06695                  LDB   HDRFLAGS
-FE8B C41F             (    forth6809.asm):06696                  ANDB  #$1F
-FE8D 4F               (    forth6809.asm):06697                  CLRA
-FE8E 308B             (    forth6809.asm):06698                  LEAX  D,X
-FE90 EC84             (    forth6809.asm):06699                  LDD   ,X
-FE92 DDE5             (    forth6809.asm):06700                  STD   WWALK
-FE94 20D4             (    forth6809.asm):06701                  BRA   WWLOOP
-FE96 BDFD2A           (    forth6809.asm):06702         WWDONE:  JSR   CRW
-FE99 39               (    forth6809.asm):06703                  RTS
-                      (    forth6809.asm):06704         
-FE9A 3706             (    forth6809.asm):06705         HEXDIGIT: PULU D
-FE9C 1083000A         (    forth6809.asm):06706                   CMPD #10
-FEA0 2505             (    forth6809.asm):06707                   BLO  HDDIGIT
-FEA2 C30037           (    forth6809.asm):06708                   ADDD #'A'-10
-FEA5 2003             (    forth6809.asm):06709                   BRA  HDEMIT
-FEA7 C30030           (    forth6809.asm):06710         HDDIGIT:  ADDD #'0'
-FEAA 3606             (    forth6809.asm):06711         HDEMIT:   PSHU D
-FEAC BDE731           (    forth6809.asm):06712                   JSR  EMIT
-FEAF 39               (    forth6809.asm):06713                   RTS
-                      (    forth6809.asm):06714         
-FEB0 3706             (    forth6809.asm):06715         HEXBYTE: PULU  D
-FEB2 D729             (    forth6809.asm):06716                  STB   MSCR      ; BUG FIX: STB writes ONE byte, at MSCR
-FEB4 D629             (    forth6809.asm):06717                  LDB   MSCR      ; itself - both reads below used to read
-FEB6 54               (    forth6809.asm):06718                  LSRB             ; MSCR+1 instead, a byte this routine never
-FEB7 54               (    forth6809.asm):06719                  LSRB             ; writes at all, so both the high and low
-FEB8 54               (    forth6809.asm):06720                  LSRB             ; nibble extraction ran on whatever stale
-FEB9 54               (    forth6809.asm):06721                  LSRB             ; value happened to be sitting there, not
-FEBA 4F               (    forth6809.asm):06722                  CLRA             ; the byte actually passed in. Now reads
-FEBB 3606             (    forth6809.asm):06723                  PSHU  D           ; from MSCR, where STB actually put it.
-FEBD BDFE9A           (    forth6809.asm):06724                  JSR   HEXDIGIT    ; Confirmed via MAME debugger: DUMP showed
-FEC0 D629             (    forth6809.asm):06725                  LDB   MSCR        ; $03 instead of $7B for a memory fill
-FEC2 C40F             (    forth6809.asm):06726                  ANDB  #$0F        ; character, with the ASCII column (a
-FEC4 4F               (    forth6809.asm):06727                  CLRA              ; separate code path) correctly showing
-FEC5 3606             (    forth6809.asm):06728                  PSHU  D           ; "}".
-FEC7 BDFE9A           (    forth6809.asm):06729                  JSR   HEXDIGIT
-FECA 39               (    forth6809.asm):06730                  RTS
-                      (    forth6809.asm):06731         
-                      (    forth6809.asm):06732         ; DUMP - includes the partial-final-line ASCII fix
-FECB 3706             (    forth6809.asm):06733         DUMPW:   PULU  D
-FECD DDE9             (    forth6809.asm):06734                  STD   DUMPCNT
-FECF 3706             (    forth6809.asm):06735                  PULU  D
-FED1 DDE7             (    forth6809.asm):06736                  STD   DUMPADDR
-FED3 BDFD2A           (    forth6809.asm):06737                  JSR   CRW        ; FORMATTING: leading CR, so the first line
-                      (    forth6809.asm):06738                                   ; starts on its own fresh line - matches
-                      (    forth6809.asm):06739                                   ; DULEND's existing trailing CR after every
-                      (    forth6809.asm):06740                                   ; line (including the last), giving
-                      (    forth6809.asm):06741                                   ; consistent vertical alignment from the
-                      (    forth6809.asm):06742                                   ; first line to the last regardless of
-                      (    forth6809.asm):06743                                   ; where the cursor was when DUMP was called.
-FED6 DCE9             (    forth6809.asm):06744         DULINE:  LDD   DUMPCNT
-FED8 102700A3         (    forth6809.asm):06745                  LBEQ  DUDONE          ; was BEQ - out of short-branch range
-FEDC DCE7             (    forth6809.asm):06746                  LDD   DUMPADDR
-FEDE DDEC             (    forth6809.asm):06747                  STD   HEXBUF
-FEE0 0FEB             (    forth6809.asm):06748                  CLR   DUMPCOL
-FEE2 8610             (    forth6809.asm):06749                  LDA   #16
-FEE4 97EE             (    forth6809.asm):06750                  STA   DUVALID
-FEE6 D6EB             (    forth6809.asm):06751         DUHEX:   LDB   DUMPCOL
-FEE8 C110             (    forth6809.asm):06752                  CMPB  #16
-FEEA 2749             (    forth6809.asm):06753                  BEQ   DUASCII
-FEEC DCE9             (    forth6809.asm):06754                  LDD   DUMPCNT
-FEEE 2606             (    forth6809.asm):06755                  BNE   DUHEXBYTE
-FEF0 96EB             (    forth6809.asm):06756                  LDA   DUMPCOL
-FEF2 97EE             (    forth6809.asm):06757                  STA   DUVALID
-FEF4 2023             (    forth6809.asm):06758                  BRA   DUHEXPAD
-FEF6 9EE7             (    forth6809.asm):06759         DUHEXBYTE: LDX  DUMPADDR
-FEF8 E684             (    forth6809.asm):06760                    LDB  ,X
-FEFA 4F               (    forth6809.asm):06761                    CLRA
-FEFB 3606             (    forth6809.asm):06762                    PSHU D
-FEFD BDFEB0           (    forth6809.asm):06763                    JSR  HEXBYTE
-FF00 CC0020           (    forth6809.asm):06764                    LDD  #32
-FF03 3606             (    forth6809.asm):06765                    PSHU D
-FF05 BDE731           (    forth6809.asm):06766                    JSR  EMIT
-FF08 9EE7             (    forth6809.asm):06767                    LDX  DUMPADDR
-FF0A 3001             (    forth6809.asm):06768                    LEAX 1,X
-FF0C 9FE7             (    forth6809.asm):06769                    STX  DUMPADDR
-FF0E DCE9             (    forth6809.asm):06770                    LDD  DUMPCNT
-FF10 830001           (    forth6809.asm):06771                    SUBD #1
-FF13 DDE9             (    forth6809.asm):06772                    STD  DUMPCNT
-FF15 0CEB             (    forth6809.asm):06773                    INC  DUMPCOL
-FF17 20CD             (    forth6809.asm):06774                    BRA  DUHEX
-FF19 CC0020           (    forth6809.asm):06775         DUHEXPAD: LDD  #32
-FF1C 3606             (    forth6809.asm):06776                   PSHU D
-FF1E BDE731           (    forth6809.asm):06777                   JSR  EMIT
-FF21 3606             (    forth6809.asm):06778                   PSHU D
-FF23 BDE731           (    forth6809.asm):06779                   JSR  EMIT
-FF26 3606             (    forth6809.asm):06780                   PSHU D
-FF28 BDE731           (    forth6809.asm):06781                   JSR  EMIT
-FF2B 0CEB             (    forth6809.asm):06782                   INC  DUMPCOL
-FF2D D6EB             (    forth6809.asm):06783                   LDB  DUMPCOL
-FF2F C110             (    forth6809.asm):06784                   CMPB #16
-FF31 26E6             (    forth6809.asm):06785                   BNE  DUHEXPAD
-FF33 2000             (    forth6809.asm):06786                   BRA  DUASCII
-FF35 CC0020           (    forth6809.asm):06787         DUASCII: LDD  #32
-FF38 3606             (    forth6809.asm):06788                  PSHU D
-FF3A BDE731           (    forth6809.asm):06789                  JSR  EMIT
-FF3D 0FEB             (    forth6809.asm):06790                  CLR  DUMPCOL
-FF3F D6EB             (    forth6809.asm):06791         DUACHAR: LDB  DUMPCOL
-FF41 C110             (    forth6809.asm):06792                  CMPB #16
-FF43 2731             (    forth6809.asm):06793                  BEQ  DULEND
-FF45 D1EE             (    forth6809.asm):06794                  CMPB DUVALID
-FF47 2421             (    forth6809.asm):06795                  BHS  DUABLANK
-FF49 9EEC             (    forth6809.asm):06796                  LDX  HEXBUF
-FF4B D6EB             (    forth6809.asm):06797                  LDB  DUMPCOL
-FF4D 4F               (    forth6809.asm):06798                  CLRA
-FF4E 308B             (    forth6809.asm):06799                  LEAX D,X
-FF50 A684             (    forth6809.asm):06800                  LDA  ,X
-FF52 8120             (    forth6809.asm):06801                  CMPA #32
-FF54 2506             (    forth6809.asm):06802                  BLO  DUDOT
-FF56 817F             (    forth6809.asm):06803                  CMPA #127
-FF58 2402             (    forth6809.asm):06804                  BHS  DUDOT
-FF5A 2002             (    forth6809.asm):06805                  BRA  DUPRINT
-FF5C 862E             (    forth6809.asm):06806         DUDOT:   LDA  #'.'
-FF5E 1F89             (    forth6809.asm):06807         DUPRINT: TFR  A,B
-FF60 4F               (    forth6809.asm):06808                  CLRA
-FF61 3606             (    forth6809.asm):06809                  PSHU D
-FF63 BDE731           (    forth6809.asm):06810                  JSR  EMIT
-FF66 0CEB             (    forth6809.asm):06811                  INC  DUMPCOL
-FF68 20D5             (    forth6809.asm):06812                  BRA  DUACHAR
-FF6A CC0020           (    forth6809.asm):06813         DUABLANK: LDD #32
-FF6D 3606             (    forth6809.asm):06814                   PSHU D
-FF6F BDE731           (    forth6809.asm):06815                   JSR EMIT
-FF72 0CEB             (    forth6809.asm):06816                   INC DUMPCOL
-FF74 20C9             (    forth6809.asm):06817                   BRA DUACHAR
-FF76 BDFD2A           (    forth6809.asm):06818         DULEND:  JSR  CRW
-FF79 DCE9             (    forth6809.asm):06819                  LDD  DUMPCNT
-FF7B 1026FF57         (    forth6809.asm):06820                  LBNE DULINE           ; was BNE - out of short-branch range
-FF7F 39               (    forth6809.asm):06821         DUDONE:  RTS
-                      (    forth6809.asm):06822         
-                      (    forth6809.asm):06823         ; ============================================================
-                      (    forth6809.asm):06824         ; SECTION 26: TRUE / FALSE. This section used to also hold
-                      (    forth6809.asm):06825         ; ABORT/QUIT's hand-built dictionary headers (ABORTHDR/QUITHDR) -
-                      (    forth6809.asm):06826         ; moved into BASEDICT and renamed to H_ABORT/H_QUIT (see the end
-                      (    forth6809.asm):06827         ; of SECTION 27) so every header in this ROM lives in one
-                      (    forth6809.asm):06828         ; contiguous block, rather than header data sitting apart from
-                      (    forth6809.asm):06829         ; the rest of the dictionary inside BASECODE.
-                      (    forth6809.asm):06830         ; ============================================================
-                      (    forth6809.asm):06831         ; ------------------------------------------------------------
-                      (    forth6809.asm):06832         ; TRUE / FALSE - simple subroutines, not the CONSTANT/DODOES
-                      (    forth6809.asm):06833         ; pattern these used before (JSR DODOES + FDB ATSIGN + a value
-                      (    forth6809.asm):06834         ; cell, matching what interactive CONSTANT compiles). Each is now
-                      (    forth6809.asm):06835         ; a direct LDD/PSHU/RTS, like every other ordinary ROM word's CFA
-                      (    forth6809.asm):06836         ; - no indirection, no value cell.
-                      (    forth6809.asm):06837         ;
-                      (    forth6809.asm):06838         ; RESOLVED: the previous version of this code deliberately inverted
-                      (    forth6809.asm):06839         ; TRUE/FALSE's values from the system's own convention, per an
-                      (    forth6809.asm):06840         ; earlier explicit request - FALSE pushed $FFFF and TRUE pushed
-                      (    forth6809.asm):06841         ; $0000, disagreeing with TRUEV/FALSEV ($FFFF/$0000) and every
-                      (    forth6809.asm):06842         ; comparison operator (=, <, >, and the rest), which all still
-                      (    forth6809.asm):06843         ; returned TRUEV for a true result and FALSEV for false. Restored
-                      (    forth6809.asm):06844         ; to the standard convention now: TRUE pushes $FFFF, FALSE pushes
-                      (    forth6809.asm):06845         ; $0000, matching TRUEV/FALSEV and every comparison operator again.
-                      (    forth6809.asm):06846         ; Each is a direct LDD/PSHU/RTS, like every other ordinary ROM
-                      (    forth6809.asm):06847         ; word's CFA - no indirection, no value cell, no DODOES trampoline.
-                      (    forth6809.asm):06848         ; ------------------------------------------------------------
-FF80 CCFFFF           (    forth6809.asm):06849         TRUEBODY:  LDD   #$FFFF
-FF83 3606             (    forth6809.asm):06850                    PSHU  D
-FF85 39               (    forth6809.asm):06851                    RTS
-                      (    forth6809.asm):06852         
-FF86 CC0000           (    forth6809.asm):06853         FALSEBODY: LDD   #$0000
-FF89 3606             (    forth6809.asm):06854                    PSHU  D
-FF8B 39               (    forth6809.asm):06855                    RTS
-                      (    forth6809.asm):06856         
-                      (    forth6809.asm):06857         ; ------------------------------------------------------------
-                      (    forth6809.asm):06858         ; 1 / -1 / 2 / -2 - simple immediate-value words, same pattern as
-                      (    forth6809.asm):06859         ; TRUE/FALSE above: direct LDD/PSHU/RTS, no indirection, no value
-                      (    forth6809.asm):06860         ; cell. Headers are H_1/H_M1/H_2/H_M2 (SECTION 27, chained after
-                      (    forth6809.asm):06861         ; H_FIND) - "1"/"-1"/"2"/"-2" aren't valid 6809 assembler labels.
-                      (    forth6809.asm):06862         ; ------------------------------------------------------------
-FF8C CC0001           (    forth6809.asm):06863         ONEBODY:   LDD   #1
-FF8F 3606             (    forth6809.asm):06864                    PSHU  D
-FF91 39               (    forth6809.asm):06865                    RTS
-                      (    forth6809.asm):06866         
-FF92 CCFFFF           (    forth6809.asm):06867         MONEBODY:  LDD   #-1
-FF95 3606             (    forth6809.asm):06868                    PSHU  D
-FF97 39               (    forth6809.asm):06869                    RTS
-                      (    forth6809.asm):06870         
-FF98 CC0002           (    forth6809.asm):06871         TWOBODY:   LDD   #2
-FF9B 3606             (    forth6809.asm):06872                    PSHU  D
-FF9D 39               (    forth6809.asm):06873                    RTS
-                      (    forth6809.asm):06874         
-FF9E CCFFFE           (    forth6809.asm):06875         MTWOBODY:  LDD   #-2
-FFA1 3606             (    forth6809.asm):06876                    PSHU  D
-FFA3 39               (    forth6809.asm):06877                    RTS
-                      (    forth6809.asm):06878         
-                      (    forth6809.asm):06879         ; Verify no collision with init code,
-                      (    forth6809.asm):06880         ; value should match ORG INITCODE.
-     FFA4             (    forth6809.asm):06881         BASECODEEND  EQU   *
-     1FBA             (    forth6809.asm):06882         BASECODESIZE EQU   BASECODEEND-BASECODE
+     0011             (    forth6809.asm):06671         EN6L     EQU   *-EN6
+                      (    forth6809.asm):06672         
+                      (    forth6809.asm):06673         ; ============================================================
+                      (    forth6809.asm):06674         ; SECTION 25: TOOLS WORD SET (.S / WORDS / DUMP)
+                      (    forth6809.asm):06675         ; ============================================================
+FE49 1F30             (    forth6809.asm):06676         DOTS:    TFR   U,D
+FE4B DDE3             (    forth6809.asm):06677                  STD   DSPTMP
+FE4D DCE3             (    forth6809.asm):06678         DSLOOP:  LDD   DSPTMP
+FE4F 1083BD00         (    forth6809.asm):06679                  CMPD  #SP0
+FE53 2712             (    forth6809.asm):06680                  BEQ   DSDONE
+FE55 9EE3             (    forth6809.asm):06681                  LDX   DSPTMP
+FE57 EC84             (    forth6809.asm):06682                  LDD   ,X
+FE59 3606             (    forth6809.asm):06683                  PSHU  D
+FE5B BDFB99           (    forth6809.asm):06684                  JSR   DOT
+FE5E DCE3             (    forth6809.asm):06685                  LDD   DSPTMP
+FE60 C30002           (    forth6809.asm):06686                  ADDD  #2
+FE63 DDE3             (    forth6809.asm):06687                  STD   DSPTMP
+FE65 20E6             (    forth6809.asm):06688                  BRA   DSLOOP
+FE67 39               (    forth6809.asm):06689         DSDONE:  RTS
+                      (    forth6809.asm):06690         
+FE68 DC04             (    forth6809.asm):06691         WORDSW:  LDD   LATEST
+FE6A DDE5             (    forth6809.asm):06692                  STD   WWALK
+FE6C DCE5             (    forth6809.asm):06693         WWLOOP:  LDD   WWALK
+FE6E 2728             (    forth6809.asm):06694                  BEQ   WWDONE
+FE70 9EE5             (    forth6809.asm):06695                  LDX   WWALK
+FE72 A684             (    forth6809.asm):06696                  LDA   ,X
+FE74 971E             (    forth6809.asm):06697                  STA   HDRFLAGS
+FE76 3001             (    forth6809.asm):06698                  LEAX  1,X
+FE78 3610             (    forth6809.asm):06699                  PSHU  X
+FE7A D61E             (    forth6809.asm):06700                  LDB   HDRFLAGS
+FE7C C41F             (    forth6809.asm):06701                  ANDB  #$1F
+FE7E 4F               (    forth6809.asm):06702                  CLRA
+FE7F 3606             (    forth6809.asm):06703                  PSHU  D
+FE81 BDF70A           (    forth6809.asm):06704                  JSR   TYPE
+FE84 BDFD3B           (    forth6809.asm):06705                  JSR   SPACEW
+FE87 9EE5             (    forth6809.asm):06706                  LDX   WWALK
+FE89 3001             (    forth6809.asm):06707                  LEAX  1,X
+FE8B D61E             (    forth6809.asm):06708                  LDB   HDRFLAGS
+FE8D C41F             (    forth6809.asm):06709                  ANDB  #$1F
+FE8F 4F               (    forth6809.asm):06710                  CLRA
+FE90 308B             (    forth6809.asm):06711                  LEAX  D,X
+FE92 EC84             (    forth6809.asm):06712                  LDD   ,X
+FE94 DDE5             (    forth6809.asm):06713                  STD   WWALK
+FE96 20D4             (    forth6809.asm):06714                  BRA   WWLOOP
+FE98 BDFD2A           (    forth6809.asm):06715         WWDONE:  JSR   CRW
+FE9B 39               (    forth6809.asm):06716                  RTS
+                      (    forth6809.asm):06717         
+FE9C 3706             (    forth6809.asm):06718         HEXDIGIT: PULU D
+FE9E 1083000A         (    forth6809.asm):06719                   CMPD #10
+FEA2 2505             (    forth6809.asm):06720                   BLO  HDDIGIT
+FEA4 C30037           (    forth6809.asm):06721                   ADDD #'A'-10
+FEA7 2003             (    forth6809.asm):06722                   BRA  HDEMIT
+FEA9 C30030           (    forth6809.asm):06723         HDDIGIT:  ADDD #'0'
+FEAC 3606             (    forth6809.asm):06724         HDEMIT:   PSHU D
+FEAE BDE731           (    forth6809.asm):06725                   JSR  EMIT
+FEB1 39               (    forth6809.asm):06726                   RTS
+                      (    forth6809.asm):06727         
+FEB2 3706             (    forth6809.asm):06728         HEXBYTE: PULU  D
+FEB4 D729             (    forth6809.asm):06729                  STB   MSCR      ; BUG FIX: STB writes ONE byte, at MSCR
+FEB6 D629             (    forth6809.asm):06730                  LDB   MSCR      ; itself - both reads below used to read
+FEB8 54               (    forth6809.asm):06731                  LSRB             ; MSCR+1 instead, a byte this routine never
+FEB9 54               (    forth6809.asm):06732                  LSRB             ; writes at all, so both the high and low
+FEBA 54               (    forth6809.asm):06733                  LSRB             ; nibble extraction ran on whatever stale
+FEBB 54               (    forth6809.asm):06734                  LSRB             ; value happened to be sitting there, not
+FEBC 4F               (    forth6809.asm):06735                  CLRA             ; the byte actually passed in. Now reads
+FEBD 3606             (    forth6809.asm):06736                  PSHU  D           ; from MSCR, where STB actually put it.
+FEBF BDFE9C           (    forth6809.asm):06737                  JSR   HEXDIGIT    ; Confirmed via MAME debugger: DUMP showed
+FEC2 D629             (    forth6809.asm):06738                  LDB   MSCR        ; $03 instead of $7B for a memory fill
+FEC4 C40F             (    forth6809.asm):06739                  ANDB  #$0F        ; character, with the ASCII column (a
+FEC6 4F               (    forth6809.asm):06740                  CLRA              ; separate code path) correctly showing
+FEC7 3606             (    forth6809.asm):06741                  PSHU  D           ; "}".
+FEC9 BDFE9C           (    forth6809.asm):06742                  JSR   HEXDIGIT
+FECC 39               (    forth6809.asm):06743                  RTS
+                      (    forth6809.asm):06744         
+                      (    forth6809.asm):06745         ; DUMP - includes the partial-final-line ASCII fix
+FECD 3706             (    forth6809.asm):06746         DUMPW:   PULU  D
+FECF DDE9             (    forth6809.asm):06747                  STD   DUMPCNT
+FED1 3706             (    forth6809.asm):06748                  PULU  D
+FED3 DDE7             (    forth6809.asm):06749                  STD   DUMPADDR
+FED5 BDFD2A           (    forth6809.asm):06750                  JSR   CRW        ; FORMATTING: leading CR, so the first line
+                      (    forth6809.asm):06751                                   ; starts on its own fresh line - matches
+                      (    forth6809.asm):06752                                   ; DULEND's existing trailing CR after every
+                      (    forth6809.asm):06753                                   ; line (including the last), giving
+                      (    forth6809.asm):06754                                   ; consistent vertical alignment from the
+                      (    forth6809.asm):06755                                   ; first line to the last regardless of
+                      (    forth6809.asm):06756                                   ; where the cursor was when DUMP was called.
+FED8 DCE9             (    forth6809.asm):06757         DULINE:  LDD   DUMPCNT
+FEDA 102700A3         (    forth6809.asm):06758                  LBEQ  DUDONE          ; was BEQ - out of short-branch range
+FEDE DCE7             (    forth6809.asm):06759                  LDD   DUMPADDR
+FEE0 DDEC             (    forth6809.asm):06760                  STD   HEXBUF
+FEE2 0FEB             (    forth6809.asm):06761                  CLR   DUMPCOL
+FEE4 8610             (    forth6809.asm):06762                  LDA   #16
+FEE6 97EE             (    forth6809.asm):06763                  STA   DUVALID
+FEE8 D6EB             (    forth6809.asm):06764         DUHEX:   LDB   DUMPCOL
+FEEA C110             (    forth6809.asm):06765                  CMPB  #16
+FEEC 2749             (    forth6809.asm):06766                  BEQ   DUASCII
+FEEE DCE9             (    forth6809.asm):06767                  LDD   DUMPCNT
+FEF0 2606             (    forth6809.asm):06768                  BNE   DUHEXBYTE
+FEF2 96EB             (    forth6809.asm):06769                  LDA   DUMPCOL
+FEF4 97EE             (    forth6809.asm):06770                  STA   DUVALID
+FEF6 2023             (    forth6809.asm):06771                  BRA   DUHEXPAD
+FEF8 9EE7             (    forth6809.asm):06772         DUHEXBYTE: LDX  DUMPADDR
+FEFA E684             (    forth6809.asm):06773                    LDB  ,X
+FEFC 4F               (    forth6809.asm):06774                    CLRA
+FEFD 3606             (    forth6809.asm):06775                    PSHU D
+FEFF BDFEB2           (    forth6809.asm):06776                    JSR  HEXBYTE
+FF02 CC0020           (    forth6809.asm):06777                    LDD  #32
+FF05 3606             (    forth6809.asm):06778                    PSHU D
+FF07 BDE731           (    forth6809.asm):06779                    JSR  EMIT
+FF0A 9EE7             (    forth6809.asm):06780                    LDX  DUMPADDR
+FF0C 3001             (    forth6809.asm):06781                    LEAX 1,X
+FF0E 9FE7             (    forth6809.asm):06782                    STX  DUMPADDR
+FF10 DCE9             (    forth6809.asm):06783                    LDD  DUMPCNT
+FF12 830001           (    forth6809.asm):06784                    SUBD #1
+FF15 DDE9             (    forth6809.asm):06785                    STD  DUMPCNT
+FF17 0CEB             (    forth6809.asm):06786                    INC  DUMPCOL
+FF19 20CD             (    forth6809.asm):06787                    BRA  DUHEX
+FF1B CC0020           (    forth6809.asm):06788         DUHEXPAD: LDD  #32
+FF1E 3606             (    forth6809.asm):06789                   PSHU D
+FF20 BDE731           (    forth6809.asm):06790                   JSR  EMIT
+FF23 3606             (    forth6809.asm):06791                   PSHU D
+FF25 BDE731           (    forth6809.asm):06792                   JSR  EMIT
+FF28 3606             (    forth6809.asm):06793                   PSHU D
+FF2A BDE731           (    forth6809.asm):06794                   JSR  EMIT
+FF2D 0CEB             (    forth6809.asm):06795                   INC  DUMPCOL
+FF2F D6EB             (    forth6809.asm):06796                   LDB  DUMPCOL
+FF31 C110             (    forth6809.asm):06797                   CMPB #16
+FF33 26E6             (    forth6809.asm):06798                   BNE  DUHEXPAD
+FF35 2000             (    forth6809.asm):06799                   BRA  DUASCII
+FF37 CC0020           (    forth6809.asm):06800         DUASCII: LDD  #32
+FF3A 3606             (    forth6809.asm):06801                  PSHU D
+FF3C BDE731           (    forth6809.asm):06802                  JSR  EMIT
+FF3F 0FEB             (    forth6809.asm):06803                  CLR  DUMPCOL
+FF41 D6EB             (    forth6809.asm):06804         DUACHAR: LDB  DUMPCOL
+FF43 C110             (    forth6809.asm):06805                  CMPB #16
+FF45 2731             (    forth6809.asm):06806                  BEQ  DULEND
+FF47 D1EE             (    forth6809.asm):06807                  CMPB DUVALID
+FF49 2421             (    forth6809.asm):06808                  BHS  DUABLANK
+FF4B 9EEC             (    forth6809.asm):06809                  LDX  HEXBUF
+FF4D D6EB             (    forth6809.asm):06810                  LDB  DUMPCOL
+FF4F 4F               (    forth6809.asm):06811                  CLRA
+FF50 308B             (    forth6809.asm):06812                  LEAX D,X
+FF52 A684             (    forth6809.asm):06813                  LDA  ,X
+FF54 8120             (    forth6809.asm):06814                  CMPA #32
+FF56 2506             (    forth6809.asm):06815                  BLO  DUDOT
+FF58 817F             (    forth6809.asm):06816                  CMPA #127
+FF5A 2402             (    forth6809.asm):06817                  BHS  DUDOT
+FF5C 2002             (    forth6809.asm):06818                  BRA  DUPRINT
+FF5E 862E             (    forth6809.asm):06819         DUDOT:   LDA  #'.'
+FF60 1F89             (    forth6809.asm):06820         DUPRINT: TFR  A,B
+FF62 4F               (    forth6809.asm):06821                  CLRA
+FF63 3606             (    forth6809.asm):06822                  PSHU D
+FF65 BDE731           (    forth6809.asm):06823                  JSR  EMIT
+FF68 0CEB             (    forth6809.asm):06824                  INC  DUMPCOL
+FF6A 20D5             (    forth6809.asm):06825                  BRA  DUACHAR
+FF6C CC0020           (    forth6809.asm):06826         DUABLANK: LDD #32
+FF6F 3606             (    forth6809.asm):06827                   PSHU D
+FF71 BDE731           (    forth6809.asm):06828                   JSR EMIT
+FF74 0CEB             (    forth6809.asm):06829                   INC DUMPCOL
+FF76 20C9             (    forth6809.asm):06830                   BRA DUACHAR
+FF78 BDFD2A           (    forth6809.asm):06831         DULEND:  JSR  CRW
+FF7B DCE9             (    forth6809.asm):06832                  LDD  DUMPCNT
+FF7D 1026FF57         (    forth6809.asm):06833                  LBNE DULINE           ; was BNE - out of short-branch range
+FF81 39               (    forth6809.asm):06834         DUDONE:  RTS
+                      (    forth6809.asm):06835         
+                      (    forth6809.asm):06836         ; ============================================================
+                      (    forth6809.asm):06837         ; SECTION 26: TRUE / FALSE. This section used to also hold
+                      (    forth6809.asm):06838         ; ABORT/QUIT's hand-built dictionary headers (ABORTHDR/QUITHDR) -
+                      (    forth6809.asm):06839         ; moved into BASEDICT and renamed to H_ABORT/H_QUIT (see the end
+                      (    forth6809.asm):06840         ; of SECTION 27) so every header in this ROM lives in one
+                      (    forth6809.asm):06841         ; contiguous block, rather than header data sitting apart from
+                      (    forth6809.asm):06842         ; the rest of the dictionary inside BASECODE.
+                      (    forth6809.asm):06843         ; ============================================================
+                      (    forth6809.asm):06844         ; ------------------------------------------------------------
+                      (    forth6809.asm):06845         ; TRUE / FALSE - simple subroutines, not the CONSTANT/DODOES
+                      (    forth6809.asm):06846         ; pattern these used before (JSR DODOES + FDB ATSIGN + a value
+                      (    forth6809.asm):06847         ; cell, matching what interactive CONSTANT compiles). Each is now
+                      (    forth6809.asm):06848         ; a direct LDD/PSHU/RTS, like every other ordinary ROM word's CFA
+                      (    forth6809.asm):06849         ; - no indirection, no value cell.
+                      (    forth6809.asm):06850         ;
+                      (    forth6809.asm):06851         ; RESOLVED: the previous version of this code deliberately inverted
+                      (    forth6809.asm):06852         ; TRUE/FALSE's values from the system's own convention, per an
+                      (    forth6809.asm):06853         ; earlier explicit request - FALSE pushed $FFFF and TRUE pushed
+                      (    forth6809.asm):06854         ; $0000, disagreeing with TRUEV/FALSEV ($FFFF/$0000) and every
+                      (    forth6809.asm):06855         ; comparison operator (=, <, >, and the rest), which all still
+                      (    forth6809.asm):06856         ; returned TRUEV for a true result and FALSEV for false. Restored
+                      (    forth6809.asm):06857         ; to the standard convention now: TRUE pushes $FFFF, FALSE pushes
+                      (    forth6809.asm):06858         ; $0000, matching TRUEV/FALSEV and every comparison operator again.
+                      (    forth6809.asm):06859         ; Each is a direct LDD/PSHU/RTS, like every other ordinary ROM
+                      (    forth6809.asm):06860         ; word's CFA - no indirection, no value cell, no DODOES trampoline.
+                      (    forth6809.asm):06861         ; ------------------------------------------------------------
+FF82 CCFFFF           (    forth6809.asm):06862         TRUEBODY:  LDD   #$FFFF
+FF85 3606             (    forth6809.asm):06863                    PSHU  D
+FF87 39               (    forth6809.asm):06864                    RTS
+                      (    forth6809.asm):06865         
+FF88 CC0000           (    forth6809.asm):06866         FALSEBODY: LDD   #$0000
+FF8B 3606             (    forth6809.asm):06867                    PSHU  D
+FF8D 39               (    forth6809.asm):06868                    RTS
+                      (    forth6809.asm):06869         
+                      (    forth6809.asm):06870         ; ------------------------------------------------------------
+                      (    forth6809.asm):06871         ; 1 / -1 / 2 / -2 - simple immediate-value words, same pattern as
+                      (    forth6809.asm):06872         ; TRUE/FALSE above: direct LDD/PSHU/RTS, no indirection, no value
+                      (    forth6809.asm):06873         ; cell. Headers are H_1/H_M1/H_2/H_M2 (SECTION 27, chained after
+                      (    forth6809.asm):06874         ; H_FIND) - "1"/"-1"/"2"/"-2" aren't valid 6809 assembler labels.
+                      (    forth6809.asm):06875         ; ------------------------------------------------------------
+FF8E CC0001           (    forth6809.asm):06876         ONEBODY:   LDD   #1
+FF91 3606             (    forth6809.asm):06877                    PSHU  D
+FF93 39               (    forth6809.asm):06878                    RTS
+                      (    forth6809.asm):06879         
+FF94 CCFFFF           (    forth6809.asm):06880         MONEBODY:  LDD   #-1
+FF97 3606             (    forth6809.asm):06881                    PSHU  D
+FF99 39               (    forth6809.asm):06882                    RTS
                       (    forth6809.asm):06883         
-                      (    forth6809.asm):06884         ; Prevent the assembler from extinguishing the gap between the
-                      (    forth6809.asm):06885         ; BASECODE block and the INITCODE block when it generates the
-                      (    forth6809.asm):06886         ; .bin file.
-FFA4                  (    forth6809.asm):06887         BASEND:
-FFA4 FFFFFFFFFF       (    forth6809.asm):06888                  FILL $FF,INITCODE-BASEND
-                      (    forth6809.asm):06889         
-                      (    forth6809.asm):06890         ; ============================================================
-                      (    forth6809.asm):06891         ; SECTION 2: INIT CODE (COLDSTRT / WARM)
-                      (    forth6809.asm):06892         ; ============================================================
-                      (    forth6809.asm):06893                  ORG   INITCODE       ; INITCODE is $FFA9 (was $FFA2, before that $FFA0, before that literal $FFC0)
-FFA9                  (    forth6809.asm):06894         COLDSTRT:
-FFA9 1A50             (    forth6809.asm):06895                  ORCC  #$50
-FFAB 10CEC000         (    forth6809.asm):06896                  LDS   #RSTACK+1
-FFAF CEBD00           (    forth6809.asm):06897                  LDU   #DSTACK+1
-FFB2 4F               (    forth6809.asm):06898                  CLRA
-FFB3 1F8B             (    forth6809.asm):06899                  TFR   A,DP
-                      (    forth6809.asm):06900         
-FFB5 8E0000           (    forth6809.asm):06901                  LDX   #GLOBALS
-FFB8 C600             (    forth6809.asm):06902                  LDB   #0
-FFBA 6F80             (    forth6809.asm):06903         CLRGLOB: CLR   ,X+
-FFBC 5A               (    forth6809.asm):06904                  DECB
-FFBD 26FB             (    forth6809.asm):06905                  BNE   CLRGLOB
-                      (    forth6809.asm):06906         
-FFBF 8E0106           (    forth6809.asm):06907                  LDX   #SERBUF
-FFC2 6F80             (    forth6809.asm):06908                  CLR   ,X+
-FFC4 6F84             (    forth6809.asm):06909                  CLR   ,X
-                      (    forth6809.asm):06910         
-FFC6 BDDFEA           (    forth6809.asm):06911                  JSR   INITSERIAL
-                      (    forth6809.asm):06912         
-                      (    forth6809.asm):06913                  IFEQ  UNITTESTS  ; >>>>>>>>>>
-                      (    forth6809.asm):06914                  JSR   TSTRUNNER
-                      (    forth6809.asm):06915                  ENDC  ; <<<<<<<<<<
-                      (    forth6809.asm):06916         
-FFC9 7EE002           (    forth6809.asm):06917                  JMP   COLD
-                      (    forth6809.asm):06918         
-FFCC 1A50             (    forth6809.asm):06919         WARM:    ORCC  #$50
-FFCE 4F               (    forth6809.asm):06920                  CLRA
-FFCF 1F8B             (    forth6809.asm):06921                  TFR   A,DP
-FFD1 CEBD00           (    forth6809.asm):06922                  LDU   #SP0
-FFD4 10CEC000         (    forth6809.asm):06923                  LDS   #RP0
-FFD8 8EFFEA           (    forth6809.asm):06924                  LDX   #WARMMSG
-FFDB 3610             (    forth6809.asm):06925                  PSHU  X
-FFDD CC0006           (    forth6809.asm):06926                  LDD   #WARMMSGL
-FFE0 3606             (    forth6809.asm):06927                  PSHU  D
-FFE2 BDF70A           (    forth6809.asm):06928                  JSR   TYPE
-FFE5 1CAF             (    forth6809.asm):06929                  ANDCC #$AF
-FFE7 7EE037           (    forth6809.asm):06930                  JMP   ABORT
+FF9A CC0002           (    forth6809.asm):06884         TWOBODY:   LDD   #2
+FF9D 3606             (    forth6809.asm):06885                    PSHU  D
+FF9F 39               (    forth6809.asm):06886                    RTS
+                      (    forth6809.asm):06887         
+FFA0 CCFFFE           (    forth6809.asm):06888         MTWOBODY:  LDD   #-2
+FFA3 3606             (    forth6809.asm):06889                    PSHU  D
+FFA5 39               (    forth6809.asm):06890                    RTS
+                      (    forth6809.asm):06891         
+                      (    forth6809.asm):06892         ; Verify no collision with init code,
+                      (    forth6809.asm):06893         ; value should match ORG INITCODE.
+     FFA6             (    forth6809.asm):06894         BASECODEEND  EQU   *
+     1FBC             (    forth6809.asm):06895         BASECODESIZE EQU   BASECODEEND-BASECODE
+                      (    forth6809.asm):06896         
+                      (    forth6809.asm):06897         ; Prevent the assembler from extinguishing the gap between the
+                      (    forth6809.asm):06898         ; BASECODE block and the INITCODE block when it generates the
+                      (    forth6809.asm):06899         ; .bin file.
+FFA6                  (    forth6809.asm):06900         BASEND:
+FFA6 FFFFFF           (    forth6809.asm):06901                  FILL $FF,INITCODE-BASEND
+                      (    forth6809.asm):06902         
+                      (    forth6809.asm):06903         ; ============================================================
+                      (    forth6809.asm):06904         ; SECTION 2: INIT CODE (COLDSTRT / WARM)
+                      (    forth6809.asm):06905         ; ============================================================
+                      (    forth6809.asm):06906                  ORG   INITCODE       ; INITCODE is $FFA9 (was $FFA2, before that $FFA0, before that literal $FFC0)
+FFA9                  (    forth6809.asm):06907         COLDSTRT:
+FFA9 1A50             (    forth6809.asm):06908                  ORCC  #$50
+FFAB 10CEC000         (    forth6809.asm):06909                  LDS   #RSTACK+1
+FFAF CEBD00           (    forth6809.asm):06910                  LDU   #DSTACK+1
+FFB2 4F               (    forth6809.asm):06911                  CLRA
+FFB3 1F8B             (    forth6809.asm):06912                  TFR   A,DP
+                      (    forth6809.asm):06913         
+FFB5 8E0000           (    forth6809.asm):06914                  LDX   #GLOBALS
+FFB8 C600             (    forth6809.asm):06915                  LDB   #0
+FFBA 6F80             (    forth6809.asm):06916         CLRGLOB: CLR   ,X+
+FFBC 5A               (    forth6809.asm):06917                  DECB
+FFBD 26FB             (    forth6809.asm):06918                  BNE   CLRGLOB
+                      (    forth6809.asm):06919         
+FFBF 8E0106           (    forth6809.asm):06920                  LDX   #SERBUF
+FFC2 6F80             (    forth6809.asm):06921                  CLR   ,X+
+FFC4 6F84             (    forth6809.asm):06922                  CLR   ,X
+                      (    forth6809.asm):06923         
+FFC6 BDDFEA           (    forth6809.asm):06924                  JSR   INITSERIAL
+                      (    forth6809.asm):06925         
+                      (    forth6809.asm):06926                  IFEQ  UNITTESTS  ; >>>>>>>>>>
+                      (    forth6809.asm):06927                  JSR   TSTRUNNER
+                      (    forth6809.asm):06928                  ENDC  ; <<<<<<<<<<
+                      (    forth6809.asm):06929         
+FFC9 7EE002           (    forth6809.asm):06930                  JMP   COLD
                       (    forth6809.asm):06931         
-FFEA 20207761726D     (    forth6809.asm):06932         WARMMSG: FCC   "  warm"
-     0006             (    forth6809.asm):06933         WARMMSGL EQU   *-WARMMSG
-                      (    forth6809.asm):06934         
-     FFF0             (    forth6809.asm):06935         INITEND  EQU   *          ; Verify no collision with vectors, value should match vector ORG
-     0047             (    forth6809.asm):06936         INITSIZE EQU   INITEND-INITCODE
-                      (    forth6809.asm):06937         
-                      (    forth6809.asm):06938         ; ============================================================
-                      (    forth6809.asm):06939         ; SECTION 1: HARDWARE VECTOR TABLE
-                      (    forth6809.asm):06940         ; ============================================================
-                      (    forth6809.asm):06941                  ORG   VECTORS       ; VECTORS is $FFF0
-FFF0 0000             (    forth6809.asm):06942         VRESV    FDB   $0000
-FFF2 DFF6             (    forth6809.asm):06943         VSWI3    FDB   SWI3H
-FFF4 DFF7             (    forth6809.asm):06944         VSWI2    FDB   SWI2H
-FFF6 DFF8             (    forth6809.asm):06945         VFIRQ    FDB   FIRQH
-FFF8 DFF5             (    forth6809.asm):06946         VIRQ     FDB   IRQH
-FFFA DFFA             (    forth6809.asm):06947         VSWI     FDB   SWIH
-FFFC FFCC             (    forth6809.asm):06948         VNMI     FDB   WARM            ; NMI -> warm restart
-FFFE FFA9             (    forth6809.asm):06949         VRESET   FDB   COLDSTRT
+FFCC 1A50             (    forth6809.asm):06932         WARM:    ORCC  #$50
+FFCE 4F               (    forth6809.asm):06933                  CLRA
+FFCF 1F8B             (    forth6809.asm):06934                  TFR   A,DP
+FFD1 CEBD00           (    forth6809.asm):06935                  LDU   #SP0
+FFD4 10CEC000         (    forth6809.asm):06936                  LDS   #RP0
+FFD8 8EFFEA           (    forth6809.asm):06937                  LDX   #WARMMSG
+FFDB 3610             (    forth6809.asm):06938                  PSHU  X
+FFDD CC0006           (    forth6809.asm):06939                  LDD   #WARMMSGL
+FFE0 3606             (    forth6809.asm):06940                  PSHU  D
+FFE2 BDF70A           (    forth6809.asm):06941                  JSR   TYPE
+FFE5 1CAF             (    forth6809.asm):06942                  ANDCC #$AF
+FFE7 7EE037           (    forth6809.asm):06943                  JMP   ABORT
+                      (    forth6809.asm):06944         
+FFEA 20207761726D     (    forth6809.asm):06945         WARMMSG: FCC   "  warm"
+     0006             (    forth6809.asm):06946         WARMMSGL EQU   *-WARMMSG
+                      (    forth6809.asm):06947         
+     FFF0             (    forth6809.asm):06948         INITEND  EQU   *          ; Verify no collision with vectors, value should match vector ORG
+     0047             (    forth6809.asm):06949         INITSIZE EQU   INITEND-INITCODE
                       (    forth6809.asm):06950         
-     0000             (    forth6809.asm):06951         VECTOREND  EQU   *          ; Verify vectors size, value should match $10.
-     0010             (    forth6809.asm):06952         VECTORSIZE EQU   VECTOREND-VECTORS
-                      (    forth6809.asm):06953         
-                      (    forth6809.asm):06954         ; ============================================================
-                      (    forth6809.asm):06955         ; END OF CONSOLIDATED SOURCE
-                      (    forth6809.asm):06956         ; ============================================================
+                      (    forth6809.asm):06951         ; ============================================================
+                      (    forth6809.asm):06952         ; SECTION 1: HARDWARE VECTOR TABLE
+                      (    forth6809.asm):06953         ; ============================================================
+                      (    forth6809.asm):06954                  ORG   VECTORS       ; VECTORS is $FFF0
+FFF0 0000             (    forth6809.asm):06955         VRESV    FDB   $0000
+FFF2 DFF6             (    forth6809.asm):06956         VSWI3    FDB   SWI3H
+FFF4 DFF7             (    forth6809.asm):06957         VSWI2    FDB   SWI2H
+FFF6 DFF8             (    forth6809.asm):06958         VFIRQ    FDB   FIRQH
+FFF8 DFF5             (    forth6809.asm):06959         VIRQ     FDB   IRQH
+FFFA DFFA             (    forth6809.asm):06960         VSWI     FDB   SWIH
+FFFC FFCC             (    forth6809.asm):06961         VNMI     FDB   WARM            ; NMI -> warm restart
+FFFE FFA9             (    forth6809.asm):06962         VRESET   FDB   COLDSTRT
+                      (    forth6809.asm):06963         
+     0000             (    forth6809.asm):06964         VECTOREND  EQU   *          ; Verify vectors size, value should match $10.
+     0010             (    forth6809.asm):06965         VECTORSIZE EQU   VECTOREND-VECTORS
+                      (    forth6809.asm):06966         
+                      (    forth6809.asm):06967         ; ============================================================
+                      (    forth6809.asm):06968         ; END OF CONSOLIDATED SOURCE
+                      (    forth6809.asm):06969         ; ============================================================

@@ -2321,6 +2321,56 @@ design decisions made since the original version.
       combinations; byte-exact split-file reassembly. Not yet
       confirmed via MAME.
 
+- [x] **Investigated, no code change made: an apparent `CATCH`
+      success-path anomaly (`0 process`, i.e. no `THROW` induced,
+      showing nothing on `.S` instead of the expected `0`) turned out
+      not to reproduce on retest, most likely a MAME single-stepping
+      artifact rather than a genuine bug.** Traced `CATCH`'s success
+      path precisely (the `LEAS 2,S`/`PULS D`/`STD HANDLER`/`LDD #0`/
+      `PSHU D`/`RTS` sequence after a normal, non-throwing return) and
+      separately `0BRANCH` (`ZBRANCH`, the specific code path taken
+      since `0<> of 0` is false in the reported test, meaning `IF`'s
+      body is skipped) - both confirmed structurally balanced and
+      correct via static tracing, with no bug found on paper. User's
+      own leading hypothesis, given this: MAME's 6809 core "jumping
+      into other routines on single-stepping instructions that were
+      not branches/subroutines" - i.e. a debugger artifact from
+      stepping through raw memory, not a defect in the actual
+      compiled code. Consistent with the static trace finding nothing
+      wrong and the issue not reproducing on a subsequent, real
+      (non-single-stepped) run - a genuine code bug wouldn't self-
+      resolve between otherwise-identical test runs. Confirmed
+      working via a complete, realistic follow-up test (`loge`/
+      `process`, chaining `CATCH` success and failure paths together
+      with `SIGN` and `HOLDS`, both fixed earlier this session): `0
+      process` -> `OK.` (success path correct); `5 process` -> `Err:
+      -4000` (failure path correct, `SIGN`/`HOLDS` interaction
+      correct end to end). No source change was needed or made.
+
+- [x] **Real bug found via MAME testing and fixed: `(` (`LPAREN`)
+      left a stray address on the stack after every comment.**
+      `WORD` always pushes a `c-addr` (the parsed text's address) at
+      the end of its own execution, per its established calling
+      convention - `LPAREN` only ever needed `WORD`'s side effect of
+      advancing `>IN` past the closing `)`, never the address itself,
+      but never popped it either, going straight to `RTS`. Explained
+      both reported symptoms precisely: a stray value left on the
+      stack after a comment in interpret mode (`( Math for */ ) .S`
+      -> `28888`, a plausible `CODEHERE` value within the `APPCODE`
+      region, matching what `WORD`'s redesign earlier this session
+      would push), and a `-22` CSP mismatch for any colon definition
+      containing a comment, since the leftover throws off the
+      compile-time stack-depth check between `:` and `;`. Confirmed
+      `LPAREN` is referenced only via its own dictionary header, and
+      confirmed there's no `.(` (a related, commonly-paired comment
+      word) in this system that might share the same pattern - `(` is
+      the only comment word affected. Fixed with a single `PULU D` to
+      discard the address, immediately after `JSR WORD` returns.
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly. Not yet
+      confirmed via MAME.
+
 ## Structural duplication (identified, some resolved, some not)
 
 - [x] `:`/`CREATE`/`VARIABLE`'s header-building — resolved via `HEADER`
