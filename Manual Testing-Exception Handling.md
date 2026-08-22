@@ -10,7 +10,8 @@
       When THROW is passed 0 it does nothing. 
 [^2]: Watch out for return of more than one value by CATCH.
       The extra values are junk.
-      ASsume the TOS value is OK.
+      Assume the TOS value is OK.
+      That accounts for the extra DROP in the error reporting branch.
       MAME appeared to broken for a while as it was not returning 0 
       on a no throw condition. 
       It also appeared that the current line and PC were out of sync.
