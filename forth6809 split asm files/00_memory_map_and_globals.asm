@@ -67,10 +67,13 @@
 ; versions of every bug that was caught and fixed in place.
 ; SUBSTITUTE is complete but deliberately scoped to a single
 ; registered name/value pair, not a full table (see REPLACES).
-; ENVTABLE's /HOLD and /PAD entries, and the DPHERE/CODEHERE/
-; VARHERE boundary checks, remain explicitly incomplete/absent -
-; see the inline notes preserved from that discussion, and the
-; open-items checklist.
+; ENVTABLE's /HOLD and /PAD entries were both added this session
+; (HOLDMINSIZE and PADMINSIZE respectively - see the entries
+; themselves for why each uses its own, conceptually correct
+; constant rather than the numerically-equal PADOFFSET). The
+; DPHERE/CODEHERE/VARHERE boundary checks remain explicitly
+; incomplete/absent - see the inline notes preserved from that
+; discussion, and the open-items checklist.
 ; ============================================================
 
 ; ------------------------------------------------------------
@@ -113,29 +116,26 @@ INITCODE EQU  $FFA9     ; was $FFA2 - shifted up 7 bytes to reduce the
                          ; nominal budget) is separate and unaffected
                          ; by this correction; not resolved. See the
                          ; open-items checklist.
-BASECODE EQU  $E02A     ; was $E007 - shifted up 35 bytes. Two effects:
-                         ; (1) opens a new 35-byte GAP between
-                         ; BASEDICT's real end ($E006, 1992 bytes) and
-                         ; this new start - previously exactly
-                         ; contiguous (zero gap). Not itself broken,
-                         ; just unused address space where there wasn't
-                         ; any before. (2) WORSENS the existing overlap
-                         ; with INITCODE: BASECODE's nominal size (8110)
-                         ; is unchanged, so its nominal end also shifted
-                         ; up 35 bytes, from $FFB4 to $FFD7 - INITCODE
-                         ; (currently $FFA9) is now overlapped by 47
-                         ; bytes, up from 12. Applied exactly as
-                         ; requested; neither effect resolved here. See
-                         ; the open-items checklist.
-BASEDICT EQU  $D83F     ; was $D85D - shifted down the same 30 bytes as
-                         ; BASECODE, preserving the exact, zero-padding
-                         ; fit for its real 1973-byte dictionary content
-                         ; (SECTION 27) - contiguous with BASECODE's
-                         ; start at the time. Since grown to 1992 bytes
-                         ; (H_ABORT/H_QUIT/BASELATEST moved in), and
-                         ; BASECODE has since moved again too, no longer
-                         ; to match - a 35-byte gap now sits between
-                         ; them; see BASECODE's own EQU.
+BASECODE EQU  $DEEA     ; was $DF6A ($DF8A, $DFCA, $DFDA, $DFEA, $E02A
+                         ; before that) - shifted down $80 (128 bytes)
+                         ; this time, a larger jump than the prior
+                         ; $40 and $20 shifts, since both of those
+                         ; still proved insufficient (confirmed by
+                         ; trial and error against the real
+                         ; assembler). The exact gap against BASEDICT
+                         ; below and the exact overlap against
+                         ; INITCODE above depend on each section's
+                         ; real, current assembled size - not
+                         ; recomputed here without a real assembler
+                         ; run; confirm on assembly/MAME rather than
+                         ; trust a static estimate. See the open-items
+                         ; checklist.
+BASEDICT EQU  $D6FF     ; was $D77F ($D79F, $D7DF, $D7EF, $D7FF, $D83F
+                         ; before that) - shifted down $80 (128 bytes)
+                         ; this time, same reason as BASECODE above.
+                         ; Not recomputed against real, current
+                         ; assembled sizes here - confirm on
+                         ; assembly/MAME. See the open-items checklist.
 INOUT    EQU  $C000     ; was $DF00 - moved so INOUT (256 B) sits
                          ; directly below USROMSTRT ($C100), contiguous,
                          ; no gap. This also resolves the INOUT portion
@@ -591,9 +591,12 @@ FILLCHR  EQU  MVSRC
 ; followed by " OK" or " FAIL", followed by a CR - all via
 ; TSTREPORT, shared by every test rather than duplicated in each.
 ; ============================================================
-UNITTESTS EQU 0   ; 0 = included (matches this file's established
-                  ; IFEQ convention, e.g. SERIALPOLL); 1 = excluded
-                  ; entirely, reverting to plain FILL padding.
+UNITTESTS EQU 1   ; was 0 (included) - set to 1 (excluded) per explicit
+                  ; request: unit tests don't work yet and resolution
+                  ; has been postponed. 0 = included (matches this
+                  ; file's established IFEQ convention, e.g.
+                  ; SERIALPOLL); 1 = excluded entirely, reverting to
+                  ; plain FILL padding.
 
          IFEQ  UNITTESTS  ; >>>>>>>>>>
 

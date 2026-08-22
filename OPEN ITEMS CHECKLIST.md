@@ -2368,8 +2368,341 @@ design decisions made since the original version.
       discard the address, immediately after `JSR WORD` returns.
       Verified: zero duplicate symbols, dictionary chain still 224
       entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly. **MAME-
+      CONFIRMED**: `(` now works correctly.
+
+      `\` (`BACKSLASH`) separately tested alongside `(` as part of
+      this same comment-words sweep - confirmed already working
+      correctly, no code change needed.
+
+- [x] **Verification, no code change: confirmed `WORDLISTS` (16.3.2,
+      Search-Order word set) already, correctly returns `false` from
+      `ENVIRONMENT?`.** Checked the full `ENVTABLE` (four entries:
+      `/COUNTED-STRING`, `MAX-N`, `MAX-U`, `ADDRESS-UNIT-BITS`) -
+      `WORDLISTS` is genuinely absent, not an oversight, since this
+      system doesn't implement the Search-Order word set at all.
+      Confirmed against `ENVIRONMENT?`'s own spec (6.1.1345): "If the
+      system treats the attribute as unknown, the returned flag is
+      false" - falling through to `ENVNOTFOUND` already produces
+      exactly that, correctly and completely, with no dispatcher
+      work needed. Clarified the pre-existing comment above
+      `ENVQUERY`, which previously lumped `WORDLISTS` together with
+      `MAX-D`/`MAX-UD`/`FLOORED` as all equally "need[ing]
+      dispatcher extensions not yet built" - that's true for `MAX-D`/
+      `MAX-UD` (genuinely incomplete: both are double-cell values,
+      but `ENVFOUND` only ever pushes one cell before the `TRUE` flag)
+      but not for `WORDLISTS`, whose correct answer is simply
+      "unknown," which absence from the table already provides.
+      `FLOORED` kept separately tracked as its own, still-open item -
+      unlike `WORDLISTS` it's a *core* environmental query, not tied
+      to an unimplemented optional word set, so this system likely
+      has a genuine, definite division behavior it could report -
+      "false by omission" isn't necessarily the right answer for it
+      the way it is for `WORDLISTS`. Not investigated further here;
+      left explicitly open rather than silently dropped from tracking.
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly.
+
+- [x] **Two real bugs found via MAME testing and fixed in
+      `ENVIRONMENT?`: `X` register clobbered across a `COMPAREW` call,
+      and a wrong table value predating this - together explained the
+      user's exact reported value precisely, not approximately.**
+      Reported via `S" /COUNTED-STRING" ENVIRONMENT?` returning `-1
+      $4E4D` instead of the expected `-1 255`.
+
+      **Root cause**: `COMPAREW` uses `X` as its own internal scratch
+      register (`LDX CMPA1`, then `LDA ,X+` advancing through the byte
+      -by-byte comparison) and never saves or restores it - any caller
+      relying on `X` surviving the call gets it clobbered. `ENVQUERY`
+      does exactly that: it needs `X` to still point at the current
+      table entry after `COMPAREW` returns, both for `ENVFOUND`'s own
+      `LDD 4,X` (reading the value field) and for advancing to the
+      next entry - but never saved it first. Traced precisely why this
+      produces `$4E4D` specifically, not just "some garbage": after a
+      successful match against `/COUNTED-STRING` (15 characters),
+      `COMPAREW` leaves `X` sitting exactly at the start of the next
+      table entry's own string, `"MAX-N"` - reading `LDD 4,X` from
+      there reads two bytes 4 characters into that string: `'N'`
+      (`$4E`) and `'M'` (`$4D`, the first character of the following
+      entry, `"MAX-U"`) - together, exactly `$4E4D`. Checked the only
+      other `COMPAREW` caller in the file (`SUBHASNAME`, from the
+      `SUBSTITUTE` rewrite earlier this session) before concluding
+      this was `ENVQUERY`-specific - confirmed unaffected, since it
+      does a fresh `LDX` immediately after its own `COMPAREW` call
+      rather than relying on the prior value surviving. Fixed with
+      `PSHS X`/`PULS X` bracketing the `JSR COMPAREW` call.
+
+      **Separate, pre-existing bug found and fixed alongside it**:
+      `/COUNTED-STRING`'s table value itself was `31`, not the ANS-
+      standard `255` - a counted string's maximum size is bounded by
+      its 1-byte count field (0-255), not 31, which looks like it was
+      mistakenly copied from an unrelated constraint (`WORD`'s own,
+      separate scan cap from an earlier version of this file, before
+      this session's `WORD` redesign). This alone wouldn't have
+      produced the user's exact reported value, but was independently
+      wrong regardless and worth fixing at the same time. Corrected to
+      `255`.
+
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
       combinations; byte-exact split-file reassembly. Not yet
       confirmed via MAME.
+
+- [x] **Explicit, requested adjustment applied: `BASECODE` and
+      `BASEDICT` origins shifted down a further $10 (16 bytes) each -
+      the second such adjustment this session, needed for assembly
+      to succeed as the codebase has continued to grow.** `BASECODE`:
+      `$DFEA` -> `$DFDA` (originally `$E02A` before either shift).
+      `BASEDICT`: `$D7FF` -> `$D7EF` (originally `$D83F`). Applied
+      exactly as requested, same approach as the earlier $40 shift -
+      not independently recomputing the resulting gaps/overlaps
+      against `INITCODE` and each other, since that requires real
+      assembled section sizes this environment can't determine;
+      confirm on real assembly. Verified: zero duplicate symbols,
+      dictionary chain still 224 entries intact across all four
+      `SERIALPOLL`x`UNITTESTS` combinations; byte-exact split-file
+      reassembly.
+
+- [x] **`/HOLD` added to `ENVTABLE` (previously genuinely absent, per
+      the file's own pre-existing note), answering the design
+      question of which of two candidate constants is correct:
+      `HOLDMINSIZE` (34), not the larger `PADOFFSET` (84).**
+      `HOLDMINSIZE` is specifically the portion of the `CODEHERE`-to-
+      `PAD` gap *reserved* for the pictured numeric output buffer -
+      the same amount `WORDMAXCHARS` deliberately holds back from
+      `WORD`'s own use at the opposite end of that same shared gap.
+      `PADOFFSET` is the gap's total width, most of which is actually
+      earmarked for `WORD`'s parsing, not `HOLD`'s - reporting it
+      would overstate what `HOLD` can safely use without risking
+      collision with whatever `WORD` is doing in the same space.
+      Confirmed `/HOLD` (the query string, with its leading slash) was
+      genuinely absent from the file entirely before this - only the
+      words `HOLD`/`HOLDS` themselves existed. The reported `255`
+      result therefore couldn't have come from a legitimate table
+      match; most likely a stale binary predating the `ENVQUERY`
+      `X`-register fix from two turns ago, which would produce exactly
+      this kind of unpredictable result for a query with no real match
+      in the table. Updated both the top-of-file note and the
+      `ENVQUERY`-local comment, which both referenced `/HOLD` as
+      absent - now stale for `/HOLD` specifically; `/PAD` remains
+      genuinely absent and separately tracked, not silently dropped.
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly. **MAME-
+      CONFIRMED**: `/HOLD` now correctly returns `34` (`HOLDMINSIZE`)
+      - also confirms the stale-binary explanation for the earlier
+      `255` result was correct, not a lingering bug in the fix.
+
+- [x] **`/PAD` added to `ENVTABLE`, completing the pair the top-of-
+      file note originally flagged as absent (`/HOLD` and `/PAD`) -
+      both now present.** Answers `PADMINSIZE` (84) directly, per
+      ANS's own `/PAD` meaning (3.3.3.6: "the size of the scratch
+      area whose address is returned by PAD") - PAD's own region,
+      growing upward from PAD itself, conceptually distinct from
+      `HOLDMINSIZE` (which answers for a different region entirely,
+      the downward-growing pictured-numeric buffer in the same
+      `CODEHERE`-to-`PAD` gap, added last turn). `PADOFFSET` happens
+      to equal `PADMINSIZE` numerically in this implementation
+      (`PADOFFSET EQU PADMINSIZE`), but `/PAD` is answered with the
+      conceptually correct constant rather than the coincidentally-
+      equal one, matching the same discipline applied to `/HOLD`.
+      Updated both the top-of-file note and the `ENVQUERY`-local
+      comment, which both still referenced `/PAD` as absent - caught
+      and fixed a duplication error introduced while editing the
+      top-of-file comment (a leftover fragment line duplicated
+      "open-items checklist") before it reached delivery. The
+      DPHERE/CODEHERE/VARHERE boundary checks remain the one item
+      still genuinely open in this area, kept explicitly tracked
+      rather than dropped. Verified: zero duplicate symbols,
+      dictionary chain still 224 entries intact across all four
+      `SERIALPOLL`x`UNITTESTS` combinations; byte-exact split-file
+      reassembly. **MAME-CONFIRMED**: `/PAD` now correctly returns
+      `84` (`PADMINSIZE`).
+
+- [x] **Explicit, requested adjustment applied: `BASECODE` and
+      `BASEDICT` origins shifted down a further $10 (16 bytes) each -
+      the third such adjustment this session, needed for assembly to
+      succeed as the codebase continues to grow.** `BASECODE`:
+      `$DFDA` -> `$DFCA` (`$E02A` originally). `BASEDICT`: `$D7EF` ->
+      `$D7DF` (`$D83F` originally). Applied exactly as requested,
+      same approach as both earlier shifts this session - not
+      independently recomputing the resulting gaps/overlaps against
+      `INITCODE` and each other, since that requires real assembled
+      section sizes this environment can't determine; confirm on real
+      assembly. Verified: zero duplicate symbols, dictionary chain
+      still 224 entries intact across all four `SERIALPOLL`x
+      `UNITTESTS` combinations; byte-exact split-file reassembly.
+
+- [x] **`FLOORED` investigated and added to `ENVTABLE`, closing the
+      one item explicitly left open two turns ago pending its own
+      investigation.** Unlike `WORDLISTS` (correctly `false` by
+      omission, since Search-Order is genuinely unimplemented),
+      `FLOORED` is a *core* query - this system definitely has some
+      division behavior, so "false by omission" wasn't the right
+      default. Investigated by tracing `DIVCOMMON` (shared by `/`,
+      `MOD`, `/MOD`) against this system's own `SM/REM` and `FM/MOD`
+      implementations directly, rather than inferring from `DIVCOMMON`
+      alone: `DIVCOMMON` restores the remainder's sign from `DNSIGN`
+      (the dividend's own original sign) after dividing absolute
+      values - confirmed byte-for-byte identical in structure to
+      `SM/REM`'s own logic. `FM/MOD`, by contrast, has an explicit
+      flooring-adjustment step (correcting the quotient and remainder
+      when the quotient would be negative with a nonzero remainder)
+      that `DIVCOMMON` does not have. Conclusion: this system's
+      primary division words use symmetric division, not floored.
+      Added `FLOORED` to `ENVTABLE` with value `0` - a real,
+      meaningful "recognized query, value false" result (two items:
+      `0` then `TRUE`), distinct from the "unrecognized" single-item
+      `false` fallthrough `WORDLISTS` correctly uses. Confirmed this
+      doesn't interfere with the table's own terminator check, which
+      reads each entry's address field (offset 0), not its value
+      field - a zero value is safe regardless of position in the
+      table. Updated the `ENVQUERY`-local comment, which previously
+      described `FLOORED` as still open. Verified: zero duplicate
+      symbols, dictionary chain still 224 entries intact across all
+      four `SERIALPOLL`x`UNITTESTS` combinations; byte-exact split-
+      file reassembly. **MAME-CONFIRMED**: `FLOORED` now correctly
+      returns `0` (recognized, value false). Closes out the full
+      `ENVIRONMENT?` sweep - `/COUNTED-STRING`, `/HOLD`, `/PAD`,
+      `WORDLISTS`, and `FLOORED` are all confirmed correct on real
+      hardware.
+
+- [x] **`MAX-CHAR` (3.2.6, maximum value of any character in the
+      implementation's character set) added to `ENVTABLE` with value
+      `255`, matching this system's 8-bit character set
+      (`ADDRESS-UNIT-BITS`, already in the table, confirms this).**
+      Confirmed `MAX-CHAR` was genuinely absent from the file entirely
+      before this - same pattern as `/HOLD`/`/PAD`/`FLOORED` before
+      they were added. Verified: zero duplicate symbols, dictionary
+      chain still 224 entries intact across all four `SERIALPOLL`x
+      `UNITTESTS` combinations; byte-exact split-file reassembly.
+      **MAME-CONFIRMED**: `MAX-CHAR` now correctly returns `255`.
+
+- [x] **`MAX-D`/`MAX-UD` resolved via a genuine dispatcher extension,
+      not just a table entry - the one item in this area explicitly
+      flagged as needing real code work, not just data.** Both are
+      double-cell values per their own ANS data type, but the
+      original `ENVFOUND` path only ever pushed one cell before the
+      `TRUE` flag - a table entry alone couldn't answer them
+      correctly. Added a second table (`ENVTABLE2`, 8-byte entries:
+      addr/len/low/high, vs `ENVTABLE`'s 6-byte addr/len/value) and a
+      matching second loop (`ENV2START`/`ENV2LOOP`/`ENV2FOUND`),
+      rather than reworking the existing, already-tested single-cell
+      path to handle both entry shapes at once - lower risk. The
+      original table's "not found" path now tries the new table
+      before finally giving up, rather than going straight to
+      `ENVNOTFOUND`. `MAX-D` (`$7FFFFFFF`, low `$FFFF`/high `$7FFF`)
+      and `MAX-UD` (`$FFFFFFFF`, low `$FFFF`/high `$FFFF`) added to
+      the new table - low cell pushed first/deep, high cell second/
+      top, matching standard double-cell stack order (3.1.4.1).
+      Updated the now-stale comment from two turns ago that described
+      this as still needing dispatcher work. Verified: zero duplicate
+      symbols, dictionary chain still 224 entries intact across all
+      four `SERIALPOLL`x`UNITTESTS` combinations; byte-exact split-
+      file reassembly. **MAME-CONFIRMED**: `MAX-D` correctly returns
+      `-1 32767 -1` (low `$FFFF`, high `$7FFF`, then `TRUE`), and
+      `MAX-UD` correctly returns `-1 -1 -1` (low `$FFFF`, high `$FFFF`,
+      then `TRUE`) - both independently confirmed on real hardware,
+      not just structurally. The new double-cell dispatch path
+      (`ENVTABLE2`/`ENV2LOOP`/`ENV2FOUND`) works correctly for both
+      entries it holds.
+
+- [x] **Explicit, requested adjustment applied: `BASECODE` and
+      `BASEDICT` origins shifted down $40 (64 bytes) each - the
+      fourth such adjustment this session, and larger than the
+      three prior $10 shifts, matching the larger amount of new code
+      added this turn (the `MAX-D`/`MAX-UD` double-cell dispatcher
+      extension - a whole second table plus a matching lookup loop,
+      not just a table row).** `BASECODE`: `$DFCA` -> `$DF8A`
+      (`$E02A` originally). `BASEDICT`: `$D7DF` -> `$D79F` (`$D83F`
+      originally). Applied exactly as requested, same approach as
+      every prior shift this session - not independently recomputing
+      the resulting gaps/overlaps against `INITCODE` and each other,
+      since that requires real assembled section sizes this
+      environment can't determine; confirm on real assembly.
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly.
+
+- [x] **Explicit, requested adjustment applied: `BASECODE` and
+      `BASEDICT` origins shifted down a further $20 (32 bytes) each -
+      the fifth such adjustment this session. The prior $40 shift
+      wasn't enough to resolve the collision, confirmed by trial and
+      error against the real assembler.** `BASECODE`: `$DF8A` ->
+      `$DF6A` (`$E02A` originally). `BASEDICT`: `$D79F` -> `$D77F`
+      (`$D83F` originally). Applied exactly as requested, same
+      approach as every prior shift this session - not independently
+      recomputing the resulting gaps/overlaps against `INITCODE` and
+      each other, since that requires real assembled section sizes
+      this environment can't determine; the user's own real-assembler
+      trial-and-error remains the actual source of truth for whether
+      this resolves the collision, not a static estimate here.
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly.
+
+- [x] **`BASECODE` and `BASEDICT` shifted down $80 (128 bytes) each -
+      the sixth such adjustment this session. Both the prior $40 and
+      $20 shifts proved insufficient - deliberately chose a larger
+      jump this time (rather than another small increment) since two
+      consecutive small adjustments had already failed to resolve the
+      collision.** `BASECODE`: `$DF6A` -> `$DEEA` (`$E02A`
+      originally). `BASEDICT`: `$D77F` -> `$D6FF` (`$D83F`
+      originally). Same approach as every prior shift this session -
+      not independently recomputing the resulting gaps/overlaps
+      against `INITCODE` and each other, since that requires real
+      assembled section sizes this environment can't determine; the
+      user's own real-assembler trial-and-error remains the actual
+      source of truth for whether this resolves the collision.
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly.
+
+      **CONFIRMED RESOLVED** on real assembly - this shift cleared
+      the collision, with roughly 128 bytes of padding now free.
+      Consistent with the two prior insufficient shifts ($40 then
+      $20, summing to $60/96 bytes) having undershot the true
+      collision size, and this $80/128-byte shift landing with the
+      full amount to spare - the actual gap needed was evidently
+      somewhere between 96 and 128 bytes. Closes out this round of
+      memory-map adjustments; the next collision, whenever the
+      codebase grows enough to reintroduce one, will need its own
+      fresh trial and error rather than assuming this same margin
+      holds indefinitely.
+
+- [x] **`RETURN-STACK-CELLS` and `STACK-CELLS` added to `ENVTABLE`,
+      completing the full set of MAME-testable environmental queries
+      the user identified.** Unlike every other entry this session,
+      both use computed expressions tied to this system's own real
+      stack-boundary constants (`RSTACK`, `DSTACK`, `CODETOP`) rather
+      than hardcoded numbers - deliberate, given the memory map has
+      shifted repeatedly this session (`BASECODE`/`BASEDICT` alone
+      moved six times) and a hardcoded number would silently go stale
+      on the next shift with nothing to catch it. `RETURN-STACK-CELLS`
+      = `(RSTACK-DSTACK)/2` = 384 currently (RSTACK's own existing
+      comment already confirms the occupied range is `$BD00`-`RSTACK`,
+      768 bytes, and `DSTACK+1` is `$BD00` exactly per both regions'
+      own comments confirming they're contiguous - the algebra
+      simplifies to `RSTACK-DSTACK` directly). `STACK-CELLS` =
+      `(DSTACK-CODETOP+1)/2` = 512 currently (`CODETOP`'s own comment:
+      "code space ceiling (data stack begins here)"). Caught and
+      simplified a redundant `-1+1` in the first draft of the
+      `RETURN-STACK-CELLS` expression before delivery - algebraically
+      identical but needlessly complex for an expression this
+      environment can't test against a real assembler. Explicitly
+      verified both expressions evaluate to exact integers (no
+      truncation risk regardless of the assembler's own integer-
+      division behavior) in addition to the standard structural
+      checks, since FDB arithmetic isn't something the duplicate-
+      symbol/dictionary-chain verification evaluates. Verified: zero
+      duplicate symbols, dictionary chain still 224 entries intact
+      across all four `SERIALPOLL`x`UNITTESTS` combinations; byte-
+      exact split-file reassembly. Not yet confirmed via MAME - given
+      these are the first computed (rather than literal) values in
+      this table, confirming the assembler actually evaluates the
+      expressions as intended matters more here than for a plain
+      number.
 
 ## Structural duplication (identified, some resolved, some not)
 
