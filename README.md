@@ -11,8 +11,24 @@ MC6850 ACIA for serial IO.
 ## Scope
 
 The objective is to refamiliarise myself with the Forth language and the MC6809 microprocessor.
-At the same time there will an assessment of the effectiveness of a mature AI system (circa mid-2026),
+There will an assessment of the effectiveness of a mature AI system (circa mid-2026),
 for developing code with a moderately complex logical structure.
+
+## Strategy
+
+The initial development of the source code according to the requirements occurred over 
+a couple of days. The result was not remotely functional. 
+
+Manual testing, over 3 weeks, one glossary section at a time, 
+show numerous logic bugs, some arising from subtleties of the 6809 instruction set. 
+When a bug was isolated, the description  was pushed to Claude often resulting in 
+a sophisticated analysis and resolution. Failing that the code was single stepped 
+using the MAME debugger, identified and the result passed to Claude for verification
+and rectification. Claude generated all of the project artefacts.
+
+Claude would often pursue any dependencies, 
+including inspecting the code for similar bug patterns
+and updating the documentation.
 
 ## Development Environment
 
@@ -27,11 +43,10 @@ brew install binutils
 
 ```
 
-
 ## Progress
 
 * ~~Warning: not functional at this time.~~*
-* Warning: all words tested as functional but with limited test coverage of edge cases. *
+* Warning: all words tested as functional, but with limited test coverage of edge cases. *
 
 | Item             | Completed   |
 |:-----------------|------------:|
@@ -42,7 +57,7 @@ brew install binutils
 |Customise MAME with the missing mecb6809 and mecb6502 drivers and providing monitor ROM files . |:white_check_mark:|
 |Set up serial communications to MAME mecb6809 to allow upload of testing code. |:white_check_mark:|
 |Load forth6809.bin rom file and verify memory layout and operation. |:white_check_mark:|
-|Manual tests and identified bug fixes. |:white_check_mark:|
+|Manual tests and identified/fixed numerous bugs. |:white_check_mark:|
 |Update documentation| |
 |Unit tests and identified bug fixes.  | |
 |Tests against ANS test suite and identified bug fixes.  | |
