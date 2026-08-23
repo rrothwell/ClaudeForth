@@ -2,11 +2,17 @@
 An ANS forth for the MC6809 microprocessor, 
 generated using the iPhone Claude app. 
 
-This is a subroutine threaded forth.
+This is a 16-bit subroutine threaded forth.
 It is designed to be ROMable 
 and to target the Minimalist Eurocard Board (MECB) 6809 computer, 
 with the MECB IO card providing an
 MC6850 ACIA for serial IO.
+
+## Scope
+
+The objective is to refamiliarise myself with the Forth language and the MC6809 microprocessor.
+At the same time there will an assessment of the effectiveness of a mature AI system (circa mid-2026),
+for developing code with a moderately complex logical structure.
 
 ## Development Environment
 
@@ -24,7 +30,8 @@ brew install binutils
 
 ## Progress
 
-* Warning: not functional at this time. *
+* ~~Warning: not functional at this time. ~~*
+* Warning: all words tested as functional but with limited test coverage of edge cases. *
 
 | Item             | Completed   |
 |:-----------------|------------:|
@@ -35,7 +42,8 @@ brew install binutils
 |Customise MAME with the missing mecb6809 and mecb6502 drivers and providing monitor ROM files . |:white_check_mark:|
 |Set up serial communications to MAME mecb6809 to allow upload of testing code. |:white_check_mark:|
 |Load forth6809.bin rom file and verify memory layout and operation. |:white_check_mark:|
-|Manual tests and identified bug fixes. | |
+|Manual tests and identified bug fixes. |:white_check_mark:|
+|Update documentation| |
 |Unit tests and identified bug fixes.  | |
 |Tests against ANS test suite and identified bug fixes.  | |
 |Update documentation| |
