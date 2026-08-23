@@ -30,7 +30,7 @@ brew install binutils
 
 ## Progress
 
-* ~~Warning: not functional at this time. ~~*
+* ~~Warning: not functional at this time.~~*
 * Warning: all words tested as functional but with limited test coverage of edge cases. *
 
 | Item             | Completed   |
