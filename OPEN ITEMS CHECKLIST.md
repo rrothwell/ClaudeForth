@@ -182,7 +182,26 @@ design decisions made since the original version.
       equivalent (`LBHS`/`LBEQ`/`LBNE`), which uses a 16-bit
       displacement (±32767 bytes) - functionally identical, just not
       range-limited.
-- [ ] **Ten more short branches have a large (41-51 source line) span
+- [x] **RESOLVED via the real assembler listing (`forth6809_lst.txt`,
+      uploaded this session): all ten previously-flagged short
+      branches confirmed genuinely safe, not just "didn't error."**
+      Checked each by direct address arithmetic against the listing's
+      own computed addresses and encoded opcode bytes, rather than
+      relying on "it assembled without an error" alone: `QLOOP`'s three
+      branches (`BRA` at `$DF92`→`$DF43`, offset `-81`/`$AF`; `BNE` at
+      `$DF99`→`$DF43`, offset `-88`/`$A8`; `BRA` at `$DFA8`→`$DF43`,
+      offset `-103`/`$99`), `FFLOOP`/`NOTFOUND` (`BEQ` at
+      `$E486`→`$E4DF`, offset `87`/`$57`; `BRA` at `$E4DD`→`$E484`,
+      offset `-91`/`$A5`), `ALOOP`/`ADONE` (`BEQ` at `$E658`→`$E6A9`,
+      offset `79`/`$4F`, and the remaining `ALOOP` branches, all
+      2-byte-encoded), and `UELOOP`/`UEDONE` (`BEQ` at
+      `$F87A`→`$F891`, offset `21`/`$15`; `BRA` at `$F88F`→`$F878`,
+      offset `-25`/`$E7`). Every offset decoded from the listing's own
+      byte column matches the computed target-minus-(address+2)
+      distance exactly, and all are comfortably within the ±127-byte
+      signed range - none needed conversion to `LBxx`.
+
+- [x] **Ten more short branches have a large (41-51 source line) span
       to their target and were not individually confirmed safe.**
       Found by a heuristic sweep (line-count as a rough proxy for byte
       distance, since no real assembler is available in this
@@ -195,7 +214,8 @@ design decisions made since the original version.
       3888/3931), and `EMPTY` (line 1153). None of these were reported
       as failing and none have been changed; if a real assembler flags
       any of them, the fix is the same: convert to the matching `LBxx`
-      long-branch form.
+      long-branch form. **RESOLVED - see the entry immediately above,
+      confirmed via the real assembler listing.**
 - [x] **`ORG BASECODE` was missing entirely — a fundamental placement
       bug, not a cosmetic gap.** `VECTORS` ($FFF0) and `INIT` ($FFC0)
       both had their own `ORG`, but `SECTION 3` (`IRQH`) — and every
@@ -347,10 +367,12 @@ design decisions made since the original version.
       `INITCODE`/`BASECODE` overlap), now independently reachable via
       these new landmarks once the file is actually assembled, rather
       than a new, different issue.
-- [ ] **Follow-up: a real instruction-by-instruction count (not the
+- [x] **SUPERSEDED - see the real-listing entry below with the
+      definitive 8304-byte figure.** Follow-up: a real instruction-by-
+      instruction count (not the
       rough heuristic above) puts `BASECODE`'s actual size at 7984
       bytes (`$1F30`), 96 bytes (1.2%) short of a target assembler-
-      listing value of `$1F90` (8080 bytes) given for comparison.**
+      listing value of `$1F90` (8080 bytes) given for comparison.
       Built a mnemonic-and-addressing-mode-aware counter distinguishing
       inherent/immediate/direct/extended/indexed forms, correct prefix
       requirements (`$10`/`$11` for `LDY`/`STY`/`LDS`/`STS`/`CMPD`/
@@ -375,6 +397,63 @@ design decisions made since the original version.
       real assembler's output - the standing caveat throughout this
       file - and the gap could come from encoding edge cases a manual
       model can approximate but not guarantee against.
+- [x] **DEFINITIVE, real figures now available from `forth6809_lst.txt`
+      (a real assembler listing, uploaded and confirmed to match the
+      current source exactly - `BASECODE=$DEEA`, `UNITTESTS=1`, and
+      this session's `ENVTABLE` additions are all present in it).**
+      `BASECODESIZE` = 8304 bytes (`$2070`) - the manual
+      instruction-by-instruction count above (7984 bytes) undershot
+      this by 320 bytes (about 4%), confirming that entry's own
+      caveat ("the gap could come from encoding edge cases a manual
+      model can approximate but not guarantee against") was warranted.
+      `BASEDICTSIZE` = 2027 bytes (`$07EB`). `INITSIZE` = 71 bytes
+      (`$47`), matching the "told directly" figure elsewhere in this
+      file exactly. `VECTORSIZE` = 16 bytes, as expected. Two
+      genuinely new, previously-unverifiable facts this listing
+      settles outright: `BASEDICTEND` equals `BASECODE`'s start
+      exactly (`$DEEA`) - zero gap, zero overlap, fully contiguous -
+      and `INITEND` equals `VECTORS`'s start exactly (`$FFF0`) -
+      also zero gap. The one remaining space (`BASECODEEND` `$FF5A`
+      to `INITCODE` `$FFA9`, 79 bytes) is not an unaccounted gap: the
+      listing shows the `FILL $FF,INITCODE-BASEND` directive actually
+      executing, producing real `$FF` bytes across exactly that span
+      - resolving the long-standing "`FILL`'s status as a real LWASM
+      directive remains unconfirmed" uncertainty at the same time
+      (see below). Total real ROM content (`VECTORS`+`INITCODE`+
+      `BASECODE`+`BASEDICT` = 16+71+8304+2027 = 10418 bytes) and the
+      resulting unused-ROM figure (5710 bytes, ~35%) were already
+      updated in the documentation's Memory Map section using these
+      same real numbers.
+- [x] **`FILL`'s status as a real, supported LWASM directive -
+      previously flagged as unconfirmed in multiple entries throughout
+      this file - is now conclusively resolved: it is real.** Both
+      uses in the source (the `ROM:` block, `FILL $FF,BASEDICT-ROM`,
+      and the `BASEND:` block, `FILL $FF,INITCODE-BASEND`) appear in
+      the real listing with actual `$FF`-filled bytes shown in the
+      output column, at the expected addresses. Cross-checked the two
+      fill sizes against each other as a consistency check, not just
+      individually: `ROM:` block fills `$C100` to `BASEDICT`
+      (`$D6FF`), 5631 bytes; `BASEND:` block fills `$FF5A` to
+      `$FFA9`, 79 bytes. The two sum to exactly 5710 - matching the
+      "5710 bytes unused" figure already published in the Memory Map
+      documentation precisely, not approximately, confirming that
+      figure was internally consistent with the real fill directives
+      all along.
+- [x] **`ENVTABLE` completeness - the item below listing `/HOLD`,
+      `/PAD`, `MAX-D`, `MAX-UD`, `WORDLISTS`, `FLOORED` as missing is
+      now fully resolved.** All six were added and MAME-confirmed
+      correct over several turns this session (`/HOLD`=34,
+      `/PAD`=84, `MAX-D`=`$7FFFFFFF`, `MAX-UD`=`$FFFFFFFF`,
+      `WORDLISTS`=correctly unrecognized/false since Search-Order
+      isn't implemented, `FLOORED`=0/false after tracing this
+      system's actual division convention against `SM/REM`/`FM/MOD`).
+      `MAX-CHAR`, `RETURN-STACK-CELLS`, and `STACK-CELLS` were also
+      added and confirmed beyond what this item originally flagged.
+      The double-cell dispatch gap this item specifically called out
+      ("need the dispatcher extended to push *two* cells... current
+      `ENVQUERY` only handles one") was resolved with a genuine
+      dispatcher extension (`ENVTABLE2`/`ENV2LOOP`/`ENV2FOUND`), not
+      a workaround. `ENVIRONMENT?` is complete.
 - [x] **`ROMSTRT`/`ROMEND` added as the outer ROM boundary
       (`$C100`/`VECTORS-1`), and `INITCODE`/`BASECODE`/`BASEDICT`
       verified contained within it - all three pass.** `ROMEND` was
@@ -678,7 +757,7 @@ design decisions made since the original version.
       hash-confirmed output file before making any changes, rather
       than editing from an unverified state.
 
-- [ ] **A second `FILL` padding block added, this time between
+- [x] **A second `FILL` padding block added, this time between
       `BASECODE`'s real content and `INITCODE`'s start - same intent
       and same open verification question as the `ROM:` block two
       turns ago.** `BASEND:` sits right where `BASECODE`'s actual
@@ -701,8 +780,13 @@ design decisions made since the original version.
       unconfirmed (see the `ROM:` block's own note) - not re-verified
       here, since the question is identical for both uses. Verified:
       zero duplicate symbols, `BASEND` defined exactly once, dictionary
-      chain still 219 entries intact.
-- [ ] **Both padding blocks repositioned, and the `ROM:` block's
+      chain still 219 entries intact. **RESOLVED - the real listing
+      confirms `FILL` genuinely executes for both blocks; see the
+      dedicated entry earlier in this file (search "FILL's status as a
+      real"). The 126-byte estimate here is superseded by the real,
+      current figure of 79 bytes, reflecting how much `BASECODE` and
+      the memory map have both moved since this entry was written.**
+- [x] **Both padding blocks repositioned, and the `ROM:` block's
       explanatory comment deleted entirely.** `ORG USROMSTRT`/`ROM:`/
       `FILL` moved from just before `ORG BASEDICT` to just before
       `SECTION 27`'s comment header instead (now sitting directly
@@ -720,7 +804,9 @@ design decisions made since the original version.
       (by text position, not assumption) to sit before their
       respective section's comment header rather than after, zero
       remaining "UNVERIFIED" text anywhere, dictionary chain still
-      219 entries intact.
+      219 entries intact. **RESOLVED - the underlying `FILL`
+      uncertainty this note refers to is now settled; see "FILL's
+      status as a real" earlier in this file.**
 
 - [x] **`MVSCRATCH` (the `ORG $0100` block, `MVCNT`/`MVDST`/`MVSRC` and
       their aliases through `FILLCHR`) moved from right after `GLOBALS
@@ -844,9 +930,14 @@ design decisions made since the original version.
       and the top-of-file summary's "zero overlaps anywhere" claim,
       both now updated to reflect this change and its real consequence.
 
-- [ ] **`BASECODE` shifted up 19 bytes (`$DFF4` -> `$E007`) to close
+- [x] **HISTORICAL, superseded - `BASECODE` has since moved several
+      more times; the current, real state (confirmed via
+      `forth6809_lst.txt`) has zero overlap anywhere in the memory
+      map, not the 19-byte overlap this entry describes. Kept as
+      history, not deleted, since it was a genuine finding at the
+      time.** `BASECODE` shifted up 19 bytes (`$DFF4` -> `$E007`) to close
       the `BASECODE`/`BASEDICT` overlap from last turn - but the
-      overlap wasn't eliminated, it was relocated.** `BASECODE`'s new
+      overlap wasn't eliminated, it was relocated. `BASECODE`'s new
       start does land exactly one byte above `BASEDICT`'s real end
       (`$E006`), closing that specific 19-byte overlap precisely. But
       `BASECODE`'s nominal size (8110 bytes) didn't change, so its
@@ -973,7 +1064,7 @@ design decisions made since the original version.
       Applied exactly as requested; neither overlap resolved here.
       Verified: zero duplicate symbols and dictionary chain still 219
       entries intact in both `SERIALPOLL` branches.
-- [ ] **The real, assembler-confirmed figure: `INITCODE` is 71 bytes
+- [x] **The real, assembler-confirmed figure: `INITCODE` is 71 bytes
       (`$47`), told directly rather than derived from a manual count -
       the first genuine assembler-reported figure in this whole
       project, as opposed to every prior byte count in this file,
@@ -988,11 +1079,23 @@ design decisions made since the original version.
       instruction-by-instruction manual count) remains unconfirmed by
       an actual assembler run - this correction applies specifically
       to `INITCODE`, not the other regions' still-estimated figures.
+      **CONFIRMED - `forth6809_lst.txt`'s own `INITSIZE` computes to
+      exactly `$47`/71 bytes, matching this figure precisely.
+      `BASECODE`'s real size is now also known (8304 bytes) - see the
+      "DEFINITIVE, real figures" entry earlier in this file.**
 
-- [ ] **`TRUE` and `FALSE` replaced with simple subroutines, per
+- [x] **RESOLVED (since this was written) - confirmed via the real
+      listing (`forth6809_lst.txt`): the current `TRUEBODY`/
+      `FALSEBODY` show the correct, standard convention (`TRUEBODY:
+      LDD #$FFFF`, `FALSEBODY: LDD #$0000`), matching `TRUEV`/
+      `FALSEV` and every comparison operator. The inversion this item
+      flagged was fixed at some later point in the session, but this
+      checklist item itself was never updated to reflect it - a real
+      gap, not a false alarm, caught during a systematic re-check of
+      every remaining open item.** `TRUE` and `FALSE` replaced with simple subroutines, per
       explicit request - but the requested values are inverted from
       the rest of the system's true/false convention, and this was
-      applied exactly as asked, not corrected.** `TRUEBODY` is now
+      applied exactly as asked, not corrected. `TRUEBODY` is now
       `LDD #$0000 / PSHU D / RTS`; `FALSEBODY` is now `LDD #$FFFF /
       PSHU D / RTS` - both simple, direct subroutines (matching the
       style of e.g. `BLW`), replacing the DODOES-trampoline
@@ -1061,8 +1164,12 @@ design decisions made since the original version.
       entries (was 219), correctly ordered and ending at `0`, in both
       `SERIALPOLL` branches; byte-exact split-file reassembly.
 
-- [ ] **`BASECODE` shifted up 35 bytes (`$E007` -> `$E02A`) - two
-      effects, neither an improvement.** (1) Opens a new 35-byte gap
+- [x] **HISTORICAL, superseded - `BASECODE` has since moved several
+      more times; the current, real state (confirmed via
+      `forth6809_lst.txt`) has zero overlap and zero gap on both
+      boundaries this entry describes. Kept as history.**
+      `BASECODE` shifted up 35 bytes (`$E007` -> `$E02A`) - two
+      effects, neither an improvement. (1) Opens a new 35-byte gap
       between `BASEDICT`'s real end (`$E006`, 1992 bytes) and
       `BASECODE`'s new start - previously exactly contiguous, zero
       gap. Not itself broken (a gap isn't a collision), just unused
@@ -2698,11 +2805,127 @@ design decisions made since the original version.
       symbol/dictionary-chain verification evaluates. Verified: zero
       duplicate symbols, dictionary chain still 224 entries intact
       across all four `SERIALPOLL`x`UNITTESTS` combinations; byte-
-      exact split-file reassembly. Not yet confirmed via MAME - given
-      these are the first computed (rather than literal) values in
-      this table, confirming the assembler actually evaluates the
-      expressions as intended matters more here than for a plain
-      number.
+      exact split-file reassembly. **MAME-CONFIRMED**: both correctly
+      return `384` and `512` respectively - confirms the computed
+      `FDB` expressions assembled and evaluated correctly on the real
+      toolchain, not just in this environment's own arithmetic check.
+      Closes out the full `ENVIRONMENT?` sweep - every entry in both
+      `ENVTABLE` and `ENVTABLE2` is now independently confirmed
+      correct on real hardware.
+
+- [x] **Documentation updated: title page duration entry, full Memory
+      Map table rebuild, and a new Transient Region section - grounded
+      in `forth6809_lst.txt`, a real assembler listing of the current
+      source, uploaded this turn.** Confirmed the listing genuinely
+      matches the current source before treating any of its numbers as
+      authoritative - `BASECODE=$DEEA`, `UNITTESTS=1`, and this
+      session's additions (`MAX-CHAR`, `MAX-D`, `RETURN-STACK-CELLS`)
+      are all present in it, not a stale snapshot.
+
+      **Title page**: added "Manual MAME testing and bug-fixing
+      duration (guesstimate): 80 hours", matching the formatting of
+      the existing duration entries.
+
+      **Memory Map table, fully rebuilt** with real, assembler-
+      measured values rather than the old estimates: `BASECODE` =
+      8304 bytes (`BASECODESIZE`, was a stale 8110 estimate);
+      `BASEDICT` = 2027 bytes (`BASEDICTSIZE`). Discovered and
+      documented two previously-unverifiable facts directly from the
+      listing: `BASEDICTEND` equals `BASECODE` exactly (`$DEEA`) -
+      zero gap, zero overlap - and `INITEND` equals `VECTORS` exactly
+      (`$FFF0`) - also zero gap. The one real gap (`BASECODEEND` to
+      `INITCODE`, 79 bytes) is explicitly `$FF`-filled by the
+      assembler's own `FILL` directive, not an unaccounted collision.
+      `APPCODE` row relabeled `APPCODE + Transient`, with a pointer to
+      the new section, since the Transient region is a floating
+      subregion within it rather than a fixed range of its own -
+      chosen over a nested/indented row given the table's existing
+      one-row-per-fixed-range structure. `APPDICT`'s upper bound
+      corrected to `APPCODE-1` (20480 bytes; the prior `$6EA4`/20133
+      figure was stale, left over from an earlier `APPCODE` position
+      before it moved to its current, "back to its original address"
+      value). Retired `SIBUF`/`WORDBUF` rows removed (confirmed
+      genuinely retired - their `EQU`s are commented out in the
+      listing) and replaced with a single `(unclaimed)` row for the
+      65-byte range they used to occupy. "ROM Size Required" narrative
+      rewritten with the corrected totals: 10418 bytes real ROM
+      content (16+71+8304+2027), 5710 bytes free (~35%) - both now
+      real, assembler-measured figures rather than the prior manual-
+      count estimate the old text explicitly flagged as uncertain.
+
+      **New "Transient Region" section**, inserted at the same
+      heading level as "Dictionary Entry Layout" (matching its style:
+      `Normal` paragraph, bold run, no explicit size), immediately
+      before it. Describes the region's function (floating,
+      `CODEHERE`-relative, shared by `WORD`'s parsing buffer and the
+      `HOLD` pictured-numeric-output buffer), size (`PADOFFSET`/
+      `PADMINSIZE` = 84 bytes, `PAD = CODEHERE + 84`), and location,
+      then a new sub-table (Subregion / Size / Address relative to
+      `CODEHERE` / Description) with exact byte-level addressing
+      traced from `WORD`'s and `ENVQUERY`'s own source comments rather
+      than reconstructed from memory: WORD parsing buffer (up to 47
+      bytes, `CODEHERE` or `CODEHERE+3` for `S"`/`."`/`ABORT"`, up to
+      `CODEHERE+49` worst case); HOLD buffer (34 bytes, `CODEHERE+50`
+      to `CODEHERE+83`, i.e. `PAD-34` to `PAD-1`); PAD itself (at
+      least 84 bytes from `CODEHERE+84` onward). Confirmed by direct
+      arithmetic that the worst-case WORD buffer boundary
+      (`CODEHERE+50`) exactly touches the HOLD buffer's start with no
+      gap and no overlap, matching `WORDMAXCHARS`'s own defining
+      formula (`PADOFFSET-HOLDMINSIZE-1-3`).
+
+      Verified visually via rendered PDF pages, not just text
+      extraction - both the rebuilt Memory Map table and the new
+      Transient Region table/section render cleanly across their page
+      breaks. Confirmed the field-based Table of Contents correctly
+      refreshed after the new content shifted page numbers (`3.
+      Glossary` moved from page 9 to 10, and every entry after it
+      shifted accordingly). Confirmed remaining `SIBUF`/`WORDBUF`
+      mentions elsewhere in the document are expected and correct -
+      the new section's own historical explanation, and the verbatim
+      Assembler Source appendix (Section 8), which legitimately still
+      shows this history in its own preserved inline comments - not
+      leftover staleness. No source-code changes were made or needed
+      this turn; this was a documentation-only update.
+
+- [x] **Documentation resync: Glossary and Assembler Source appendix
+      both brought up to date with the entire MAME-testing phase of
+      this session, after verification found both had stopped being
+      updated right after the double-number-input work.** Confirmed
+      the exact boundary before resyncing: `NUMBERQ`/`TRYNUM`'s
+      appendix section was current (last thing explicitly synced),
+      but `SIGN`, `S>D`, `LPAREN`, `ENVQUERY`, and the full `ENVTABLE`/
+      `ENVTABLE2` expansion were all missing - the appendix still
+      showed pre-fix code (`SIGN`/`S>D` missing their `TSTA` checks,
+      `LPAREN` missing its stray-address fix, `ENVQUERY` missing its
+      `PSHS X`/`PULS X` fix, `ENVTABLE` showing only the original 4
+      entries with `/COUNTED-STRING` still at the wrong value `31`).
+      Replaced five appendix subsections wholesale with the current
+      split-file source (8.1 Memory Map, 8.16 Arithmetic, 8.21
+      Numeric Output, 8.24 Comment Words, 8.25 Environmental Query) -
+      same approach used successfully for the double-number sync
+      earlier, chosen over surgical patching of individual routines
+      within a single large paragraph.
+
+      Glossary: found the `ENVIRONMENT?` entry actively wrong, not
+      just stale - it explicitly stated "Table is incomplete: missing
+      /HOLD, /PAD, MAX-D, MAX-UD, WORDLISTS, FLOORED," all of which
+      had since been added and MAME-confirmed. Rewrote it to list
+      every supported query and value, and widened the stack-effect
+      notation to `( c-addr u -- false | i*x true )` to correctly
+      reflect that some queries (`MAX-D`/`MAX-UD`) return two cells,
+      not one. Checked `SIGN`'s, `S>D`'s, and `(`'s own glossary
+      descriptions before assuming they needed similar rewrites -
+      confirmed they didn't: each already described the *intended*
+      behavior the bug fixes now correctly deliver, so the bugs never
+      made the documentation wrong, only the implementation.
+
+      Verified: paragraph and table counts unchanged before/after
+      (1444 paragraphs, 3 tables); explicit presence checks for every
+      fix/addition across the rendered PDF; visually confirmed two
+      representative pages (the updated `ENVIRONMENT?` glossary entry,
+      and the appendix's `SIGN` routine with its full fix comment) -
+      both render cleanly with no formatting corruption from the
+      large content replacement.
 
 ## Structural duplication (identified, some resolved, some not)
 
@@ -2712,8 +2935,37 @@ design decisions made since the original version.
       resolved via `APPENDCELL`/`APPENDBYTE` (section 6).
 - [x] `<#`/`#>` recomputing PAD's address inline — resolved, both now
       call `PADW` (section 20 / section 6).
-- [ ] No further known duplication, but the codebase was never given a
-      full pass specifically hunting for more.
+- [ ] **Identified via the real listing (`forth6809_lst.txt`), not yet
+      acted on: `NUMBERQ`'s inline 32-bit negation (added this session
+      for double-number text input) duplicates `MNEG32`, an existing,
+      already-correct shared routine `DNEGATE` and `DABS` both already
+      call.** Traced precisely why this duplication mattered beyond
+      just code size: `MNEG32`'s instruction order (complement both
+      cells and store both, *then* do the `+1`/carry-propagation step
+      separately afterward) happens to avoid the exact 6809 quirk
+      (`COM` unconditionally sets carry) that `NUMBERQ`'s own,
+      separately hand-written version fell into - which is precisely
+      why `NUMBERQ`'s negation needed two separate bug-fix turns this
+      session while `MNEG32` itself never had the problem at all. Not
+      refactored here - the user's own stated reason for deferring:
+      automated testing should be in place before touching working,
+      duplicated logic, given hand-verifying a refactor across every
+      affected call site the way this session has been doing (MAME
+      tracing turn by turn) doesn't scale well to consolidation work.
+- [ ] **Identified via the real listing, not yet acted on: the
+      self-referential PFA bug (`CONSTANT`/`DEFER`/`2CONSTANT`/
+      `MARKER`) got four separate, duplicated fixes rather than one
+      shared helper.** Confirmed directly in the listing: `DEFER`'s,
+      `2CONSTANT`'s, and `MARKER`'s fixes are each explicitly commented
+      "same self-referential PFA bug as [`CONSTANT`]," each repeating
+      the identical `LDD CODEHERE`/`ADDD #2`/store sequence
+      independently rather than calling a shared routine. Same
+      deferral reasoning as above - not acted on pending automated
+      testing.
+- [ ] No further known duplication beyond the two items just above,
+      but the codebase still hasn't been given a full, systematic pass
+      specifically hunting for more - both findings above came from
+      genuinely investigating specific leads, not an exhaustive scan.
 
 ## Real, load-bearing gaps
 
@@ -2753,23 +3005,42 @@ design decisions made since the original version.
       expected at the time, the same, already-tracked `APPDICT`/
       `APPVARS` overlap, not something this fix caused. Since resolved
       by redefining `APPVARSEND` as `APPDICT-1` - see above.
-- [ ] **`ENVTABLE` is incomplete.** Missing entries: `/HOLD`, `/PAD`
+- [x] **`ENVTABLE` is incomplete.** Missing entries: `/HOLD`, `/PAD`
       (this build never fixed a capacity for either — filling them in
       would mean deciding a real bound first, not just picking a
       number), `MAX-D`, `MAX-UD` (need the dispatcher extended to push
       *two* cells for double-cell answers — current `ENVQUERY` only
       handles one), `WORDLISTS`/`FLOORED` (need the dispatcher to be
       able to report a recognized-but-false answer, distinct from
-      "unrecognized name" — no such path exists yet).
+      "unrecognized name" — no such path exists yet). **RESOLVED -
+      all six entries added and MAME-confirmed this session; see the
+      dedicated entry earlier in this file (search "ENVTABLE
+      completeness"). ENVIRONMENT? is complete.**
 - [ ] **`CATCH`-wrapped `QUIT`/`INTERPRET` rollback is scoped to one
       input line only.** A colon definition spanning multiple lines
       that fails partway through a later line only rolls back that
       line's contribution, not the whole definition back to `:`. A
       complete fix needs the region-pointer snapshot taken once at `:`
       and held until `;` or an error, not refreshed every `QLOOP` pass.
-- [ ] **`ABORTHDR`'s `LINK` field is a placeholder `0`** in the
+- [x] **RESOLVED - confirmed via the real listing (`forth6809_lst.txt`),
+      not just the source text.** `ABORTHDR`'s `LINK` field is a placeholder `0`
+      in the
       consolidated/split source — must be set to the real prior
       `LATEST` value once final ROM layout/assembly order is fixed.
+      `ABORTHDR` doesn't exist as a symbol anymore - renamed to
+      `H_ABORT` and moved into `BASEDICT` along with every other
+      header, as part of the broader dictionary-consolidation work
+      referenced above. `H_ABORT`'s actual `LINK` field is a real,
+      resolved address, not a placeholder: `FDB H_FALSE`, with the
+      source's own comment documenting its history (placeholder `0`
+      -> `H_DUMPW` -> `H_DOESGT` -> `H_DUMPW` again -> `H_FALSE`,
+      tracking the chain's actual newest entry as the dictionary grew
+      during the session). Independently confirmed by the 224-entry
+      dictionary chain walk from `H_M2` to `0`, checked repeatedly
+      throughout this session - that walk only succeeds if every
+      `LINK` field in the chain, including this one, is a real,
+      correct address; a placeholder `0` mid-chain would have broken
+      it outright. No action needed on the source.
 
 ## Never resolved after being explicitly raised
 
@@ -2781,7 +3052,33 @@ design decisions made since the original version.
       the loop it affects** — never verified against a `LEAVE` called
       from a separately-defined word invoked from within a loop (which
       would read/set the wrong stack frame, or crash).
-- [ ] **`WORD`'s 31-character cap is now inconsistent within the
+- [x] **RESOLVED via direct code inspection of the real listing
+      (`forth6809_lst.txt`), not just address arithmetic - the
+      underlying inconsistency is now fully understood, though the
+      answer is a genuine mix, not a simple "fixed" or "still open."**
+      Traced `CHARW` (`CHAR`) and `BRACKCHAR` (`[CHAR]`) precisely:
+      both simply push a space delimiter, `JSR WORD`, and read the
+      first character of whatever comes back - no separate cap logic
+      of their own at all. They automatically, correctly inherited
+      `WORD`'s new 46-character cap (`WORDMAXCHARS`) with zero code
+      changes needed - this part of the original item is stale.
+      `FIND` also has no independent cap of its own - traced its
+      comparison down to `HDRFLAGS ANDA #$1F`, masking the dictionary
+      header's `LEN/FL` byte to its low 5 bits. This is the real
+      finding: dictionary header names genuinely are still capped at
+      31 characters, but not because they "inherit `WORD`'s cap" as
+      the original item claimed - the header format itself allocates
+      only 5 bits (bits 4-0) for the name length, an absolute maximum
+      of 31 regardless of anything `WORD` does or how it's
+      redesigned. That's a separate, permanent architectural
+      constraint (the header storage format), not a leftover
+      inconsistency from `WORD`'s own redesign. The original item's
+      framing was imprecise even when written - it grouped "things
+      that call `WORD`" (`CHAR`/`[CHAR]`, no independent cap) together
+      with "things bounded by the header format" (header names/
+      `FIND`) as if they were the same constraint, when they're two
+      different ones. Original text: **`WORD`'s 31-character cap is
+      now inconsistent within the
       system.** `PARSE`/`PARSE-NAME` were deliberately rewritten to
       not share it, but `WORD` itself — and everything still built on
       it (`CHAR`, `[CHAR]`, header names, `FIND`) — still has it.

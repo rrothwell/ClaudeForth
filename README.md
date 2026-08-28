@@ -58,7 +58,7 @@ brew install binutils
 |Set up serial communications to MAME mecb6809 to allow upload of testing code. |:white_check_mark:|
 |Load forth6809.bin rom file and verify memory layout and operation. |:white_check_mark:|
 |Manual tests and identified/fixed numerous bugs. |:white_check_mark:|
-|Update documentation| |
+|Update documentation|:white_check_mark:|
 |Unit tests and identified bug fixes.  | |
 |Tests against ANS test suite and identified bug fixes.  | |
 |Update documentation| |
