@@ -59,8 +59,9 @@ brew install binutils
 |Load forth6809.bin rom file and verify memory layout and operation. |:white_check_mark:|
 |Manual tests and identified/fixed numerous bugs. |:white_check_mark:|
 |Update documentation|:white_check_mark:|
-|Unit tests and identified bug fixes.  | |
+|Automated unit tests and identified bug fixes.  | |
 |Tests against ANS test suite and identified bug fixes.  | |
+|Optimisation for space, compiler performance & application performance| |
 |Update documentation| |
 |Develop a simple forth application| |
 |Refine the documentation| |
@@ -71,6 +72,8 @@ brew install binutils
 + A unified assembler file.
 + A collection of assembler files
   obtained by splitting the above file.
++ A memory map graphic.
++ An interpreter graphic in UML.
 + A file listing remaining issues.
 + The ANS test suit.
 
