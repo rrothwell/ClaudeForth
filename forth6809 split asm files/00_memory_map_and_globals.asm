@@ -98,17 +98,41 @@ USROMEND EQU  VECTORS-1 ; Usable ROM end. Corrected: 1 before VECTORS'
                          ; comparisons or as a memory operand, unlike
                          ; the previous $10000 definition
 VECTORS  EQU  $FFF0
-INITCODE EQU  $FFA9     ; was $FFA2 - shifted up 7 bytes to reduce the
-                         ; overlap with BASECODE's nominal end ($FFB4)
-                         ; from 19 bytes to 12 - improved, not resolved.
-                         ; CORRECTED: INITCODE's real content is 71
-                         ; bytes ($47), confirmed by an actual assembler
-                         ; run - not the 78-byte manual estimate relied
-                         ; on for several turns, which was wrong by 7
-                         ; bytes. At $FFA9, real content now ends at
-                         ; $FFEF, exactly one byte below VECTORS - a
-                         ; genuine, assembler-confirmed exact fit, zero
-                         ; gap, zero overlap. A prior turn claimed this
+INITCODE EQU  $FFA6     ; was $FFA9 - shifted down 3 bytes, per
+                         ; explicit request, to make room for the
+                         ; UNITTESTS call site's own fix (below):
+                         ; that site now always emits exactly 3 bytes
+                         ; (either the real JSR TSTRUNNER, or 3 NOPs
+                         ; as a placeholder when UNITTESTS=1), so
+                         ; COLDSTRT's total size no longer depends on
+                         ; UNITTESTS at all - previously it did (JSR
+                         ; TSTRUNNER only existed when UNITTESTS=0,
+                         ; with nothing emitted when UNITTESTS=1),
+                         ; meaning INITCODE's fixed position here
+                         ; could be correct for one setting and wrong
+                         ; for the other, risking an overflow into
+                         ; VECTORS when tests were compiled in. Prior
+                         ; history: was $FFA2 - shifted up 7 bytes to
+                         ; reduce the overlap with BASECODE's nominal
+                         ; end ($FFB4) from 19 bytes to 12 - improved,
+                         ; not resolved. CORRECTED: INITCODE's real
+                         ; content is 71 bytes ($47), confirmed by an
+                         ; actual assembler run - not the 78-byte
+                         ; manual estimate relied on for several
+                         ; turns, which was wrong by 7 bytes. That
+                         ; 71-byte figure was measured with the old
+                         ; structure (UNITTESTS=1 emitting 0 bytes for
+                         ; the TSTRUNNER call site) - with the fix
+                         ; above, that site now always emits 3 bytes
+                         ; either way, so real content is reasoned to
+                         ; be 74 bytes now (71+3), not yet re-measured
+                         ; by a real assembler run. At $FFA6, that
+                         ; reasoned end is $FFEF - unchanged, since
+                         ; the 3-byte shift in INITCODE's own start
+                         ; and the 3-byte growth in content offset
+                         ; exactly - still one byte below VECTORS, if
+                         ; the reasoning above holds; confirm on
+                         ; assembly. A prior turn claimed this general
                          ; shift created a new 7-byte VECTORS overlap;
                          ; that was based on the incorrect 78-byte
                          ; estimate and was wrong - retracted here. The
@@ -591,12 +615,14 @@ FILLCHR  EQU  MVSRC
 ; followed by " OK" or " FAIL", followed by a CR - all via
 ; TSTREPORT, shared by every test rather than duplicated in each.
 ; ============================================================
-UNITTESTS EQU 1   ; was 0 (included) - set to 1 (excluded) per explicit
-                  ; request: unit tests don't work yet and resolution
-                  ; has been postponed. 0 = included (matches this
-                  ; file's established IFEQ convention, e.g.
-                  ; SERIALPOLL); 1 = excluded entirely, reverting to
-                  ; plain FILL padding.
+UNITTESTS EQU 0   ; was 1 (excluded) - reactivated: confirmed working
+                  ; on real MAME hardware (TSTDUP runs successfully
+                  ; and reports the correct message to the terminal) -
+                  ; whatever earlier concern prompted excluding it was
+                  ; resolved by other, unrelated fixes since. 0 =
+                  ; included (matches this file's established IFEQ
+                  ; convention, e.g. SERIALPOLL); 1 = excluded
+                  ; entirely, reverting to plain FILL padding.
 
          IFEQ  UNITTESTS  ; >>>>>>>>>>
 
@@ -613,6 +639,34 @@ TSTVAL1  EQU   $59E1         ; the value under test itself - neither
                               ; that only appears to pass due to a
                               ; trivial/special-cased value would be
                               ; caught rather than masked
+TSTVAL2  EQU   $2468         ; additional distinct, non-trivial
+TSTVAL3  EQU   $7B3D         ; values for multi-item tests (SWAP,
+TSTVAL4  EQU   $4E2C         ; OVER, ROT, 2DUP, 2ROT, etc) - none are
+TSTVAL5  EQU   $19A7         ; 0, 1, -1, TSTGUARD, or any of each
+TSTVAL6  EQU   $6D95         ; other
+
+TSTSCR   EQU   APPVARS+8     ; extra scratch cell - for tests (DEPTH)
+                              ; that need to compute an expected value
+                              ; independently before comparing
+
+TSTNEG1  EQU   $CFC7         ; -12345 - distinct, non-trivial negative
+                              ; test values, needed for arithmetic
+                              ; tests (ABS, NEGATE, MIN/MAX, signed
+                              ; division, 2/) whose logic genuinely
+                              ; branches on sign - TSTVAL1-6 above are
+                              ; all positive, which wouldn't exercise
+                              ; those branches
+TSTNEG2  EQU   $FEBF         ; -321
+
+TSTD1HI  EQU   $0001         ; TSTDBL1 = 70000 (positive, exceeds 16
+TSTD1LO  EQU   $1170         ; bits - exercises real double-cell width,
+                              ; not just a sign-extended single)
+TSTD2HI  EQU   $FFFE         ; TSTDBL2 = -70000
+TSTD2LO  EQU   $EE90
+TSTD3HI  EQU   $00BC         ; TSTDBL3 = 12345678
+TSTD3LO  EQU   $614E
+TSTDSHI  EQU   $0000         ; TSTDBLSMALL = 500 - small enough to fit
+TSTDSLO  EQU   $01F4         ; in a single cell, for D>S
 
 ; ------------------------------------------------------------
 ; TSTREPORT - ( testname-caddr passflag -- ) shared by every
@@ -649,14 +703,42 @@ TSTFAILMSGL  EQU  *-TSTFAILMSG
 ; here as they're written.
 ; ------------------------------------------------------------
 TSTRUNNER: JSR   TSTSTACK
+           JSR   TSTSARITH
+           JSR   TSTDARITH
            RTS
 
 ; ------------------------------------------------------------
 ; TSTSTACK - data stack operation tests. Add new tests here as
 ; they're written.
 ; ------------------------------------------------------------
-TSTSTACK:  JSR   TSTDUP
+TSTSTACK:  JSR   CRW
+           LDX   #TSTSTACKMSG
+           PSHU  X
+           LDD   #5
+           PSHU  D
+           JSR   TYPE
+           JSR   CRW
+
+           JSR   TSTDUP
+           JSR   TSTDROP
+           JSR   TSTSWAP
+           JSR   TSTOVER
+           JSR   TSTROT
+           JSR   TSTQDUPNZ
+           JSR   TSTQDUPZ
+           JSR   TSTDEPTH
+           JSR   TSTDDUP
+           JSR   TSTDDROP
+           JSR   TSTDSWAP
+           JSR   TSTDOVER
+           JSR   TSTNIP
+           JSR   TSTTUCK
+           JSR   TSTPICK
+           JSR   TSTROLL
+           JSR   TSTDROT
            RTS
+
+TSTSTACKMSG: FCC "Stack"
 
 ; ------------------------------------------------------------
 ; TSTDUP - unit test for DUP ( x -- x x ). Verifies both the
@@ -706,6 +788,3054 @@ TDDONE:    LDX   #TSTDUPNAME
 
 TSTDUPNAME: FCB  6
             FCC  "TSTDUP"
+
+; ------------------------------------------------------------
+; TSTDROP - unit test for DROP ( x -- ). Verifies both the
+; stack's contents (the guard beneath the dropped value is left
+; undisturbed, and is now the new top) and the data stack
+; pointer's movement (exactly one cell, 2 bytes, freed - DROP's
+; own net effect, not conflated with the two pushes that set the
+; test up).
+; ------------------------------------------------------------
+TSTDROP:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DROP
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   DPFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   DPFAIL
+
+           LDD   #TRUEV
+           BRA   DPDONE
+DPFAIL:    LDD   #FALSEV
+DPDONE:    LDX   #TSTDROPNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDROPNAME: FCB  7
+             FCC  "TSTDROP"
+
+; ------------------------------------------------------------
+; TSTSWAP - unit test for SWAP ( n1 n2 -- n2 n1 ). Verifies the
+; two items exchange places, the guard beneath is undisturbed,
+; and the net stack depth is unchanged.
+; ------------------------------------------------------------
+TSTSWAP:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   SWAP
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   SWFAIL
+           PULU  D
+           CMPD  #TSTVAL2
+           BNE   SWFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   SWFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   SWFAIL
+
+           LDD   #TRUEV
+           BRA   SWDONE
+SWFAIL:    LDD   #FALSEV
+SWDONE:    LDX   #TSTSWAPNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTSWAPNAME: FCB  7
+             FCC  "TSTSWAP"
+
+; ------------------------------------------------------------
+; TSTOVER - unit test for OVER ( n1 n2 -- n1 n2 n1 ). Verifies
+; the copy of n1 is correct, the originals and guard are
+; undisturbed, and exactly one cell was added.
+; ------------------------------------------------------------
+TSTOVER:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   OVER
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   OVFAIL
+           PULU  D
+           CMPD  #TSTVAL2
+           BNE   OVFAIL
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   OVFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   OVFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #2
+           BNE   OVFAIL
+
+           LDD   #TRUEV
+           BRA   OVDONE
+OVFAIL:    LDD   #FALSEV
+OVDONE:    LDX   #TSTOVERNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTOVERNAME: FCB  7
+             FCC  "TSTOVER"
+
+; ------------------------------------------------------------
+; TSTROT - unit test for ROT ( n1 n2 n3 -- n2 n3 n1 ). Verifies
+; the rotation order, the guard beneath is undisturbed, and the
+; net stack depth is unchanged.
+; ------------------------------------------------------------
+TSTROT:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           LDD   #TSTVAL3
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   ROT
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   RTFAIL
+           PULU  D
+           CMPD  #TSTVAL3
+           BNE   RTFAIL
+           PULU  D
+           CMPD  #TSTVAL2
+           BNE   RTFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   RTFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   RTFAIL
+
+           LDD   #TRUEV
+           BRA   RTDONE
+RTFAIL:    LDD   #FALSEV
+RTDONE:    LDX   #TSTROTNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTROTNAME: FCB  6
+            FCC  "TSTROT"
+
+; ------------------------------------------------------------
+; TSTQDUPNZ - unit test for ?DUP ( n -- n n | 0 ), nonzero case.
+; Verifies the nonzero value is duplicated, the guard beneath is
+; undisturbed, and exactly one cell was added - same as DUP's
+; own behavior for this case. ?DUP needs two tests, one per
+; condition, since DUP-like and no-op are genuinely different
+; code paths (QDUP branches on the popped value).
+; ------------------------------------------------------------
+TSTQDUPNZ: STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   QDUP
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   QNFAIL
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   QNFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   QNFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #2
+           BNE   QNFAIL
+
+           LDD   #TRUEV
+           BRA   QNDONE
+QNFAIL:    LDD   #FALSEV
+QNDONE:    LDX   #TSTQNNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTQNNAME: FCB  9
+           FCC  "TSTQDUPNZ"
+
+; ------------------------------------------------------------
+; TSTQDUPZ - unit test for ?DUP ( n -- n n | 0 ), zero case.
+; Verifies zero is left alone - no duplicate is pushed - the
+; guard beneath is undisturbed, and the net stack depth is
+; unchanged.
+; ------------------------------------------------------------
+TSTQDUPZ:  STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #0
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   QDUP
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #0
+           BNE   QZFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   QZFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   QZFAIL
+
+           LDD   #TRUEV
+           BRA   QZDONE
+QZFAIL:    LDD   #FALSEV
+QZDONE:    LDX   #TSTQZNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTQZNAME: FCB  8
+           FCC  "TSTQDUPZ"
+
+; ------------------------------------------------------------
+; TSTDEPTH - unit test for DEPTH ( -- n ). Independently
+; computes the expected depth via the same (SP0-U)/2 formula
+; DEPTH itself uses, rather than assuming a fixed starting
+; depth - robust regardless of whatever is already on the stack
+; when this test runs. Also verifies DEPTH's own net effect
+; (exactly one cell pushed) and that the three items pushed to
+; set up the test are left undisturbed.
+; ------------------------------------------------------------
+TSTDEPTH:  STU   TSTU0
+
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           LDD   #TSTVAL3
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DEPTH
+
+           STU   TSTUAF
+
+           LDD   #SP0
+           SUBD  TSTUB4
+           LSRA
+           RORB
+           STD   TSTSCR
+
+           PULU  D
+           CMPD  TSTSCR
+           BNE   DHFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #2
+           BNE   DHFAIL
+
+           PULU  D
+           CMPD  #TSTVAL3
+           BNE   DHFAIL
+           PULU  D
+           CMPD  #TSTVAL2
+           BNE   DHFAIL
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   DHFAIL
+
+           LDD   #TRUEV
+           BRA   DHDONE
+DHFAIL:    LDD   #FALSEV
+DHDONE:    LDX   #TSTDEPTHNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDEPTHNAME: FCB  8
+              FCC  "TSTDEPTH"
+
+; ------------------------------------------------------------
+; TSTDDUP - unit test for 2DUP ( x1 x2 -- x1 x2 x1 x2 ).
+; Verifies the duplicated pair, the originals and guard are
+; undisturbed, and exactly two cells were added.
+; ------------------------------------------------------------
+TSTDDUP:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DDUP
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL2
+           BNE   DU2FAIL
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   DU2FAIL
+           PULU  D
+           CMPD  #TSTVAL2
+           BNE   DU2FAIL
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   DU2FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   DU2FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #4
+           BNE   DU2FAIL
+
+           LDD   #TRUEV
+           BRA   DU2DONE
+DU2FAIL:   LDD   #FALSEV
+DU2DONE:   LDX   #TSTDDUPNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDDUPNAME: FCB  7
+             FCC  "TSTDDUP"
+
+; ------------------------------------------------------------
+; TSTDDROP - unit test for 2DROP ( x1 x2 -- ). Verifies both
+; items are removed, the guard beneath is undisturbed, and
+; exactly two cells were freed.
+; ------------------------------------------------------------
+TSTDDROP:  STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DDROP
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   DR2FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-4
+           BNE   DR2FAIL
+
+           LDD   #TRUEV
+           BRA   DR2DONE
+DR2FAIL:   LDD   #FALSEV
+DR2DONE:   LDX   #TSTDDROPNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDDROPNAME: FCB  8
+              FCC  "TSTDDROP"
+
+; ------------------------------------------------------------
+; TSTDSWAP - unit test for 2SWAP ( x1 x2 x3 x4 -- x3 x4 x1 x2 ).
+; Verifies the two pairs exchange places, the guard beneath is
+; undisturbed, and the net stack depth is unchanged.
+; ------------------------------------------------------------
+TSTDSWAP:  STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           LDD   #TSTVAL3
+           PSHU  D
+           LDD   #TSTVAL4
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DSWAP
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL2
+           BNE   SW2FAIL
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   SW2FAIL
+           PULU  D
+           CMPD  #TSTVAL4
+           BNE   SW2FAIL
+           PULU  D
+           CMPD  #TSTVAL3
+           BNE   SW2FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   SW2FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   SW2FAIL
+
+           LDD   #TRUEV
+           BRA   SW2DONE
+SW2FAIL:   LDD   #FALSEV
+SW2DONE:   LDX   #TSTDSWAPNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDSWAPNAME: FCB  8
+              FCC  "TSTDSWAP"
+
+; ------------------------------------------------------------
+; TSTDOVER - unit test for 2OVER
+; ( x1 x2 x3 x4 -- x1 x2 x3 x4 x1 x2 ). Verifies the copied
+; pair, the originals and guard are undisturbed, and exactly
+; two cells were added.
+; ------------------------------------------------------------
+TSTDOVER:  STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           LDD   #TSTVAL3
+           PSHU  D
+           LDD   #TSTVAL4
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DOVER
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL2
+           BNE   OV2FAIL
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   OV2FAIL
+           PULU  D
+           CMPD  #TSTVAL4
+           BNE   OV2FAIL
+           PULU  D
+           CMPD  #TSTVAL3
+           BNE   OV2FAIL
+           PULU  D
+           CMPD  #TSTVAL2
+           BNE   OV2FAIL
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   OV2FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   OV2FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #4
+           BNE   OV2FAIL
+
+           LDD   #TRUEV
+           BRA   OV2DONE
+OV2FAIL:   LDD   #FALSEV
+OV2DONE:   LDX   #TSTDOVERNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDOVERNAME: FCB  8
+              FCC  "TSTDOVER"
+
+; ------------------------------------------------------------
+; TSTNIP - unit test for NIP ( x1 x2 -- x2 ). Verifies the
+; second item is discarded, x2 is left on top, the guard beneath
+; is undisturbed, and exactly one cell was freed.
+; ------------------------------------------------------------
+TSTNIP:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   NIP
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL2
+           BNE   NPFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   NPFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   NPFAIL
+
+           LDD   #TRUEV
+           BRA   NPDONE
+NPFAIL:    LDD   #FALSEV
+NPDONE:    LDX   #TSTNIPNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTNIPNAME: FCB  6
+            FCC  "TSTNIP"
+
+; ------------------------------------------------------------
+; TSTTUCK - unit test for TUCK ( x1 x2 -- x2 x1 x2 ). Verifies
+; the copy of x2 is tucked correctly beneath x1, the guard
+; beneath is undisturbed, and exactly one cell was added.
+; ------------------------------------------------------------
+TSTTUCK:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   TUCK
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL2
+           BNE   TKFAIL
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   TKFAIL
+           PULU  D
+           CMPD  #TSTVAL2
+           BNE   TKFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   TKFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #2
+           BNE   TKFAIL
+
+           LDD   #TRUEV
+           BRA   TKDONE
+TKFAIL:    LDD   #FALSEV
+TKDONE:    LDX   #TSTTUCKNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTTUCKNAME: FCB  7
+             FCC  "TSTTUCK"
+
+; ------------------------------------------------------------
+; TSTPICK - unit test for PICK ( xu ... x0 u -- xu ... x0 xu ),
+; using u=2 as a concrete representative case (0 PICK is DUP,
+; 1 PICK is OVER; 2 PICK is the first case distinct from both).
+; Verifies the correct item (the one 2 cells deep after u itself
+; is popped) is copied to the top, everything beneath is
+; undisturbed, and the net stack depth is unchanged (u popped,
+; one copy pushed).
+; ------------------------------------------------------------
+TSTPICK:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           LDD   #TSTVAL3
+           PSHU  D
+           LDD   #2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   PICK
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   PKFAIL
+           PULU  D
+           CMPD  #TSTVAL3
+           BNE   PKFAIL
+           PULU  D
+           CMPD  #TSTVAL2
+           BNE   PKFAIL
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   PKFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   PKFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   PKFAIL
+
+           LDD   #TRUEV
+           BRA   PKDONE
+PKFAIL:    LDD   #FALSEV
+PKDONE:    LDX   #TSTPICKNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTPICKNAME: FCB  7
+             FCC  "TSTPICK"
+
+; ------------------------------------------------------------
+; TSTROLL - unit test for ROLL
+; ( xu ... x0 u -- xu-1 ... x0 xu ), using u=2 as a concrete
+; representative case (matches TSTPICK's own choice of u, so
+; the two tests are directly comparable). Verifies the item 2
+; cells deep is removed and moved to the top, the items above it
+; shift down by one slot each, the guard beneath is undisturbed,
+; and exactly one cell was freed (u popped, nothing replaces it
+; numerically - the rolled item moves within the existing space).
+; ------------------------------------------------------------
+TSTROLL:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           LDD   #TSTVAL3
+           PSHU  D
+           LDD   #2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   ROLL
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   RLFAIL
+           PULU  D
+           CMPD  #TSTVAL3
+           BNE   RLFAIL
+           PULU  D
+           CMPD  #TSTVAL2
+           BNE   RLFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   RLFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   RLFAIL
+
+           LDD   #TRUEV
+           BRA   RLDONE
+RLFAIL:    LDD   #FALSEV
+RLDONE:    LDX   #TSTROLLNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTROLLNAME: FCB  7
+             FCC  "TSTROLL"
+
+; ------------------------------------------------------------
+; TSTDROT - unit test for 2ROT
+; ( x1 x2 x3 x4 x5 x6 -- x3 x4 x5 x6 x1 x2 ). Verifies the
+; rotation order of all three cell pairs, the guard beneath is
+; undisturbed, and the net stack depth is unchanged.
+; ------------------------------------------------------------
+TSTDROT:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           LDD   #TSTVAL3
+           PSHU  D
+           LDD   #TSTVAL4
+           PSHU  D
+           LDD   #TSTVAL5
+           PSHU  D
+           LDD   #TSTVAL6
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DROT
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL2
+           BNE   RO2FAIL
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   RO2FAIL
+           PULU  D
+           CMPD  #TSTVAL6
+           BNE   RO2FAIL
+           PULU  D
+           CMPD  #TSTVAL5
+           BNE   RO2FAIL
+           PULU  D
+           CMPD  #TSTVAL4
+           BNE   RO2FAIL
+           PULU  D
+           CMPD  #TSTVAL3
+           BNE   RO2FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   RO2FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   RO2FAIL
+
+           LDD   #TRUEV
+           BRA   RO2DONE
+RO2FAIL:   LDD   #FALSEV
+RO2DONE:   LDX   #TSTDROTNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDROTNAME: FCB  7
+             FCC  "TSTDROT"
+
+; ------------------------------------------------------------
+; TSTSARITH - single-cell arithmetic tests (glossary section 3.4).
+; Covers every word in that section, with representative
+; positive/negative/zero cases per word - not an exhaustive sign
+; combination sweep, but enough to exercise each word's actual
+; branches (sign handling, division's throw-on-zero, multiply's
+; defined-truncation-not-error overflow behavior). See the
+; open-items checklist for the full reasoning behind the specific
+; cases chosen.
+; ------------------------------------------------------------
+TSTSARITH: JSR   CRW
+           LDX   #TSTSARITHMSG
+           PSHU  X
+           LDD   #11
+           PSHU  D
+           JSR   TYPE
+           JSR   CRW
+
+           JSR   TSTPLUS
+           JSR   TSTMINUS
+           JSR   TSTSTAR1
+           JSR   TSTSTAR2
+           JSR   TSTSLASH1
+           JSR   TSTSLASH2
+           JSR   TSTSLASHZ
+           JSR   TSTMODW
+           JSR   TSTMODZ
+           JSR   TSTSLMOD
+           JSR   TSTSLMODZ
+           JSR   TSTNEGATE
+           JSR   TSTABS1
+           JSR   TSTABS2
+           JSR   TSTMIN1
+           JSR   TSTMIN2
+           JSR   TSTMAX1
+           JSR   TSTMAX2
+           JSR   TSTONEP
+           JSR   TSTONEM
+           JSR   TSTTWOP
+           JSR   TSTTWOS
+           JSR   TSTTWOD1
+           JSR   TSTTWOD2
+           JSR   TSTSTSL
+           JSR   TSTSTSLZ
+           JSR   TSTSTSM
+           JSR   TSTSTSMZ
+           RTS
+
+TSTSARITHMSG: FCC "SArithmetic"
+
+; ------------------------------------------------------------
+; TSTPLUS - unit test for PLUS. n1 + n2, mixed signs.
+; ------------------------------------------------------------
+TSTPLUS:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   PLUS
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$29A8
+           BNE   PLFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   PLFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   PLFAIL
+
+           LDD   #TRUEV
+           BRA   PLDONE
+PLFAIL:     LDD   #FALSEV
+PLDONE:     LDX   #TSTPLUSNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTPLUSNAME: FCB  7
+               FCC  "TSTPLUS"
+
+; ------------------------------------------------------------
+; TSTMINUS - unit test for MINUS. n1 - n2 (operand order matters).
+; ------------------------------------------------------------
+TSTMINUS:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   MINUS
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$3579
+           BNE   MNFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   MNFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   MNFAIL
+
+           LDD   #TRUEV
+           BRA   MNDONE
+MNFAIL:     LDD   #FALSEV
+MNDONE:     LDX   #TSTMINUSNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTMINUSNAME: FCB  8
+                FCC  "TSTMINUS"
+
+; ------------------------------------------------------------
+; TSTSTAR1 - unit test for STAR. normal signed multiply.
+; ------------------------------------------------------------
+TSTSTAR1:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           LDD   #TSTNEG2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   STAR
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$5998
+           BNE   S1FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   S1FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   S1FAIL
+
+           LDD   #TRUEV
+           BRA   S1DONE
+S1FAIL:     LDD   #FALSEV
+S1DONE:     LDX   #TSTSTAR1NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTSTAR1NAME: FCB  8
+                FCC  "TSTSTAR1"
+
+; ------------------------------------------------------------
+; TSTSTAR2 - unit test for STAR. overflow case - product exceeds 16-bit range; ANS defines * as truncating, not erroring.
+; ------------------------------------------------------------
+TSTSTAR2:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #$03E8
+           PSHU  D
+           LDD   #$03E8
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   STAR
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$4240
+           BNE   S2FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   S2FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   S2FAIL
+
+           LDD   #TRUEV
+           BRA   S2DONE
+S2FAIL:     LDD   #FALSEV
+S2DONE:     LDX   #TSTSTAR2NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTSTAR2NAME: FCB  8
+                FCC  "TSTSTAR2"
+
+; ------------------------------------------------------------
+; TSTSLASH1 - unit test for SLASH. normal signed symmetric division (quotient only - SLASH pushes DIVNUM, not the remainder too).
+; ------------------------------------------------------------
+TSTSLASH1:  STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   SLASH
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$0002
+           BNE   SLFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   SLFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   SLFAIL
+
+           LDD   #TRUEV
+           BRA   SLDONE
+SLFAIL:     LDD   #FALSEV
+SLDONE:     LDX   #TSTSLASH1NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTSLASH1NAME: FCB  9
+                 FCC  "TSTSLASH1"
+
+; ------------------------------------------------------------
+; TSTSLASH2 - unit test for SLASH. negative dividend, symmetric division.
+; ------------------------------------------------------------
+TSTSLASH2:  STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   SLASH
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFFF
+           BNE   SNFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   SNFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   SNFAIL
+
+           LDD   #TRUEV
+           BRA   SNDONE
+SNFAIL:     LDD   #FALSEV
+SNDONE:     LDX   #TSTSLASH2NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTSLASH2NAME: FCB  9
+                 FCC  "TSTSLASH2"
+
+; ------------------------------------------------------------
+; TSTSLASHZ - unit test for SLASH, divide-by-zero case. n2 = 0.
+; Verifies THROW -10 fires (per this system's documented ANS
+; behavior for a zero divisor) and that CATCH's own depth-
+; restoration contract holds (net 0 change across the JSR CATCH,
+; xt's slot effectively replaced by the throw code). Per CATCH's
+; own spec, the i*x arguments' VALUES are explicitly unspecified
+; after a catch, not just untested here - the final, unconditional
+; stack restore discards them without needing to know how many
+; there are.
+; ------------------------------------------------------------
+TSTSLASHZ:  STU   TSTU0
+
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #$0000
+           PSHU  D
+           LDX   #SLASH
+           PSHU  X
+           STU   TSTUB4
+
+           JSR   CATCH
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #-10
+           BNE   SZFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   SZFAIL
+
+           LDD   #TRUEV
+           BRA   SZDONE
+SZFAIL:     LDD   #FALSEV
+SZDONE:     LDX   #TSTSLASHZNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTSLASHZNAME: FCB  9
+                 FCC  "TSTSLASHZ"
+
+; ------------------------------------------------------------
+; TSTMODW - unit test for MODW. negative dividend, symmetric remainder.
+; ------------------------------------------------------------
+TSTMODW:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   MODW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$F42F
+           BNE   MDFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   MDFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   MDFAIL
+
+           LDD   #TRUEV
+           BRA   MDDONE
+MDFAIL:     LDD   #FALSEV
+MDDONE:     LDX   #TSTMODWNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTMODWNAME: FCB  7
+               FCC  "TSTMODW"
+
+; ------------------------------------------------------------
+; TSTMODZ - unit test for MODW, divide-by-zero case. n2 = 0.
+; Verifies THROW -10 fires (per this system's documented ANS
+; behavior for a zero divisor) and that CATCH's own depth-
+; restoration contract holds (net 0 change across the JSR CATCH,
+; xt's slot effectively replaced by the throw code). Per CATCH's
+; own spec, the i*x arguments' VALUES are explicitly unspecified
+; after a catch, not just untested here - the final, unconditional
+; stack restore discards them without needing to know how many
+; there are.
+; ------------------------------------------------------------
+TSTMODZ:    STU   TSTU0
+
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #$0000
+           PSHU  D
+           LDX   #MODW
+           PSHU  X
+           STU   TSTUB4
+
+           JSR   CATCH
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #-10
+           BNE   MZFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   MZFAIL
+
+           LDD   #TRUEV
+           BRA   MZDONE
+MZFAIL:     LDD   #FALSEV
+MZDONE:     LDX   #TSTMODZNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTMODZNAME: FCB  7
+               FCC  "TSTMODZ"
+
+; ------------------------------------------------------------
+; TSTSLMOD - unit test for SLASHMOD. /MOD together - both remainder and quotient.
+; ------------------------------------------------------------
+TSTSLMOD:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTNEG2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   SLASHMOD
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFB9
+           BNE   SMFAIL
+           PULU  D
+           CMPD  #$00DA
+           BNE   SMFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   SMFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   SMFAIL
+
+           LDD   #TRUEV
+           BRA   SMDONE
+SMFAIL:     LDD   #FALSEV
+SMDONE:     LDX   #TSTSLMODNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTSLMODNAME: FCB  8
+                FCC  "TSTSLMOD"
+
+; ------------------------------------------------------------
+; TSTSLMODZ - unit test for SLASHMOD, divide-by-zero case. n2 = 0.
+; Verifies THROW -10 fires (per this system's documented ANS
+; behavior for a zero divisor) and that CATCH's own depth-
+; restoration contract holds (net 0 change across the JSR CATCH,
+; xt's slot effectively replaced by the throw code). Per CATCH's
+; own spec, the i*x arguments' VALUES are explicitly unspecified
+; after a catch, not just untested here - the final, unconditional
+; stack restore discards them without needing to know how many
+; there are.
+; ------------------------------------------------------------
+TSTSLMODZ:  STU   TSTU0
+
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #$0000
+           PSHU  D
+           LDX   #SLASHMOD
+           PSHU  X
+           STU   TSTUB4
+
+           JSR   CATCH
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #-10
+           BNE   MXFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   MXFAIL
+
+           LDD   #TRUEV
+           BRA   MXDONE
+MXFAIL:     LDD   #FALSEV
+MXDONE:     LDX   #TSTSLMODZNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTSLMODZNAME: FCB  9
+                 FCC  "TSTSLMODZ"
+
+; ------------------------------------------------------------
+; TSTNEGATE - unit test for NEGATE. two's-complement negate.
+; ------------------------------------------------------------
+TSTNEGATE:  STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   NEGATE
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$A61F
+           BNE   NGFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   NGFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   NGFAIL
+
+           LDD   #TRUEV
+           BRA   NGDONE
+NGFAIL:     LDD   #FALSEV
+NGDONE:     LDX   #TSTNEGATENAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTNEGATENAME: FCB  9
+                 FCC  "TSTNEGATE"
+
+; ------------------------------------------------------------
+; TSTABS1 - unit test for ABSW. positive input - already non-negative, unchanged.
+; ------------------------------------------------------------
+TSTABS1:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   ABSW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   A1FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   A1FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   A1FAIL
+
+           LDD   #TRUEV
+           BRA   A1DONE
+A1FAIL:     LDD   #FALSEV
+A1DONE:     LDX   #TSTABS1NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTABS1NAME: FCB  7
+               FCC  "TSTABS1"
+
+; ------------------------------------------------------------
+; TSTABS2 - unit test for ABSW. negative input - the branch that actually negates.
+; ------------------------------------------------------------
+TSTABS2:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   ABSW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$3039
+           BNE   A2FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   A2FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   A2FAIL
+
+           LDD   #TRUEV
+           BRA   A2DONE
+A2FAIL:     LDD   #FALSEV
+A2DONE:     LDX   #TSTABS2NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTABS2NAME: FCB  7
+               FCC  "TSTABS2"
+
+; ------------------------------------------------------------
+; TSTMIN1 - unit test for MIN. n1 < n2 - n1 is the min, left unchanged.
+; ------------------------------------------------------------
+TSTMIN1:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   MIN
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$CFC7
+           BNE   N1FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   N1FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   N1FAIL
+
+           LDD   #TRUEV
+           BRA   N1DONE
+N1FAIL:     LDD   #FALSEV
+N1DONE:     LDX   #TSTMIN1NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTMIN1NAME: FCB  7
+               FCC  "TSTMIN1"
+
+; ------------------------------------------------------------
+; TSTMIN2 - unit test for MIN. n1 > n2 - n2 is the min, replaces n1.
+; ------------------------------------------------------------
+TSTMIN2:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   MIN
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$CFC7
+           BNE   N2FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   N2FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   N2FAIL
+
+           LDD   #TRUEV
+           BRA   N2DONE
+N2FAIL:     LDD   #FALSEV
+N2DONE:     LDX   #TSTMIN2NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTMIN2NAME: FCB  7
+               FCC  "TSTMIN2"
+
+; ------------------------------------------------------------
+; TSTMAX1 - unit test for MAX. n1 < n2 - n2 is the max, replaces n1.
+; ------------------------------------------------------------
+TSTMAX1:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   MAX
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   X1FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   X1FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   X1FAIL
+
+           LDD   #TRUEV
+           BRA   X1DONE
+X1FAIL:     LDD   #FALSEV
+X1DONE:     LDX   #TSTMAX1NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTMAX1NAME: FCB  7
+               FCC  "TSTMAX1"
+
+; ------------------------------------------------------------
+; TSTMAX2 - unit test for MAX. n1 > n2 - n1 is the max, left unchanged.
+; ------------------------------------------------------------
+TSTMAX2:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   MAX
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   X2FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   X2FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   X2FAIL
+
+           LDD   #TRUEV
+           BRA   X2DONE
+X2FAIL:     LDD   #FALSEV
+X2DONE:     LDX   #TSTMAX2NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTMAX2NAME: FCB  7
+               FCC  "TSTMAX2"
+
+; ------------------------------------------------------------
+; TSTONEP - unit test for ONEPLUS. add one.
+; ------------------------------------------------------------
+TSTONEP:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   ONEPLUS
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$59E2
+           BNE   OPFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   OPFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   OPFAIL
+
+           LDD   #TRUEV
+           BRA   OPDONE
+OPFAIL:     LDD   #FALSEV
+OPDONE:     LDX   #TSTONEPNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTONEPNAME: FCB  7
+               FCC  "TSTONEP"
+
+; ------------------------------------------------------------
+; TSTONEM - unit test for ONEMINUS. subtract one.
+; ------------------------------------------------------------
+TSTONEM:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   ONEMINUS
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$59E0
+           BNE   OMFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   OMFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   OMFAIL
+
+           LDD   #TRUEV
+           BRA   OMDONE
+OMFAIL:     LDD   #FALSEV
+OMDONE:     LDX   #TSTONEMNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTONEMNAME: FCB  7
+               FCC  "TSTONEM"
+
+; ------------------------------------------------------------
+; TSTTWOP - unit test for TWOPLUS. add two (not ANS-standard).
+; ------------------------------------------------------------
+TSTTWOP:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   TWOPLUS
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$59E3
+           BNE   TPFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   TPFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   TPFAIL
+
+           LDD   #TRUEV
+           BRA   TPDONE
+TPFAIL:     LDD   #FALSEV
+TPDONE:     LDX   #TSTTWOPNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTTWOPNAME: FCB  7
+               FCC  "TSTTWOP"
+
+; ------------------------------------------------------------
+; TSTTWOS - unit test for TWOSTAR. arithmetic shift left one bit.
+; ------------------------------------------------------------
+TSTTWOS:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   TWOSTAR
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$48D0
+           BNE   TWFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   TWFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   TWFAIL
+
+           LDD   #TRUEV
+           BRA   TWDONE
+TWFAIL:     LDD   #FALSEV
+TWDONE:     LDX   #TSTTWOSNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTTWOSNAME: FCB  7
+               FCC  "TSTTWOS"
+
+; ------------------------------------------------------------
+; TSTTWOD1 - unit test for TWOSLASH. positive input, arithmetic shift right.
+; ------------------------------------------------------------
+TSTTWOD1:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   TWOSLASH
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$1234
+           BNE   D1FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   D1FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   D1FAIL
+
+           LDD   #TRUEV
+           BRA   D1DONE
+D1FAIL:     LDD   #FALSEV
+D1DONE:     LDX   #TSTTWOD1NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTTWOD1NAME: FCB  8
+                FCC  "TSTTWOD1"
+
+; ------------------------------------------------------------
+; TSTTWOD2 - unit test for TWOSLASH. negative input - the case that actually tests sign-preservation.
+; ------------------------------------------------------------
+TSTTWOD2:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   TWOSLASH
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$E7E3
+           BNE   D2FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   D2FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   D2FAIL
+
+           LDD   #TRUEV
+           BRA   D2DONE
+D2FAIL:     LDD   #FALSEV
+D2DONE:     LDX   #TSTTWOD2NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTTWOD2NAME: FCB  8
+                FCC  "TSTTWOD2"
+
+; ------------------------------------------------------------
+; TSTSTSL - unit test for STARSLASH. n1*n2/n3 via double-cell intermediate, no truncation until final divide.
+; ------------------------------------------------------------
+TSTSTSL:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           LDD   #TSTVAL3
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   STARSLASH
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$1A8D
+           BNE   TSFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   TSFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-4
+           BNE   TSFAIL
+
+           LDD   #TRUEV
+           BRA   TSDONE
+TSFAIL:     LDD   #FALSEV
+TSDONE:     LDX   #TSTSTSLNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTSTSLNAME: FCB  7
+               FCC  "TSTSTSL"
+
+; ------------------------------------------------------------
+; TSTSTSLZ - unit test for STARSLASH, divide-by-zero case. n3 = 0.
+; Verifies THROW -10 fires (per this system's documented ANS
+; behavior for a zero divisor) and that CATCH's own depth-
+; restoration contract holds (net 0 change across the JSR CATCH,
+; xt's slot effectively replaced by the throw code). Per CATCH's
+; own spec, the i*x arguments' VALUES are explicitly unspecified
+; after a catch, not just untested here - the final, unconditional
+; stack restore discards them without needing to know how many
+; there are.
+; ------------------------------------------------------------
+TSTSTSLZ:   STU   TSTU0
+
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           LDD   #$0000
+           PSHU  D
+           LDX   #STARSLASH
+           PSHU  X
+           STU   TSTUB4
+
+           JSR   CATCH
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #-10
+           BNE   TZFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   TZFAIL
+
+           LDD   #TRUEV
+           BRA   TZDONE
+TZFAIL:     LDD   #FALSEV
+TZDONE:     LDX   #TSTSTSLZNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTSTSLZNAME: FCB  8
+                FCC  "TSTSTSLZ"
+
+; ------------------------------------------------------------
+; TSTSTSM - unit test for STARSLASHMOD. */MOD together - remainder and quotient.
+; ------------------------------------------------------------
+TSTSTSM:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           LDD   #TSTVAL3
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   STARSLASHMOD
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$F1C2
+           BNE   TMFAIL
+           PULU  D
+           CMPD  #$939E
+           BNE   TMFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   TMFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   TMFAIL
+
+           LDD   #TRUEV
+           BRA   TMDONE
+TMFAIL:     LDD   #FALSEV
+TMDONE:     LDX   #TSTSTSMNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTSTSMNAME: FCB  7
+               FCC  "TSTSTSM"
+
+; ------------------------------------------------------------
+; TSTSTSMZ - unit test for STARSLASHMOD, divide-by-zero case. n3 = 0.
+; Verifies THROW -10 fires (per this system's documented ANS
+; behavior for a zero divisor) and that CATCH's own depth-
+; restoration contract holds (net 0 change across the JSR CATCH,
+; xt's slot effectively replaced by the throw code). Per CATCH's
+; own spec, the i*x arguments' VALUES are explicitly unspecified
+; after a catch, not just untested here - the final, unconditional
+; stack restore discards them without needing to know how many
+; there are.
+; ------------------------------------------------------------
+TSTSTSMZ:   STU   TSTU0
+
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           LDD   #$0000
+           PSHU  D
+           LDX   #STARSLASHMOD
+           PSHU  X
+           STU   TSTUB4
+
+           JSR   CATCH
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #-10
+           BNE   TXFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   TXFAIL
+
+           LDD   #TRUEV
+           BRA   TXDONE
+TXFAIL:     LDD   #FALSEV
+TXDONE:     LDX   #TSTSTSMZNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTSTSMZNAME: FCB  8
+                FCC  "TSTSTSMZ"
+
+; ------------------------------------------------------------
+; TSTDARITH - mixed & double-precision arithmetic tests (glossary
+; section 3.5). Covers every word in that section. All 14 words
+; traced by hand against their real implementations before any
+; test was written - push/pop order for double-cell values (low
+; cell pushed first, high cell last/on top - confirmed identical
+; across every word here), and which of two operands is which
+; (d1 vs d2, dividend vs divisor) - not assumed from the glossary
+; stack-effect notation alone. FM/MOD (floored) and SM/REM
+; (symmetric) tested against the same negative-dividend case
+; specifically because that's where the two conventions actually
+; diverge - confirmed distinct expected results for each.
+; ------------------------------------------------------------
+TSTDARITH: JSR   CRW
+           LDX   #TSTDARITHMSG
+           PSHU  X
+           LDD   #11
+           PSHU  D
+           JSR   TYPE
+           JSR   CRW
+
+           JSR   TSTUMST
+           JSR   TSTUMSM
+           JSR   TSTUMSZ
+           JSR   TSTMSTAR
+           JSR   TSTFMSM
+           JSR   TSTFMSZ
+           JSR   TSTSMRM
+           JSR   TSTSMRZ
+           JSR   TSTDPLUS
+           JSR   TSTDMIN2
+           JSR   TSTDNEG
+           JSR   TSTDABS1
+           JSR   TSTDABS2
+           JSR   TSTMPLUS
+           JSR   TSTSTOD
+           JSR   TSTDTOS
+           JSR   TSTDMAX
+           JSR   TSTDMIN
+           RTS
+
+TSTDARITHMSG: FCC "DArithmetic"
+
+; ------------------------------------------------------------
+; TSTUMST - unit test for UMSTAR. unsigned single*single->double.
+; Arity: 2 cell(s) in, 2 cell(s) out -> depth check
+; 0 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTUMST:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   UMSTAR
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$0CC8
+           BNE   UMFAIL
+           PULU  D
+           CMPD  #$2768
+           BNE   UMFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   UMFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   UMFAIL
+
+           LDD   #TRUEV
+           BRA   UMDONE
+UMFAIL:     LDD   #FALSEV
+UMDONE:     LDX   #TSTUMSTNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTUMSTNAME: FCB  7
+               FCC  "TSTUMST"
+
+; ------------------------------------------------------------
+; TSTUMSM - unit test for UMSLASHMOD. unsigned double/single -> remainder, quotient.
+; Arity: 3 cell(s) in, 2 cell(s) out -> depth check
+; -2 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTUMSM:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTD1LO
+           PSHU  D
+           LDD   #TSTD1HI
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   UMSLASHMOD
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$0007
+           BNE   UDFAIL
+           PULU  D
+           CMPD  #$1298
+           BNE   UDFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   UDFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   UDFAIL
+
+           LDD   #TRUEV
+           BRA   UDDONE
+UDFAIL:     LDD   #FALSEV
+UDDONE:     LDX   #TSTUMSMNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTUMSMNAME: FCB  7
+               FCC  "TSTUMSM"
+
+; ------------------------------------------------------------
+; TSTMSTAR - unit test for MSTAR. signed single*single->double.
+; Arity: 2 cell(s) in, 2 cell(s) out -> depth check
+; 0 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTMSTAR:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   MSTAR
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$F924
+           BNE   MCFAIL
+           PULU  D
+           CMPD  #$64D8
+           BNE   MCFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   MCFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   MCFAIL
+
+           LDD   #TRUEV
+           BRA   MCDONE
+MCFAIL:     LDD   #FALSEV
+MCDONE:     LDX   #TSTMSTARNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTMSTARNAME: FCB  8
+                FCC  "TSTMSTAR"
+
+; ------------------------------------------------------------
+; TSTFMSM - unit test for FMSLASHMOD. floored double/single division.
+; Arity: 3 cell(s) in, 2 cell(s) out -> depth check
+; -2 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTFMSM:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTD2LO
+           PSHU  D
+           LDD   #TSTD2HI
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   FMSLASHMOD
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFF8
+           BNE   FMFAIL
+           PULU  D
+           CMPD  #$11D0
+           BNE   FMFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   FMFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   FMFAIL
+
+           LDD   #TRUEV
+           BRA   FMDONE
+FMFAIL:     LDD   #FALSEV
+FMDONE:     LDX   #TSTFMSMNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTFMSMNAME: FCB  7
+               FCC  "TSTFMSM"
+
+; ------------------------------------------------------------
+; TSTSMRM - unit test for SMSLASHREM. symmetric double/single division.
+; Arity: 3 cell(s) in, 2 cell(s) out -> depth check
+; -2 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTSMRM:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTD2LO
+           PSHU  D
+           LDD   #TSTD2HI
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   SMSLASHREM
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFF9
+           BNE   SRFAIL
+           PULU  D
+           CMPD  #$ED68
+           BNE   SRFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   SRFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   SRFAIL
+
+           LDD   #TRUEV
+           BRA   SRDONE
+SRFAIL:     LDD   #FALSEV
+SRDONE:     LDX   #TSTSMRMNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTSMRMNAME: FCB  7
+               FCC  "TSTSMRM"
+
+; ------------------------------------------------------------
+; TSTDPLUS - unit test for DPLUS. double-cell add, with carry propagation.
+; Arity: 4 cell(s) in, 2 cell(s) out -> depth check
+; -4 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTDPLUS:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTD1LO
+           PSHU  D
+           LDD   #TSTD1HI
+           PSHU  D
+           LDD   #TSTD3LO
+           PSHU  D
+           LDD   #TSTD3HI
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DPLUS
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$00BD
+           BNE   PDFAIL
+           PULU  D
+           CMPD  #$72BE
+           BNE   PDFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   PDFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-4
+           BNE   PDFAIL
+
+           LDD   #TRUEV
+           BRA   PDDONE
+PDFAIL:     LDD   #FALSEV
+PDDONE:     LDX   #TSTDPLUSNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDPLUSNAME: FCB  8
+                FCC  "TSTDPLUS"
+
+; ------------------------------------------------------------
+; TSTDMIN2 - unit test for DMINUS. double-cell subtract, with borrow propagation.
+; Arity: 4 cell(s) in, 2 cell(s) out -> depth check
+; -4 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTDMIN2:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTD3LO
+           PSHU  D
+           LDD   #TSTD3HI
+           PSHU  D
+           LDD   #TSTD1LO
+           PSHU  D
+           LDD   #TSTD1HI
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DMINUS
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$00BB
+           BNE   BDFAIL
+           PULU  D
+           CMPD  #$4FDE
+           BNE   BDFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   BDFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-4
+           BNE   BDFAIL
+
+           LDD   #TRUEV
+           BRA   BDDONE
+BDFAIL:     LDD   #FALSEV
+BDDONE:     LDX   #TSTDMIN2NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDMIN2NAME: FCB  8
+                FCC  "TSTDMIN2"
+
+; ------------------------------------------------------------
+; TSTDNEG - unit test for DNEGATEW. double-cell two's-complement negate.
+; Arity: 2 cell(s) in, 2 cell(s) out -> depth check
+; 0 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTDNEG:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTD3LO
+           PSHU  D
+           LDD   #TSTD3HI
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DNEGATEW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FF43
+           BNE   DNFAIL
+           PULU  D
+           CMPD  #$9EB2
+           BNE   DNFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   DNFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   DNFAIL
+
+           LDD   #TRUEV
+           BRA   DNDONE
+DNFAIL:     LDD   #FALSEV
+DNDONE:     LDX   #TSTDNEGNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDNEGNAME: FCB  7
+               FCC  "TSTDNEG"
+
+; ------------------------------------------------------------
+; TSTDABS1 - unit test for DABSW. positive double - already non-negative, unchanged.
+; Arity: 2 cell(s) in, 2 cell(s) out -> depth check
+; 0 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTDABS1:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTD3LO
+           PSHU  D
+           LDD   #TSTD3HI
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DABSW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTD3HI
+           BNE   DAFAIL
+           PULU  D
+           CMPD  #TSTD3LO
+           BNE   DAFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   DAFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   DAFAIL
+
+           LDD   #TRUEV
+           BRA   DADONE
+DAFAIL:     LDD   #FALSEV
+DADONE:     LDX   #TSTDABS1NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDABS1NAME: FCB  8
+                FCC  "TSTDABS1"
+
+; ------------------------------------------------------------
+; TSTDABS2 - unit test for DABSW. negative double - the branch that actually negates.
+; Arity: 2 cell(s) in, 2 cell(s) out -> depth check
+; 0 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTDABS2:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTD2LO
+           PSHU  D
+           LDD   #TSTD2HI
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DABSW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTD1HI
+           BNE   DBFAIL
+           PULU  D
+           CMPD  #TSTD1LO
+           BNE   DBFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   DBFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   DBFAIL
+
+           LDD   #TRUEV
+           BRA   DBDONE
+DBFAIL:     LDD   #FALSEV
+DBDONE:     LDX   #TSTDABS2NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDABS2NAME: FCB  8
+                FCC  "TSTDABS2"
+
+; ------------------------------------------------------------
+; TSTMPLUS - unit test for MPLUS. add a single-cell value into a double.
+; Arity: 3 cell(s) in, 2 cell(s) out -> depth check
+; -2 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTMPLUS:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTD1LO
+           PSHU  D
+           LDD   #TSTD1HI
+           PSHU  D
+           LDD   #TSTNEG2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   MPLUS
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$0001
+           BNE   MPFAIL
+           PULU  D
+           CMPD  #$102F
+           BNE   MPFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   MPFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   MPFAIL
+
+           LDD   #TRUEV
+           BRA   MPDONE
+MPFAIL:     LDD   #FALSEV
+MPDONE:     LDX   #TSTMPLUSNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTMPLUSNAME: FCB  8
+                FCC  "TSTMPLUS"
+
+; ------------------------------------------------------------
+; TSTSTOD - unit test for STOD. sign-extend a negative single to double (this word's own documented bug history was in this exact case).
+; Arity: 1 cell(s) in, 2 cell(s) out -> depth check
+; 2 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTSTOD:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   STOD
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFFF
+           BNE   SDFAIL
+           PULU  D
+           CMPD  #TSTNEG1
+           BNE   SDFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   SDFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #2
+           BNE   SDFAIL
+
+           LDD   #TRUEV
+           BRA   SDDONE
+SDFAIL:     LDD   #FALSEV
+SDDONE:     LDX   #TSTSTODNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTSTODNAME: FCB  7
+               FCC  "TSTSTOD"
+
+; ------------------------------------------------------------
+; TSTDTOS - unit test for DTOS. narrow a double that fits to a single cell.
+; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
+; -2 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTDTOS:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTDSLO
+           PSHU  D
+           LDD   #TSTDSHI
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DTOS
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTDSLO
+           BNE   NSFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   NSFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   NSFAIL
+
+           LDD   #TRUEV
+           BRA   NSDONE
+NSFAIL:     LDD   #FALSEV
+NSDONE:     LDX   #TSTDTOSNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDTOSNAME: FCB  7
+               FCC  "TSTDTOS"
+
+; ------------------------------------------------------------
+; TSTDMAX - unit test for DMAXW. double-cell signed maximum, cross-sign case.
+; Arity: 4 cell(s) in, 2 cell(s) out -> depth check
+; -4 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTDMAX:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTD1LO
+           PSHU  D
+           LDD   #TSTD1HI
+           PSHU  D
+           LDD   #TSTD2LO
+           PSHU  D
+           LDD   #TSTD2HI
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DMAXW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTD1HI
+           BNE   XMFAIL
+           PULU  D
+           CMPD  #TSTD1LO
+           BNE   XMFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   XMFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-4
+           BNE   XMFAIL
+
+           LDD   #TRUEV
+           BRA   XMDONE
+XMFAIL:     LDD   #FALSEV
+XMDONE:     LDX   #TSTDMAXNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDMAXNAME: FCB  7
+               FCC  "TSTDMAX"
+
+; ------------------------------------------------------------
+; TSTDMIN - unit test for DMINW. double-cell signed minimum, cross-sign case.
+; Arity: 4 cell(s) in, 2 cell(s) out -> depth check
+; -4 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTDMIN:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTD1LO
+           PSHU  D
+           LDD   #TSTD1HI
+           PSHU  D
+           LDD   #TSTD2LO
+           PSHU  D
+           LDD   #TSTD2HI
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DMINW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTD2HI
+           BNE   NMFAIL
+           PULU  D
+           CMPD  #TSTD2LO
+           BNE   NMFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   NMFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-4
+           BNE   NMFAIL
+
+           LDD   #TRUEV
+           BRA   NMDONE
+NMFAIL:     LDD   #FALSEV
+NMDONE:     LDX   #TSTDMINNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDMINNAME: FCB  7
+               FCC  "TSTDMIN"
+
+; ------------------------------------------------------------
+; TSTUMSZ - unit test for UMSLASHMOD, divide-by-zero case. u1 = 0.
+; Verifies THROW -10 and CATCH's own depth-restoration contract
+; (net 0 change across the JSR CATCH) - same pattern established
+; in the section 3.4 tests.
+; ------------------------------------------------------------
+TSTUMSZ:    STU   TSTU0
+
+           LDD   #TSTD1LO
+           PSHU  D
+           LDD   #TSTD1HI
+           PSHU  D
+           LDD   #$0000
+           PSHU  D
+           LDX   #UMSLASHMOD
+           PSHU  X
+           STU   TSTUB4
+
+           JSR   CATCH
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #-10
+           BNE   UZFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   UZFAIL
+
+           LDD   #TRUEV
+           BRA   UZDONE
+UZFAIL:     LDD   #FALSEV
+UZDONE:     LDX   #TSTUMSZNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTUMSZNAME: FCB  7
+               FCC  "TSTUMSZ"
+
+; ------------------------------------------------------------
+; TSTFMSZ - unit test for FMSLASHMOD, divide-by-zero case. n1 = 0.
+; Verifies THROW -10 and CATCH's own depth-restoration contract
+; (net 0 change across the JSR CATCH) - same pattern established
+; in the section 3.4 tests.
+; ------------------------------------------------------------
+TSTFMSZ:    STU   TSTU0
+
+           LDD   #TSTD2LO
+           PSHU  D
+           LDD   #TSTD2HI
+           PSHU  D
+           LDD   #$0000
+           PSHU  D
+           LDX   #FMSLASHMOD
+           PSHU  X
+           STU   TSTUB4
+
+           JSR   CATCH
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #-10
+           BNE   FZFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   FZFAIL
+
+           LDD   #TRUEV
+           BRA   FZDONE
+FZFAIL:     LDD   #FALSEV
+FZDONE:     LDX   #TSTFMSZNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTFMSZNAME: FCB  7
+               FCC  "TSTFMSZ"
+
+; ------------------------------------------------------------
+; TSTSMRZ - unit test for SMSLASHREM, divide-by-zero case. n1 = 0.
+; Verifies THROW -10 and CATCH's own depth-restoration contract
+; (net 0 change across the JSR CATCH) - same pattern established
+; in the section 3.4 tests.
+; ------------------------------------------------------------
+TSTSMRZ:    STU   TSTU0
+
+           LDD   #TSTD2LO
+           PSHU  D
+           LDD   #TSTD2HI
+           PSHU  D
+           LDD   #$0000
+           PSHU  D
+           LDX   #SMSLASHREM
+           PSHU  X
+           STU   TSTUB4
+
+           JSR   CATCH
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #-10
+           BNE   RZFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   RZFAIL
+
+           LDD   #TRUEV
+           BRA   RZDONE
+RZFAIL:     LDD   #FALSEV
+RZDONE:     LDX   #TSTSMRZNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTSMRZNAME: FCB  7
+               FCC  "TSTSMRZ"
 
          ENDC  ; <<<<<<<<<<
 

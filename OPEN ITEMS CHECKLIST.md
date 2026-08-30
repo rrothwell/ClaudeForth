@@ -1398,7 +1398,7 @@ design decisions made since the original version.
       duplicate symbols, dictionary chain still 224 entries intact in
       both `SERIALPOLL` branches; byte-exact split-file reassembly.
 
-- [ ] **New capability, not a bug fix: an assembly-level unit test
+- [x] **New capability, not a bug fix: an assembly-level unit test
       framework added, with its first test (`TSTDUP`) written.**
       Gated by a new conditional-assembly flag, `UNITTESTS`, matching
       this file's established `IFEQ` convention (`0` = included, `1`
@@ -1444,10 +1444,13 @@ design decisions made since the original version.
       what's here. Verified across the full 2x2 matrix of
       `SERIALPOLL`/`UNITTESTS` combinations: zero duplicate symbols,
       dictionary chain intact (224 entries) in all four; byte-exact
-      split-file reassembly. Not yet run on real MAME hardware - this
-      is a first try, per the request, with exactly one test written;
-      the framework's own correctness (not just `DUP`'s) still needs
-      confirming against actual execution.
+      split-file reassembly. **MAME-CONFIRMED**: activated by the
+      user, `TSTDUP` runs successfully and reports the correct
+      message to the terminal - both the framework itself and `DUP`'s
+      own test are now verified on real hardware, not just
+      structurally. Whatever earlier concern prompted excluding this
+      block was resolved by other, unrelated fixes made since it was
+      first written.
 
 - [x] **Three real bugs found by inspection (not MAME) and fixed:
       `DEFER`, `2CONSTANT`, and `MARKER` all had the identical
@@ -2926,6 +2929,472 @@ design decisions made since the original version.
       and the appendix's `SIGN` routine with its full fix comment) -
       both render cleanly with no formatting corruption from the
       large content replacement.
+
+- [ ] **`TSTDROP` added, following `TSTDUP`'s pattern exactly - second
+      test in what's intended to become a test for every stack
+      manipulation word.** Verifies both the stack's contents after
+      `DROP` (the sentinel guard pushed beneath the dropped value is
+      confirmed undisturbed and is now the new top) and the data
+      stack pointer's movement (exactly one cell, 2 bytes, freed -
+      `DROP`'s own net effect: `LEAU 2,U`). Traced by hand before
+      delivery, not just structurally verified: with `TSTUB4`
+      captured at `U_start-4` (both `TSTGUARD` and `TSTVAL1` pushed)
+      and `TSTUAF` captured at `U_start-2` (after `DROP`'s `LEAU
+      2,U`), `TSTUB4-TSTUAF` computes to exactly `-2`, matching the
+      check - the sign is deliberately opposite `TSTDUP`'s own `+2`
+      check, since `DROP` frees a cell while `DUP` adds one. Used
+      distinct internal labels (`DPFAIL`/`DPDONE`) rather than
+      reusing `TSTDUP`'s (`TDFAIL`/`TDDONE`), to avoid a collision now
+      and to establish a naming pattern (short prefix per test) that
+      won't collide as more tests are added. Wired into `TSTSTACK`
+      alongside the existing `JSR TSTDUP`. `UNITTESTS` reactivated
+      (`1` -> `0`), confirmed appropriate since the user activated it
+      independently and confirmed `TSTDUP` runs successfully on real
+      MAME hardware - whatever earlier concern prompted excluding it
+      was resolved by other, unrelated fixes made since. Verified:
+      zero duplicate symbols, dictionary chain still 224 entries
+      intact across all four `SERIALPOLL`x`UNITTESTS` combinations
+      (checked with `UNITTESTS` both on and off, not just the file's
+      new default); byte-exact split-file reassembly. Not yet
+      confirmed via MAME.
+
+- [ ] **14 more stack-manipulation tests added (`TSTSWAP`, `TSTOVER`,
+      `TSTROT`, `TSTQDUPNZ`, `TSTQDUPZ`, `TSTDEPTH`, `TSTDDUP`,
+      `TSTDDROP`, `TSTDSWAP`, `TSTDOVER`, `TSTNIP`, `TSTTUCK`,
+      `TSTPICK`, `TSTROLL`, `TSTDROT`) - completing every word in the
+      Data Stack Manipulation glossary section.** Each follows
+      `TSTDUP`/`TSTDROP`'s established pattern exactly (guard pushed
+      beneath, `U` snapshotted before/after, contents verified via
+      `PULU`, pointer movement verified independently, unconditional
+      restore at the end). `?DUP` specifically got two tests
+      (`TSTQDUPNZ`, `TSTQDUPZ`), per the explicit request - nonzero
+      and zero are genuinely different code paths (`QDUP` branches on
+      the popped value), not just different inputs to the same path.
+      Six new test-value constants added (`TSTVAL2`-`TSTVAL6`, plus
+      `TSTGUARD`/`TSTVAL1` already existing) - all distinct from each
+      other and from `0`/`1`/`-1`, so a test that only appears to pass
+      due to a trivial or coincidentally-matching value would be
+      caught. One new scratch cell (`TSTSCR`) added for `TSTDEPTH`,
+      which independently computes its own expected value via the
+      same `(SP0-U)/2` formula `DEPTH` itself uses, rather than
+      assuming a fixed starting depth - robust regardless of
+      whatever's already on the stack when it runs. `TSTPICK`/
+      `TSTROLL` both use `u=2` as a concrete representative case
+      (`0 PICK` is `DUP`, `1 PICK` is `OVER` - `2` is the first case
+      distinct from both, and using the same `u` for both makes the
+      two tests directly comparable).
+
+      Every test's expected stack layout was traced by hand,
+      instruction by instruction, against each word's real
+      implementation before being written - not assumed from the
+      glossary's stack-effect notation alone. The five trickiest
+      (`PICK`, `ROLL`, `2SWAP`, `2OVER`, `2ROT`) were also
+      cross-checked with an independent Python simulation. That
+      simulation caught a real bug in itself, not in the assembly
+      design: an incorrectly-ordered `2OVER` model that inserted both
+      pushed items in one step rather than modeling them as two
+      sequential pushes - once corrected to push explicitly in
+      order, it confirmed the original hand-trace was right all
+      along. Worth recording as a reminder that a "second check"
+      needs its own verification too, not blind trust.
+
+      Careful, collision-free label naming: each test uses its own
+      short prefix for internal `FAIL`/`DONE` labels (`SWFAIL`/
+      `SWDONE`, `OVFAIL`/`OVDONE`, etc.), with the double-cell variants
+      using their single-cell counterpart's prefix plus a `2` (e.g.
+      `SW2FAIL` for `2SWAP`, distinct from `SWAP`'s own `SWFAIL`) -
+      confirmed zero collisions via the same structural verification
+      used throughout this session, which would have caught any
+      duplicate automatically. All 16 tests (including the two
+      already-confirmed ones) wired into `TSTSTACK` in glossary order.
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly. Not yet
+      confirmed via MAME.
+
+- [x] **`INITCODE` shifted down 3 bytes (`$FFA9` -> `$FFA6`), and the
+      `TSTRUNNER` call site fixed to always emit exactly 3 bytes
+      regardless of `UNITTESTS` - both per explicit request, closing a
+      real risk: `COLDSTRT`'s own size previously depended on
+      `UNITTESTS` (the `JSR TSTRUNNER` call existed only when
+      `UNITTESTS=0`, emitting 0 bytes when `UNITTESTS=1`), while
+      `INITCODE`'s position was fixed regardless - meaning toggling
+      `UNITTESTS` could silently overflow the code into `VECTORS`
+      without any assembler error to catch it.** Fixed by adding an
+      `ELSE` branch: three `NOP`s (byte-for-byte the same size as the
+      `JSR` they replace) when `UNITTESTS=1`, so the block now
+      contributes exactly 3 bytes to `COLDSTRT` either way - its total
+      size no longer depends on `UNITTESTS` at all. `INITCODE` shifted
+      down by the same 3 bytes to compensate. Traced the resulting
+      arithmetic by hand rather than assuming it worked out: the
+      previously-confirmed 71-byte real content figure was measured
+      under the *old* structure (0 bytes for this block, since that
+      measurement was taken with `UNITTESTS=1`) - under the new,
+      always-3-bytes structure, real content is reasoned to be 74
+      bytes (71+3), not yet re-measured by a real assembler run. The
+      3-byte shift in `INITCODE`'s own start and the 3-byte growth in
+      content offset exactly, so the reasoned end (`$FFEF`) is
+      unchanged - still one byte below `VECTORS`, matching the
+      previously-confirmed real value, if the reasoning holds; flagged
+      as reasoned-not-measured rather than presented as confirmed, and
+      a stale comment referencing the old `$FFA9` position corrected
+      in the same edit. Verified: zero duplicate symbols, dictionary
+      chain still 224 entries intact across all four `SERIALPOLL`x
+      `UNITTESTS` combinations; explicitly confirmed the `ELSE` branch
+      selects mutually-exclusively between the real `JSR` and the
+      `NOP` placeholder depending on `UNITTESTS`, not just that the
+      file parses; byte-exact split-file reassembly. Not yet confirmed
+      via MAME - given this directly concerns `VECTORS` safety, this
+      one specifically warrants confirming on real assembly before
+      being considered settled, not just structural verification.
+
+- [ ] **`TSTSTACK` given a header (`CR`, "Stack", `CR`), and a new
+      subroutine `TSTSARITH` added - single-cell arithmetic tests
+      covering every word in glossary section 3.4, with its own
+      matching header ("SArithmetic"). 28 new tests total, wired into
+      `TSTRUNNER` alongside `TSTSTACK`.** Two new negative test
+      constants added (`TSTNEG1`=-12345, `TSTNEG2`=-321) - `TSTVAL1`-
+      `TSTVAL6` are all positive, which wouldn't exercise the sign-
+      dependent branches several of these words genuinely have
+      (`ABS`, `NEGATE`, `MIN`/`MAX`, signed division, `2/`'s sign-
+      preserving shift).
+
+      The two behaviors the request flagged as uncertain were both
+      resolved by reading this system's own glossary and source
+      directly, not assumed: overflow is explicitly ANS-defined as
+      truncation, not an error (`*`'s own glossary entry: "Signed
+      multiply, truncated to one cell") - tested with a case chosen
+      specifically to overflow 16 bits (`1000 * 1000`), verifying the
+      wrapped result, not an exception. Division by zero throws `-10`
+      - confirmed both in the glossary ("Throws -10 if n2 is zero")
+      and by reading `DIVCOMMON`/`STARSLASHCOMMON` directly, both of
+      which explicitly `THROW -10` on a zero divisor before any
+      division is attempted.
+
+      Divide-by-zero tests (`/`, `MOD`, `/MOD`, `*/`, `*/MOD` - one
+      each) use a different pattern than the rest, built around
+      `CATCH`: push the operands and the target word's `xt`, call
+      `CATCH`, verify the popped result is `-10`, and verify `CATCH`'s
+      own documented depth-restoration contract held (net 0 change in
+      `U` across the `JSR CATCH`, matching the ANS guarantee - `CATCH`
+      only promises stack *depth* is restored, not the `i*x` values,
+      confirmed precisely earlier this session). Deliberately does not
+      try to inspect or discard a specific count of leftover `i*x`
+      items - the test's own final, unconditional `LDU TSTU0` (already
+      established practice for every test in this framework) discards
+      whatever's left regardless of the count, matching the ANS
+      standard's own guidance to `DROP` rather than interpret them.
+
+      All 28 expected values computed programmatically (Python)
+      before writing any assembly, rather than by hand, given the
+      volume - reduces transcription-error risk across that many
+      cases. Operand pushes and expected-value comparisons both use
+      symbolic constant references (`#TSTVAL1` etc) wherever they
+      correspond to an existing named constant, matching this
+      framework's established style, rather than embedding literal
+      hex duplicates - including, correctly, for a few cases where
+      the *expected result* itself equals an operand's own value
+      (e.g. `ABS` of an already-positive number returns itself
+      unchanged, so the comparison target is `#TSTVAL1` too, not a
+      separately-typed literal that happens to match).
+
+      Careful, collision-free label naming continued: each of the 28
+      new tests uses its own short prefix (`PL`, `MN`, `S1`/`S2`,
+      `SL`/`SN`/`SZ`, `MD`/`MZ`, `SM`/`MX`, `NG`, `A1`/`A2`, `N1`/`N2`,
+      `X1`/`X2`, `1P`/`1M`/`2P`/`2S`, `D1`/`D2`, `TS`/`TZ`, `TM`/`TX`) -
+      confirmed zero collisions against both each other and all 17
+      existing stack-manipulation-test labels via the same structural
+      verification used throughout this session.
+
+      Caught and fixed two real mistakes in my own generation process
+      before delivery, not after: (1) a first draft of the `/`
+      quotient-only test incorrectly used the two-result template
+      (`/` only pushes the quotient, not a remainder - confirmed by
+      re-reading `SLASH`'s actual code); (2) an early, mechanical
+      symbolic-reference conversion pass left the expected-value
+      formatting still using a helper that assumed a literal integer,
+      which would have crashed generation the moment an expected value
+      legitimately needed to be a symbolic reference too (the `ABS`/
+      `MAX` cases above) - caught by actually running the generator
+      and inspecting output, not just writing the code and assuming
+      it worked.
+
+      Also worth recording: my own post-generation verification script
+      produced two rounds of false "missing" alarms, both from bugs in
+      the *checking* script itself (a text-boundary search that
+      matched an early, incidental occurrence of a label name instead
+      of its actual definition; and a check that only recognized
+      `EQU`-style definitions, not label-style ones) - not from the
+      generated source, which was correct both times. Resolved by
+      direct inspection of the actual file content rather than trusting
+      the automated check's first result, and by fixing the check
+      itself before relying on it again - the same "verify your
+      verifier" lesson already recorded elsewhere in this file.
+
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly; every symbolic
+      constant/label reference in the new block resolves to a real
+      definition somewhere in the file, checked explicitly rather than
+      inferred from the duplicate-symbol check alone (which doesn't
+      catch undefined references, only duplicate definitions - a gap
+      in this session's usual verification, closed for this
+      delivery). Not yet confirmed via MAME - given the volume (28
+      new tests in one delivery, several using a genuinely new pattern
+      involving `CATCH`), this specifically deserves a real test
+      before being considered settled, more than most single-word
+      additions this session.
+
+- [x] **RESOLVED - real assembly-blocking bug, not caught by this
+      session's own structural verification: four internal label
+      pairs in the arithmetic tests (`1PFAIL`/`1PDONE`, `1MFAIL`/
+      `1MDONE`, `2PFAIL`/`2PDONE`, `2SFAIL`/`2SDONE`, for `1+`, `1-`,
+      `2+`, `2*`) started with a digit, which the real assembler
+      rejects (labels must start with a letter, underscore, or
+      period) - the prefix naming scheme mechanically derived these
+      from the Forth word names themselves, which happen to start
+      with digits, without checking that the resulting label text was
+      itself valid. Confirmed by the user's real assembler run, not
+      caught here first.** Renamed to `OPFAIL`/`OPDONE` (`1+`),
+      `OMFAIL`/`OMDONE` (`1-`), `TPFAIL`/`TPDONE` (`2+`), `TWFAIL`/
+      `TWDONE` (`2*`) - chosen to avoid colliding with any of the
+      other 40+ short prefixes already in use across both test files
+      (`TS` was already taken by `STARSLASH`'s own tests, which is
+      why `2*` couldn't reuse it despite being an obvious first
+      choice). Verified: zero duplicate symbols, dictionary chain
+      still 224 entries intact across all four `SERIALPOLL`x
+      `UNITTESTS` combinations; byte-exact split-file reassembly; an
+      explicit sweep for any other label starting with a digit
+      anywhere in the entire file, not just the four reported - found
+      none. Worth noting as a real gap in this session's own
+      structural verification: the duplicate-symbol and dictionary-
+      chain checks used throughout never actually checked label
+      *validity* (only uniqueness), so a mechanically-generated
+      invalid label like this could pass every check this session ran
+      and still fail on real assembly - closed for this fix by adding
+      the explicit digit-start sweep, worth keeping as a standing
+      check for any future generated labels.
+
+- [x] **RESOLVED - two distinct real bugs in the arithmetic tests
+      themselves, found by the user's actual MAME run (14 of 28
+      failed), not by this session's own verification, which had
+      checked structural validity but never independently re-derived
+      the expected values or checked the depth-check sign convention
+      against each word's real arity.**
+
+      **Bug 1, the dominant one (13 tests): the depth-check sign was
+      backwards for every 2-in/1-out and 3-in/1-out test.** The
+      generator's `binop_test`/`triop_test` templates compared
+      `TSTUB4-TSTUAF` against a *positive* `2` (or `4`), but a net-
+      consuming operation (more cells popped internally than pushed
+      back) *increases* `U`, which makes `TSTUB4-TSTUAF` *negative* -
+      exactly the same sign convention already established and
+      correctly used by `TSTDROP`/`TSTNIP`/`TSTDDROP` earlier in this
+      same file. The template's own docstring even correctly said
+      "-2 (one cell freed)" while the template body used `#2` - the
+      comment and the code disagreed, and nothing checked that they
+      matched. Affected: `TSTPLUS`, `TSTMINUS`, `TSTSTAR1`,
+      `TSTSTAR2`, `TSTSLASH1`, `TSTSLASH2`, `TSTMODW`, `TSTMIN1`,
+      `TSTMIN2`, `TSTMAX1`, `TSTMAX2` (all `2`->`-2`), `TSTSTSL`
+      (`4`->`-4`). Every 1-in/1-out test (`NEGATE`, `ABS`, `1+`, `1-`,
+      `2+`, `2*`, `2/`) and every `CATCH`-based divide-by-zero test
+      correctly used `0` and were unaffected - confirmed by an
+      independent, arity-derived recomputation of what every one of
+      the 28 tests' depth check *should* be, not just the ones
+      already reported failing.
+
+      **Bug 2, a separate issue affecting `TSTSLMOD` and `TSTSTSM`:
+      the two-result comparisons were in the wrong order.** Both
+      `SLASHMOD` and `STARSLASHMOD` push the remainder first, then the
+      quotient last (confirmed by re-reading both routines directly:
+      `LDD DIVREM / PSHU D` then `LDD DIVNUM`-or-`PRODLO` / `PSHU D`)
+      - meaning the quotient is on top, popped first. The generated
+      tests had the two expected values swapped (remainder compared
+      first, quotient second). `TSTSTSM` had both bugs simultaneously
+      - its depth check *and* its value order were both wrong,
+      compounding into the same single `FAIL` report from MAME.
+      `TSTSLMOD`'s depth check (`0`, correct for a 2-in/2-out
+      operation) had been right all along; only the value order was
+      wrong.
+
+      Every one of the 28 tests' depth-check sign and numeric expected
+      values were independently re-verified against a fresh Python
+      recomputation after the fix, not just the ones the user
+      reported - to catch anything else wrong but not yet exercised
+      by the specific values chosen. None found. Verified: zero
+      duplicate symbols, dictionary chain still 224 entries intact
+      across all four `SERIALPOLL`x`UNITTESTS` combinations; byte-
+      exact split-file reassembly; no digit-leading labels remain
+      (re-checked after this edit too, not just the prior one).
+
+      Root-cause note for future generated test batches: this
+      session's structural verification (duplicate-symbol and
+      dictionary-chain checks) cannot catch a *logically* wrong but
+      *structurally* valid comparison value or sign - both of these
+      bugs assembled and ran without any assembler or structural-
+      check complaint, and would only ever have been caught by either
+      real execution or an independent recomputation of expected
+      values, which is what closed this out. Worth treating "does the
+      generator's own template body match its own docstring's stated
+      formula" as an explicit check for any future generated test
+      batch, not just for this one after the fact.
+
+- [x] **`TSTDARITH` added - mixed & double-precision arithmetic tests
+      covering every word in glossary section 3.5 (14 words, 15 tests
+      since `DABS` gets two - positive and negative cases - plus 3
+      divide-by-zero tests, 18 total), wired into `TSTRUNNER`
+      alongside `TSTSTACK`/`TSTSARITH`. Header ("DArithmetic")
+      follows the same `CR`/name/`CR` pattern as the other two
+      groups.** Every implementation traced by hand before any test
+      was written, specifically to avoid repeating the previous
+      batch's mistakes: confirmed double-cell values are pushed low-
+      cell-first, high-cell-last (on top) consistently across every
+      word here; confirmed which operand is `d1` vs `d2` (or dividend
+      vs divisor) from the actual pop order, not assumed from the
+      glossary stack notation; confirmed `FM/MOD` (floored) and
+      `SM/REM` (symmetric) genuinely diverge on the same negative-
+      dividend test case (`-70000 / 9320`: floored gives quotient
+      `-8`, remainder `4560`; symmetric gives `-7`, `-4760` - both
+      satisfy `quot*divisor+rem=dividend`, confirming the difference
+      is real, not an arithmetic error) - Python's native `//`/`%`
+      used directly for the floored case, matching ANS's definition
+      exactly, rather than hand-deriving it.
+
+      Depth-check values are now computed automatically from an
+      explicit `(cells_in, cells_out)` parameter passed to the
+      generator, never a separately hand-typed signed literal - a
+      direct structural fix for the root cause of the previous
+      batch's dominant bug (a docstring correctly saying "-2" while
+      the actual code said "2", with nothing checking they matched).
+      Independently re-derived what every one of the 15 core tests'
+      depth check *should* be from each word's real arity before
+      trusting the generator's own output, rather than assuming the
+      fix worked - all 15 matched on the first attempt.
+
+      Label collisions checked programmatically before insertion, not
+      assumed safe by inspection - caught and fixed 6 real collisions
+      this way (`DP`, `MN`, `MX`, `MS`, `DS`, `DT` all clashed with
+      either an existing test's prefix or, in `MSTAR`'s case, an
+      *internal* label already used inside the real word's own
+      implementation - `MSDONE` - which a manual prefix-list
+      cross-check would likely have missed entirely, since it's not
+      another test's label at all). Replaced with `PD`, `NM`, `XM`,
+      `MC`, `BD`, `NS` respectively, each verified against every
+      label in the entire file, not just other tests' prefixes.
+
+      All 15 numeric expected values independently re-verified
+      against fresh Python computation after generation, with proper
+      symbolic-constant resolution this time (the verification script
+      itself needed a fix mid-process - it initially flagged several
+      correct results as mismatches because it compared raw symbolic
+      references like `TSTD3HI` against literal hex without resolving
+      them to their real `EQU` value first; fixed by resolving symbols
+      before comparing, the same "verify your verifier" pattern
+      recorded from the section 3.4 work). All 18 tests confirmed
+      correctly wired into `TSTDARITH`'s call list, and every
+      symbolic reference confirmed to resolve to a real definition
+      somewhere in the file.
+
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all four `SERIALPOLL`x`UNITTESTS`
+      combinations; byte-exact split-file reassembly; explicit sweep
+      confirms no digit-leading labels anywhere in the file.
+      **MAME-CONFIRMED**: the user reports all `TSTDARITH` tests now
+      pass, including `TSTMSTAR` after its own fix (logged
+      separately above).
+
+- [x] **RESOLVED - a real bug in `MSTAR` itself, not in `TSTMSTAR` or
+      its push/pop order, found by the user's actual MAME run
+      (reported as "the 2 returned values are swapped" - the real
+      cause turned out to be a wrong computation, not a swap, though
+      the symptom is an understandable way to describe it from the
+      outside).** Same bug class already found and fixed multiple
+      times this session (`PULU` doesn't set condition codes on
+      genuine 6809), but in a new specific shape not seen before:
+      `CLR MSIGN` runs immediately after the `PULU D` that loads `n1`,
+      and `CLR` unconditionally sets N=0 (since it clears its
+      destination to 0) - so the following `BPL MSN1POS` was testing
+      `CLR`'s own result, not `n1`'s actual sign, and always branched.
+      `n1` was never negated even when genuinely negative - its raw
+      bit pattern got used as an unsigned magnitude instead, and
+      `MSIGN` never got toggled for it, so the final `MNEG32` never
+      ran either (since the code believed both operands were
+      positive). Traced and confirmed by hand: for this test's actual
+      inputs (`-12345 * 9320`), the buggy path computes `53191 * 9320`
+      (treating `-12345`'s raw 16-bit pattern as the unsigned value
+      53191) instead of first negating to `12345` - a real, large,
+      specific wrong answer, not a simple swap.
+
+      Confirmed this bug was genuinely isolated to `MSTAR`, not a
+      systemic pattern - both `FMSLASHMOD` and `SMSLASHREM` have the
+      same general shape (`CLR` calls before a sign-check branch) but
+      already do this correctly, with an explicit `TST PRODHI`
+      between their own `CLR`s and the branch, re-establishing the
+      correct flags - `MSTAR` was simply missing the equivalent
+      re-test that its siblings already had. A programmatic sweep of
+      the entire file for the same unguarded shape (`PULU D` followed
+      within a few lines by a `CLR` then a signed branch, with no
+      intervening flag-setting instruction) found no other instances.
+
+      Fixed with `TSTA` (testing D's high byte, the same fix pattern
+      already used for `TRYNUM`/`STOD`/`SIGN` earlier this session)
+      inserted between `CLR MSIGN` and `BPL MSN1POS`. Verified the fix
+      by hand-tracing the corrected path for this test's exact
+      inputs: `n1` now correctly detected as negative, correctly
+      negated to `12345` before the unsigned multiply, `MSIGN`
+      correctly toggled, final `MNEG32` correctly applied - produces
+      exactly `TSTMSTAR`'s original expected values (`$F924`, `$64D8`)
+      with zero changes needed to the test itself. Verified: zero
+      duplicate symbols, dictionary chain still 224 entries intact
+      across all four `SERIALPOLL`x`UNITTESTS` combinations; byte-
+      exact split-file reassembly. **MAME-CONFIRMED**: the user
+      reports all `TSTDARITH` tests now pass, including `TSTMSTAR` -
+      the fix holds on real hardware, not just by hand-trace.
+
+- [x] **RESOLVED - `TSTSELECTOR` transferred in from the user's own
+      tested approach, addressing a real problem this session hadn't
+      caught: assembling all three test groups (`TSTSTACK`,
+      `TSTSARITH`, `TSTDARITH`) together exhausts the available
+      unused ROM space.** New flag, `TSTSELECTOR EQU 2`, gates each
+      group's own call-list *and* its own test-body definitions
+      separately (two `IFEQ TSTSELECTOR-N`/`ENDC` pairs per group, `N`
+      = 0/1/2 for `TSTSTACK`/`TSTSARITH`/`TSTDARITH` respectively) -
+      so only the currently-selected group's test code actually
+      compiles into the ROM image, not all three at once. Each
+      group's header message (`CR`/name/`CR`) stays unconditional, so
+      it prints regardless of which group is selected; only the
+      actual test-invoking calls and their bodies are gated.
+
+      Received as an uploaded file rather than a description, so
+      verified by diffing the user's file against this session's
+      version rather than assuming the transfer was needed at all -
+      confirmed the diff was genuinely just this mechanism (plus this
+      session's own `MSTAR` bug fix, absent from the user's copy
+      since it predates that fix) before applying anything. Applied
+      by locating each of the six exact insertion points in this
+      session's own file and inserting the identical text, then
+      diffed the result against the user's file again to confirm an
+      exact match (aside from trailing-whitespace-only differences on
+      a few blank lines, and the `MSTAR` fix, correctly present only
+      in this session's copy).
+
+      Verified beyond the standard structural check: extended the
+      duplicate-symbol/dictionary-chain verification to cover
+      `TSTSELECTOR`'s three values crossed with both `SERIALPOLL`
+      settings (8 relevant combinations, since `TSTSELECTOR` only
+      matters when `UNITTESTS=0`) - zero duplicate symbols, dictionary
+      chain intact (224 entries) in all eight. Also explicitly
+      confirmed the mechanism achieves its actual goal, not just that
+      it assembles cleanly: simulated each `TSTSELECTOR` value and
+      confirmed only that one group's test bodies are present in the
+      output (checked via a representative test name per group), with
+      the other two groups' bodies genuinely absent, not just
+      unreachable - and confirmed total compiled size per selector
+      value is roughly a third of what all three groups combined
+      would be. Byte-exact split-file reassembly confirmed.
+      **MAME-CONFIRMED**: the user reports the whole `TSTDARITH`
+      group (`TSTSELECTOR=2`) now assembles and runs successfully,
+      validating the mechanism end to end, not just structurally.
 
 ## Structural duplication (identified, some resolved, some not)
 
