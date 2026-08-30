@@ -378,6 +378,9 @@ INLOWATER EQU 16        ; fill level at/below which RTS is reasserted low;
 TRUEV    EQU  $FFFF
 FALSEV   EQU  $0000
 OPJSR    EQU  $BD
+OPRTS    EQU  $39      ; used by section 3.8's control-flow test
+                         ; harness to terminate each compiled test
+                         ; snippet, compiled via CCOMMA
 RTSOPC   EQU  $39
 
 ; ------------------------------------------------------------
@@ -676,6 +679,29 @@ TSTSCR   EQU   APPVARS+8     ; extra scratch cell - for tests (DEPTH)
                               ; that need to compute an expected value
                               ; independently before comparing
 
+TSTCBUF  EQU   APPVARS+10    ; compile-time test harness (section 3.8,
+                              ; control flow): scratch buffer real
+                              ; compile-time words (IF/THEN/DO/LOOP/
+                              ; etc) actually compile into - CODEHERE
+                              ; is redirected here for the duration of
+                              ; each compile, then restored, so the
+                              ; real ROM/dictionary is never touched.
+                              ; 80 bytes - generous headroom for the
+                              ; small test snippets planned (the
+                              ; largest, CASE with two OF clauses,
+                              ; comes nowhere close)
+TSTCSAV  EQU   APPVARS+90    ; saved CODEHERE, across a redirected
+                              ; compile
+TSTCSPS  EQU   APPVARS+92    ; saved CSP, across a redirected compile -
+                              ; EXIT's own frame-counting scan depends
+                              ; on CSP marking the right baseline
+TSTLSAV  EQU   APPVARS+94    ; saved LATEST, across a RECURSE test
+                              ; (which reads LATEST directly)
+TSTFHDR  EQU   APPVARS+96    ; fake dictionary header, for RECURSE to
+                              ; read via a redirected LATEST - 16
+                              ; bytes (LEN/FL + name + LINK + CFA,
+                              ; comfortably fits any short test name)
+
 TSTNEG1  EQU   $CFC7         ; -12345 - distinct, non-trivial negative
                               ; test values, needed for arithmetic
                               ; tests (ABS, NEGATE, MIN/MAX, signed
@@ -734,6 +760,7 @@ TSTRUNNER: JSR   TSTSTACK
            JSR   TSTDARITH
            JSR   TSTLOGIC
            JSR   TSTCOMPARE
+           JSR   TSTCTRLFLOW
            RTS
 
 ; ------------------------------------------------------------
@@ -5207,6 +5234,1588 @@ DZDONE:     LDX   #TSTDULTNAME
 
 TSTDULTNAME: FCB  7
                FCC  "TSTDULT"
+
+           ENDC ; <<<<
+
+; ------------------------------------------------------------
+; TSTCTRLFLOW - control-flow tests (glossary section 3.8, 22
+; words - all except UNLOOP, which is a genuine runtime no-op
+; and tested directly like ALIGN's own test, needing none of
+; this section's compile-time harness). Every other test
+; redirects CODEHERE to a scratch buffer (TSTCBUF), calls the
+; real compile-time words directly (JSR IF, JSR THEN, JSR DO,
+; etc - the actual routines the compiler itself calls, not a
+; hand-simulated imitation), restores CODEHERE, then executes
+; the compiled snippet directly. Tests the real interaction
+; between compile-time correctness (right bytes, right patched
+; offsets) and runtime correctness (right control flow) in one
+; coherent check, without needing the outer interpreter, FIND,
+; or a real dictionary entry.
+;
+; Given the planned future application of the ANS test suite for
+; broader standards-compliance coverage, these tests focus on
+; this system's own compile/patch mechanism working correctly -
+; not full end-to-end parsing, which the ANS suite will cover.
+;
+; One case is deliberately NOT tested: DO with limit=index.
+; Traced precisely (simulated the real DOTEST increment-and-
+; compare-equal logic) and confirmed it takes a full 65536-
+; iteration wraparound to naturally reconverge on equality, not
+; one - true to the letter of "runs at least once" but
+; impractical for a boot-time self-check. ?DO's own equivalent
+; case IS tested (TSTQDOLPEQ) - its own skip check happens
+; before the loop is entered at all, confirmed fast and safe by
+; the same kind of trace.
+; ------------------------------------------------------------
+TSTCTRLFLOW: JSR CRW
+           LDX   #TSTCTRLMSG
+           PSHU  X
+           LDD   #8
+           PSHU  D
+           JSR   TYPE
+           JSR   CRW
+
+           IFEQ TSTSELECTOR-5  ; >>>>
+
+           JSR   TSTIFT1
+           JSR   TSTIFT2
+           JSR   TSTIET1
+           JSR   TSTIET2
+           JSR   TSTBGU
+           JSR   TSTBWR
+           JSR   TSTRECUR
+           JSR   TSTDOLP
+           JSR   TSTQDOLP
+           JSR   TSTQDOLPEQ
+           JSR   TSTPLOOP
+           JSR   TSTJIDX
+           JSR   TSTLEAVE
+           JSR   TSTEXIT
+           JSR   TSTUNLOOP
+           JSR   TSTCASE1
+           JSR   TSTCASE2
+           JSR   TSTTHENZ
+           JSR   TSTUNTILZ
+           JSR   TSTENDOFZ
+
+           ENDC ; <<<<
+
+           RTS
+
+TSTCTRLMSG: FCC "CtrlFlow"
+
+           IFEQ TSTSELECTOR-5  ; >>>>
+
+; ------------------------------------------------------------
+; Control-flow test harness (glossary section 3.8). Each test
+; redirects CODEHERE to a scratch buffer (TSTCBUF), calls the
+; real compile-time control-flow words directly (JSR IF, JSR
+; THEN, etc - the same routines the compiler itself calls when
+; parsing IF/THEN/DO/LOOP/etc, not a hand-simulated imitation),
+; then restores CODEHERE and executes the compiled snippet
+; directly. This tests the actual interaction between compile-
+; time correctness (right bytes, right patched offsets) and
+; runtime correctness (right control flow) in one coherent
+; test, without needing the outer interpreter, FIND, or a
+; dictionary entry - matching the ANS test suite's own planned
+; role for broader standards-compliance coverage; these tests
+; specifically verify this system's own compile/patch mechanism
+; works correctly, not full end-to-end parsing.
+; ------------------------------------------------------------
+
+; ------------------------------------------------------------
+; TSTIFT1 - unit test for IF/THEN, true case. Compiles
+; "IF <lit 111> THEN" into scratch, then runs it with a true
+; flag - the branch is NOT taken, so 111 should be pushed.
+; Verified by hand-trace before writing: ZBRANCH's patched
+; offset comes out to 7 (from the placeholder field to just
+; past the compiled LIT+111), correctly skipping nothing when
+; the flag is true and falling through into the literal.
+; ------------------------------------------------------------
+TSTIFT1: LDD   CODEHERE
+         STD   TSTCSAV
+         LDD   #TSTCBUF
+         STD   CODEHERE
+
+         JSR   IF
+
+         LDD   #111
+         PSHU  D
+         JSR   LITERALW
+
+         JSR   THEN
+
+         LDD   #OPRTS
+         PSHU  D
+         JSR   CCOMMA
+
+         LDD   TSTCSAV
+         STD   CODEHERE
+
+         STU   TSTU0
+
+         LDD   #TSTGUARD
+         PSHU  D
+         LDD   #TRUEV
+         PSHU  D
+         STU   TSTUB4
+
+         JSR   TSTCBUF
+
+         STU   TSTUAF
+
+         PULU  D
+         CMPD  #111
+         BNE   T1FAIL
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   T1FAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #0
+         BNE   T1FAIL
+
+         LDD   #TRUEV
+         BRA   T1DONE
+T1FAIL:  LDD   #FALSEV
+T1DONE:  LDX   #TSTIFT1NAME
+         PSHU  X
+         PSHU  D
+         JSR   TSTREPORT
+
+         LDU   TSTU0
+         RTS
+
+TSTIFT1NAME: FCB  7
+             FCC  "TSTIFT1"
+
+; ------------------------------------------------------------
+; TSTIFT2 - unit test for IF/THEN, false case. Same compiled
+; snippet as TSTIFT1, run with a false flag instead - the
+; branch IS taken, jumping straight past the LIT+111, so 111
+; should NOT appear; only the guard remains.
+; ------------------------------------------------------------
+TSTIFT2: LDD   CODEHERE
+         STD   TSTCSAV
+         LDD   #TSTCBUF
+         STD   CODEHERE
+
+         JSR   IF
+
+         LDD   #111
+         PSHU  D
+         JSR   LITERALW
+
+         JSR   THEN
+
+         LDD   #OPRTS
+         PSHU  D
+         JSR   CCOMMA
+
+         LDD   TSTCSAV
+         STD   CODEHERE
+
+         STU   TSTU0
+
+         LDD   #TSTGUARD
+         PSHU  D
+         LDD   #FALSEV
+         PSHU  D
+         STU   TSTUB4
+
+         JSR   TSTCBUF
+
+         STU   TSTUAF
+
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   T2FAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #-2
+         BNE   T2FAIL
+
+         LDD   #TRUEV
+         BRA   T2DONE
+T2FAIL:  LDD   #FALSEV
+T2DONE:  LDX   #TSTIFT2NAME
+         PSHU  X
+         PSHU  D
+         JSR   TSTREPORT
+
+         LDU   TSTU0
+         RTS
+
+TSTIFT2NAME: FCB  7
+             FCC  "TSTIFT2"
+
+; ------------------------------------------------------------
+; TSTIET1 - unit test for IF/ELSE/THEN, true case. Compiles
+; "IF <lit 111> ELSE <lit 222> THEN" into scratch. True flag
+; should take the IF-body (111) and skip the ELSE-body (222)
+; via ELSE's own unconditional branch. Verified by hand-trace:
+; IF's patched offset (12) lands exactly at the ELSE-body's
+; start; ELSE's own patched offset (7) lands exactly past it.
+; ------------------------------------------------------------
+TSTIET1: LDD   CODEHERE
+         STD   TSTCSAV
+         LDD   #TSTCBUF
+         STD   CODEHERE
+
+         JSR   IF
+
+         LDD   #111
+         PSHU  D
+         JSR   LITERALW
+
+         JSR   ELSE
+
+         LDD   #222
+         PSHU  D
+         JSR   LITERALW
+
+         JSR   THEN
+
+         LDD   #OPRTS
+         PSHU  D
+         JSR   CCOMMA
+
+         LDD   TSTCSAV
+         STD   CODEHERE
+
+         STU   TSTU0
+
+         LDD   #TSTGUARD
+         PSHU  D
+         LDD   #TRUEV
+         PSHU  D
+         STU   TSTUB4
+
+         JSR   TSTCBUF
+
+         STU   TSTUAF
+
+         PULU  D
+         CMPD  #111
+         BNE   E1FAIL
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   E1FAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #0
+         BNE   E1FAIL
+
+         LDD   #TRUEV
+         BRA   E1DONE
+E1FAIL:  LDD   #FALSEV
+E1DONE:  LDX   #TSTIET1NAME
+         PSHU  X
+         PSHU  D
+         JSR   TSTREPORT
+
+         LDU   TSTU0
+         RTS
+
+TSTIET1NAME: FCB  7
+             FCC  "TSTIET1"
+
+; ------------------------------------------------------------
+; TSTIET2 - unit test for IF/ELSE/THEN, false case. Same
+; compiled snippet as TSTIET1, run with a false flag - should
+; take the ELSE-body (222) instead, IF-body (111) skipped.
+; ------------------------------------------------------------
+TSTIET2: LDD   CODEHERE
+         STD   TSTCSAV
+         LDD   #TSTCBUF
+         STD   CODEHERE
+
+         JSR   IF
+
+         LDD   #111
+         PSHU  D
+         JSR   LITERALW
+
+         JSR   ELSE
+
+         LDD   #222
+         PSHU  D
+         JSR   LITERALW
+
+         JSR   THEN
+
+         LDD   #OPRTS
+         PSHU  D
+         JSR   CCOMMA
+
+         LDD   TSTCSAV
+         STD   CODEHERE
+
+         STU   TSTU0
+
+         LDD   #TSTGUARD
+         PSHU  D
+         LDD   #FALSEV
+         PSHU  D
+         STU   TSTUB4
+
+         JSR   TSTCBUF
+
+         STU   TSTUAF
+
+         PULU  D
+         CMPD  #222
+         BNE   E2FAIL
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   E2FAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #0
+         BNE   E2FAIL
+
+         LDD   #TRUEV
+         BRA   E2DONE
+E2FAIL:  LDD   #FALSEV
+E2DONE:  LDX   #TSTIET2NAME
+         PSHU  X
+         PSHU  D
+         JSR   TSTREPORT
+
+         LDU   TSTU0
+         RTS
+
+TSTIET2NAME: FCB  7
+             FCC  "TSTIET2"
+
+; ------------------------------------------------------------
+; TSTBGU - unit test for BEGIN/UNTIL. Compiles
+; "BEGIN 1+ DUP <lit 5> = UNTIL" into scratch - increments,
+; duplicates, compares to 5, loops back while not equal. Run
+; starting from 0; verified by hand-trace across all 5
+; iterations (0->1->2->3->4->5, exiting exactly on reaching 5,
+; not one iteration early or late) before writing. The patched
+; back-edge offset is negative (-17), the same PATCH routine
+; used for forward references handling both directions
+; correctly based on relative position.
+; ------------------------------------------------------------
+TSTBGU:  LDD   CODEHERE
+         STD   TSTCSAV
+         LDD   #TSTCBUF
+         STD   CODEHERE
+
+         JSR   BEGIN
+
+         LDD   #ONEPLUS
+         PSHU  D
+         JSR   CCALL
+
+         LDD   #DUP
+         PSHU  D
+         JSR   CCALL
+
+         LDD   #5
+         PSHU  D
+         JSR   LITERALW
+
+         LDD   #EQUALW
+         PSHU  D
+         JSR   CCALL
+
+         JSR   UNTIL
+
+         LDD   #OPRTS
+         PSHU  D
+         JSR   CCOMMA
+
+         LDD   TSTCSAV
+         STD   CODEHERE
+
+         STU   TSTU0
+
+         LDD   #TSTGUARD
+         PSHU  D
+         LDD   #0
+         PSHU  D
+         STU   TSTUB4
+
+         JSR   TSTCBUF
+
+         STU   TSTUAF
+
+         PULU  D
+         CMPD  #5
+         BNE   BUFAIL
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   BUFAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #0
+         BNE   BUFAIL
+
+         LDD   #TRUEV
+         BRA   BUDONE
+BUFAIL:  LDD   #FALSEV
+BUDONE:  LDX   #TSTBGUNAME
+         PSHU  X
+         PSHU  D
+         JSR   TSTREPORT
+
+         LDU   TSTU0
+         RTS
+
+TSTBGUNAME: FCB  6
+            FCC  "TSTBGU"
+
+; ------------------------------------------------------------
+; TSTBWR - unit test for BEGIN/WHILE/REPEAT. Compiles
+; "BEGIN DUP <lit 5> < WHILE 1+ REPEAT" - opposite polarity
+; from TSTBGU's UNTIL (continues on true, exits on false,
+; rather than the reverse) - starting from 0, increments while
+; less than 5. Naturally exercises both of WHILE's outcomes in
+; one test: the continue path 5 times, the exit path once.
+; Verified by hand-trace: WHILE's patched forward offset (10)
+; lands exactly at the final RTS; REPEAT's patched back-edge
+; (-22) lands exactly at BEGIN.
+; ------------------------------------------------------------
+TSTBWR:  LDD   CODEHERE
+         STD   TSTCSAV
+         LDD   #TSTCBUF
+         STD   CODEHERE
+
+         JSR   BEGIN
+
+         LDD   #DUP
+         PSHU  D
+         JSR   CCALL
+
+         LDD   #5
+         PSHU  D
+         JSR   LITERALW
+
+         LDD   #LESSW
+         PSHU  D
+         JSR   CCALL
+
+         JSR   WHILE
+
+         LDD   #ONEPLUS
+         PSHU  D
+         JSR   CCALL
+
+         JSR   REPEAT
+
+         LDD   #OPRTS
+         PSHU  D
+         JSR   CCOMMA
+
+         LDD   TSTCSAV
+         STD   CODEHERE
+
+         STU   TSTU0
+
+         LDD   #TSTGUARD
+         PSHU  D
+         LDD   #0
+         PSHU  D
+         STU   TSTUB4
+
+         JSR   TSTCBUF
+
+         STU   TSTUAF
+
+         PULU  D
+         CMPD  #5
+         BNE   BWFAIL
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   BWFAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #0
+         BNE   BWFAIL
+
+         LDD   #TRUEV
+         BRA   BWDONE
+BWFAIL:  LDD   #FALSEV
+BWDONE:  LDX   #TSTBWRNAME
+         PSHU  X
+         PSHU  D
+         JSR   TSTREPORT
+
+         LDU   TSTU0
+         RTS
+
+TSTBWRNAME: FCB  6
+            FCC  "TSTBWR"
+
+; ------------------------------------------------------------
+; TSTRECUR - unit test for RECURSE. Builds a fake dictionary
+; header in scratch (TSTFHDR: LEN/FL=3, name "FOO", a
+; don't-care LINK, and DUP's real address as the CFA), points
+; LATEST at it, then calls RECURSE directly. Verifies RECURSE
+; correctly parses an arbitrary header (LEN/FL's 5-bit length
+; field, skipping name+LINK to reach the CFA) and compiles a
+; correct call to it - tests the actual mechanism (header
+; parsing, CFA extraction, CCALL), not genuine self-recursion,
+; which would need a real in-progress compilation to set up
+; meaningfully. Confirmed by hand-trace: RECURSE's own address
+; arithmetic (+1 past LEN/FL, +namelen past the name, +2 past
+; LINK) lands exactly on TSTFHDR+6, where the CFA is placed.
+; ------------------------------------------------------------
+TSTRECUR: LDD  LATEST
+          STD  TSTLSAV
+          LDD  CODEHERE
+          STD  TSTCSAV
+
+          LDA  #3
+          STA  TSTFHDR
+          LDA  #'F'
+          STA  TSTFHDR+1
+          LDA  #'O'
+          STA  TSTFHDR+2
+          LDA  #'O'
+          STA  TSTFHDR+3
+          LDD  #0
+          STD  TSTFHDR+4
+          LDD  #DUP
+          STD  TSTFHDR+6
+
+          LDD  #TSTFHDR
+          STD  LATEST
+
+          LDD  #TSTCBUF
+          STD  CODEHERE
+
+          JSR  RECURSE
+
+          LDD  #OPRTS
+          PSHU D
+          JSR  CCOMMA
+
+          LDD  TSTCSAV
+          STD  CODEHERE
+          LDD  TSTLSAV
+          STD  LATEST
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          LDD  #TSTVAL1
+          PSHU D
+          STU  TSTUB4
+
+          JSR  TSTCBUF
+
+          STU  TSTUAF
+
+          PULU D
+          CMPD #TSTVAL1
+          BNE  RCFAIL
+          PULU D
+          CMPD #TSTVAL1
+          BNE  RCFAIL
+          PULU D
+          CMPD #TSTGUARD
+          BNE  RCFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #2
+          BNE  RCFAIL
+
+          LDD  #TRUEV
+          BRA  RCDONE
+RCFAIL:   LDD  #FALSEV
+RCDONE:   LDX  #TSTRECURNAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTRECURNAME: FCB  8
+              FCC  "TSTRECUR"
+
+; ------------------------------------------------------------
+; TSTDOLP - unit test for DO/LOOP. Compiles "DO I + LOOP",
+; run with limit=5, start-index=0, and a seed accumulator of 0
+; already on the stack. Verifies the full I sequence (0,1,2,3,4)
+; by summing it via + each iteration - a wrong index sequence
+; (off-by-one, wrong direction, wrong starting value) would
+; produce a different sum than the correct 0+1+2+3+4=10, not
+; just "some number of iterations happened."
+;
+; The documented limit=index edge case (runs at least once) is
+; deliberately NOT tested here: traced precisely (simulated the
+; real DOTEST increment-and-compare-equal logic) and confirmed
+; it takes a full 65536 iterations to naturally reconverge on
+; equality, not one - true to the letter of "at least once" but
+; impractical for a boot-time self-check. Left untested, not
+; guessed at; noted in the open-items checklist.
+; ------------------------------------------------------------
+TSTDOLP: LDD   CODEHERE
+         STD   TSTCSAV
+         LDD   #TSTCBUF
+         STD   CODEHERE
+
+         JSR   DO
+
+         LDD   #IWORD
+         PSHU  D
+         JSR   CCALL
+
+         LDD   #PLUS
+         PSHU  D
+         JSR   CCALL
+
+         JSR   LOOP
+
+         LDD   #OPRTS
+         PSHU  D
+         JSR   CCOMMA
+
+         LDD   TSTCSAV
+         STD   CODEHERE
+
+         STU   TSTU0
+
+         LDD   #TSTGUARD
+         PSHU  D
+         LDD   #0
+         PSHU  D
+         LDD   #5
+         PSHU  D
+         LDD   #0
+         PSHU  D
+         STU   TSTUB4
+
+         JSR   TSTCBUF
+
+         STU   TSTUAF
+
+         PULU  D
+         CMPD  #10
+         BNE   DWFAIL
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   DWFAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #-4
+         BNE   DWFAIL
+
+         LDD   #TRUEV
+         BRA   DWDONE
+DWFAIL:  LDD   #FALSEV
+DWDONE:  LDX   #TSTDOLPNAME
+         PSHU  X
+         PSHU  D
+         JSR   TSTREPORT
+
+         LDU   TSTU0
+         RTS
+
+TSTDOLPNAME: FCB  7
+             FCC  "TSTDOLP"
+
+; ------------------------------------------------------------
+; TSTQDOLP - unit test for ?DO/LOOP, normal (non-skip) case.
+; Same "?DO I + LOOP" structure and I-sum verification as
+; TSTDOLP, confirming ?DO behaves like DO when index != limit.
+; ------------------------------------------------------------
+TSTQDOLP: LDD  CODEHERE
+          STD  TSTCSAV
+          LDD  #TSTCBUF
+          STD  CODEHERE
+
+          JSR  QDO
+
+          LDD  #IWORD
+          PSHU D
+          JSR  CCALL
+
+          LDD  #PLUS
+          PSHU D
+          JSR  CCALL
+
+          JSR  LOOP
+
+          LDD  #OPRTS
+          PSHU D
+          JSR  CCOMMA
+
+          LDD  TSTCSAV
+          STD  CODEHERE
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          LDD  #0
+          PSHU D
+          LDD  #5
+          PSHU D
+          LDD  #0
+          PSHU D
+          STU  TSTUB4
+
+          JSR  TSTCBUF
+
+          STU  TSTUAF
+
+          PULU D
+          CMPD #10
+          BNE  QLFAIL
+          PULU D
+          CMPD #TSTGUARD
+          BNE  QLFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #-4
+          BNE  QLFAIL
+
+          LDD  #TRUEV
+          BRA  QLDONE
+QLFAIL:   LDD  #FALSEV
+QLDONE:   LDX  #TSTQDOLPNAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTQDOLPNAME: FCB  8
+              FCC  "TSTQDOLP"
+
+; ------------------------------------------------------------
+; TSTQDOLPEQ - unit test for ?DO/LOOP, limit=index case - the
+; documented case that DISTINGUISHES ?DO from plain DO: skips
+; the loop entirely, unlike DO's own limit=index behavior
+; (confirmed separately to take a full 65536-iteration
+; wraparound, not tested here - see TSTDOLP's own notes). This
+; case IS fast and safe to test directly: QDOSETUP's own skip
+; check happens before the loop is entered at all, confirmed by
+; hand-trace of its code. Same "?DO I + LOOP" body, but since
+; the body never runs, the seed should come back completely
+; unchanged (0, not 10).
+; ------------------------------------------------------------
+TSTQDOLPEQ: LDD  CODEHERE
+            STD  TSTCSAV
+            LDD  #TSTCBUF
+            STD  CODEHERE
+
+            JSR  QDO
+
+            LDD  #IWORD
+            PSHU D
+            JSR  CCALL
+
+            LDD  #PLUS
+            PSHU D
+            JSR  CCALL
+
+            JSR  LOOP
+
+            LDD  #OPRTS
+            PSHU D
+            JSR  CCOMMA
+
+            LDD  TSTCSAV
+            STD  CODEHERE
+
+            STU  TSTU0
+
+            LDD  #TSTGUARD
+            PSHU D
+            LDD  #0
+            PSHU D
+            LDD  #5
+            PSHU D
+            LDD  #5
+            PSHU D
+            STU  TSTUB4
+
+            JSR  TSTCBUF
+
+            STU  TSTUAF
+
+            PULU D
+            CMPD #0
+            BNE  QEFAIL
+            PULU D
+            CMPD #TSTGUARD
+            BNE  QEFAIL
+
+            LDD  TSTUB4
+            SUBD TSTUAF
+            CMPD #-4
+            BNE  QEFAIL
+
+            LDD  #TRUEV
+            BRA  QEDONE
+QEFAIL:     LDD  #FALSEV
+QEDONE:     LDX  #TSTQDOLPEQNAME
+            PSHU X
+            PSHU D
+            JSR  TSTREPORT
+
+            LDU  TSTU0
+            RTS
+
+TSTQDOLPEQNAME: FCB  10
+                FCC  "TSTQDOLPEQ"
+
+; ------------------------------------------------------------
+; TSTPLOOP - unit test for DO/+LOOP. Compiles
+; "DO I + 3 LITERAL +LOOP", run with limit=10, start=0 - a step
+; (3) that doesn't land exactly on the limit, deliberately
+; exercising the crossing-boundary exit condition rather than
+; landing-exactly-on-it, since those are handled by genuinely
+; different checks in DOPLUSTEST (confirmed by reading its own
+; code - crosses-sign OR lands-exactly, checked separately).
+; Visits I=0,3,6,9, exits when 9+3=12 crosses past 10. Sum=18.
+; ------------------------------------------------------------
+TSTPLOOP: LDD  CODEHERE
+          STD  TSTCSAV
+          LDD  #TSTCBUF
+          STD  CODEHERE
+
+          JSR  DO
+
+          LDD  #IWORD
+          PSHU D
+          JSR  CCALL
+
+          LDD  #PLUS
+          PSHU D
+          JSR  CCALL
+
+          LDD  #3
+          PSHU D
+          JSR  LITERALW
+
+          JSR  PLUSLOOP
+
+          LDD  #OPRTS
+          PSHU D
+          JSR  CCOMMA
+
+          LDD  TSTCSAV
+          STD  CODEHERE
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          LDD  #0
+          PSHU D
+          LDD  #10
+          PSHU D
+          LDD  #0
+          PSHU D
+          STU  TSTUB4
+
+          JSR  TSTCBUF
+
+          STU  TSTUAF
+
+          PULU D
+          CMPD #18
+          BNE  POFAIL
+          PULU D
+          CMPD #TSTGUARD
+          BNE  POFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #-4
+          BNE  POFAIL
+
+          LDD  #TRUEV
+          BRA  PODONE
+POFAIL:   LDD  #FALSEV
+PODONE:   LDX  #TSTPLOOPNAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTPLOOPNAME: FCB  8
+              FCC  "TSTPLOOP"
+
+; ------------------------------------------------------------
+; TSTJIDX - unit test for J. Compiles a doubly-nested DO loop:
+; "DO 2 0 DO J 10 * I + + LOOP LOOP" - outer index 0..2, inner
+; 0..1, accumulating (outer*10+inner) each pass. Verifies BOTH
+; I and J are read correctly, and specifically at the right
+; return-stack offset once genuinely nested (J's own "8,S" -
+; not the "10,S" an earlier, already-documented bug used, per
+; this word's own extensive bug-fix history in the source
+; itself, retraced by hand here rather than assumed still
+; correct). Six (outer,inner) pairs, expected sum 63 - a wrong
+; nesting depth or wrong index read would produce a different
+; sum, not just "some accumulation happened."
+; ------------------------------------------------------------
+TSTJIDX: LDD   CODEHERE
+         STD   TSTCSAV
+         LDD   #TSTCBUF
+         STD   CODEHERE
+
+         JSR   DO
+
+         LDD   #2
+         PSHU  D
+         JSR   LITERALW
+         LDD   #0
+         PSHU  D
+         JSR   LITERALW
+
+         JSR   DO
+
+         LDD   #JWORD
+         PSHU  D
+         JSR   CCALL
+
+         LDD   #10
+         PSHU  D
+         JSR   LITERALW
+
+         LDD   #STAR
+         PSHU  D
+         JSR   CCALL
+
+         LDD   #IWORD
+         PSHU  D
+         JSR   CCALL
+
+         LDD   #PLUS
+         PSHU  D
+         JSR   CCALL
+
+         LDD   #PLUS
+         PSHU  D
+         JSR   CCALL
+
+         JSR   LOOP
+
+         JSR   LOOP
+
+         LDD   #OPRTS
+         PSHU  D
+         JSR   CCOMMA
+
+         LDD   TSTCSAV
+         STD   CODEHERE
+
+         STU   TSTU0
+
+         LDD   #TSTGUARD
+         PSHU  D
+         LDD   #0
+         PSHU  D
+         LDD   #3
+         PSHU  D
+         LDD   #0
+         PSHU  D
+         STU   TSTUB4
+
+         JSR   TSTCBUF
+
+         STU   TSTUAF
+
+         PULU  D
+         CMPD  #63
+         BNE   JIFAIL
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   JIFAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #-4
+         BNE   JIFAIL
+
+         LDD   #TRUEV
+         BRA   JIDONE
+JIFAIL:  LDD   #FALSEV
+JIDONE:  LDX   #TSTJIDXNAME
+         PSHU  X
+         PSHU  D
+         JSR   TSTREPORT
+
+         LDU   TSTU0
+         RTS
+
+TSTJIDXNAME: FCB  7
+             FCC  "TSTJIDX"
+
+; ------------------------------------------------------------
+; TSTLEAVE - unit test for LEAVE. Compiles
+; "DO I DUP 3 LITERAL = IF LEAVE THEN + LOOP", limit=10,
+; start=0 - would normally visit I=0..9, but LEAVE forces exit
+; once I=3 is reached. LEAVE only sets a flag; the actual exit
+; happens at the NEXT LOOP check (per its own documented
+; behavior, "exit at its next LOOP") - confirmed by hand-trace
+; of DOTEST's own logic (checks the flag first, before its
+; normal increment/compare). Since + runs before LOOP's check,
+; I=3 IS accumulated before the loop exits - sum=0+1+2+3=6, not
+; 0+1+2=3 (which would indicate LEAVE incorrectly took effect
+; immediately) and not the full 0..9 (which would indicate
+; LEAVE didn't work at all).
+; ------------------------------------------------------------
+TSTLEAVE: LDD  CODEHERE
+          STD  TSTCSAV
+          LDD  #TSTCBUF
+          STD  CODEHERE
+
+          JSR  DO
+
+          LDD  #IWORD
+          PSHU D
+          JSR  CCALL
+
+          LDD  #DUP
+          PSHU D
+          JSR  CCALL
+
+          LDD  #3
+          PSHU D
+          JSR  LITERALW
+
+          LDD  #EQUALW
+          PSHU D
+          JSR  CCALL
+
+          JSR  IF
+
+          LDD  #LEAVE
+          PSHU D
+          JSR  CCALL
+
+          JSR  THEN
+
+          LDD  #PLUS
+          PSHU D
+          JSR  CCALL
+
+          JSR  LOOP
+
+          LDD  #OPRTS
+          PSHU D
+          JSR  CCOMMA
+
+          LDD  TSTCSAV
+          STD  CODEHERE
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          LDD  #0
+          PSHU D
+          LDD  #10
+          PSHU D
+          LDD  #0
+          PSHU D
+          STU  TSTUB4
+
+          JSR  TSTCBUF
+
+          STU  TSTUAF
+
+          PULU D
+          CMPD #6
+          BNE  LVFAIL
+          PULU D
+          CMPD #TSTGUARD
+          BNE  LVFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #-4
+          BNE  LVFAIL
+
+          LDD  #TRUEV
+          BRA  LVDONE
+LVFAIL:   LDD  #FALSEV
+LVDONE:   LDX  #TSTLEAVENAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTLEAVENAME: FCB  8
+              FCC  "TSTLEAVE"
+
+; ------------------------------------------------------------
+; TSTEXIT - unit test for EXIT. Compiles
+; "DO I DUP 3 LITERAL = IF EXIT THEN I + LOOP", limit=10,
+; start=0 - EXIT fires when I=3, discarding the one open DO
+; frame and returning immediately. Sets the real CSP to U's
+; value right before the first control-flow marker is pushed
+; (matching what ":" does at the start of a real definition),
+; since EXIT's own compile-time frame count depends on it -
+; confirmed by hand-trace: at the point EXIT is compiled, U
+; holds IF's own pending (addr,TAGFWD) on top of DO's
+; (addr,TAGDO), and EXIT's scan correctly counts exactly one
+; TAGDO between U and CSP. Unlike TSTLEAVE, EXIT fires
+; immediately when reached - the following + never runs for
+; I=3, so sum=0+1+2=3, not 6.
+; ------------------------------------------------------------
+TSTEXIT: LDD   CSP
+         STD   TSTCSPS
+         LDD   CODEHERE
+         STD   TSTCSAV
+         LDD   #TSTCBUF
+         STD   CODEHERE
+
+         TFR   U,D
+         STD   CSP
+
+         JSR   DO
+
+         LDD   #IWORD
+         PSHU  D
+         JSR   CCALL
+
+         LDD   #DUP
+         PSHU  D
+         JSR   CCALL
+
+         LDD   #3
+         PSHU  D
+         JSR   LITERALW
+
+         LDD   #EQUALW
+         PSHU  D
+         JSR   CCALL
+
+         JSR   IF
+
+         JSR   EXIT
+
+         JSR   THEN
+
+         LDD   #PLUS
+         PSHU  D
+         JSR   CCALL
+
+         JSR   LOOP
+
+         LDD   #OPRTS
+         PSHU  D
+         JSR   CCOMMA
+
+         LDD   TSTCSAV
+         STD   CODEHERE
+         LDD   TSTCSPS
+         STD   CSP
+
+         STU   TSTU0
+
+         LDD   #TSTGUARD
+         PSHU  D
+         LDD   #0
+         PSHU  D
+         LDD   #10
+         PSHU  D
+         LDD   #0
+         PSHU  D
+         STU   TSTUB4
+
+         JSR   TSTCBUF
+
+         STU   TSTUAF
+
+         PULU  D
+         CMPD  #3
+         BNE   EXFAIL
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   EXFAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #-4
+         BNE   EXFAIL
+
+         LDD   #TRUEV
+         BRA   EXDONE
+EXFAIL:  LDD   #FALSEV
+EXDONE:  LDX   #TSTEXITNAME
+         PSHU  X
+         PSHU  D
+         JSR   TSTREPORT
+
+         LDU   TSTU0
+         RTS
+
+TSTEXITNAME: FCB  7
+             FCC  "TSTEXIT"
+
+; ------------------------------------------------------------
+; TSTUNLOOP - unit test for UNLOOP. A true no-op (bare RTS) per
+; its own extensively-documented design history in the source -
+; superseded by EXIT's own automatic frame-discarding, kept
+; only for source compatibility. Not compile-time/immediate
+; like the rest of this section - a plain runtime word, tested
+; directly without the compile harness, same pattern as ALIGN's
+; own test in section 3.6: pushes decoy values, calls UNLOOP,
+; confirms the whole stack is genuinely undisturbed.
+; ------------------------------------------------------------
+TSTUNLOOP: STU  TSTU0
+
+           LDD  #TSTGUARD
+           PSHU D
+           LDD  #TSTVAL1
+           PSHU D
+           LDD  #TSTVAL2
+           PSHU D
+           STU  TSTUB4
+
+           JSR  UNLOOP
+
+           STU  TSTUAF
+
+           PULU D
+           CMPD #TSTVAL2
+           BNE  UOFAIL
+           PULU D
+           CMPD #TSTVAL1
+           BNE  UOFAIL
+           PULU D
+           CMPD #TSTGUARD
+           BNE  UOFAIL
+
+           LDD  TSTUB4
+           SUBD TSTUAF
+           CMPD #0
+           BNE  UOFAIL
+
+           LDD  #TRUEV
+           BRA  UODONE
+UOFAIL:    LDD  #FALSEV
+UODONE:    LDX  #TSTUNLOOPNAME
+           PSHU X
+           PSHU D
+           JSR  TSTREPORT
+
+           LDU  TSTU0
+           RTS
+
+TSTUNLOOPNAME: FCB  9
+               FCC  "TSTUNLOOP"
+
+; ------------------------------------------------------------
+; TSTCASE1 - unit test for CASE/OF/ENDOF/ENDCASE, matching
+; clause. Compiles
+; "CASE 1 LITERAL OF 111 LITERAL ENDOF
+;       2 LITERAL OF 222 LITERAL ENDOF ENDCASE"
+; with selector=2, matching the second clause. Traced by hand:
+; OF compiles OVER/=/ZBRANCH<placeholder>/DROP - the DROP only
+; runs on a match, consuming the selector; ENDOF compiles an
+; unconditional branch past the remaining clauses AND patches
+; its own OF's placeholder to the next clause's OF; ENDCASE
+; patches every pending ENDOF branch to the true end and
+; compiles a final fallback DROP for the no-match case.
+; ------------------------------------------------------------
+TSTCASE1: LDD  CODEHERE
+          STD  TSTCSAV
+          LDD  #TSTCBUF
+          STD  CODEHERE
+
+          JSR  CASEW
+
+          LDD  #1
+          PSHU D
+          JSR  LITERALW
+          JSR  OF
+          LDD  #111
+          PSHU D
+          JSR  LITERALW
+          JSR  ENDOF
+
+          LDD  #2
+          PSHU D
+          JSR  LITERALW
+          JSR  OF
+          LDD  #222
+          PSHU D
+          JSR  LITERALW
+          JSR  ENDOF
+
+          JSR  ENDCASE
+
+          LDD  #OPRTS
+          PSHU D
+          JSR  CCOMMA
+
+          LDD  TSTCSAV
+          STD  CODEHERE
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          LDD  #2
+          PSHU D
+          STU  TSTUB4
+
+          JSR  TSTCBUF
+
+          STU  TSTUAF
+
+          PULU D
+          CMPD #222
+          BNE  C1FAIL
+          PULU D
+          CMPD #TSTGUARD
+          BNE  C1FAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #0
+          BNE  C1FAIL
+
+          LDD  #TRUEV
+          BRA  C1DONE
+C1FAIL:   LDD  #FALSEV
+C1DONE:   LDX  #TSTCASE1NAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTCASE1NAME: FCB  9
+              FCC  "TSTCASE1"
+
+; ------------------------------------------------------------
+; TSTCASE2 - unit test for CASE/OF/ENDOF/ENDCASE, no-match
+; case. Same compiled snippet as TSTCASE1, run with a selector
+; (99) matching neither clause - should fall through both OF
+; checks (selector preserved across each non-match, per the
+; documented "( x n -- | x )" effect) and reach ENDCASE's own
+; fallback DROP, consuming the selector with nothing pushed in
+; its place.
+; ------------------------------------------------------------
+TSTCASE2: LDD  CODEHERE
+          STD  TSTCSAV
+          LDD  #TSTCBUF
+          STD  CODEHERE
+
+          JSR  CASEW
+
+          LDD  #1
+          PSHU D
+          JSR  LITERALW
+          JSR  OF
+          LDD  #111
+          PSHU D
+          JSR  LITERALW
+          JSR  ENDOF
+
+          LDD  #2
+          PSHU D
+          JSR  LITERALW
+          JSR  OF
+          LDD  #222
+          PSHU D
+          JSR  LITERALW
+          JSR  ENDOF
+
+          JSR  ENDCASE
+
+          LDD  #OPRTS
+          PSHU D
+          JSR  CCOMMA
+
+          LDD  TSTCSAV
+          STD  CODEHERE
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          LDD  #99
+          PSHU D
+          STU  TSTUB4
+
+          JSR  TSTCBUF
+
+          STU  TSTUAF
+
+          PULU D
+          CMPD #TSTGUARD
+          BNE  C2FAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #-2
+          BNE  C2FAIL
+
+          LDD  #TRUEV
+          BRA  C2DONE
+C2FAIL:   LDD  #FALSEV
+C2DONE:   LDX  #TSTCASE2NAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTCASE2NAME: FCB  9
+              FCC  "TSTCASE2"
+
+; ------------------------------------------------------------
+; TSTTHENZ - unit test for THEN, tag-mismatch case. Pushes a
+; wrong value (0, matching none of TAGFWD/TAGBACK/TAGDO/TAGOF)
+; in place of the expected TAGFWD, then calls THEN via CATCH.
+; CFERR (confirmed by reading it directly) throws -22
+; immediately without ever touching CODEHERE - the error path
+; never reaches any compiling code - so this needs no CODEHERE
+; redirect, unlike every other test in this section. Same
+; CATCH-based pattern as the divide-by-zero tests in earlier
+; sections: verify the thrown code and CATCH's own depth-
+; restoration contract, not the unspecified i*x values.
+; ------------------------------------------------------------
+TSTTHENZ: STU  TSTU0
+
+          LDD  #0
+          PSHU D
+          LDD  #0
+          PSHU D
+          LDX  #THEN
+          PSHU X
+          STU  TSTUB4
+
+          JSR  CATCH
+
+          STU  TSTUAF
+
+          PULU D
+          CMPD #-22
+          BNE  T3FAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #0
+          BNE  T3FAIL
+
+          LDD  #TRUEV
+          BRA  T3DONE
+T3FAIL:   LDD  #FALSEV
+T3DONE:   LDX  #TSTTHENZNAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTTHENZNAME: FCB  8
+              FCC  "TSTTHENZ"
+
+; ------------------------------------------------------------
+; TSTUNTILZ - unit test for UNTIL, tag-mismatch case. Same
+; pattern as TSTTHENZ - wrong value in place of TAGBACK.
+; ------------------------------------------------------------
+TSTUNTILZ: STU  TSTU0
+
+           LDD  #0
+           PSHU D
+           LDD  #0
+           PSHU D
+           LDX  #UNTIL
+           PSHU X
+           STU  TSTUB4
+
+           JSR  CATCH
+
+           STU  TSTUAF
+
+           PULU D
+           CMPD #-22
+           BNE  U3FAIL
+
+           LDD  TSTUB4
+           SUBD TSTUAF
+           CMPD #0
+           BNE  U3FAIL
+
+           LDD  #TRUEV
+           BRA  U3DONE
+U3FAIL:    LDD  #FALSEV
+U3DONE:    LDX  #TSTUNTLZNAME
+           PSHU X
+           PSHU D
+           JSR  TSTREPORT
+
+           LDU  TSTU0
+           RTS
+
+TSTUNTLZNAME: FCB  9
+              FCC  "TSTUNTILZ"
+
+; ------------------------------------------------------------
+; TSTENDOFZ - unit test for ENDOF, tag-mismatch case. Same
+; pattern - wrong value in place of TAGOF.
+; ------------------------------------------------------------
+TSTENDOFZ: STU  TSTU0
+
+           LDD  #0
+           PSHU D
+           LDD  #0
+           PSHU D
+           LDX  #ENDOF
+           PSHU X
+           STU  TSTUB4
+
+           JSR  CATCH
+
+           STU  TSTUAF
+
+           PULU D
+           CMPD #-22
+           BNE  EOFAIL
+
+           LDD  TSTUB4
+           SUBD TSTUAF
+           CMPD #0
+           BNE  EOFAIL
+
+           LDD  #TRUEV
+           BRA  EODONE
+EOFAIL:    LDD  #FALSEV
+EODONE:    LDX  #TSTENDFZNAME
+           PSHU X
+           PSHU D
+           JSR  TSTREPORT
+
+           LDU  TSTU0
+           RTS
+
+TSTENDFZNAME: FCB  9
+              FCC  "TSTENDOFZ"
 
            ENDC ; <<<<
 

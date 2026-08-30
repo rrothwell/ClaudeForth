@@ -3533,7 +3533,186 @@ design decisions made since the original version.
       settings (10 scenarios total) all pass; explicitly confirmed
       `TSTSELECTOR=3` includes only `TSTLOGIC`'s own bodies, with the
       other three groups' bodies genuinely absent. Byte-exact split-
-      file reassembly confirmed. Not yet confirmed via MAME.
+      file reassembly confirmed. **MAME-CONFIRMED**: the user reports
+      all `TSTLOGIC` tests pass, including `ALIGN`'s dedicated no-op
+      test and `RSHIFT`'s negative-input logical-shift case - the
+      `ENDC` fix holds on real hardware too, not just in simulation.
+
+- [x] **`TSTCOMPARE` added - comparison tests (glossary section 3.7,
+      14 words, 15 tests since `WITHIN` gets two cases), wired into
+      `TSTRUNNER` and gated as `TSTSELECTOR`'s fifth group (`-4`).**
+      Signed-vs-unsigned pairs (`</U<`, `>/U>`) each tested with an
+      operand pair that would give the *opposite* answer under the
+      other convention (`TSTNEG1`'s raw bit pattern is a large
+      unsigned magnitude despite being a negative signed value) -
+      confirms genuine sign-awareness rather than an accidentally-
+      shared implementation. `WITHIN` tested against a wraparound
+      range specifically (`n2` near `$FFFF`, `n3` wrapped past
+      `$0000`), both inside and outside cases - the documented
+      special case ("handles wraparound ranges correctly," via
+      unsigned-offset comparison) its own implementation exists to
+      handle, not just an ordinary non-wrapping range; traced the
+      real implementation by hand first to confirm it computes
+      `(n1-n2) < (n3-n2)` unsigned before designing the test, not
+      assumed from the glossary's one-line description. `D<`/`DU<`
+      both tested with equal high cells and different low cells - the
+      documented tie-break case ("low cells unsigned only if [high
+      cells] equal") a naive high-cell-only comparison would get
+      wrong.
+
+      Label collisions checked programmatically before insertion -
+      caught one real one this way (`DU`, intended for `DULESSW`,
+      collided with `DUDONE` already inside `DUMP`'s own
+      implementation, part of the unrelated Tools word set - the same
+      class of issue as `MSTAR`/`LSHIFT`/`RSHIFT`/`HOLDS` found in
+      earlier groups). Replaced with `DZ`, re-verified against every
+      label in the file.
+
+      **Applied the lesson from the previous group's real mistake
+      immediately this time**: checked the file's `IFEQ`/`IFNE`/
+      `IFNDEF` vs `ENDC` balance right after insertion, before any
+      other verification - confirmed balanced (17/17) on the first
+      check, meaning both `TSTSELECTOR-4` wrap points (call-list and
+      test-body definitions) got their closing `ENDC` correctly this
+      time, not caught after the fact via the production-build
+      simulation like last time.
+
+      Verified: every one of the 15 depth-check values independently
+      re-derived from real arity and confirmed correct; every numeric
+      expected value independently re-verified against fresh
+      computation with proper symbolic-constant resolution; every
+      symbolic reference confirmed to resolve to a real definition;
+      all 15 tests confirmed wired into `TSTCOMPARE`. Full scenario
+      matrix re-run with `TSTSELECTOR`'s fifth value included (12
+      scenarios: production default x2, `-DUNITTESTS=1` crossed with
+      all five `TSTSELECTOR` values x2 `SERIALPOLL` settings) - all
+      pass; explicitly confirmed `TSTSELECTOR=4` includes only
+      `TSTCOMPARE`'s own bodies, with the other four groups' bodies
+      genuinely absent. Byte-exact split-file reassembly confirmed.
+      **MAME-CONFIRMED**: the user reports all `TSTCOMPARE` tests
+      pass, including the `WITHIN` wraparound cases and the `D</DU<`
+      tie-break cases - the `IFEQ`/`ENDC` balance fix applied at
+      insertion time (learned from the previous group's mistake) held
+      on real hardware, not just in simulation.
+
+- [ ] **`TSTCTRLFLOW` added - control-flow tests (glossary section
+      3.8, 22 words, 20 tests), wired into `TSTRUNNER` and gated as
+      `TSTSELECTOR`'s sixth group (`-5`). A fundamentally different
+      testing problem from every prior group: these are compile-time,
+      immediate, code-generating words, not runtime operations on
+      operands.** Every implementation traced by hand first (`IF`/
+      `THEN`/`ELSE`, `BEGIN`/`UNTIL`/`AGAIN`/`WHILE`/`REPEAT`,
+      `RECURSE`, `DO`/`?DO`/`LOOP`/`+LOOP`, `I`/`J`/`LEAVE`/`UNLOOP`,
+      `EXIT`, `CASE`/`OF`/`ENDOF`/`ENDCASE`, plus `PATCH`/`CCALL`/
+      `CODECOMMA`/`ZBRANCH`/`BRANCH` and the return-stack loop-frame
+      layout) - confirmed the "control-flow stack" is just the
+      ordinary data stack (`IF` pushes `(patch-addr, TAGFWD)`; `THEN`
+      pops and patches), and everything reads/writes through
+      `CODEHERE`, a plain variable, not tied to a real dictionary
+      entry.
+
+      **Test methodology**: each test redirects `CODEHERE` to a new
+      scratch buffer (`TSTCBUF`, 80 bytes), calls the real compile-
+      time words directly (`JSR IF`, `JSR THEN`, `JSR DO`, etc - the
+      actual routines the compiler itself calls, not a hand-simulated
+      imitation), restores `CODEHERE`, then executes the compiled
+      snippet directly. Tests the real interaction between compile-
+      time correctness (right bytes, right patched offsets) and
+      runtime correctness (right control flow) in one coherent check,
+      without needing the outer interpreter, `FIND`, or a dictionary
+      entry. Given the planned future ANS test suite for broader
+      standards-compliance coverage, this deliberately focuses on the
+      compile/patch mechanism itself, not full end-to-end parsing.
+      `UNLOOP` is the one exception - a genuine runtime no-op (bare
+      `RTS`), tested directly like `ALIGN`'s own test, needing none of
+      this harness. `RECURSE` needed its own scratch (`TSTFHDR`, a
+      fake dictionary header with a known CFA, `LATEST` temporarily
+      redirected to it) since it reads `LATEST` directly. `EXIT`
+      needed the real `CSP` variable set correctly (matching what `:`
+      does at the start of a real definition), since its own compile-
+      time frame-counting scan depends on it.
+
+      Every compiled snippet's exact byte layout and patched offset
+      values were hand-traced before being trusted - not just "it
+      assembled." Two genuinely difficult cases specifically: `IF`/
+      `ELSE`/`THEN` (verified IF's patched offset lands exactly at
+      the ELSE-body's start, ELSE's own patched offset lands exactly
+      past it) and `BEGIN`/`WHILE`/`REPEAT` (verified WHILE's forward
+      offset lands exactly at the final `RTS`, REPEAT's back-edge
+      lands exactly at `BEGIN`).
+
+      **A real, substantive finding, not just a test-writing detail**:
+      traced `DOTEST`'s actual termination logic (simulated the real
+      increment-and-compare-equal check) and confirmed `DO` with
+      `limit=index` takes a full 65536-iteration wraparound to
+      naturally reconverge on equality - true to the letter of the
+      glossary's "runs at least once" but not in any fast sense.
+      Deliberately left untested rather than build something
+      impractical for a boot-time check or guess at it. `?DO`'s own
+      equivalent case (`TSTQDOLPEQ`) IS tested - confirmed by the same
+      kind of trace that its skip check happens before the loop is
+      entered at all, fast and safe.
+
+      Distinguished `LEAVE` from `EXIT` precisely by hand-tracing
+      when each actually takes effect: `LEAVE` only sets a flag,
+      checked at the *next* `LOOP`, so the current iteration's
+      trailing code still runs (`TSTLEAVE`'s sum is 0+1+2+3=6,
+      including the iteration where `I`=3 triggers `LEAVE`); `EXIT`
+      fires immediately where encountered, so the same-shaped test
+      (`TSTEXIT`) gives 0+1+2=3, not including `I`=3's own iteration.
+      Getting this backwards would have been a real, silent bug in
+      the tests themselves, not caught by any structural check.
+
+      Error-path tests (`TSTTHENZ`/`TSTUNTILZ`/`TSTENDOFZ`, covering
+      "throws -22 on tag mismatch") reuse the established `CATCH`
+      pattern from earlier sections directly - confirmed by reading
+      `CFERR` that the error path never touches `CODEHERE` at all, so
+      no redirect is needed for these three specifically, unlike
+      every other test in this group.
+
+      **Two real mistakes caught and fixed during this batch, not
+      after**: (1) three depth-check sign errors (`TSTIFT2`,
+      `TSTRECUR`, `TSTDOLP`) - the same class of mistake as earlier
+      sections - caught by systematically re-deriving every depth
+      value from actual cells-in/cells-out arithmetic rather than
+      trusting the first pass, before any insertion happened. (2) a
+      genuinely new mistake: concatenating the 14 draft files via a
+      shell glob (`tstctrl_part*.txt`) sorted lexicographically, not
+      numerically, scrambling the test bodies' order in the first
+      insertion attempt (`part1` followed by `part10`-`part14`, then
+      `part2`-`part9`) - likely harmless for actual assembly (forward
+      references are fine), but sloppy and not what was intended.
+      Caught via a reference-verification check that found expected
+      words apparently missing from the inserted block, traced
+      precisely to the real cause (wrong extraction boundary
+      revealing the reordering, not missing content) rather than
+      assumed fixed, and the whole insertion redone with correct
+      numeric ordering before delivering anything.
+
+      Label collisions checked programmatically before insertion -
+      caught 6 real ones this way, all simple prefix reuse from this
+      session's own earlier sections (`DZ`, `UL`, `PL`, `DL`, `TZ`,
+      `UZ`), replaced with `EO`, `UO`, `PO`, `DW`, `T3`, `U3`, each
+      re-verified against every label in the file.
+
+      Verified: zero duplicate symbols, dictionary chain still 224
+      entries intact across all 14 relevant `SERIALPOLL`x
+      `UNITTESTS`x`TSTSELECTOR` scenario combinations (production
+      default, and `-DUNITTESTS=1` crossed with all six `TSTSELECTOR`
+      values and both `SERIALPOLL` settings); every one of the 20
+      tests' depth-check values independently re-derived from real
+      arity and confirmed correct; every symbolic and word reference
+      confirmed to resolve to a real definition (a small number of
+      apparent false positives - bare `F`/`O` tokens - traced to the
+      quoted character literals in `TSTRECUR`'s fake header
+      construction, not real gaps); all 20 tests confirmed wired into
+      `TSTCTRLFLOW`; explicitly confirmed `TSTSELECTOR=5` includes
+      only this group's own bodies. Byte-exact split-file reassembly
+      confirmed. Not yet confirmed via MAME - given this section's
+      genuinely new testing mechanism (redirected `CODEHERE`,
+      hand-assembled compile sequences) and its real complexity
+      relative to every prior group, this one specifically warrants
+      thorough real-hardware testing before being considered settled.
 
 ## Structural duplication (identified, some resolved, some not)
 
