@@ -733,6 +733,7 @@ TSTRUNNER: JSR   TSTSTACK
            JSR   TSTSARITH
            JSR   TSTDARITH
            JSR   TSTLOGIC
+           JSR   TSTCOMPARE
            RTS
 
 ; ------------------------------------------------------------
@@ -4470,6 +4471,742 @@ AGDONE:     LDX   #TSTALGNNAME
 
 TSTALGNNAME: FCB  7
                FCC  "TSTALGN"
+
+           ENDC ; <<<<
+
+; ------------------------------------------------------------
+; TSTCOMPARE - comparison tests (glossary section 3.7). Covers
+; every word in that section. Like several words in the previous
+; group, most of these modify the top of stack in place rather
+; than PULU/PSHU - the tests verify what's observable via the
+; stack either way. Signed vs unsigned comparisons (</U<, >/U>)
+; each tested with a case that would give the opposite answer
+; under the other convention, confirming genuine sign-awareness
+; rather than an accidentally-shared implementation. WITHIN
+; tested against a wraparound range specifically (n2 near $FFFF,
+; n3 wrapped past $0000), both inside and outside cases - the
+; documented special case its own unsigned-offset implementation
+; exists to handle, not just an ordinary non-wrapping range. D</
+; DU< both tested with equal high cells and different low cells -
+; the documented tie-break case a naive high-cell-only comparison
+; would get wrong.
+; ------------------------------------------------------------
+TSTCOMPARE: JSR   CRW
+           LDX   #TSTCOMPMSG
+           PSHU  X
+           LDD   #7
+           PSHU  D
+           JSR   TYPE
+           JSR   CRW
+
+           IFEQ TSTSELECTOR-4  ; >>>>
+
+           JSR   TSTEQ
+           JSR   TSTLT
+           JSR   TSTGT
+           JSR   TSTZEQ
+           JSR   TSTZLT
+           JSR   TSTULT
+           JSR   TSTNE
+           JSR   TSTZNE
+           JSR   TSTZGT
+           JSR   TSTUGT
+           JSR   TSTWI1
+           JSR   TSTWI2
+           JSR   TSTDEQ
+           JSR   TSTDLT
+           JSR   TSTDULT
+
+           ENDC ; <<<<
+
+           RTS
+
+TSTCOMPMSG: FCC "Compare"
+
+           IFEQ TSTSELECTOR-4  ; >>>>
+
+; ------------------------------------------------------------
+; TSTEQ - unit test for EQUALW. true if equal - tested with matching values, the case that actually exercises the true branch.
+; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
+; -2 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTEQ:      STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   EQUALW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFFF
+           BNE   EQFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   EQFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   EQFAIL
+
+           LDD   #TRUEV
+           BRA   EQDONE
+EQFAIL:     LDD   #FALSEV
+EQDONE:     LDX   #TSTEQNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTEQNAME: FCB  5
+             FCC  "TSTEQ"
+
+; ------------------------------------------------------------
+; TSTLT - unit test for LESSW. true if n1 signed less than n2 - tested with a negative n1 and positive n2, the case that distinguishes signed from unsigned comparison.
+; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
+; -2 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTLT:      STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   LESSW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFFF
+           BNE   LTFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   LTFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   LTFAIL
+
+           LDD   #TRUEV
+           BRA   LTDONE
+LTFAIL:     LDD   #FALSEV
+LTDONE:     LDX   #TSTLTNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTLTNAME: FCB  5
+             FCC  "TSTLT"
+
+; ------------------------------------------------------------
+; TSTGT - unit test for GREATERW. true if n1 signed greater than n2 - same reasoning as < , reversed operands.
+; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
+; -2 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTGT:      STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   GREATERW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFFF
+           BNE   GTFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   GTFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   GTFAIL
+
+           LDD   #TRUEV
+           BRA   GTDONE
+GTFAIL:     LDD   #FALSEV
+GTDONE:     LDX   #TSTGTNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTGTNAME: FCB  5
+             FCC  "TSTGT"
+
+; ------------------------------------------------------------
+; TSTZEQ - unit test for ZEROEQ. true if n is zero - tested with a nonzero value, confirming false is genuinely reachable, not just the trivial zero case.
+; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
+; 0 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTZEQ:     STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   ZEROEQ
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$0000
+           BNE   ZEFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   ZEFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   ZEFAIL
+
+           LDD   #TRUEV
+           BRA   ZEDONE
+ZEFAIL:     LDD   #FALSEV
+ZEDONE:     LDX   #TSTZEQNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTZEQNAME: FCB  6
+              FCC  "TSTZEQ"
+
+; ------------------------------------------------------------
+; TSTZLT - unit test for ZEROLT. true if n is negative.
+; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
+; 0 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTZLT:     STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   ZEROLT
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFFF
+           BNE   ZLFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   ZLFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   ZLFAIL
+
+           LDD   #TRUEV
+           BRA   ZLDONE
+ZLFAIL:     LDD   #FALSEV
+ZLDONE:     LDX   #TSTZLTNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTZLTNAME: FCB  6
+              FCC  "TSTZLT"
+
+; ------------------------------------------------------------
+; TSTULT - unit test for ULESSW. true if u1 unsigned less than u2 - tested with TSTVAL1 vs TSTNEG1's raw bit pattern (a large unsigned magnitude), the case that would invert under signed comparison, confirming this is genuinely unsigned.
+; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
+; -2 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTULT:     STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   ULESSW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFFF
+           BNE   ULFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   ULFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   ULFAIL
+
+           LDD   #TRUEV
+           BRA   ULDONE
+ULFAIL:     LDD   #FALSEV
+ULDONE:     LDX   #TSTULTNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTULTNAME: FCB  6
+              FCC  "TSTULT"
+
+; ------------------------------------------------------------
+; TSTNE - unit test for NOTEQUAL. true if not equal.
+; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
+; -2 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTNE:      STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   NOTEQUAL
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFFF
+           BNE   NEFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   NEFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   NEFAIL
+
+           LDD   #TRUEV
+           BRA   NEDONE
+NEFAIL:     LDD   #FALSEV
+NEDONE:     LDX   #TSTNENAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTNENAME: FCB  5
+             FCC  "TSTNE"
+
+; ------------------------------------------------------------
+; TSTZNE - unit test for ZERONE. true if n is not zero.
+; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
+; 0 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTZNE:     STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   ZERONE
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFFF
+           BNE   ZNFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   ZNFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   ZNFAIL
+
+           LDD   #TRUEV
+           BRA   ZNDONE
+ZNFAIL:     LDD   #FALSEV
+ZNDONE:     LDX   #TSTZNENAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTZNENAME: FCB  6
+              FCC  "TSTZNE"
+
+; ------------------------------------------------------------
+; TSTZGT - unit test for ZEROGT. true if n is greater than zero - tested with a negative value, confirming the comparison correctly excludes negatives (not just zero).
+; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
+; 0 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTZGT:     STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   ZEROGT
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$0000
+           BNE   ZGFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   ZGFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   ZGFAIL
+
+           LDD   #TRUEV
+           BRA   ZGDONE
+ZGFAIL:     LDD   #FALSEV
+ZGDONE:     LDX   #TSTZGTNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTZGTNAME: FCB  6
+              FCC  "TSTZGT"
+
+; ------------------------------------------------------------
+; TSTUGT - unit test for UGREATER. true if u1 unsigned greater than u2 - same reasoning as U< : TSTNEG1's raw bit pattern is a large unsigned magnitude, genuinely greater than TSTVAL1's here.
+; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
+; -2 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTUGT:     STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   UGREATER
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFFF
+           BNE   UGFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   UGFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   UGFAIL
+
+           LDD   #TRUEV
+           BRA   UGDONE
+UGFAIL:     LDD   #FALSEV
+UGDONE:     LDX   #TSTUGTNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTUGTNAME: FCB  6
+              FCC  "TSTUGT"
+
+; ------------------------------------------------------------
+; TSTWI1 - unit test for WITHINW. true if n2<=n1<n3 - tested with a wraparound range (n2 near $FFFF, n3 wrapped past $0000), the documented special case this word's own unsigned-offset implementation exists to handle correctly, with n1 inside the wrapped range.
+; Arity: 3 cell(s) in, 1 cell(s) out -> depth check
+; -4 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTWI1:     STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #$FFFA
+           PSHU  D
+           LDD   #$FFF0
+           PSHU  D
+           LDD   #$0010
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   WITHINW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFFF
+           BNE   W1FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   W1FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-4
+           BNE   W1FAIL
+
+           LDD   #TRUEV
+           BRA   W1DONE
+W1FAIL:     LDD   #FALSEV
+W1DONE:     LDX   #TSTWI1NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTWI1NAME: FCB  6
+              FCC  "TSTWI1"
+
+; ------------------------------------------------------------
+; TSTWI2 - unit test for WITHINW. same wraparound range as TSTWI1, with n1 genuinely outside it - confirms the wraparound handling correctly excludes as well as includes.
+; Arity: 3 cell(s) in, 1 cell(s) out -> depth check
+; -4 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTWI2:     STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #$0020
+           PSHU  D
+           LDD   #$FFF0
+           PSHU  D
+           LDD   #$0010
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   WITHINW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$0000
+           BNE   W2FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   W2FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-4
+           BNE   W2FAIL
+
+           LDD   #TRUEV
+           BRA   W2DONE
+W2FAIL:     LDD   #FALSEV
+W2DONE:     LDX   #TSTWI2NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTWI2NAME: FCB  6
+              FCC  "TSTWI2"
+
+; ------------------------------------------------------------
+; TSTDEQ - unit test for DEQUAL. double-cell equal - tested with matching double values.
+; Arity: 4 cell(s) in, 1 cell(s) out -> depth check
+; -6 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTDEQ:     STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTD1LO
+           PSHU  D
+           LDD   #TSTD1HI
+           PSHU  D
+           LDD   #TSTD1LO
+           PSHU  D
+           LDD   #TSTD1HI
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DEQUAL
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFFF
+           BNE   DQFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   DQFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-6
+           BNE   DQFAIL
+
+           LDD   #TRUEV
+           BRA   DQDONE
+DQFAIL:     LDD   #FALSEV
+DQDONE:     LDX   #TSTDEQNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDEQNAME: FCB  6
+              FCC  "TSTDEQ"
+
+; ------------------------------------------------------------
+; TSTDLT - unit test for DLESSW. double-cell signed less than - tested with equal high cells and different low cells, the tie-break case this word's own documented behavior specifically calls out (compares low cells unsigned only when the high cells are equal).
+; Arity: 4 cell(s) in, 1 cell(s) out -> depth check
+; -6 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTDLT:     STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #$1000
+           PSHU  D
+           LDD   #$0005
+           PSHU  D
+           LDD   #$2000
+           PSHU  D
+           LDD   #$0005
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DLESSW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFFF
+           BNE   DLFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   DLFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-6
+           BNE   DLFAIL
+
+           LDD   #TRUEV
+           BRA   DLDONE
+DLFAIL:     LDD   #FALSEV
+DLDONE:     LDX   #TSTDLTNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDLTNAME: FCB  6
+              FCC  "TSTDLT"
+
+; ------------------------------------------------------------
+; TSTDULT - unit test for DULESSW. double-cell unsigned less than - same tie-break reasoning as D<, both tiers compared unsigned.
+; Arity: 4 cell(s) in, 1 cell(s) out -> depth check
+; -6 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTDULT:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #$1000
+           PSHU  D
+           LDD   #$0005
+           PSHU  D
+           LDD   #$2000
+           PSHU  D
+           LDD   #$0005
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   DULESSW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFFF
+           BNE   DZFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   DZFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-6
+           BNE   DZFAIL
+
+           LDD   #TRUEV
+           BRA   DZDONE
+DZFAIL:     LDD   #FALSEV
+DZDONE:     LDX   #TSTDULTNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTDULTNAME: FCB  7
+               FCC  "TSTDULT"
 
            ENDC ; <<<<
 
