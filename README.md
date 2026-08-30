@@ -60,9 +60,11 @@ brew install binutils
 |Manual tests and identified/fixed numerous bugs. |:white_check_mark:|
 |Update documentation|:white_check_mark:|
 |Automated unit tests and identified bug fixes.  | |
+|Improve MAME connection with emulated hardware handshaking.  | |
 |Tests against ANS test suite and identified bug fixes.  | |
 |Optimisation for space, compiler performance & application performance| |
 |Update documentation| |
+|Burn ROM and install onto real MECB 6809 hardware. | |
 |Develop a simple forth application| |
 |Refine the documentation| |
 
