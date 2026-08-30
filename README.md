@@ -94,11 +94,11 @@ brew install binutils
 
 #### Portable Document format
 
-[ClaudeForth Document](https://github.com/rrothwell/ClaudeForth/blob/master/ClaudeForth%20preview.pdf)
+[ClaudeForth Document](Documentation/ClaudeForth%20preview.pdf)
 
 #### Memory Map
 
-![alt Memory Map](forth6809%20memory%20map.svg)
+![alt Memory Map](Documentation/forth6809%20memory%20map.svg)
 
 #### MAME Test Harness
 1. Chapter 1: [MAME installation notes](https://github.com/rrothwell/ClaudeForth/blob/master/MAME%20installation%20notes.md)
