@@ -4,7 +4,13 @@ The .bin file for the forth code has been compile with mecb6809 as the target.
 To build after generating the forth6809.asm file and downloading it via Claude:
 ```bash
 cd $HOME/git/mame0288
-lwasm --6809 --format=raw --output=forth6809.bin forth6809.asm
+lwasm --6809 --format=raw --output=forth6809.bin --list=forth6809.lst forth6809.asm
+```
+To build for unit testing set the -D flags to select unit testing mode
+ and to select which block of unit tests is to be executed.
+```bash
+cd $HOME/git/mame0288
+lwasm --6809 --format=raw --output=forth6809.bin --list=forth6809.lst --define=UNITTESTS --define=TSTSELECTOR=0 forth6809.asm
 ```
 For more details see the build section in [ClaudeForth_preview](https://github.com/rrothwell/ClaudeForth/blob/master/ClaudeForth_preview.pdf)
 
@@ -48,6 +54,6 @@ To solve this problem requires either packing the code with no gaps,
 or using the FILL directive to place $FF in the gaps.
 
 In addition the FILL directive was used to pad the empty ROM area from 
-$C100 to BASEDICT at $D83F. The ROM file then has the corect size expected
+$C100 to BASEDICT at $D83F. The ROM file then has the correct size expected
 by the driver so the opcodes with be properly located, butting at top of memory.
 Evidently the driver is coded to not overlay the IO area containingf the ACIA.

@@ -3396,6 +3396,145 @@ design decisions made since the original version.
       group (`TSTSELECTOR=2`) now assembles and runs successfully,
       validating the mechanism end to end, not just structurally.
 
+- [x] **RESOLVED - `UNITTESTS` and `TSTSELECTOR` converted from plain
+      `EQU` to an `IFNDEF`/`SET`/`ENDC` fallback-default pattern, per
+      explicit request, supporting future override via lwasm's `-D`
+      command-line option without editing the source.** `-D` pre-
+      defines a symbol before the source is processed, so `IFNDEF`
+      correctly detects and skips the fallback `SET` when a value was
+      supplied that way, leaving the `-D`-provided value in place;
+      when no `-D` was given, the symbol is genuinely undefined at
+      that point, `IFNDEF` fires, and the fallback value applies.
+      `TSTSELECTOR`'s fallback preserves its current working value
+      (2) - the request's own example showed 0, but that was
+      illustrating the pattern, not asking to reset the actual
+      selector.
+
+      **`UNITTESTS`'s flag meaning deliberately reversed at the same
+      time, per explicit request**: both `IFEQ UNITTESTS` occurrences
+      (the main test-framework body, and the `COLDSTRT` call site)
+      changed to `IFNE UNITTESTS` - inverting the semantics from
+      "0=included" to "0=excluded, nonzero=included". This makes 0
+      (or no `-D` at all) the safe, production default - test-
+      framework code and its `TSTRUNNER` call site both genuinely
+      absent from a default build - with testing now opt-in via
+      `-DUNITTESTS=1` rather than opt-out via editing a plain `EQU`.
+      Both `IFEQ`→`IFNE` changes applied together deliberately, not
+      independently - leaving one as `IFEQ` while the other became
+      `IFNE` would have left the test-framework body and its own call
+      site testing opposite conditions, a real risk of building
+      correctly but crashing at the call site (or vice versa) that
+      was checked for explicitly, not just assumed avoided by intent.
+      Updated stale comments referencing the old "0=included,1=
+      excluded" convention in both places, including the historical
+      note on the `COLDSTRT` call site's own `NOP`-padding fix from
+      earlier in the session, which had specifically referenced
+      `UNITTESTS=1` as the excluded case - no longer accurate under
+      the reversed meaning.
+
+      This session's structural verification simulator extended to
+      handle the three new constructs (`IFNDEF`, `SET`, `IFNE`), none
+      previously present in this file - `IFNDEF` modeled via an
+      explicit set of "defined" flags (mirroring what `-D` would
+      predefine), `SET` treated identically to `EQU` for verification
+      purposes, `IFNE` as the logical inverse of the existing `IFEQ`
+      handling. Verified across scenarios a plain duplicate-symbol
+      check wouldn't distinguish: (1) no `-D` at all - confirmed the
+      entire test framework, including `TSTRUNNER` and every
+      individual test body, is genuinely absent, not just
+      unreachable, and the call site correctly falls through to its
+      `NOP` placeholder; (2) `-DUNITTESTS=1` with each `TSTSELECTOR`
+      value explicitly passed - confirmed correct group selection
+      still works under the reversed `UNITTESTS` convention; (3)
+      `-DUNITTESTS=1` alone, `TSTSELECTOR` *not* separately overridden
+      - confirmed it correctly falls back to its own default (2)
+      rather than picking up `UNITTESTS`' value or failing to resolve.
+      All scenarios: zero duplicate symbols, dictionary chain intact
+      (224 entries). Byte-exact split-file reassembly confirmed. Not
+      yet confirmed via real lwasm - simulated `-D` behavior here,
+      not run against the actual toolchain's own `-D` implementation,
+      which is worth checking given this is new assembler-feature
+      territory for this file, not just new source structure.
+
+- [x] **RESOLVED - unit test framework block comment fixed, per
+      explicit request: "UNITTESTS=1 removes it entirely" was stale
+      after the flag-meaning reversal, and would have told a reader
+      the exact opposite of the current behavior.** Rewrote to
+      describe the current (0/undefined=excluded, nonzero=included)
+      convention, and added the requested example lwasm command line
+      (`--define=UNITTESTS --define=TSTSELECTOR=2`) at the end of the
+      block comment. Also proactively fixed three further references
+      to the old convention in `INITCODE`'s own historical comment
+      (describing an earlier fix made before the reversal existed) -
+      left unfixed, these would have recreated the same confusion
+      just flagged, one layer further into the file.
+
+- [x] **`TSTLOGIC` added - logic, shift, and address-arithmetic tests
+      (glossary section 3.6, 12 words, 12 tests), wired into
+      `TSTRUNNER` and gated as `TSTSELECTOR`'s fourth group (`-3`).**
+      Several of these words modify the top of stack in place (`LDD`/
+      op/`STD`, never `PULU`/`PSHU` at all - `INVERT`, `CELLS`,
+      `CELL+`, `CHARS`, `CHAR+`, `ALIGNED`) - tests verify what's
+      observable via the stack regardless of implementation mechanism,
+      reusing the same generic push/pop test template as every
+      previous group without needing special-casing. Three words
+      (`CHARS`, `ALIGN`, `ALIGNED`) are documented no-ops on this
+      system; `CHARS`/`ALIGNED` got ordinary single-value identity
+      tests, while `ALIGN` - which takes no stack arguments at all -
+      got a dedicated test pushing two decoy values to confirm the
+      *whole* stack is undisturbed, not just a single value's
+      persistence (the same template handles this too, called with
+      `cells_in=0, cells_out=0` and no real "operand" semantics).
+      `RSHIFT` tested against a negative input specifically, since
+      it's documented logical (zero-fill) rather than arithmetic
+      (sign-preserving) - the same reasoning already applied to `2/`
+      and `FM/MOD`-vs-`SM/REM` in earlier groups, confirmed to give a
+      genuinely different result than an arithmetic shift would.
+
+      Label collisions checked programmatically before insertion -
+      caught 3 real ones this way (`LS`, `RS`, `HS` all collided with
+      internal labels already inside `LSHIFT`'s, `RSHIFT`'s, and
+      `HOLDS`'s own implementations - `LSDONE`/`RSDONE`/`HSDONE` -
+      the same class of issue as `MSTAR`'s own `MSDONE` collision
+      found earlier). Replaced with `L2`, `R2`, `C3`, each re-verified
+      against every label in the file.
+
+      **A real mistake caught and fixed before delivery, not after**:
+      the initial insertion left `TSTSELECTOR`'s second `IFEQ`/`ENDC`
+      pair (wrapping `TSTLOGIC`'s own test-body definitions) with no
+      closing `ENDC` at all - the wrapper and generated test bodies
+      were concatenated without one, unlike the `TSTDARITH` transfer
+      earlier, which needed and got an explicit closing `ENDC` inserted
+      by hand. The open block fell through and silently consumed the
+      pre-existing outer `ENDC` that closes the entire `UNITTESTS`
+      block, leaving everything unbalanced by one. This didn't fail
+      the routine duplicate-symbol check (which doesn't verify
+      `IFEQ`/`ENDC` balance at all) - it was caught by extending
+      verification to actually simulate the production-default build
+      (no `-D` at all) and finding the dictionary chain walk returned
+      *zero* entries instead of 224, a stark, unmissable signal once
+      checked, but one that a narrower check would have missed
+      entirely. Root cause confirmed precisely (an explicit open/close
+      trace of every `IFEQ`/`IFNE`/`IFNDEF`/`ENDC` in the file,
+      showing depth ending at 1 instead of 0) before fixing, not
+      guessed at. Fixed by adding the missing `ENDC`; `IFEQ`/`IFNE`/
+      `IFNDEF` vs `ENDC` counts now balanced (15/15) file-wide.
+
+      Verified after the fix: every one of the 12 depth-check values
+      independently re-derived from real arity and confirmed correct;
+      every numeric expected value independently re-verified against
+      fresh computation with proper symbolic-constant resolution;
+      every symbolic reference confirmed to resolve to a real
+      definition; all 12 tests confirmed wired into `TSTLOGIC`. Full
+      scenario matrix re-run after the `ENDC` fix specifically (not
+      just re-trusted): production default (no `-D`) now correctly
+      shows the full 224-entry chain again, `-DUNITTESTS=1` crossed
+      with all four `TSTSELECTOR` values and both `SERIALPOLL`
+      settings (10 scenarios total) all pass; explicitly confirmed
+      `TSTSELECTOR=3` includes only `TSTLOGIC`'s own bodies, with the
+      other three groups' bodies genuinely absent. Byte-exact split-
+      file reassembly confirmed. Not yet confirmed via MAME.
+
 ## Structural duplication (identified, some resolved, some not)
 
 - [x] `:`/`CREATE`/`VARIABLE`'s header-building — resolved via `HEADER`

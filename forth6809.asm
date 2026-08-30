@@ -103,15 +103,18 @@ INITCODE EQU  $FFA6     ; was $FFA9 - shifted down 3 bytes, per
                          ; UNITTESTS call site's own fix (below):
                          ; that site now always emits exactly 3 bytes
                          ; (either the real JSR TSTRUNNER, or 3 NOPs
-                         ; as a placeholder when UNITTESTS=1), so
-                         ; COLDSTRT's total size no longer depends on
-                         ; UNITTESTS at all - previously it did (JSR
-                         ; TSTRUNNER only existed when UNITTESTS=0,
-                         ; with nothing emitted when UNITTESTS=1),
-                         ; meaning INITCODE's fixed position here
-                         ; could be correct for one setting and wrong
-                         ; for the other, risking an overflow into
-                         ; VECTORS when tests were compiled in. Prior
+                         ; as a placeholder when the test framework is
+                         ; excluded), so COLDSTRT's total size no
+                         ; longer depends on UNITTESTS at all -
+                         ; previously it did (JSR TSTRUNNER only
+                         ; existed when included, with nothing emitted
+                         ; when excluded - using this file's original,
+                         ; since-reversed UNITTESTS convention at the
+                         ; time this fix was made), meaning INITCODE's
+                         ; fixed position here could be correct for
+                         ; one setting and wrong for the other, risking
+                         ; an overflow into VECTORS when tests were
+                         ; compiled in. Prior
                          ; history: was $FFA2 - shifted up 7 bytes to
                          ; reduce the overlap with BASECODE's nominal
                          ; end ($FFB4) from 19 bytes to 12 - improved,
@@ -121,7 +124,8 @@ INITCODE EQU  $FFA6     ; was $FFA9 - shifted down 3 bytes, per
                          ; manual estimate relied on for several
                          ; turns, which was wrong by 7 bytes. That
                          ; 71-byte figure was measured with the old
-                         ; structure (UNITTESTS=1 emitting 0 bytes for
+                         ; structure (test framework excluded emitting
+                         ; 0 bytes for
                          ; the TSTRUNNER call site) - with the fix
                          ; above, that site now always emits 3 bytes
                          ; either way, so real content is reasoned to
@@ -596,10 +600,13 @@ FILLCHR  EQU  MVSRC
 ; CODEHERE/LATEST/BASE all still hold whatever COLD is about to
 ; set them to). Lives here, in previously-unused ROM space right
 ; after INOUT's shadow, since this was pure FILL padding before
-; this existed - UNITTESTS=1 removes it entirely and this block
-; reverts to exactly that padding, computed automatically below
-; via the ROM label rather than a fixed byte count, so it's
-; correct either way without needing to be hand-adjusted.
+; this existed - the default build (UNITTESTS undefined, or
+; defined as 0) removes it entirely and this block reverts to
+; exactly that padding, computed automatically below via the ROM
+; label rather than a fixed byte count, so it's correct either
+; way without needing to be hand-adjusted. Pass
+; --define=UNITTESTS on the lwasm command line (see the example
+; at the end of this comment) to include it.
 ;
 ; Each test is independent by construction: it saves the data
 ; stack pointer (U) before touching anything, and unconditionally
@@ -614,19 +621,37 @@ FILLCHR  EQU  MVSRC
 ; BADWORD itself prints a failing word) is printed via COUNT+TYPE,
 ; followed by " OK" or " FAIL", followed by a CR - all via
 ; TSTREPORT, shared by every test rather than duplicated in each.
+;
+; Test groups are further gated by TSTSELECTOR (see below), one
+; group at a time, since assembling every group together exhausts
+; the available unused ROM space. Example command line, testing
+; group 2 with tests included:
+;
+;   lwasm --6809 --format=raw \
+;   --output=forth6809.bin --list=forth6809.lst \
+;   --define=UNITTESTS --define=TSTSELECTOR=2 \
+;   forth6809.asm
 ; ============================================================
-UNITTESTS EQU 0   ; was 1 (excluded) - reactivated: confirmed working
-                  ; on real MAME hardware (TSTDUP runs successfully
-                  ; and reports the correct message to the terminal) -
-                  ; whatever earlier concern prompted excluding it was
-                  ; resolved by other, unrelated fixes since. 0 =
-                  ; included (matches this file's established IFEQ
-                  ; convention, e.g. SERIALPOLL); 1 = excluded
-                  ; entirely, reverting to plain FILL padding.
+           IFNDEF UNITTESTS
+UNITTESTS SET 0   ; Fallback default value if -D wasn't passed.
+                  ; Flag meaning reversed from this file's original
+                  ; UNITTESTS convention (0=included,1=excluded under
+                  ; IFEQ) to support overriding via lwasm's -D command
+                  ; line option: default (0, no -D given) now means
+                  ; EXCLUDED - production builds get plain FILL
+                  ; padding here with no test-framework code, by
+                  ; default. Pass -DUNITTESTS=1 (or any nonzero value)
+                  ; to INCLUDE the test framework - tested and
+                  ; confirmed working on real MAME hardware under the
+                  ; old convention; this reversal only changes how the
+                  ; choice is made, not what including it does.
+           ENDC
 
-TSTSELECTOR EQU 2
+           IFNDEF TSTSELECTOR
+TSTSELECTOR SET 2   ; Fallback default value if -D wasn't passed.
+           ENDC
 
-         IFEQ  UNITTESTS  ; >>>>>>>>>>
+         IFNE  UNITTESTS  ; >>>>>>>>>>
 
 TSTU0    EQU   APPVARS       ; saved U, before a test touches it
 TSTUB4   EQU   APPVARS+2     ; U immediately before the op under test
@@ -707,6 +732,7 @@ TSTFAILMSGL  EQU  *-TSTFAILMSG
 TSTRUNNER: JSR   TSTSTACK
            JSR   TSTSARITH
            JSR   TSTDARITH
+           JSR   TSTLOGIC
            RTS
 
 ; ------------------------------------------------------------
@@ -3863,6 +3889,587 @@ RZDONE:     LDX   #TSTSMRZNAME
 
 TSTSMRZNAME: FCB  7
                FCC  "TSTSMRZ"
+
+           ENDC ; <<<<
+
+; ------------------------------------------------------------
+; TSTLOGIC - logic, shift, and address-arithmetic tests (glossary
+; section 3.6). Covers every word in that section. Several of
+; these (INVERT, CELLS, CELL+, CHARS, CHAR+, ALIGNED) modify the
+; top of stack in place (LDD/op/STD) rather than PULU/PSHU - the
+; tests verify what's observable via the stack either way, not
+; how each implementation gets there. Three words (CHARS, ALIGN,
+; ALIGNED) are documented no-ops on this system; CHARS/ALIGNED
+; still get a normal single-value test (verifying identity),
+; while ALIGN - which takes no stack arguments at all - gets a
+; dedicated test pushing decoy values to confirm the whole stack,
+; not just one value, is genuinely undisturbed. RSHIFT tested
+; against a negative input specifically, since it's documented
+; logical (zero-fill), not arithmetic (sign-preserving) - the
+; case that actually distinguishes the two conventions, same
+; reasoning already applied to 2/ and FM/MOD vs SM/REM earlier.
+; ------------------------------------------------------------
+TSTLOGIC:  JSR   CRW
+           LDX   #TSTLOGICMSG
+           PSHU  X
+           LDD   #5
+           PSHU  D
+           JSR   TYPE
+           JSR   CRW
+
+           IFEQ TSTSELECTOR-3  ; >>>>
+
+           JSR   TSTAND
+           JSR   TSTOR
+           JSR   TSTXOR
+           JSR   TSTINV
+           JSR   TSTLSH
+           JSR   TSTRSH
+           JSR   TSTCELS
+           JSR   TSTCELP
+           JSR   TSTCHRS
+           JSR   TSTCHRP
+           JSR   TSTALGD
+           JSR   TSTALGN
+
+           ENDC ; <<<<
+
+           RTS
+
+TSTLOGICMSG: FCC "Logic"
+
+           IFEQ TSTSELECTOR-3  ; >>>>
+
+; ------------------------------------------------------------
+; TSTAND - unit test for ANDW. bitwise AND.
+; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
+; -2 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTAND:     STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   ANDW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$0060
+           BNE   ANFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   ANFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   ANFAIL
+
+           LDD   #TRUEV
+           BRA   ANDONE
+ANFAIL:     LDD   #FALSEV
+ANDONE:     LDX   #TSTANDNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTANDNAME: FCB  6
+              FCC  "TSTAND"
+
+; ------------------------------------------------------------
+; TSTOR - unit test for ORW. bitwise OR.
+; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
+; -2 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTOR:      STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   ORW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$7DE9
+           BNE   ORFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   ORFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   ORFAIL
+
+           LDD   #TRUEV
+           BRA   ORDONE
+ORFAIL:     LDD   #FALSEV
+ORDONE:     LDX   #TSTORNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTORNAME: FCB  5
+             FCC  "TSTOR"
+
+; ------------------------------------------------------------
+; TSTXOR - unit test for XORW. bitwise exclusive OR.
+; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
+; -2 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTXOR:     STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   XORW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$7D89
+           BNE   XRFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   XRFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   XRFAIL
+
+           LDD   #TRUEV
+           BRA   XRDONE
+XRFAIL:     LDD   #FALSEV
+XRDONE:     LDX   #TSTXORNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTXORNAME: FCB  6
+              FCC  "TSTXOR"
+
+; ------------------------------------------------------------
+; TSTINV - unit test for INVERT. one's-complement, in-place (never touches U itself, unlike most words - the test only cares what's observable via the stack, not how the implementation gets there).
+; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
+; 0 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTINV:     STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   INVERT
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$A61E
+           BNE   IVFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   IVFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   IVFAIL
+
+           LDD   #TRUEV
+           BRA   IVDONE
+IVFAIL:     LDD   #FALSEV
+IVDONE:     LDX   #TSTINVNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTINVNAME: FCB  6
+              FCC  "TSTINV"
+
+; ------------------------------------------------------------
+; TSTLSH - unit test for LSHIFT. logical shift left, zero-fill, truncated to 16 bits.
+; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
+; -2 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTLSH:     STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           LDD   #$0004
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   LSHIFT
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$4680
+           BNE   L2FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   L2FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   L2FAIL
+
+           LDD   #TRUEV
+           BRA   L2DONE
+L2FAIL:     LDD   #FALSEV
+L2DONE:     LDX   #TSTLSHNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTLSHNAME: FCB  6
+              FCC  "TSTLSH"
+
+; ------------------------------------------------------------
+; TSTRSH - unit test for RSHIFT. logical shift right, zero-fill (not arithmetic/sign-preserving) - negative input is the case that actually distinguishes this from an arithmetic shift.
+; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
+; -2 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTRSH:     STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTNEG1
+           PSHU  D
+           LDD   #$0004
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   RSHIFT
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$0CFC
+           BNE   R2FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   R2FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   R2FAIL
+
+           LDD   #TRUEV
+           BRA   R2DONE
+R2FAIL:     LDD   #FALSEV
+R2DONE:     LDX   #TSTRSHNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTRSHNAME: FCB  6
+              FCC  "TSTRSH"
+
+; ------------------------------------------------------------
+; TSTCELS - unit test for CELLSW. convert a cell count to a byte offset (x2, this system's cell size).
+; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
+; 0 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTCELS:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   CELLSW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$48D0
+           BNE   CSFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   CSFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   CSFAIL
+
+           LDD   #TRUEV
+           BRA   CSDONE
+CSFAIL:     LDD   #FALSEV
+CSDONE:     LDX   #TSTCELSNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTCELSNAME: FCB  7
+               FCC  "TSTCELS"
+
+; ------------------------------------------------------------
+; TSTCELP - unit test for CELLPLUS. add one cell's size (2 bytes).
+; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
+; 0 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTCELP:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   CELLPLUS
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$59E3
+           BNE   CPFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   CPFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   CPFAIL
+
+           LDD   #TRUEV
+           BRA   CPDONE
+CPFAIL:     LDD   #FALSEV
+CPDONE:     LDX   #TSTCELPNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTCELPNAME: FCB  7
+               FCC  "TSTCELP"
+
+; ------------------------------------------------------------
+; TSTCHRS - unit test for CHARSW. convert a character count to a byte offset - documented no-op on this system (1 byte per character already).
+; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
+; 0 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTCHRS:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   CHARSW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   C3FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   C3FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   C3FAIL
+
+           LDD   #TRUEV
+           BRA   C3DONE
+C3FAIL:     LDD   #FALSEV
+C3DONE:     LDX   #TSTCHRSNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTCHRSNAME: FCB  7
+               FCC  "TSTCHRS"
+
+; ------------------------------------------------------------
+; TSTCHRP - unit test for CHARPLUS. add one character's size (1 byte).
+; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
+; 0 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTCHRP:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   CHARPLUS
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$59E2
+           BNE   HPFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   HPFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   HPFAIL
+
+           LDD   #TRUEV
+           BRA   HPDONE
+HPFAIL:     LDD   #FALSEV
+HPDONE:     LDX   #TSTCHRPNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTCHRPNAME: FCB  7
+               FCC  "TSTCHRP"
+
+; ------------------------------------------------------------
+; TSTALGD - unit test for ALIGNEDW. align a given address - documented no-op on the 6809 (no alignment restrictions to enforce).
+; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
+; 0 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTALGD:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   ALIGNEDW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   ADFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   ADFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   ADFAIL
+
+           LDD   #TRUEV
+           BRA   ADDONE
+ADFAIL:     LDD   #FALSEV
+ADDONE:     LDX   #TSTALGDNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTALGDNAME: FCB  7
+               FCC  "TSTALGD"
+
+; ------------------------------------------------------------
+; TSTALGN - unit test for ALIGNW. align HERE to a cell boundary - documented no-op on the 6809, and takes no stack arguments at all. Verifies pushed decoy values are entirely undisturbed, not just a single value's persistence.
+; Arity: 0 cell(s) in, 0 cell(s) out -> depth check
+; 0 (derived, not hand-typed).
+; ------------------------------------------------------------
+TSTALGN:    STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #TSTVAL1
+           PSHU  D
+           LDD   #TSTVAL2
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   ALIGNW
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #TSTVAL2
+           BNE   AGFAIL
+           PULU  D
+           CMPD  #TSTVAL1
+           BNE   AGFAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   AGFAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #0
+           BNE   AGFAIL
+
+           LDD   #TRUEV
+           BRA   AGDONE
+AGFAIL:     LDD   #FALSEV
+AGDONE:     LDX   #TSTALGNNAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTALGNNAME: FCB  7
+               FCC  "TSTALGN"
 
            ENDC ; <<<<
 
@@ -10331,12 +10938,15 @@ CLRGLOB: CLR   ,X+
 
          JSR   INITSERIAL
 
-         IFEQ  UNITTESTS  ; >>>>>>>>>>
+         IFNE  UNITTESTS  ; >>>>>>>>>>
          JSR   TSTRUNNER
          ELSE  ; <<<<<>>>>>
-         NOP             ; BUG FIX: this call site used to emit 0
-         NOP             ; bytes when UNITTESTS=1 (excluded), meaning
-         NOP             ; COLDSTRT's own size varied by 3 bytes
+         NOP             ; BUG FIX (see the historical note above this
+         NOP             ; call site's own comment, describing the
+         NOP             ; original bug): this call site used to emit
+                         ; 0 bytes when UNITTESTS' flag meaning
+                         ; excluded the test framework, meaning
+                         ; COLDSTRT's own size varied by 3 bytes
                          ; depending on UNITTESTS - with INITCODE's
                          ; own position fixed regardless, that risked
                          ; the code overflowing into VECTORS whenever
