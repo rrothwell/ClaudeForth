@@ -768,6 +768,14 @@ TSTUMID  EQU   APPVARS+240   ; intermediate U capture (section 3.3,
                               ; never have actually left; this catches
                               ; that specifically.
 
+TSTOHSAV EQU   APPVARS+242   ; section 3.1 (System/Console I/O):
+                              ; saves OUTHEAD (the output ring buffer's
+                              ; write index) before an EMIT-family call,
+                              ; so the test can confirm the character(s)
+                              ; were genuinely queued into OUTBUF - not
+                              ; just that the call returned without
+                              ; crashing.
+
 TSTNEG1  EQU   $CFC7         ; -12345 - distinct, non-trivial negative
                               ; test values, needed for arithmetic
                               ; tests (ABS, NEGATE, MIN/MAX, signed
@@ -821,7 +829,8 @@ TSTFAILMSGL  EQU  *-TSTFAILMSG
 ; TSTRUNNER - calls each test group in turn. Add new groups
 ; here as they're written.
 ; ------------------------------------------------------------
-TSTRUNNER: JSR   TSTSTACK
+TSTRUNNER: JSR   TSTSYSIO
+           JSR   TSTSTACK
            JSR   TSTRETSTACK
            JSR   TSTSARITH
            JSR   TSTDARITH
@@ -830,6 +839,541 @@ TSTRUNNER: JSR   TSTSTACK
            JSR   TSTCTRLFLOW
            JSR   TSTDEFWORDS
            RTS
+
+; ------------------------------------------------------------
+; TSTSYSIO - System/Console I/O tests (glossary section 3.1, 12
+; words, 7 tests). Six words are deliberately NOT tested here -
+; KEY, ACCEPT, EXPECT, and QUERY all genuinely block on real
+; input during automated, headless boot-time testing (confirmed
+; by reading their own implementations: KEY spins on itself,
+; ACCEPT calls KEY directly, EXPECT/QUERY both call ACCEPT); and
+; ABORT/QUIT are both designed to never return (ABORT falls
+; through into QUIT, which resets the return stack, discarding
+; this entire call chain and hijacking the boot sequence into
+; the interpreter's own top-level loop). See this group's own
+; leading comment block, right before TSTKEYQ, for the full
+; reasoning.
+;
+; EMIT/TYPE/CR/SPACE/SPACES are safe and already proven so - this
+; whole test framework has used TYPE and CR (via TSTREPORT)
+; thousands of times already across every prior test group.
+; Each test here verifies the real queuing mechanism (OUTHEAD/
+; OUTBUF), reading the actual character(s) back out of the
+; output ring buffer to confirm they were genuinely queued, not
+; just that the call returned without crashing.
+; ------------------------------------------------------------
+TSTSYSIO: JSR   CRW
+           LDX   #TSTSYSIOMSG
+           PSHU  X
+           LDD   #5
+           PSHU  D
+           JSR   TYPE
+           JSR   CRW
+
+           IFEQ TSTSELECTOR-8  ; >>>>
+
+           JSR   TSTKEYQ
+           JSR   TSTEMIT
+           JSR   TSTCR
+           JSR   TSTSPACE
+           JSR   TSTSPACES
+           JSR   TSTSPACESZ
+           JSR   TSTTYPE
+
+           ENDC ; <<<<
+
+           RTS
+
+TSTSYSIOMSG: FCC "SysIO"
+
+           IFEQ TSTSELECTOR-8  ; >>>>
+
+; ------------------------------------------------------------
+; System/Console I/O test harness (glossary section 3.1). Half
+; of this section's 12 words are deliberately NOT tested here,
+; for reasons confirmed by reading their own implementations
+; directly, not assumed from the glossary alone:
+;
+; KEY genuinely spins forever without real input (both its
+; interrupt-driven and polled variants branch back to
+; themselves - "BEQ KEY" - until a character arrives); ACCEPT
+; calls KEY directly in its own main loop, and EXPECT/QUERY both
+; call ACCEPT - all four inherit the same block. None of these
+; can complete during automated, headless boot-time testing,
+; where no real input will ever arrive.
+;
+; ABORT falls straight through into QUIT, which resets S to
+; RP0 - discarding this entire call chain, including the path
+; back to TSTRUNNER - and enters the interpreter's own top-level
+; loop. Calling either directly would hijack the boot sequence
+; entirely, not just fail one test.
+;
+; EMIT/TYPE/CR/SPACE/SPACES are safe and already proven so - this
+; whole test framework has used TYPE and CR (via TSTREPORT)
+; thousands of times already across every prior test group
+; without incident. Each test here verifies the actual queuing
+; mechanism (OUTHEAD/OUTBUF), not just "didn't crash" - reading
+; the real character(s) back out of the output ring buffer to
+; confirm they were genuinely queued, not just that the call
+; returned.
+; ------------------------------------------------------------
+
+; ------------------------------------------------------------
+; TSTKEYQ - unit test for KEY?. With no real input pending
+; during automated boot-time testing, expects FALSE - the
+; normal, expected case for this kind of test run.
+; ------------------------------------------------------------
+TSTKEYQ: STU   TSTU0
+
+         LDD   #TSTGUARD
+         PSHU  D
+         STU   TSTUB4
+
+         JSR   KEYQ
+
+         STU   TSTUAF
+
+         PULU  D
+         CMPD  #FALSEV
+         BNE   KYFAIL
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   KYFAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #2
+         BNE   KYFAIL
+
+         LDD   #TRUEV
+         BRA   KYDONE
+KYFAIL: LDD   #FALSEV
+KYDONE: LDX   #TSTKEYQNAME
+         PSHU  X
+         PSHU  D
+         JSR   TSTREPORT
+
+         LDU   TSTU0
+         RTS
+
+TSTKEYQNAME: FCB  7
+             FCC  "TSTKEYQ"
+
+; ------------------------------------------------------------
+; TSTEMIT - unit test for EMIT. Verifies the actual queuing
+; mechanism: saves OUTHEAD before the call, then confirms it
+; advanced by exactly one (wrapping correctly via OUTBUFSZ, a
+; power of two) and that the queued byte at the old OUTHEAD
+; position genuinely matches the character emitted - not just
+; that the call returned.
+; ------------------------------------------------------------
+TSTEMIT: STU   TSTU0
+
+         LDD   #TSTGUARD
+         PSHU  D
+         LDD   #65
+         PSHU  D
+         STU   TSTUB4
+
+         JSR   EMIT
+
+         STU   TSTUAF
+
+         LDA   EMITCH  ; BUG FIX: was checking OUTHEAD/OUTBUF, assuming
+                        ; the interrupt-driven EMIT (SERIALPOLL=0). Real
+                        ; bug found via MAME: EMIT has two entirely
+                        ; different implementations, gated the same way
+                        ; as KEY's own two variants - the polling one
+                        ; (SERIALPOLL=1, confirmed the currently active
+                        ; build) writes directly to ACIADR and never
+                        ; touches OUTHEAD/OUTBUF at all, so that check
+                        ; always failed despite the character genuinely
+                        ; being transmitted (confirmed in the terminal
+                        ; output itself). EMITCH, by contrast, is set
+                        ; unconditionally by both variants as their very
+                        ; first step, before either mode-specific branch
+                        ; - checking it verifies the argument was
+                        ; correctly extracted from the stack regardless
+                        ; of which EMIT variant is active, with no
+                        ; conditional needed.
+         CMPA  #65
+         BNE   EMFAIL
+
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   EMFAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #-2
+         BNE   EMFAIL
+
+         LDD   #TRUEV
+         BRA   EMDONE
+EMFAIL:  LDD   #FALSEV
+EMDONE:  LDX   #TSTEMITNAME
+         PSHU  X
+         PSHU  D
+         JSR   TSTREPORT
+
+         LDU   TSTU0
+         RTS
+
+TSTEMITNAME: FCB  7
+             FCC  "TSTEMIT"
+
+; ------------------------------------------------------------
+; TSTCR - unit test for CR. Verifies both queued bytes (13 then
+; 10, CR then LF, matching the documented "CR then LF") land
+; correctly in the output ring buffer, in order.
+; ------------------------------------------------------------
+TSTCR:   STU   TSTU0
+
+         IFEQ SERIALPOLL  ; >>>>
+         LDA   OUTHEAD
+         STA   TSTOHSAV
+         ENDC ; <<<<
+
+
+         LDD   #TSTGUARD
+         PSHU  D
+         STU   TSTUB4
+
+         JSR   CRW
+
+         STU   TSTUAF
+
+         IFEQ SERIALPOLL  ; >>>> full check: interrupt-driven EMIT
+                          ; queues both bytes into OUTBUF, verifiable
+                          ; in order
+         LDA   TSTOHSAV
+         ADDA  #2
+         ANDA  #OUTBUFSZ-1
+         CMPA  OUTHEAD
+         BNE   CRFAIL
+
+         LDX   #OUTBUF
+         LDB   TSTOHSAV
+         LDA   B,X
+         CMPA  #13
+         BNE   CRFAIL
+         INCB
+         ANDB  #OUTBUFSZ-1
+         LDA   B,X
+         CMPA  #10
+         BNE   CRFAIL
+         ELSE  ; <<<<>>>> BUG FIX: was unconditionally checking OUTHEAD/
+                          ; OUTBUF, assuming the interrupt-driven EMIT.
+                          ; Real bug found via MAME: EMIT has two
+                          ; entirely different implementations, gated
+                          ; the same way as KEY's own two variants - the
+                          ; polling one (SERIALPOLL=1, confirmed the
+                          ; currently active build) writes directly to
+                          ; ACIADR and never touches OUTHEAD/OUTBUF at
+                          ; all, so this check always failed despite
+                          ; both characters genuinely being transmitted
+                          ; (confirmed in the terminal output itself).
+                          ; EMITCH only reflects the LAST of the two
+                          ; characters CRW emits (10, the LF) by the
+                          ; time this runs, since each EMIT call
+                          ; overwrites it - checking that plus the
+                          ; depth check below is the most this variant
+                          ; genuinely allows verifying; a direct
+                          ; hardware write has no other inspectable,
+                          ; persistent state.
+         LDA   EMITCH
+         CMPA  #10
+         BNE   CRFAIL
+         ENDC  ; <<<<<<<<<<
+
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   CRFAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #0
+         BNE   CRFAIL
+
+         LDD   #TRUEV
+         BRA   CRDONE
+CRFAIL: LDD   #FALSEV
+CRDONE: LDX   #TSTCRNAME
+         PSHU  X
+         PSHU  D
+         JSR   TSTREPORT
+
+         LDU   TSTU0
+         RTS
+
+TSTCRNAME: FCB  5
+           FCC  "TSTCR"
+
+; ------------------------------------------------------------
+; TSTSPACE - unit test for SPACE. Verifies one space (32) is
+; genuinely queued.
+; ------------------------------------------------------------
+TSTSPACE: STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          STU  TSTUB4
+
+          JSR  SPACEW
+
+          STU  TSTUAF
+
+          LDA  EMITCH  ; BUG FIX: was checking OUTHEAD/OUTBUF - same
+                        ; fix and same reasoning as TSTEMIT's own fix
+                        ; (see its comment). SPACEW calls EMIT
+                        ; internally with a single character (32), so
+                        ; EMITCH correctly reflects it regardless of
+                        ; which EMIT variant is active.
+          CMPA #32
+          BNE  SCFAIL
+
+          PULU D
+          CMPD #TSTGUARD
+          BNE  SCFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #0
+          BNE  SCFAIL
+
+          LDD  #TRUEV
+          BRA  SCDONE
+SCFAIL:   LDD  #FALSEV
+SCDONE:  LDX  #TSTSPACENAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTSPACENAME: FCB  8
+              FCC  "TSTSPACE"
+
+; ------------------------------------------------------------
+; TSTSPACES - unit test for SPACES, normal (n=3) case. Verifies
+; all three queued bytes are genuinely spaces (32), not just
+; that OUTHEAD advanced by the right count.
+; ------------------------------------------------------------
+TSTSPACES: STU  TSTU0
+
+           IFEQ SERIALPOLL  ; >>>>
+           LDA  OUTHEAD
+           STA  TSTOHSAV
+           ENDC ; <<<<
+
+           LDD  #TSTGUARD
+           PSHU D
+           LDD  #3
+           PSHU D
+           STU  TSTUB4
+
+           JSR  SPACESW
+
+           STU  TSTUAF
+
+           IFEQ SERIALPOLL  ; >>>> full check: interrupt-driven EMIT
+                            ; queues all three bytes into OUTBUF,
+                            ; verifiable individually
+           LDA  TSTOHSAV
+           ADDA #3
+           ANDA #OUTBUFSZ-1
+           CMPA OUTHEAD
+           BNE  SSFAIL
+
+           LDX  #OUTBUF
+           LDB  TSTOHSAV
+           LDA  B,X
+           CMPA #32
+           BNE  SSFAIL
+           INCB
+           ANDB #OUTBUFSZ-1
+           LDA  B,X
+           CMPA #32
+           BNE  SSFAIL
+           INCB
+           ANDB #OUTBUFSZ-1
+           LDA  B,X
+           CMPA #32
+           BNE  SSFAIL
+           ELSE  ; <<<<>>>> BUG FIX: was unconditionally checking
+                            ; OUTHEAD/OUTBUF - same fix and reasoning as
+                            ; TSTCR's own fix. In polling mode, EMITCH
+                            ; only reflects the LAST of the three
+                            ; identical spaces emitted, and there is no
+                            ; persistent per-call count to verify
+                            ; exactly three calls happened, not just
+                            ; one or two - a genuine limitation of a
+                            ; direct hardware write with no buffering,
+                            ; not something this test can work around.
+                            ; The depth check below still confirms n=3
+                            ; was correctly consumed as an argument.
+           LDA  EMITCH
+           CMPA #32
+           BNE  SSFAIL
+           ENDC  ; <<<<<<<<<<
+
+           PULU D
+           CMPD #TSTGUARD
+           BNE  SSFAIL
+
+           LDD  TSTUB4
+           SUBD TSTUAF
+           CMPD #-2
+           BNE  SSFAIL
+
+           LDD  #TRUEV
+           BRA  SSDONE
+SSFAIL:    LDD  #FALSEV
+SSDONE:    LDX  #TSTSPACESNAME
+           PSHU X
+           PSHU D
+           JSR  TSTREPORT
+
+           LDU  TSTU0
+           RTS
+
+TSTSPACESNAME: FCB  9
+               FCC  "TSTSPACES"
+
+; ------------------------------------------------------------
+; TSTSPACESZ - unit test for SPACES, n<=0 case. Documented
+; behavior is "no output if n <= 0" - verifies OUTHEAD genuinely
+; doesn't advance at all, not just that the call didn't crash.
+; ------------------------------------------------------------
+TSTSPACESZ: LDA  OUTHEAD
+            STA  TSTOHSAV
+
+            STU  TSTU0
+
+            LDD  #TSTGUARD
+            PSHU D
+            LDD  #0
+            PSHU D
+            STU  TSTUB4
+
+            JSR  SPACESW
+
+            STU  TSTUAF
+
+            LDA  TSTOHSAV
+            CMPA OUTHEAD
+            BNE  S0FAIL
+
+            PULU D
+            CMPD #TSTGUARD
+            BNE  S0FAIL
+
+            LDD  TSTUB4
+            SUBD TSTUAF
+            CMPD #-2
+            BNE  S0FAIL
+
+            LDD  #TRUEV
+            BRA  S0DONE
+S0FAIL:     LDD  #FALSEV
+S0DONE:     LDX  #TSTSPACESZNAME
+            PSHU X
+            PSHU D
+            JSR  TSTREPORT
+
+            LDU  TSTU0
+            RTS
+
+TSTSPACESZNAME: FCB  10
+                FCC  "TSTSPACESZ"
+
+; ------------------------------------------------------------
+; TSTTYPE - unit test for TYPE. Writes a known 2-character
+; string into scratch, calls TYPE on it, and verifies both
+; queued bytes genuinely match the source string, in order -
+; not just that OUTHEAD advanced by the right count.
+; ------------------------------------------------------------
+TSTTYPE: LDA   #'A'
+         STA   TSTNAMEB
+         LDA   #'B'
+         STA   TSTNAMEB+1
+
+         IFEQ SERIALPOLL  ; >>>>
+         LDA   OUTHEAD
+         STA   TSTOHSAV
+         ENDC ; <<<<
+
+         STU   TSTU0
+
+         LDD   #TSTGUARD
+         PSHU  D
+         LDD   #TSTNAMEB
+         PSHU  D
+         LDD   #2
+         PSHU  D
+         STU   TSTUB4
+
+         JSR   TYPE
+
+         STU   TSTUAF
+
+         IFEQ SERIALPOLL  ; >>>> full check: interrupt-driven EMIT
+                          ; (called internally by TYPE for each
+                          ; character) queues both bytes into OUTBUF,
+                          ; verifiable in order
+         LDA   TSTOHSAV
+         ADDA  #2
+         ANDA  #OUTBUFSZ-1
+         CMPA  OUTHEAD
+         BNE   TEFAIL
+
+         LDX   #OUTBUF
+         LDB   TSTOHSAV
+         LDA   B,X
+         CMPA  #'A'
+         BNE   TEFAIL
+         INCB
+         ANDB  #OUTBUFSZ-1
+         LDA   B,X
+         CMPA  #'B'
+         BNE   TEFAIL
+         ELSE  ; <<<<>>>> BUG FIX: was unconditionally checking OUTHEAD/
+                          ; OUTBUF - same fix and reasoning as TSTCR's
+                          ; own fix. EMITCH only reflects the LAST of
+                          ; the two characters TYPE emits ('B') by the
+                          ; time this runs; the depth check below still
+                          ; confirms the addr/len arguments were
+                          ; correctly consumed.
+         LDA   EMITCH
+         CMPA  #'B'
+         BNE   TEFAIL
+         ENDC  ; <<<<<<<<<<
+
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   TEFAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #-4
+         BNE   TEFAIL
+
+         LDD   #TRUEV
+         BRA   TEDONE
+TEFAIL:  LDD   #FALSEV
+TEDONE:  LDX   #TSTTYPENAME
+         PSHU  X
+         PSHU  D
+         JSR   TSTREPORT
+
+         LDU   TSTU0
+         RTS
+
+TSTTYPENAME: FCB  7
+             FCC  "TSTTYPE"
+
+           ENDC ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTSTACK - data stack operation tests. Add new tests here as

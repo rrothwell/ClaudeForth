@@ -3992,7 +3992,7 @@ design decisions made since the original version.
       combinations. Byte-exact split-file reassembly confirmed. This
       specific fix awaits its own MAME confirmation.
 
-- [ ] **`TSTRETSTACK` added - return-stack tests (glossary section
+- [x] **`TSTRETSTACK` added - return-stack tests (glossary section
       3.3, 6 words, 4 tests since `>R`/`R>` and `2>R`/`2R>` are each
       combined into one round-trip test), wired into `TSTRUNNER` and
       inserted in the source **in glossary order** (right after
@@ -4054,8 +4054,166 @@ design decisions made since the original version.
       this group's own bodies, with `TSTSTACK`'s and `TSTCTRLFLOW`'s
       bodies genuinely absent. Byte-exact split-file reassembly
       confirmed, including the correct glossary-order placement (
-      confirmed via label position, not just presence). Not yet
-      confirmed via MAME.
+      confirmed via label position, not just presence).
+      **MAME-CONFIRMED**: the user reports all `TSTRETSTACK` tests
+      pass - including both round-trip intermediate checks and both
+      non-destructive-peek verifications - confirming every `>R`/
+      `2>R` in this group stayed correctly balanced against a
+      matching `R>`/`2R>` on real hardware, with no corruption of the
+      return path back out of this test group.
+
+- [ ] **`TSTSYSIO` added - System/Console I/O tests (glossary section
+      3.1, 12 words, 7 tests), wired into `TSTRUNNER` and inserted
+      **first** in the source, ahead of `TSTSTACK`, per explicit
+      request - matching this session's established practice of
+      placing new groups in glossary order in the source even while
+      `TSTSELECTOR`'s own numbering stays non-sequential for now
+      (gated as its ninth value, `-8`, the next available number).
+
+      **Six of the section's 12 words are deliberately not tested,
+      confirmed necessary by reading their own implementations
+      directly, not assumed from the glossary descriptions alone**:
+      `KEY` genuinely spins forever without real input (`BEQ KEY`
+      branches back to itself); `ACCEPT` calls `KEY` directly in its
+      own main loop, and `EXPECT`/`QUERY` both call `ACCEPT` - all
+      four inherit the same block, and none can complete during
+      automated, headless boot-time testing where no real input will
+      ever arrive. `ABORT` falls straight through into `QUIT`, which
+      resets the return stack (`S`) to `RP0` - discarding this test
+      framework's *entire* call chain and hijacking the boot sequence
+      into the interpreter's own top-level loop; calling either
+      directly would break the whole boot, not just fail one test.
+      This is a materially different situation from every prior
+      section's own deliberate coverage gaps (`DO`'s `limit=index`
+      case, bare `CREATE`) - those were single edge cases within an
+      otherwise-testable word; here, half the section's words are
+      fundamentally incompatible with this framework's own execution
+      model, not just one case of each.
+
+      The other 6 (`KEY?`, `EMIT`, `TYPE`, `CR`, `SPACE`, `SPACES`,
+      the last split into two tests for its `n<=0` no-op case) are
+      confirmed safe - and already proven so, since this whole test
+      framework has used `TYPE`/`CR` (via `TSTREPORT`) thousands of
+      times already across every prior test group without incident.
+      Each test here verifies the real output-queuing mechanism
+      (`OUTHEAD`/`OUTBUF`) directly - reading the actual character(s)
+      back out of the output ring buffer to confirm they were
+      genuinely queued, not just that the call returned without
+      crashing.
+
+      **Two `FCB`-length/string mismatches caught by a programmatic
+      check during writing, not left to be found later**: `TSTSPACESZ`
+      and `TSTSPACES`'s own name-length bytes were miscounted by hand
+      (11 vs the true 10, 10 vs the true 9) - found by systematically
+      re-checking every declared length against the actual string for
+      every test in this batch, not just the ones that happened to
+      look suspicious.
+
+      Label collisions checked programmatically before insertion -
+      caught 3 real ones this way (`KQFALSE`, `SPDONE`, `TYDONE`, all
+      internal labels already inside `KEY?`'s, `SPACES`'s, and
+      `TYPE`'s own real implementations - the same class of issue as
+      `MSTAR`/`LSHIFT`/`RSHIFT`/`HOLDS`/`DUMP` found in earlier
+      groups), replaced with `KY`, `SC`, `TE` respectively, each
+      re-verified against every label in the file.
+
+      **The same missing-second-`ENDC` mistake as sections 3.3 and
+      3.8's own first attempts, and a separately forgotten
+      `TSTRUNNER` wire-up** - both caught and fixed before delivery:
+      the `IFEQ`/`ENDC` balance check (run immediately after
+      insertion, per this session's now-standard practice) caught the
+      missing `ENDC` right away; a follow-on check specifically
+      confirming `TSTSYSIO` appears in `TSTRUNNER`'s own call list
+      (not just assumed done from memory) caught that it had been
+      omitted entirely.
+
+      Verified: every one of the 7 depth-check values independently
+      re-derived from real arity and confirmed correct against the
+      final, fully-assembled file state (not just the pre-insertion
+      draft); every real word reference (`KEYQ`/`EMIT`/`CRW`/
+      `SPACEW`/`SPACESW`/`TYPE`) confirmed to resolve, including
+      `CRW` specifically, which an over-aggressive local-prefix
+      filter in the verification script itself initially hid -
+      confirmed directly via a literal `JSR CRW` count rather than
+      trusting the flawed automated check; all 7 tests confirmed
+      wired into `TSTSYSIO`, and `TSTSYSIO` itself confirmed wired
+      into `TSTRUNNER`. Full scenario matrix re-run with
+      `TSTSELECTOR`'s ninth value included (20 scenarios total) - all
+      pass; explicitly confirmed `TSTSELECTOR=8` includes only this
+      group's own bodies. Byte-exact split-file reassembly confirmed,
+      including the correct glossary-order placement ahead of
+      `TSTSTACK` (confirmed via label position). Not yet confirmed
+      via MAME.
+
+- [x] **RESOLVED - real bug found by the user's actual MAME run, not
+      caught by this session's own verification: 5 of `TSTSYSIO`'s 7
+      tests failed, despite the characters genuinely appearing in the
+      terminal output.** Root cause confirmed by directly re-checking
+      `EMIT`'s own code, having *already found this exact pattern*
+      once already for `KEY` earlier in the same investigation and
+      failing to check whether it applied to `EMIT` too: `EMIT` has
+      two entirely different implementations, gated by `SERIALPOLL`
+      the same way `KEY`'s own two variants are - the interrupt-driven
+      one (`SERIALPOLL=0`) queues into a ring buffer (`OUTHEAD`/
+      `OUTBUF`), but the polling one (`SERIALPOLL=1`, confirmed the
+      currently active build) writes directly to `ACIADR` and never
+      touches `OUTHEAD`/`OUTBUF` at all. Every one of these 5 tests
+      assumed the interrupt-driven mechanism unconditionally - so the
+      checks always failed under the actual active build, despite
+      `EMIT` genuinely working (the character really was transmitted,
+      exactly as the user's own terminal output showed).
+
+      Fixed with a mix of two approaches, chosen per test based on
+      what's genuinely verifiable in each mode: `TSTEMIT`/`TSTSPACE`
+      (single-`EMIT`-call tests) now check `EMITCH` universally, with
+      no `SERIALPOLL` conditional needed at all - confirmed by reading
+      both `EMIT` variants that `EMITCH` is set unconditionally, as
+      the very first step, by both, before either mode-specific branch
+      even begins. `TSTCR`/`TSTSPACES`/`TSTTYPE` (multiple-`EMIT`-call
+      tests, where `EMITCH` only reflects the *last* call) now use an
+      explicit `IFEQ SERIALPOLL`/`ELSE`/`ENDC` split: the full
+      `OUTHEAD`/`OUTBUF` check for interrupt-driven mode, and an
+      honest, narrower check (last character via `EMITCH`, plus the
+      pre-existing stack-depth check) for polling mode - a genuine,
+      accepted limitation of a direct hardware write with no
+      buffering to inspect, not something worth contorting around.
+
+      **A second, structural mistake caught and fixed during this same
+      round, before delivery**: the first attempt put `IFEQ
+      SERIALPOLL` directly on the same source line as `TSTCR:`/
+      `TSTSPACES:`'s own label (`TSTCR:   IFEQ SERIALPOLL`) - a
+      pattern that appears nowhere else in this entire file, where
+      every other `IFEQ` sits on its own dedicated line. This confused
+      this session's own `IFEQ`/`ENDC` balance-checking script (whose
+      regex requires whitespace, not a label, before `IFEQ`), which is
+      itself just a verification-script limitation - but rather than
+      trust that the real assembler would handle the untested pattern
+      correctly, restructured both to put the label and `IFEQ` on
+      separate lines, matching the proven convention used everywhere
+      else in this file. Re-verified via an explicit, full-file,
+      line-by-line nesting trace (not just a raw open/close count
+      match, which can't by itself distinguish correct nesting from a
+      coincidentally-equal but wrongly-ordered mismatch) that the
+      result is genuinely, correctly balanced end to end, with zero
+      negative-depth excursions anywhere in the file.
+
+      Verified: all 7 depth-check values re-confirmed unchanged by
+      these purely corrective edits, using a more robust per-test
+      isolation method after the original 200-character-window
+      heuristic in this session's own check turned out too narrow
+      once the new `SERIALPOLL` blocks pushed some tests' own depth
+      captures further from their label; explicitly confirmed via
+      simulation that `TSTCR`'s two branches genuinely diverge under
+      each `SERIALPOLL` setting (`OUTHEAD` check present only when
+      `SERIALPOLL=0`, `EMITCH` check present only when `SERIALPOLL=1`,
+      mutually exclusive as intended) rather than assumed correct from
+      the source alone. Full scenario matrix re-run crossing both real
+      `SERIALPOLL` settings with every `TSTSELECTOR` value (20
+      scenarios total) - all pass. Byte-exact split-file reassembly
+      confirmed. This specific fix awaits its own MAME confirmation -
+      the user's own report and register/memory-level detail is what
+      caught the root cause; this response addresses exactly what was
+      found.
 
 ## Structural duplication (identified, some resolved, some not)
 
