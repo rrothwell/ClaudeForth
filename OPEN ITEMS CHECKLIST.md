@@ -3595,7 +3595,7 @@ design decisions made since the original version.
       insertion time (learned from the previous group's mistake) held
       on real hardware, not just in simulation.
 
-- [ ] **`TSTCTRLFLOW` added - control-flow tests (glossary section
+- [x] **`TSTCTRLFLOW` added - control-flow tests (glossary section
       3.8, 22 words, 20 tests), wired into `TSTRUNNER` and gated as
       `TSTSELECTOR`'s sixth group (`-5`). A fundamentally different
       testing problem from every prior group: these are compile-time,
@@ -3708,11 +3708,282 @@ design decisions made since the original version.
       construction, not real gaps); all 20 tests confirmed wired into
       `TSTCTRLFLOW`; explicitly confirmed `TSTSELECTOR=5` includes
       only this group's own bodies. Byte-exact split-file reassembly
-      confirmed. Not yet confirmed via MAME - given this section's
-      genuinely new testing mechanism (redirected `CODEHERE`,
-      hand-assembled compile sequences) and its real complexity
-      relative to every prior group, this one specifically warrants
+      confirmed. **MAME-CONFIRMED**: the user reports all
+      `TSTCTRLFLOW` tests pass - including the `IF`/`ELSE`/`THEN`
+      dual-branch cases, `BEGIN`/`WHILE`/`REPEAT`'s two-offset patch,
+      `RECURSE`'s fake-header mechanism, every `DO`-family loop
+      variant, the `LEAVE`-vs-`EXIT` timing distinction, `CASE`'s
+      match/no-match paths, and all three tag-mismatch error paths.
+      This was this session's most structurally complex test group -
+      the redirected-`CODEHERE`, compile-then-execute harness holds
+      up on real hardware, not just in simulation, validating the
+      whole methodology for any future control-flow-adjacent work.
+
+- [ ] **`TSTDEFWORDS` added - defining-words tests (glossary section
+      3.9, 17 words, 12 tests since `VALUE`/`TO` and `IS`/`ACTION-OF`
+      are each combined into one test), wired into `TSTRUNNER` and
+      gated as `TSTSELECTOR`'s seventh group (`-6`). A harder testing
+      problem than section 3.8: these words don't just compile code,
+      they parse a name from the input source and build real
+      dictionary headers.** Every implementation traced by hand first
+      (`HEADER`, shared by `:`/`CREATE`; the `CREATE`/`DOES>`
+      trampoline mechanism via `DODOES`/`SETDOES`; `VARIABLE`/
+      `CONSTANT`/`2VARIABLE`/`2CONSTANT`/`BUFFER:`/`VALUE`/`TO`/
+      `DEFER`/`DEFER@`/`DEFER!`/`IS`/`ACTION-OF`/`MARKER`) - confirmed
+      `HEADER` calls `WORD` directly to parse the new word's name,
+      something nothing in section 3.8 needed.
+
+      **Harness extended beyond section 3.8's `CODEHERE`-only
+      redirect**: every test now also redirects `DPHERE` (a new 40-
+      byte scratch dictionary buffer, `TSTDBUF`), `VARHERE` (a new
+      20-byte scratch buffer, `TSTVBUF`), and `SRCADDR`/`SRCLEN`/
+      `TOIN` (a fake name, "TESTWD", reused safely across every test
+      here since each redirect/restore cycle is fully isolated) - and
+      established a new convention: save `CODEHERE` immediately before
+      calling the defining word (this becomes the newly-defined
+      word's own CFA), so its compiled trampoline can be executed
+      afterward to verify runtime behavior.
+
+      Worked out `SETDOES`'s "double return" mechanism precisely by
+      hand before trusting it: confirmed a direct call into the
+      compiled "JSR SETDOES" instruction itself (rather than building
+      an intermediate wrapper word) naturally supplies exactly the
+      two return-stack levels it expects - its own `JSR` call provides
+      one, this test's own call provides the other - without extra
+      scaffolding. Also traced why bare `CREATE` (never followed by
+      `DOES>`) isn't tested standalone: its placeholder behavior field
+      is a genuine compiled `JSR DOESRT0` instruction, while every
+      other defining word compiles a raw address there instead (via
+      `CODECOMMA`, not `CCALL`) - `DODOES` reads that field as data
+      either way, which only produces a valid jump target for the
+      raw-address form.
+
+      **A real, structurally significant bug found and fixed during
+      this batch, not after**: `HEADER` writes to the real `LATEST`
+      variable unconditionally - unlike `CODEHERE`/`DPHERE`/`VARHERE`,
+      there's no redirect for it. The first 9 tests written (`TSTVAR`
+      through `TSTDEFER2`) didn't save/restore it, which would have
+      left the real dictionary's `LATEST` pointer corrupted, pointing
+      at scratch memory, after every one of them ran - a genuine risk
+      to the real dictionary, not just a test-isolation nicety. Caught
+      by tracing `HEADER`'s own code directly rather than assuming
+      symmetry with the other three pointers, and fixed across all 8
+      affected files before any insertion happened, re-verified
+      afterward by direct inspection of each save/restore block's
+      exact placement, not just re-trusted.
+
+      `MARKER`'s own test needed the opposite execution order from
+      every other test in this group: `DOMARKER` (confirmed by
+      reading it directly) also writes to the real `DPHERE`/
+      `CODEHERE`/`VARHERE`/`LATEST` unconditionally, so that test
+      executes the marker word *while* still redirected, restoring
+      the real environment only afterward - reversing this order
+      would have corrupted the real dictionary pointers with scratch
+      addresses.
+
+      Label collisions checked programmatically before insertion -
+      zero found this time (all chosen prefixes verified safe on the
+      first attempt). Learned the lesson from section 3.8's ordering
+      mistake and applied it from the start this time: used numeric
+      (not lexicographic) file ordering throughout, and checked the
+      `IFEQ`/`ENDC` balance immediately after insertion rather than
+      discovering a problem later - both came back clean on the first
+      attempt.
+
+      Verified: every one of the 12 depth-check values independently
+      re-derived from real arity and confirmed correct (one sign error
+      caught and fixed during writing, before insertion); every
+      symbolic and word reference confirmed to resolve to a real
+      definition (a handful of apparent false positives - bare
+      character-literal tokens from the repeated "TESTWD" name
+      construction - traced to their real cause, not just dismissed);
+      all 12 tests confirmed wired into `TSTDEFWORDS`. Full scenario
+      matrix re-run with `TSTSELECTOR`'s seventh value included (16
+      scenarios total) - all pass; explicitly confirmed `TSTSELECTOR=6`
+      includes only this group's own bodies. Byte-exact split-file
+      reassembly confirmed. Not yet confirmed via MAME - given this
+      section's real complexity (name-parsing, real header-building,
+      the `LATEST`-corruption risk found and fixed, `MARKER`'s
+      reversed execution order), this one specifically warrants
       thorough real-hardware testing before being considered settled.
+
+- [x] **RESOLVED - real assembly-blocking bug found by the user's
+      actual lwasm run, not caught by this session's own
+      verification: four `BNE` instructions in `TSTVALTO` and
+      `TSTISOF` exceeded short-branch range (`Byte overflow`).**
+      Same bug class as `DULINE`'s own already-documented fix
+      elsewhere in this file - `TSTVALTO` and `TSTISOF` are this
+      section's two combined, two-round tests (`VALUE`+`TO`,
+      `IS`+`ACTION-OF`), and their earliest checks sit far enough
+      before the shared `FAIL` label - past the entire second round's
+      own code - to exceed a short branch's range. Fixed the exact
+      four flagged lines (verified by line number, not by text
+      pattern, since identical `BNE VTFAIL`/`BNE ISFAIL` text appears
+      multiple times in each test) by converting them to `LBNE` -
+      confirmed this is an established, already-proven mnemonic in
+      this file rather than assumed. Trusted the assembler's own
+      precise report rather than pre-emptively converting every
+      `BNE VTFAIL`/`BNE ISFAIL` occurrence - 7 of the 11 total
+      instances were not flagged and were left as-is, matching their
+      genuinely shorter distance to the target. Confirmed by reasoning
+      through it that the fix doesn't newly endanger those remaining
+      short branches either: the added bytes from converting `BNE` to
+      `LBNE` sit entirely before every one of them, which doesn't
+      change their own distance to the shared target at all.
+
+      Verified: `IFEQ`/`ENDC` balance unaffected (still 21/21,
+      re-checked after this edit rather than assumed unaffected by a
+      pure branch-instruction change); zero duplicate symbols,
+      dictionary chain still 224 entries intact across all 16
+      relevant `SERIALPOLL`x`UNITTESTS`x`TSTSELECTOR` scenario
+      combinations; exact counts of `LBNE`/remaining-`BNE` confirmed
+      (4 and 7 respectively, matching the fix precisely). Byte-exact
+      split-file reassembly confirmed. This specific fix awaits its
+      own confirmation via a real lwasm run - the user's own report is
+      what caught it, this response addresses exactly what was
+      reported.
+
+- [x] **RESOLVED - real crash found by the user's actual MAME run,
+      not caught by this session's own verification: `TSTVALTO`
+      jumped into invalid memory at `TSTCBUF`'s own address on its
+      second `JSR ,X`.** Root cause confirmed by reading `WORD`'s own
+      code directly rather than guessed at: `WORD` writes its parsed-
+      token output directly at `CODEHERE`, by design ("matches the
+      ANS transient-region contract, where WORD's region is expected
+      to be overwritten by whatever gets compiled/allocated next" -
+      `CODEHERE` itself isn't advanced by this). `TSTVALTO` redirects
+      `CODEHERE` to `TSTCBUF` a *second* time for its own `TO` phase's
+      name-parse, after `TSTCBUF` already held `VALUE`'s own compiled
+      trampoline from the first phase - `WORD`'s own internal parse
+      (called by `TOW`) silently overwrote it. Confirmed precisely
+      against the user's own memory dump: a length byte (`06`)
+      followed by "TESTWD" sitting exactly at `TSTCBUF`'s address,
+      where the trampoline's real `JSR DODOES` opcode should have
+      been - not a vague "probably right," the exact byte pattern
+      `WORD`'s own documented behavior predicts.
+
+      Checked every other test in this section for the same pattern
+      before assuming this was isolated - confirmed it's structurally
+      possible only for this section's two "combined, two-phase"
+      tests (`TSTVALTO`, `TSTISOF`), since every other test does a
+      single name-parse with nothing to conflict with. Found
+      `TSTISOF` had a related but more serious version of the same
+      bug: its `IS` and `ACTION-OF` phases had *no* `CODEHERE`
+      redirect at all (not even the wrong one) - meaning `WORD`'s own
+      internal parse there would have written into the real,
+      unredirected system `CODEHERE`, unsafe during boot-time testing
+      before `COLD` has set it to anything meaningful. The `IS` phase
+      specifically mattered more than `ACTION-OF`'s, since it runs
+      *before* this test's own execution step - the same class of
+      corruption that crashed `TSTVALTO`, just not yet triggered by
+      MAME's own test run order.
+
+      Fixed with a new, dedicated scratch buffer (`TSTCBUF2`, 20
+      bytes) used for every "second phase" name-parse in both tests,
+      keeping it structurally distinct from `TSTCBUF` so a later
+      parse can never overwrite an earlier phase's still-needed
+      compiled trampoline. Confirmed `TOW`/`ISW`/`ACTIONOF`'s own
+      interpreting-mode paths don't touch `DPHERE`/`VARHERE` (traced
+      directly - they only call `WORD`+`FIND`+`TOBODY` plus a direct
+      memory store, none of which touches those two), so the fix only
+      needed to cover `CODEHERE`.
+
+      Verified: `IFEQ`/`ENDC` balance unaffected (21/21, re-checked
+      rather than assumed); both tests' own depth-check values
+      re-confirmed unchanged by this purely corrective edit (`[2,2]`
+      for `TSTVALTO`, `[2]` for `TSTISOF`, matching their state before
+      this fix); `TSTCBUF2` confirmed correctly declared and
+      referenced exactly where intended; zero duplicate symbols,
+      dictionary chain still 224 entries intact across all 16 relevant
+      `SERIALPOLL`x`UNITTESTS`x`TSTSELECTOR` scenario combinations.
+      Byte-exact split-file reassembly confirmed. This specific fix
+      awaits its own confirmation via MAME - the user's own crash
+      report is what caught the root cause, this response addresses
+      exactly what was found, including the related `TSTISOF` issue
+      the crash report itself didn't directly point to.
+
+- [x] **RESOLVED - real bug found by the user's actual MAME run,
+      pinpointed precisely from a register/memory dump, not
+      guessed at: `TSTCRDOES` failed because `SETDOES` patched the
+      wrong word entirely.** Root cause: this test's own restore
+      block set `LATEST` back to its real, original value *before*
+      triggering `SETDOES` (via a direct call into the compiled
+      "JSR SETDOES" instruction) - but `SETDOES` (confirmed by
+      re-reading its own code) reads `LATEST` directly to find which
+      header's behavior field to patch. With `LATEST` already
+      restored, `SETDOES` patched whatever real word `LATEST`
+      actually pointed to, not `TESTWD` - leaving `TESTWD` stuck on
+      its original `DOESRT0` placeholder (push PFA, return - a plain
+      `VARIABLE`-like behavior), never running `@ 1+` at all.
+
+      Confirmed precisely against the user's own register/memory
+      dump before fixing anything: the crashing `CMPD #6` compared
+      against `$022C`, exactly matching `TESTWD`'s own computed PFA
+      address (`TSTCBUF+7`, the self-referential-PFA pattern already
+      documented elsewhere in this file) - the exact value `DODOES`
+      pushes under `DOESRT0`'s default behavior, not a coincidence.
+
+      Fixed by reordering: `LATEST` now stays pointed at `TESTWD`
+      until *after* the `SETDOES` trigger completes, only restored to
+      its real value afterward - `CODEHERE`/`DPHERE`/`VARHERE`/
+      `SRCADDR`/`SRCLEN`/`TOIN` can still restore early, since
+      `SETDOES` doesn't depend on any of those (confirmed by reading
+      its code - it only touches `LATEST` and the computed behavior-
+      field address).
+
+      Verified: `IFEQ`/`ENDC` balance unaffected (21/21); this test's
+      own depth-check value unchanged (`2`); zero duplicate symbols,
+      dictionary chain still 224 entries intact across all 16
+      relevant scenario combinations. Byte-exact split-file
+      reassembly confirmed. This specific fix awaits its own MAME
+      confirmation.
+
+- [x] **RESOLVED - `TST2VAR` confirmed passing after the `TSTCRDOES`
+      fix above (the user's own re-run confirmed it), without any
+      change of its own needed.**
+
+- [x] **RESOLVED - `TSTMARKER`'s failure, precisely diagnosed from
+      the user's own register/memory dump, turned out to be a bug in
+      this test's own verification logic, not in `MARKER`/`DOMARKER`
+      themselves - the real dictionary/compile mechanism was already
+      correct.** The failing comparison was `TSTCSAV2` (CODEHERE
+      right after executing the marker) against `TSTMKCOD` (a
+      snapshot of CODEHERE captured right *after* `MARKERW` finished
+      building its own header) - decoded precisely against the user's
+      own memory dump: `TSTCSAV2` held `$0225` (`TSTCBUF` exactly),
+      `TSTMKCOD` held `$0234` (`TSTCBUF`+15, the full compiled size of
+      `MARKERW`'s own trampoline+snapshot structure - confirmed byte
+      for byte by re-reading `MARKERW`'s complete implementation, not
+      estimated).
+
+      Traced why these genuinely differ rather than assuming a
+      simple off-by-some-amount error: `MARKERW`'s own internal
+      snapshot (`MKDP`/`MKCODE`/`MKVAR`/`MKLATEST`) is taken at its
+      very first four instructions, before `HEADER` or any of its own
+      compiling runs at all - meaning `DOMARKER` correctly restores
+      to the state *before* the marker word itself was created, not
+      the state right after. This is exactly `MARKER`'s own documented
+      behavior ("forgets itself too", not just what comes after it) -
+      this test's own comparison target (`TSTMKCOD`, captured too
+      late) was simply wrong from the start, not the mechanism it was
+      testing.
+
+      Fixed by comparing directly against `TSTCBUF`/`TSTDBUF`/
+      `TSTVBUF` (the real, known pre-creation values) instead, and
+      removed the now-unnecessary `TSTMKCOD`/`TSTMKDP`/`TSTMKVAR`
+      capture step and their now-unused scratch declarations entirely,
+      rather than leaving dead, misleading allocations behind. Updated
+      this test's own header comment, which had described the old
+      (wrong) design, to accurately reflect the fix and why it's
+      correct.
+
+      Verified: `IFEQ`/`ENDC` balance unaffected (21/21); this test's
+      own depth-check value unchanged (`0`); confirmed no remaining
+      code references to the removed constants (only an explanatory
+      comment, which is harmless); zero duplicate symbols, dictionary
+      chain still 224 entries intact across all 16 relevant scenario
+      combinations. Byte-exact split-file reassembly confirmed. This
+      specific fix awaits its own MAME confirmation.
 
 ## Structural duplication (identified, some resolved, some not)
 

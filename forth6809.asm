@@ -702,6 +702,63 @@ TSTFHDR  EQU   APPVARS+96    ; fake dictionary header, for RECURSE to
                               ; bytes (LEN/FL + name + LINK + CFA,
                               ; comfortably fits any short test name)
 
+TSTDBUF  EQU   APPVARS+112   ; defining-words test harness (section
+                              ; 3.9): scratch dictionary buffer -
+                              ; DPHERE is redirected here for the
+                              ; duration of each defining-word call,
+                              ; so a real header never lands in the
+                              ; real dictionary. 40 bytes.
+TSTDSAV  EQU   APPVARS+152   ; saved DPHERE
+TSTVBUF  EQU   APPVARS+154   ; scratch VARHERE buffer, for VARIABLE/
+                              ; VALUE/2VARIABLE/BUFFER: to reserve
+                              ; their own mutable space into. 20
+                              ; bytes.
+TSTVSAV  EQU   APPVARS+174   ; saved VARHERE
+TSTNAMEB EQU   APPVARS+176   ; scratch fake source text, for HEADER's
+                              ; own WORD-based name parsing (every
+                              ; defining word reads a name from the
+                              ; input source - unlike anything in
+                              ; section 3.8) - 16 bytes
+TSTSASAV EQU   APPVARS+192   ; saved SRCADDR
+TSTSLSAV EQU   APPVARS+194   ; saved SRCLEN
+TSTTISAV EQU   APPVARS+196   ; saved TOIN
+TSTWCFA  EQU   APPVARS+198   ; the newly-defined test word's own CFA -
+                              ; equal to CODEHERE (redirected) at the
+                              ; moment the defining word is called,
+                              ; saved so the compiled trampoline can
+                              ; be executed afterward to verify its
+                              ; runtime behavior
+TSTSTSAV EQU   APPVARS+200   ; saved STATE, across a :/; test
+TSTSMFLG EQU   APPVARS+202   ; scratch: header SMUDGE-bit check result
+TSTDOESA EQU   APPVARS+204   ; address of a compiled "JSR SETDOES" -
+                              ; JSR'd directly to simulate an outer
+                              ; defining word reaching that point,
+                              ; without needing to actually build one
+TSTCSAV2 EQU   APPVARS+212   ; MARKER test: CODEHERE right after
+                              ; executing the marker word (before it's
+                              ; overwritten by this test's own restore)
+TSTDSAV2 EQU   APPVARS+214   ; same, DPHERE
+TSTVSAV2 EQU   APPVARS+216   ; same, VARHERE
+TSTLSAV2 EQU   APPVARS+218   ; same, LATEST
+TSTCBUF2 EQU   APPVARS+220   ; a SECOND, separate CODEHERE-redirect
+                              ; target - real bug found via MAME: WORD
+                              ; writes its parsed-token output directly
+                              ; at CODEHERE (by its own documented
+                              ; design, matching the ANS transient-
+                              ; region contract - confirmed by reading
+                              ; WORD's own code, not assumed). Any test
+                              ; that parses a SECOND name later (TO,
+                              ; IS, ACTION-OF) must NOT redirect
+                              ; CODEHERE back to TSTCBUF for that
+                              ; second parse, since TSTCBUF still holds
+                              ; the FIRST word's already-compiled
+                              ; trampoline at that point - WORD would
+                              ; silently overwrite it, corrupting the
+                              ; CFA that TSTWCFA still points to before
+                              ; it gets a second chance to execute. 20
+                              ; bytes - comfortably fits any short
+                              ; parsed name plus its length byte.
+
 TSTNEG1  EQU   $CFC7         ; -12345 - distinct, non-trivial negative
                               ; test values, needed for arithmetic
                               ; tests (ABS, NEGATE, MIN/MAX, signed
@@ -761,6 +818,7 @@ TSTRUNNER: JSR   TSTSTACK
            JSR   TSTLOGIC
            JSR   TSTCOMPARE
            JSR   TSTCTRLFLOW
+           JSR   TSTDEFWORDS
            RTS
 
 ; ------------------------------------------------------------
@@ -6816,6 +6874,1731 @@ EODONE:    LDX  #TSTENDFZNAME
 
 TSTENDFZNAME: FCB  9
               FCC  "TSTENDOFZ"
+
+           ENDC ; <<<<
+
+; ------------------------------------------------------------
+; TSTDEFWORDS - defining-words tests (glossary section 3.9, 17
+; words, 12 tests since VALUE/TO and IS/ACTION-OF are each
+; combined into one test). Every defining word parses a name
+; from the input source via WORD (HEADER's own mechanism,
+; shared by :/CREATE) - a complexity nothing in section 3.8 had.
+; Each test redirects CODEHERE, DPHERE, VARHERE, and
+; SRCADDR/SRCLEN/TOIN together (a fake name, "TESTWD", reused
+; safely across every test here since each redirect/restore
+; cycle is fully isolated), calls the real defining word
+; directly, saves the newly-defined word's own CFA (= CODEHERE
+; at the moment the defining word was called), restores
+; everything, then executes that CFA directly to verify runtime
+; behavior.
+;
+; A real, structurally important finding from this section:
+; HEADER writes to the real LATEST variable unconditionally, not
+; a redirectable copy like CODEHERE/DPHERE/VARHERE - every test
+; here explicitly saves and restores it, confirmed necessary by
+; reading HEADER's own code directly, not assumed safe by analogy
+; with the other three pointers.
+;
+; MARKER's own test is the one exception to the general
+; redirect-then-restore-then-execute order: DOMARKER (confirmed
+; by reading it directly) writes to the real DPHERE/CODEHERE/
+; VARHERE/LATEST unconditionally too, so that test executes the
+; marker word while still redirected, only restoring the real
+; environment afterward - getting this order backwards would
+; have corrupted the real dictionary pointers with scratch
+; addresses.
+;
+; Bare CREATE (never followed by DOES>) is deliberately not
+; tested on its own - traced its placeholder "behavior field"
+; (a genuine compiled JSR DOESRT0 instruction) and confirmed
+; DODOES reads that field as raw data, not as code to execute -
+; which only produces a valid jump target for the raw-address
+; form every other defining word uses (VARIABLE, CONSTANT, etc,
+; via CODECOMMA), not CREATE's own placeholder JSR instruction.
+; Bare CREATE's own direct-execution behavior isn't meant to be
+; relied upon before a DOES> patches it.
+; ------------------------------------------------------------
+TSTDEFWORDS: JSR CRW
+           LDX   #TSTDEFMSG
+           PSHU  X
+           LDD   #8
+           PSHU  D
+           JSR   TYPE
+           JSR   CRW
+
+           IFEQ TSTSELECTOR-6  ; >>>>
+
+           JSR   TSTVAR
+           JSR   TSTCONST
+           JSR   TSTCOLON
+           JSR   TSTCRDOES
+           JSR   TST2VAR
+           JSR   TST2CONST
+           JSR   TSTBUFC
+           JSR   TSTVALTO
+           JSR   TSTDEFER1
+           JSR   TSTDEFER2
+           JSR   TSTISOF
+           JSR   TSTMARKER
+
+           ENDC ; <<<<
+
+           RTS
+
+TSTDEFMSG: FCC "DefWords"
+
+           IFEQ TSTSELECTOR-6  ; >>>>
+
+; ------------------------------------------------------------
+; Defining-words test harness (glossary section 3.9). Every
+; defining word parses a name from the input source via WORD -
+; unlike anything in section 3.8's control-flow tests - so each
+; test redirects CODEHERE, DPHERE, VARHERE, and SRCADDR/SRCLEN/
+; TOIN together (a fake name text, "TESTWD", reused safely
+; across every test here since each redirect/restore cycle is
+; fully isolated), calls the real defining word directly, saves
+; the newly-defined word's own CFA (= CODEHERE at the moment the
+; defining word was called), restores everything, then executes
+; that CFA directly to verify runtime behavior. Traced by hand:
+; CREATE/VARIABLE/CONSTANT/etc all use HEADER (shared header-
+; building) then compile a fixed 5-byte trampoline (3-byte
+; "JSR DODOES" + a 2-byte "behavior field") before their own
+; PFA - confirmed the behavior field holds a genuine compiled
+; JSR instruction only for CREATE's own bare placeholder
+; (DOESRT0, later patched by DOES>); every other defining word
+; (VARIABLE, CONSTANT, DEFER, MARKER, VALUE) instead compiles a
+; raw 2-byte address there directly (via CODECOMMA, not CCALL) -
+; DODOES reads this field as data either way, which only works
+; correctly for the raw-address form. This is why bare CREATE,
+; executed before any DOES>, isn't tested here - its own
+; placeholder behavior field isn't meant to be read as data,
+; only ever overwritten by DOES> before first use.
+; ------------------------------------------------------------
+
+; ------------------------------------------------------------
+; TSTVAR - unit test for VARIABLE. Compiles "VARIABLE TESTWD"
+; into scratch, then executes the result. Verifies it pushes
+; its own PFA address (TSTVBUF, since VARHERE was redirected
+; there) and that the cell there was correctly initialized to
+; zero - VARIABLE's own documented behavior, not assumed.
+; ------------------------------------------------------------
+TSTVAR:  LDD   CODEHERE
+         STD   TSTCSAV
+         LDD   DPHERE
+         STD   TSTDSAV
+         LDD   VARHERE
+         STD   TSTVSAV
+         LDD   SRCADDR
+         STD   TSTSASAV
+         LDD   SRCLEN
+         STD   TSTSLSAV
+         LDD   TOIN
+         STD   TSTTISAV
+         LDD   LATEST
+         STD   TSTLSAV
+
+         LDA   #'T'
+         STA   TSTNAMEB
+         LDA   #'E'
+         STA   TSTNAMEB+1
+         LDA   #'S'
+         STA   TSTNAMEB+2
+         LDA   #'T'
+         STA   TSTNAMEB+3
+         LDA   #'W'
+         STA   TSTNAMEB+4
+         LDA   #'D'
+         STA   TSTNAMEB+5
+
+         LDD   #TSTCBUF
+         STD   CODEHERE
+         LDD   #TSTDBUF
+         STD   DPHERE
+         LDD   #TSTVBUF
+         STD   VARHERE
+         LDD   #TSTNAMEB
+         STD   SRCADDR
+         LDD   #6
+         STD   SRCLEN
+         LDD   #0
+         STD   TOIN
+
+         LDD   CODEHERE
+         STD   TSTWCFA
+
+         JSR   VARIABLE
+
+         LDD   TSTCSAV
+         STD   CODEHERE
+         LDD   TSTDSAV
+         STD   DPHERE
+         LDD   TSTVSAV
+         STD   VARHERE
+         LDD   TSTSASAV
+         STD   SRCADDR
+         LDD   TSTSLSAV
+         STD   SRCLEN
+         LDD   TSTTISAV
+         STD   TOIN
+         LDD   TSTLSAV
+         STD   LATEST
+
+         STU   TSTU0
+
+         LDD   #TSTGUARD
+         PSHU  D
+         STU   TSTUB4
+
+         LDX   TSTWCFA
+         JSR   ,X
+
+         STU   TSTUAF
+
+         PULU  D
+         CMPD  #TSTVBUF
+         BNE   VRFAIL
+
+         LDX   TSTVBUF
+         LDD   ,X
+         CMPD  #0
+         BNE   VRFAIL
+
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   VRFAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #2
+         BNE   VRFAIL
+
+         LDD   #TRUEV
+         BRA   VRDONE
+VRFAIL:  LDD   #FALSEV
+VRDONE:  LDX   #TSTVARNAME
+         PSHU  X
+         PSHU  D
+         JSR   TSTREPORT
+
+         LDU   TSTU0
+         RTS
+
+TSTVARNAME: FCB  6
+            FCC  "TSTVAR"
+
+; ------------------------------------------------------------
+; TSTCONST - unit test for CONSTANT. Compiles "5 CONSTANT
+; TESTWD" (5 already pushed before CONSTANT runs, matching its
+; own "x name --" signature) into scratch, then executes the
+; result. Verifies it pushes the stored value (5), not its own
+; address - confirmed by tracing CONSTANT's own behavior field:
+; it compiles a raw address to ATSIGN (@) there directly via
+; CODECOMMA, not CREATE's own placeholder mechanism.
+; ------------------------------------------------------------
+TSTCONST: LDD  CODEHERE
+          STD  TSTCSAV
+          LDD  DPHERE
+          STD  TSTDSAV
+          LDD  VARHERE
+          STD  TSTVSAV
+          LDD  SRCADDR
+          STD  TSTSASAV
+          LDD  SRCLEN
+          STD  TSTSLSAV
+          LDD  TOIN
+          STD  TSTTISAV
+          LDD  LATEST
+          STD  TSTLSAV
+
+          LDA  #'T'
+          STA  TSTNAMEB
+          LDA  #'E'
+          STA  TSTNAMEB+1
+          LDA  #'S'
+          STA  TSTNAMEB+2
+          LDA  #'T'
+          STA  TSTNAMEB+3
+          LDA  #'W'
+          STA  TSTNAMEB+4
+          LDA  #'D'
+          STA  TSTNAMEB+5
+
+          LDD  #TSTCBUF
+          STD  CODEHERE
+          LDD  #TSTDBUF
+          STD  DPHERE
+          LDD  #TSTVBUF
+          STD  VARHERE
+          LDD  #TSTNAMEB
+          STD  SRCADDR
+          LDD  #6
+          STD  SRCLEN
+          LDD  #0
+          STD  TOIN
+
+          LDD  CODEHERE
+          STD  TSTWCFA
+
+          LDD  #5
+          PSHU D
+          JSR  CONSTANT
+
+          LDD  TSTCSAV
+          STD  CODEHERE
+          LDD  TSTDSAV
+          STD  DPHERE
+          LDD  TSTVSAV
+          STD  VARHERE
+          LDD  TSTSASAV
+          STD  SRCADDR
+          LDD  TSTSLSAV
+          STD  SRCLEN
+          LDD  TSTTISAV
+          STD  TOIN
+          LDD  TSTLSAV
+          STD  LATEST
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          STU  TSTUB4
+
+          LDX  TSTWCFA
+          JSR  ,X
+
+          STU  TSTUAF
+
+          PULU D
+          CMPD #5
+          BNE  CNFAIL
+          PULU D
+          CMPD #TSTGUARD
+          BNE  CNFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #2
+          BNE  CNFAIL
+
+          LDD  #TRUEV
+          BRA  CNDONE
+CNFAIL:   LDD  #FALSEV
+CNDONE:   LDX  #TSTCONSTNAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTCONSTNAME: FCB  8
+              FCC  "TSTCONST"
+
+; ------------------------------------------------------------
+; TSTCOLON - unit test for : and ; together. Compiles
+; ": TESTWD 111 ;" into scratch (COLON parses the name, builds
+; a smudged header, sets CSP to the current U as the control-
+; flow balance baseline, sets STATE compiling; a literal 111 is
+; compiled; SEMI compiles the closing RTS, checks the CSP
+; balance, un-smudges the header, restores STATE) - then
+; executes the result and verifies it pushes 111. Also verifies
+; the header's own SMUDGE bit is correctly clear after SEMI -
+; not just that execution happened to work.
+; ------------------------------------------------------------
+TSTCOLON: LDD  CODEHERE
+          STD  TSTCSAV
+          LDD  DPHERE
+          STD  TSTDSAV
+          LDD  VARHERE
+          STD  TSTVSAV
+          LDD  SRCADDR
+          STD  TSTSASAV
+          LDD  SRCLEN
+          STD  TSTSLSAV
+          LDD  TOIN
+          STD  TSTTISAV
+          LDD  LATEST
+          STD  TSTLSAV
+          LDD  CSP
+          STD  TSTCSPS
+          LDD  STATE
+          STD  TSTSTSAV
+
+          LDA  #'T'
+          STA  TSTNAMEB
+          LDA  #'E'
+          STA  TSTNAMEB+1
+          LDA  #'S'
+          STA  TSTNAMEB+2
+          LDA  #'T'
+          STA  TSTNAMEB+3
+          LDA  #'W'
+          STA  TSTNAMEB+4
+          LDA  #'D'
+          STA  TSTNAMEB+5
+
+          LDD  #TSTCBUF
+          STD  CODEHERE
+          LDD  #TSTDBUF
+          STD  DPHERE
+          LDD  #TSTVBUF
+          STD  VARHERE
+          LDD  #TSTNAMEB
+          STD  SRCADDR
+          LDD  #6
+          STD  SRCLEN
+          LDD  #0
+          STD  TOIN
+
+          LDD  CODEHERE
+          STD  TSTWCFA
+
+          JSR  COLON
+
+          LDD  #111
+          PSHU D
+          JSR  LITERALW
+
+          JSR  SEMI
+
+          LDA  TSTDBUF
+          ANDA #$40
+          STA  TSTSMFLG
+
+          LDD  TSTCSAV
+          STD  CODEHERE
+          LDD  TSTDSAV
+          STD  DPHERE
+          LDD  TSTVSAV
+          STD  VARHERE
+          LDD  TSTSASAV
+          STD  SRCADDR
+          LDD  TSTSLSAV
+          STD  SRCLEN
+          LDD  TSTTISAV
+          STD  TOIN
+          LDD  TSTLSAV
+          STD  LATEST
+          LDD  TSTCSPS
+          STD  CSP
+          LDD  TSTSTSAV
+          STD  STATE
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          STU  TSTUB4
+
+          LDX  TSTWCFA
+          JSR  ,X
+
+          STU  TSTUAF
+
+          PULU D
+          CMPD #111
+          BNE  CLFAIL
+          PULU D
+          CMPD #TSTGUARD
+          BNE  CLFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #2
+          BNE  CLFAIL
+
+          TST  TSTSMFLG
+          BNE  CLFAIL
+
+          LDD  #TRUEV
+          BRA  CLDONE
+CLFAIL:   LDD  #FALSEV
+CLDONE:   LDX  #TSTCOLONNAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTCOLONNAME: FCB  8
+              FCC  "TSTCOLON"
+
+; ------------------------------------------------------------
+; TSTCRDOES - unit test for CREATE/DOES> together. Compiles the
+; equivalent of "CREATE TESTWD 5 , DOES> @ 1+" directly (CREATE,
+; store 5 at the PFA, DOES>'s own compile action, then @ and 1+
+; compiled as the new behavior, terminated with RTS) - executing
+; TESTWD should push 6 (5 fetched, then incremented).
+;
+; DOES>'s own runtime action (SETDOES) does a documented "double
+; return": it patches LATEST's behavior field using the return
+; address ITS OWN "JSR SETDOES" call provides, then pops a
+; SECOND return address and jumps there - designed for the
+; normal case where DOES> is reached from inside an enclosing
+; defining word (like a real ": MAKETEST CREATE ... DOES> ... ;"
+; would compile), which itself has its own caller. Traced by
+; hand: calling directly into the compiled "JSR SETDOES"
+; instruction itself (not through an intermediate wrapper)
+; naturally supplies exactly the two stack levels SETDOES
+; expects - its own JSR provides the first (becoming the new
+; behavior field value), and this test's own call provides the
+; second (correctly resuming here afterward) - no extra
+; scaffolding needed, confirmed correct rather than assumed.
+; ------------------------------------------------------------
+TSTCRDOES: LDD  CODEHERE
+           STD  TSTCSAV
+           LDD  DPHERE
+           STD  TSTDSAV
+           LDD  VARHERE
+           STD  TSTVSAV
+           LDD  SRCADDR
+           STD  TSTSASAV
+           LDD  SRCLEN
+           STD  TSTSLSAV
+           LDD  TOIN
+           STD  TSTTISAV
+           LDD  LATEST
+           STD  TSTLSAV
+
+           LDA  #'T'
+           STA  TSTNAMEB
+           LDA  #'E'
+           STA  TSTNAMEB+1
+           LDA  #'S'
+           STA  TSTNAMEB+2
+           LDA  #'T'
+           STA  TSTNAMEB+3
+           LDA  #'W'
+           STA  TSTNAMEB+4
+           LDA  #'D'
+           STA  TSTNAMEB+5
+
+           LDD  #TSTCBUF
+           STD  CODEHERE
+           LDD  #TSTDBUF
+           STD  DPHERE
+           LDD  #TSTVBUF
+           STD  VARHERE
+           LDD  #TSTNAMEB
+           STD  SRCADDR
+           LDD  #6
+           STD  SRCLEN
+           LDD  #0
+           STD  TOIN
+
+           LDD  CODEHERE
+           STD  TSTWCFA
+
+           JSR  CREATE
+
+           LDD  #5
+           PSHU D
+           JSR  COMMA
+
+           LDD  CODEHERE
+           STD  TSTDOESA
+
+           JSR  DOESGT
+
+           LDD  #ATSIGN
+           PSHU D
+           JSR  CCALL
+
+           LDD  #ONEPLUS
+           PSHU D
+           JSR  CCALL
+
+           LDD  #OPRTS
+           PSHU D
+           JSR  CCOMMA
+
+           LDD  TSTCSAV
+           STD  CODEHERE
+           LDD  TSTDSAV
+           STD  DPHERE
+           LDD  TSTVSAV
+           STD  VARHERE
+           LDD  TSTSASAV
+           STD  SRCADDR
+           LDD  TSTSLSAV
+           STD  SRCLEN
+           LDD  TSTTISAV
+           STD  TOIN
+
+           LDX  TSTDOESA  ; BUG FIX: was preceded by restoring LATEST
+                          ; to its real value here - but SETDOES
+                          ; (confirmed by reading its own code) reads
+                          ; LATEST directly to find which header to
+                          ; patch, so restoring it first meant SETDOES
+                          ; patched the real, wrong word instead of
+                          ; TESTWD, leaving TESTWD stuck on its
+                          ; original DOESRT0 placeholder. LATEST now
+                          ; stays pointed at TESTWD (this test's own
+                          ; fake header) until right after this call.
+           JSR  ,X
+
+           LDD  TSTLSAV
+           STD  LATEST
+
+           STU  TSTU0
+
+           LDD  #TSTGUARD
+           PSHU D
+           STU  TSTUB4
+
+           LDX  TSTWCFA
+           JSR  ,X
+
+           STU  TSTUAF
+
+           PULU D
+           CMPD #6
+           BNE  CDFAIL
+           PULU D
+           CMPD #TSTGUARD
+           BNE  CDFAIL
+
+           LDD  TSTUB4
+           SUBD TSTUAF
+           CMPD #2
+           BNE  CDFAIL
+
+           LDD  #TRUEV
+           BRA  CDDONE
+CDFAIL:    LDD  #FALSEV
+CDDONE:    LDX  #TSTCRDOESNAME
+           PSHU X
+           PSHU D
+           JSR  TSTREPORT
+
+           LDU  TSTU0
+           RTS
+
+TSTCRDOESNAME: FCB  9
+               FCC  "TSTCRDOES"
+
+; ------------------------------------------------------------
+; TST2VAR - unit test for 2VARIABLE. Compiles "2VARIABLE
+; TESTWD" into scratch, then executes the result. Verifies it
+; pushes its own PFA address (TSTVBUF) and that BOTH cells there
+; were correctly initialized to zero.
+; ------------------------------------------------------------
+TST2VAR: LDD   CODEHERE
+         STD   TSTCSAV
+         LDD   DPHERE
+         STD   TSTDSAV
+         LDD   VARHERE
+         STD   TSTVSAV
+         LDD   SRCADDR
+         STD   TSTSASAV
+         LDD   SRCLEN
+         STD   TSTSLSAV
+         LDD   TOIN
+         STD   TSTTISAV
+         LDD   LATEST
+         STD   TSTLSAV
+
+         LDA   #'T'
+         STA   TSTNAMEB
+         LDA   #'E'
+         STA   TSTNAMEB+1
+         LDA   #'S'
+         STA   TSTNAMEB+2
+         LDA   #'T'
+         STA   TSTNAMEB+3
+         LDA   #'W'
+         STA   TSTNAMEB+4
+         LDA   #'D'
+         STA   TSTNAMEB+5
+
+         LDD   #TSTCBUF
+         STD   CODEHERE
+         LDD   #TSTDBUF
+         STD   DPHERE
+         LDD   #TSTVBUF
+         STD   VARHERE
+         LDD   #TSTNAMEB
+         STD   SRCADDR
+         LDD   #6
+         STD   SRCLEN
+         LDD   #0
+         STD   TOIN
+
+         LDD   CODEHERE
+         STD   TSTWCFA
+
+         JSR   TWOVARIABLE
+
+         LDD   TSTCSAV
+         STD   CODEHERE
+         LDD   TSTDSAV
+         STD   DPHERE
+         LDD   TSTVSAV
+         STD   VARHERE
+         LDD   TSTSASAV
+         STD   SRCADDR
+         LDD   TSTSLSAV
+         STD   SRCLEN
+         LDD   TSTTISAV
+         STD   TOIN
+         LDD   TSTLSAV
+         STD   LATEST
+
+         STU   TSTU0
+
+         LDD   #TSTGUARD
+         PSHU  D
+         STU   TSTUB4
+
+         LDX   TSTWCFA
+         JSR   ,X
+
+         STU   TSTUAF
+
+         PULU  D
+         CMPD  #TSTVBUF
+         BNE   T2VFAIL
+
+         LDX   TSTVBUF
+         LDD   ,X
+         CMPD  #0
+         BNE   T2VFAIL
+         LDD   2,X
+         CMPD  #0
+         BNE   T2VFAIL
+
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   T2VFAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #2
+         BNE   T2VFAIL
+
+         LDD   #TRUEV
+         BRA   T2VDONE
+T2VFAIL:  LDD   #FALSEV
+T2VDONE:  LDX   #TST2VARNAME
+          PSHU  X
+          PSHU  D
+          JSR   TSTREPORT
+
+          LDU   TSTU0
+          RTS
+
+TST2VARNAME: FCB  7
+             FCC  "TST2VAR"
+
+; ------------------------------------------------------------
+; TST2CONST - unit test for 2CONSTANT. Compiles
+; "100 200 2CONSTANT TESTWD" into scratch (x1=100 stored at the
+; lower address, x2=200 at the higher, matching 2@/2!'s own
+; convention), then executes the result. Verifies it pushes both
+; cells correctly ordered (200 on top/popped first, 100 deeper -
+; matching 2@'s own documented behavior), not their own address.
+; ------------------------------------------------------------
+TST2CONST: LDD  CODEHERE
+           STD  TSTCSAV
+           LDD  DPHERE
+           STD  TSTDSAV
+           LDD  VARHERE
+           STD  TSTVSAV
+           LDD  SRCADDR
+           STD  TSTSASAV
+           LDD  SRCLEN
+           STD  TSTSLSAV
+           LDD  TOIN
+           STD  TSTTISAV
+           LDD  LATEST
+           STD  TSTLSAV
+
+           LDA  #'T'
+           STA  TSTNAMEB
+           LDA  #'E'
+           STA  TSTNAMEB+1
+           LDA  #'S'
+           STA  TSTNAMEB+2
+           LDA  #'T'
+           STA  TSTNAMEB+3
+           LDA  #'W'
+           STA  TSTNAMEB+4
+           LDA  #'D'
+           STA  TSTNAMEB+5
+
+           LDD  #TSTCBUF
+           STD  CODEHERE
+           LDD  #TSTDBUF
+           STD  DPHERE
+           LDD  #TSTVBUF
+           STD  VARHERE
+           LDD  #TSTNAMEB
+           STD  SRCADDR
+           LDD  #6
+           STD  SRCLEN
+           LDD  #0
+           STD  TOIN
+
+           LDD  CODEHERE
+           STD  TSTWCFA
+
+           LDD  #100
+           PSHU D
+           LDD  #200
+           PSHU D
+           JSR  TWOCONSTANT
+
+           LDD  TSTCSAV
+           STD  CODEHERE
+           LDD  TSTDSAV
+           STD  DPHERE
+           LDD  TSTVSAV
+           STD  VARHERE
+           LDD  TSTSASAV
+           STD  SRCADDR
+           LDD  TSTSLSAV
+           STD  SRCLEN
+           LDD  TSTTISAV
+           STD  TOIN
+           LDD  TSTLSAV
+           STD  LATEST
+
+           STU  TSTU0
+
+           LDD  #TSTGUARD
+           PSHU D
+           STU  TSTUB4
+
+           LDX  TSTWCFA
+           JSR  ,X
+
+           STU  TSTUAF
+
+           PULU D
+           CMPD #200
+           BNE  T2CFAIL
+           PULU D
+           CMPD #100
+           BNE  T2CFAIL
+           PULU D
+           CMPD #TSTGUARD
+           BNE  T2CFAIL
+
+           LDD  TSTUB4
+           SUBD TSTUAF
+           CMPD #4
+           BNE  T2CFAIL
+
+           LDD  #TRUEV
+           BRA  T2CDONE
+T2CFAIL:   LDD  #FALSEV
+T2CDONE:   LDX  #TST2CONSTNAME
+           PSHU X
+           PSHU D
+           JSR  TSTREPORT
+
+           LDU  TSTU0
+           RTS
+
+TST2CONSTNAME: FCB  9
+               FCC  "TST2CONST"
+
+; ------------------------------------------------------------
+; TSTBUFC - unit test for BUFFER:. Compiles "10 BUFFER: TESTWD"
+; into scratch (u=10, the requested size, popped before the name
+; is even parsed - confirmed by reading BUFFERCOLON's own code,
+; which pops u as its very first action, before calling HEADER),
+; then executes the result. Verifies it pushes its own PFA
+; address (matching VARIABLE's own DOESRT0 behavior - BUFFER:
+; shares it) and that VARHERE genuinely advanced by exactly the
+; requested 10 bytes - not just that some space was reserved.
+; Contents are documented uninitialized, so not checked.
+; ------------------------------------------------------------
+TSTBUFC: LDD   CODEHERE
+         STD   TSTCSAV
+         LDD   DPHERE
+         STD   TSTDSAV
+         LDD   VARHERE
+         STD   TSTVSAV
+         LDD   SRCADDR
+         STD   TSTSASAV
+         LDD   SRCLEN
+         STD   TSTSLSAV
+         LDD   TOIN
+         STD   TSTTISAV
+         LDD   LATEST
+         STD   TSTLSAV
+
+         LDA   #'T'
+         STA   TSTNAMEB
+         LDA   #'E'
+         STA   TSTNAMEB+1
+         LDA   #'S'
+         STA   TSTNAMEB+2
+         LDA   #'T'
+         STA   TSTNAMEB+3
+         LDA   #'W'
+         STA   TSTNAMEB+4
+         LDA   #'D'
+         STA   TSTNAMEB+5
+
+         LDD   #TSTCBUF
+         STD   CODEHERE
+         LDD   #TSTDBUF
+         STD   DPHERE
+         LDD   #TSTVBUF
+         STD   VARHERE
+         LDD   #TSTNAMEB
+         STD   SRCADDR
+         LDD   #6
+         STD   SRCLEN
+         LDD   #0
+         STD   TOIN
+
+         LDD   CODEHERE
+         STD   TSTWCFA
+
+         LDD   #10
+         PSHU  D
+         JSR   BUFFERCOLON
+
+         LDD   VARHERE
+         SUBD  #TSTVBUF
+         STD   TSTSCR
+
+         LDD   TSTCSAV
+         STD   CODEHERE
+         LDD   TSTDSAV
+         STD   DPHERE
+         LDD   TSTVSAV
+         STD   VARHERE
+         LDD   TSTSASAV
+         STD   SRCADDR
+         LDD   TSTSLSAV
+         STD   SRCLEN
+         LDD   TSTTISAV
+         STD   TOIN
+         LDD   TSTLSAV
+         STD   LATEST
+
+         STU   TSTU0
+
+         LDD   #TSTGUARD
+         PSHU  D
+         STU   TSTUB4
+
+         LDX   TSTWCFA
+         JSR   ,X
+
+         STU   TSTUAF
+
+         PULU  D
+         CMPD  #TSTVBUF
+         BNE   BFFAIL
+
+         LDD   TSTSCR
+         CMPD  #10
+         BNE   BFFAIL
+
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   BFFAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #2
+         BNE   BFFAIL
+
+         LDD   #TRUEV
+         BRA   BFDONE
+BFFAIL:  LDD   #FALSEV
+BFDONE:  LDX   #TSTBUFCNAME
+         PSHU  X
+         PSHU  D
+         JSR   TSTREPORT
+
+         LDU   TSTU0
+         RTS
+
+TSTBUFCNAME: FCB  7
+             FCC  "TSTBUFC"
+
+; ------------------------------------------------------------
+; TSTVALTO - unit test for VALUE and TO together. Compiles
+; "42 VALUE TESTWD", executes it (expect 42), then interprets
+; "99 TO TESTWD" directly (TO parses "TESTWD" via WORD+FIND,
+; needing LATEST still pointed at it - not restored until this
+; whole test finishes, unlike every earlier test in this
+; section), executes TESTWD again (expect 99). Explicitly forces
+; STATE=0 (interpreting) before calling TO, since its own
+; behavior genuinely differs by STATE (confirmed by reading its
+; code: TOIMMED's direct store path only runs when STATE=0) -
+; not left to chance.
+; ------------------------------------------------------------
+TSTVALTO: LDD  CODEHERE
+          STD  TSTCSAV
+          LDD  DPHERE
+          STD  TSTDSAV
+          LDD  VARHERE
+          STD  TSTVSAV
+          LDD  SRCADDR
+          STD  TSTSASAV
+          LDD  SRCLEN
+          STD  TSTSLSAV
+          LDD  TOIN
+          STD  TSTTISAV
+          LDD  STATE
+          STD  TSTSTSAV
+          LDD  LATEST
+          STD  TSTLSAV
+
+          LDA  #'T'
+          STA  TSTNAMEB
+          LDA  #'E'
+          STA  TSTNAMEB+1
+          LDA  #'S'
+          STA  TSTNAMEB+2
+          LDA  #'T'
+          STA  TSTNAMEB+3
+          LDA  #'W'
+          STA  TSTNAMEB+4
+          LDA  #'D'
+          STA  TSTNAMEB+5
+
+          LDD  #TSTCBUF
+          STD  CODEHERE
+          LDD  #TSTDBUF
+          STD  DPHERE
+          LDD  #TSTVBUF
+          STD  VARHERE
+          LDD  #TSTNAMEB
+          STD  SRCADDR
+          LDD  #6
+          STD  SRCLEN
+          LDD  #0
+          STD  TOIN
+
+          LDD  CODEHERE
+          STD  TSTWCFA
+
+          LDD  #42
+          PSHU D
+          JSR  VALUEW
+
+          LDD  TSTCSAV
+          STD  CODEHERE
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          STU  TSTUB4
+
+          LDX  TSTWCFA
+          JSR  ,X
+
+          STU  TSTUAF
+
+          PULU D
+          CMPD #42
+          LBNE  VTFAIL  ; was BNE - out of short-branch range, since
+                        ; VTFAIL sits past this test's entire second
+                        ; round (the TO reassignment and re-check)
+          PULU D
+          CMPD #TSTGUARD
+          LBNE  VTFAIL  ; was BNE - same reason
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #2
+          LBNE  VTFAIL  ; was BNE - same reason
+
+          LDD  #TSTCBUF2  ; BUG FIX: was TSTCBUF - WORD writes its
+                           ; parsed-token output directly at CODEHERE
+                           ; (see TSTCBUF2's own comment), which would
+                           ; silently overwrite TESTWD's own already-
+                           ; compiled trampoline still sitting at
+                           ; TSTCBUF, corrupting the CFA TSTWCFA points
+                           ; to before this test's second execution.
+                           ; Confirmed via MAME: a crash jumping into
+                           ; invalid memory at TSTCBUF's own address,
+                           ; landing on WORD's own leftover length byte
+                           ; instead of the trampoline's real opcode.
+          STD  CODEHERE
+          LDA  #'T'
+          STA  TSTNAMEB
+          LDA  #'E'
+          STA  TSTNAMEB+1
+          LDA  #'S'
+          STA  TSTNAMEB+2
+          LDA  #'T'
+          STA  TSTNAMEB+3
+          LDA  #'W'
+          STA  TSTNAMEB+4
+          LDA  #'D'
+          STA  TSTNAMEB+5
+          LDD  #TSTNAMEB
+          STD  SRCADDR
+          LDD  #6
+          STD  SRCLEN
+          LDD  #0
+          STD  TOIN
+          LDD  #0
+          STD  STATE
+
+          LDD  #99
+          PSHU D
+          JSR  TOW
+
+          LDD  TSTCSAV
+          STD  CODEHERE
+          LDD  TSTDSAV
+          STD  DPHERE
+          LDD  TSTVSAV
+          STD  VARHERE
+          LDD  TSTSASAV
+          STD  SRCADDR
+          LDD  TSTSLSAV
+          STD  SRCLEN
+          LDD  TSTTISAV
+          STD  TOIN
+          LDD  TSTSTSAV
+          STD  STATE
+          LDD  TSTLSAV
+          STD  LATEST
+
+          LDD  #TSTGUARD
+          PSHU D
+          STU   TSTUB4
+
+          LDX  TSTWCFA
+          JSR  ,X
+
+          STU  TSTUAF
+
+          PULU D
+          CMPD #99
+          BNE  VTFAIL
+          PULU D
+          CMPD #TSTGUARD
+          BNE  VTFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #2
+          BNE  VTFAIL
+
+          LDD  #TRUEV
+          BRA  VTDONE
+VTFAIL:   LDD  #FALSEV
+VTDONE:   LDX  #TSTVALTONAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTVALTONAME: FCB  8
+              FCC  "TSTVALTO"
+
+; ------------------------------------------------------------
+; TSTDEFER1 - unit test for DEFER, default-action case. Compiles
+; "DEFER TESTWD" into scratch, then executes it via CATCH.
+; Verifies the default action throws -21 (per DEFER's own
+; documented behavior before IS/DEFER! sets a real target) and
+; that CATCH's own depth-restoration contract holds - same
+; pattern as the divide-by-zero tests in earlier sections.
+; ------------------------------------------------------------
+TSTDEFER1: LDD  CODEHERE
+           STD  TSTCSAV
+           LDD  DPHERE
+           STD  TSTDSAV
+           LDD  VARHERE
+           STD  TSTVSAV
+           LDD  SRCADDR
+           STD  TSTSASAV
+           LDD  SRCLEN
+           STD  TSTSLSAV
+           LDD  TOIN
+           STD  TSTTISAV
+           LDD  LATEST
+           STD  TSTLSAV
+
+           LDA  #'T'
+           STA  TSTNAMEB
+           LDA  #'E'
+           STA  TSTNAMEB+1
+           LDA  #'S'
+           STA  TSTNAMEB+2
+           LDA  #'T'
+           STA  TSTNAMEB+3
+           LDA  #'W'
+           STA  TSTNAMEB+4
+           LDA  #'D'
+           STA  TSTNAMEB+5
+
+           LDD  #TSTCBUF
+           STD  CODEHERE
+           LDD  #TSTDBUF
+           STD  DPHERE
+           LDD  #TSTVBUF
+           STD  VARHERE
+           LDD  #TSTNAMEB
+           STD  SRCADDR
+           LDD  #6
+           STD  SRCLEN
+           LDD  #0
+           STD  TOIN
+
+           LDD  CODEHERE
+           STD  TSTWCFA
+
+           JSR  DEFERW
+
+           LDD  TSTCSAV
+           STD  CODEHERE
+           LDD  TSTDSAV
+           STD  DPHERE
+           LDD  TSTVSAV
+           STD  VARHERE
+           LDD  TSTSASAV
+           STD  SRCADDR
+           LDD  TSTSLSAV
+           STD  SRCLEN
+           LDD  TSTTISAV
+           STD  TOIN
+           LDD  TSTLSAV
+           STD  LATEST
+
+           STU  TSTU0
+
+           LDX  TSTWCFA
+           PSHU X
+           STU  TSTUB4
+
+           JSR  CATCH
+
+           STU  TSTUAF
+
+           PULU D
+           CMPD #-21
+           BNE  DF1FAIL
+
+           LDD  TSTUB4
+           SUBD TSTUAF
+           CMPD #0
+           BNE  DF1FAIL
+
+           LDD  #TRUEV
+           BRA  DF1DONE
+DF1FAIL:   LDD  #FALSEV
+DF1DONE:   LDX  #TSTDEF1NAME
+           PSHU X
+           PSHU D
+           JSR  TSTREPORT
+
+           LDU  TSTU0
+           RTS
+
+TSTDEF1NAME: FCB  9
+             FCC  "TSTDEFER1"
+
+; ------------------------------------------------------------
+; TSTDEFER2 - unit test for DEFER together with DEFER!/DEFER@.
+; Compiles "DEFER TESTWD", sets its target to DUP's own xt via
+; DEFER! (an ordinary runtime word - unlike DEFER's own name-
+; parsing, DEFER!/DEFER@ take an xt-defer directly, no WORD/FIND
+; needed), executes TESTWD (should now behave like DUP), then
+; reads the target back via DEFER@ to confirm it matches.
+; ------------------------------------------------------------
+TSTDEFER2: LDD  CODEHERE
+           STD  TSTCSAV
+           LDD  DPHERE
+           STD  TSTDSAV
+           LDD  VARHERE
+           STD  TSTVSAV
+           LDD  SRCADDR
+           STD  TSTSASAV
+           LDD  SRCLEN
+           STD  TSTSLSAV
+           LDD  TOIN
+           STD  TSTTISAV
+           LDD  LATEST
+           STD  TSTLSAV
+
+           LDA  #'T'
+           STA  TSTNAMEB
+           LDA  #'E'
+           STA  TSTNAMEB+1
+           LDA  #'S'
+           STA  TSTNAMEB+2
+           LDA  #'T'
+           STA  TSTNAMEB+3
+           LDA  #'W'
+           STA  TSTNAMEB+4
+           LDA  #'D'
+           STA  TSTNAMEB+5
+
+           LDD  #TSTCBUF
+           STD  CODEHERE
+           LDD  #TSTDBUF
+           STD  DPHERE
+           LDD  #TSTVBUF
+           STD  VARHERE
+           LDD  #TSTNAMEB
+           STD  SRCADDR
+           LDD  #6
+           STD  SRCLEN
+           LDD  #0
+           STD  TOIN
+
+           LDD  CODEHERE
+           STD  TSTWCFA
+
+           JSR  DEFERW
+
+           LDD  TSTCSAV
+           STD  CODEHERE
+           LDD  TSTDSAV
+           STD  DPHERE
+           LDD  TSTVSAV
+           STD  VARHERE
+           LDD  TSTSASAV
+           STD  SRCADDR
+           LDD  TSTSLSAV
+           STD  SRCLEN
+           LDD  TSTTISAV
+           STD  TOIN
+           LDD  TSTLSAV
+           STD  LATEST
+
+           LDD  #DUP
+           PSHU D
+           LDX  TSTWCFA
+           PSHU X
+           JSR  DEFERSTORE
+
+           STU  TSTU0
+
+           LDD  #TSTGUARD
+           PSHU D
+           LDD  #TSTVAL1
+           PSHU D
+           STU  TSTUB4
+
+           LDX  TSTWCFA
+           JSR  ,X
+
+           STU  TSTUAF
+
+           PULU D
+           CMPD #TSTVAL1
+           BNE  DF2FAIL
+           PULU D
+           CMPD #TSTVAL1
+           BNE  DF2FAIL
+           PULU D
+           CMPD #TSTGUARD
+           BNE  DF2FAIL
+
+           LDD  TSTUB4
+           SUBD TSTUAF
+           CMPD #2
+           BNE  DF2FAIL
+
+           LDX  TSTWCFA
+           PSHU X
+           JSR  DEFERFETCH
+
+           PULU D
+           CMPD #DUP
+           BNE  DF2FAIL
+
+           LDD  #TRUEV
+           BRA  DF2DONE
+DF2FAIL:   LDD  #FALSEV
+DF2DONE:   LDX  #TSTDEF2NAME
+           PSHU X
+           PSHU D
+           JSR  TSTREPORT
+
+           LDU  TSTU0
+           RTS
+
+TSTDEF2NAME: FCB  9
+             FCC  "TSTDEFER2"
+
+; ------------------------------------------------------------
+; TSTISOF - unit test for IS and ACTION-OF together. Compiles
+; "DEFER TESTWD", interprets "DUP IS TESTWD" directly (IS parses
+; "TESTWD" via WORD+FIND, needing LATEST still pointed at it -
+; not restored until this whole test finishes), executes TESTWD
+; (should now behave like DUP), then interprets "ACTION-OF
+; TESTWD" to fetch the current target by name and confirms it
+; matches DUP's own xt. Explicitly forces STATE=0 before both IS
+; and ACTION-OF, since both are documented to behave differently
+; by STATE, same reasoning as TSTVALTO's own TO test.
+; ------------------------------------------------------------
+TSTISOF: LDD   CODEHERE
+         STD   TSTCSAV
+         LDD   DPHERE
+         STD   TSTDSAV
+         LDD   VARHERE
+         STD   TSTVSAV
+         LDD   SRCADDR
+         STD   TSTSASAV
+         LDD   SRCLEN
+         STD   TSTSLSAV
+         LDD   TOIN
+         STD   TSTTISAV
+         LDD   STATE
+         STD   TSTSTSAV
+         LDD   LATEST
+         STD   TSTLSAV
+
+         LDA   #'T'
+         STA   TSTNAMEB
+         LDA   #'E'
+         STA   TSTNAMEB+1
+         LDA   #'S'
+         STA   TSTNAMEB+2
+         LDA   #'T'
+         STA   TSTNAMEB+3
+         LDA   #'W'
+         STA   TSTNAMEB+4
+         LDA   #'D'
+         STA   TSTNAMEB+5
+
+         LDD   #TSTCBUF
+         STD   CODEHERE
+         LDD   #TSTDBUF
+         STD   DPHERE
+         LDD   #TSTVBUF
+         STD   VARHERE
+         LDD   #TSTNAMEB
+         STD   SRCADDR
+         LDD   #6
+         STD   SRCLEN
+         LDD   #0
+         STD   TOIN
+
+         LDD   CODEHERE
+         STD   TSTWCFA
+
+         JSR   DEFERW
+
+         LDD   TSTCSAV
+         STD   CODEHERE
+
+         LDA   #'T'
+         STA   TSTNAMEB
+         LDA   #'E'
+         STA   TSTNAMEB+1
+         LDA   #'S'
+         STA   TSTNAMEB+2
+         LDA   #'T'
+         STA   TSTNAMEB+3
+         LDA   #'W'
+         STA   TSTNAMEB+4
+         LDA   #'D'
+         STA   TSTNAMEB+5
+         LDD   #TSTNAMEB
+         STD   SRCADDR
+         LDD   #6
+         STD   SRCLEN
+         LDD   #0
+         STD   TOIN
+         LDD   #0
+         STD   STATE
+
+         LDD   #TSTCBUF2  ; BUG FIX: this redirect was missing entirely
+                          ; - WORD writes its parsed-token output
+                          ; directly at CODEHERE regardless of STATE
+                          ; (see TSTCBUF2's own comment), so without
+                          ; this, ISW's own internal name-parse would
+                          ; write into the real, unredirected CODEHERE -
+                          ; unsafe during boot-time testing, before
+                          ; COLD has set it to anything meaningful. Not
+                          ; TSTCBUF specifically here (unlike TSTVALTO's
+                          ; TO-phase fix), since nothing in this phase
+                          ; needs TSTCBUF's own contents preserved yet -
+                          ; but using the same dedicated buffer
+                          ; throughout keeps every phase's redirect
+                          ; consistent and safe regardless of order.
+         STD   CODEHERE
+
+         LDD   #DUP
+         PSHU  D
+         JSR   ISW
+
+         STU   TSTU0
+
+         LDD   #TSTGUARD
+         PSHU  D
+         LDD   #TSTVAL1
+         PSHU  D
+         STU   TSTUB4
+
+         LDX   TSTWCFA
+         JSR   ,X
+
+         STU   TSTUAF
+
+         PULU  D
+         CMPD  #TSTVAL1
+         LBNE   ISFAIL  ; was BNE - out of short-branch range, since
+                        ; ISFAIL sits past this test's entire second
+                        ; phase (the ACTION-OF lookup and re-check)
+         PULU  D
+         CMPD  #TSTVAL1
+         BNE   ISFAIL
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   ISFAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #2
+         BNE   ISFAIL
+
+         LDA   #'T'
+         STA   TSTNAMEB
+         LDA   #'E'
+         STA   TSTNAMEB+1
+         LDA   #'S'
+         STA   TSTNAMEB+2
+         LDA   #'T'
+         STA   TSTNAMEB+3
+         LDA   #'W'
+         STA   TSTNAMEB+4
+         LDA   #'D'
+         STA   TSTNAMEB+5
+         LDD   #TSTNAMEB
+         STD   SRCADDR
+         LDD   #6
+         STD   SRCLEN
+         LDD   #0
+         STD   TOIN
+
+         LDD   #TSTCBUF2  ; BUG FIX: same missing redirect as before
+                          ; ISW above - ACTIONOF's own internal WORD
+                          ; call needs somewhere safe to write its
+                          ; parsed-token output too.
+         STD   CODEHERE
+
+         JSR   ACTIONOF
+
+         LDD   TSTCSAV
+         STD   CODEHERE
+         LDD   TSTDSAV
+         STD   DPHERE
+         LDD   TSTVSAV
+         STD   VARHERE
+         LDD   TSTSASAV
+         STD   SRCADDR
+         LDD   TSTSLSAV
+         STD   SRCLEN
+         LDD   TSTTISAV
+         STD   TOIN
+         LDD   TSTSTSAV
+         STD   STATE
+         LDD   TSTLSAV
+         STD   LATEST
+
+         PULU  D
+         CMPD  #DUP
+         BNE   ISFAIL
+
+         LDD   #TRUEV
+         BRA   ISDONE
+ISFAIL:  LDD   #FALSEV
+ISDONE:  LDX   #TSTISOFNAME
+         PSHU  X
+         PSHU  D
+         JSR   TSTREPORT
+
+         LDU   TSTU0
+         RTS
+
+TSTISOFNAME: FCB  7
+             FCC  "TSTISOF"
+
+; ------------------------------------------------------------
+; TSTMARKER - unit test for MARKER. Compiles "MARKER TESTWD"
+; (CODEHERE/DPHERE/VARHERE redirected to scratch, as with every
+; other test in this section), then simulates "something was
+; defined after the marker" by manually advancing the redirected
+; pointers further and pointing the real LATEST elsewhere,
+; executes the marker word, and verifies everything was restored
+; to TSTCBUF/TSTDBUF/TSTVBUF directly - the state BEFORE the
+; marker word itself was created, not the state right after.
+; MARKER's own documented behavior is "forgets itself too" -
+; traced MARKERW's own code and confirmed its internal snapshot
+; is taken at its very start, before HEADER or any compiling
+; runs at all, so that's genuinely the correct restore target,
+; not assumed.
+;
+; DOMARKER (confirmed by reading it directly) writes to the
+; real DPHERE/CODEHERE/VARHERE/LATEST unconditionally, not to
+; any redirected copy - so this test must execute the marker
+; word while CODEHERE/DPHERE/VARHERE are still redirected (their
+; real values are restored only afterward), unlike every other
+; test in this section, which restores first and executes
+; second. Getting this order backwards would have corrupted the
+; real dictionary pointers with scratch addresses.
+; ------------------------------------------------------------
+TSTMARKER: LDD  CODEHERE
+           STD  TSTCSAV
+           LDD  DPHERE
+           STD  TSTDSAV
+           LDD  VARHERE
+           STD  TSTVSAV
+           LDD  SRCADDR
+           STD  TSTSASAV
+           LDD  SRCLEN
+           STD  TSTSLSAV
+           LDD  TOIN
+           STD  TSTTISAV
+           LDD  LATEST
+           STD  TSTLSAV
+
+           LDA  #'T'
+           STA  TSTNAMEB
+           LDA  #'E'
+           STA  TSTNAMEB+1
+           LDA  #'S'
+           STA  TSTNAMEB+2
+           LDA  #'T'
+           STA  TSTNAMEB+3
+           LDA  #'W'
+           STA  TSTNAMEB+4
+           LDA  #'D'
+           STA  TSTNAMEB+5
+
+           LDD  #TSTCBUF
+           STD  CODEHERE
+           LDD  #TSTDBUF
+           STD  DPHERE
+           LDD  #TSTVBUF
+           STD  VARHERE
+           LDD  #TSTNAMEB
+           STD  SRCADDR
+           LDD  #6
+           STD  SRCLEN
+           LDD  #0
+           STD  TOIN
+
+           LDD  CODEHERE
+           STD  TSTWCFA
+
+           JSR  MARKERW
+
+           LDD  SRCLEN
+           STD  TSTSLSAV
+           LDD  TOIN
+           STD  TSTTISAV
+
+           STU  TSTU0
+
+           LDD  #TSTGUARD
+           PSHU D
+           STU  TSTUB4
+
+           LDD  CODEHERE
+           ADDD #30
+           STD  CODEHERE
+           LDD  DPHERE
+           ADDD #30
+           STD  DPHERE
+           LDD  VARHERE
+           ADDD #30
+           STD  VARHERE
+           LDD  #TSTFHDR
+           STD  LATEST
+
+           LDX  TSTWCFA
+           JSR  ,X
+
+           STU  TSTUAF
+
+           LDD  CODEHERE
+           STD  TSTCSAV2
+           LDD  DPHERE
+           STD  TSTDSAV2
+           LDD  VARHERE
+           STD  TSTVSAV2
+           LDD  LATEST
+           STD  TSTLSAV2
+
+           LDD  TSTCSAV
+           STD  CODEHERE
+           LDD  TSTDSAV
+           STD  DPHERE
+           LDD  TSTVSAV
+           STD  VARHERE
+           LDD  TSTSASAV
+           STD  SRCADDR
+           LDD  TSTSLSAV
+           STD  SRCLEN
+           LDD  TSTTISAV
+           STD  TOIN
+
+           PULU D
+           CMPD #TSTGUARD
+           BNE  MKFAIL
+
+           LDD  TSTUB4
+           SUBD TSTUAF
+           CMPD #0
+           BNE  MKFAIL
+
+           LDD  TSTCSAV2  ; BUG FIX: was compared against TSTMKCOD, a
+           CMPD #TSTCBUF  ; captured snapshot of CODEHERE right AFTER
+                          ; MARKERW finished building its own header -
+                          ; wrong target. MARKER's own documented
+                          ; behavior is "forgets itself too" - traced
+                          ; MARKERW's own code and confirmed its
+                          ; snapshot (MKDP/MKCODE/MKVAR/MKLATEST) is
+                          ; taken at its very start, before HEADER or
+                          ; any compiling runs at all - so DOMARKER
+                          ; correctly restores to the state BEFORE the
+                          ; marker word itself was created (TSTCBUF
+                          ; directly), not the state right after. The
+                          ; real dictionary/compile mechanism was
+                          ; already working correctly; only this
+                          ; test's own comparison target was wrong.
+           BNE  MKFAIL
+           LDD  TSTDSAV2
+           CMPD #TSTDBUF
+           BNE  MKFAIL
+           LDD  TSTVSAV2
+           CMPD #TSTVBUF
+           BNE  MKFAIL
+           LDD  TSTLSAV2
+           CMPD TSTLSAV
+           BNE  MKFAIL
+
+           LDD  TSTLSAV
+           STD  LATEST
+
+           LDD  #TRUEV
+           BRA  MKDONE
+MKFAIL:    LDD  TSTLSAV
+           STD  LATEST
+           LDD  #FALSEV
+MKDONE:    LDX  #TSTMARKERNAME
+           PSHU X
+           PSHU D
+           JSR  TSTREPORT
+
+           LDU  TSTU0
+           RTS
+
+TSTMARKERNAME: FCB  9
+               FCC  "TSTMARKER"
 
            ENDC ; <<<<
 
