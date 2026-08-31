@@ -4413,6 +4413,122 @@ design decisions made since the original version.
       the user's own register/memory-dump-level detail is what let
       this be pinpointed precisely rather than guessed at.
 
+- [x] **`TSTMEMORY` added - memory tests (glossary section 3.11, 22
+      words, 16 tests since several are combined into round-trip
+      tests that can only be meaningfully verified together - `@`/`!`,
+      `C@`/`C!`, `2@`/`2!`, and the `CODEHERE`-region words (`,`/`C,`/
+      `ALLOT`/`HERE`) and `VARHERE`-region words (`V,`/`VC,`/`VALLOT`/
+      `VHERE`) each combined into one sequential walk-through per
+      region), wired into `TSTRUNNER` and inserted last in the source
+      (after `TSTCOMPWORDS`), matching glossary order, gated as
+      `TSTSELECTOR`'s eleventh value (`-10`) - continuing the now-
+      sequential numbering established by the earlier renumbering.
+
+      Mostly simpler, direct memory-access words than the last few
+      sections (no compile-time behavior, no name-parsing), but `,`/
+      `C,`/`ALLOT`/`HERE`/`PAD` touch `CODEHERE` and `V,`/`VC,`/
+      `VALLOT`/`VHERE` touch `VARHERE`, so those still needed the
+      same redirect-based safety established for sections 3.8/3.9;
+      `TSTCBUF`/`TSTVBUF` reused as general scratch for the simpler
+      fetch/store tests too, safe since each `TSTSELECTOR` group runs
+      exclusively of every other.
+
+      **`MOVE` confirmed via its own code to genuinely choose its
+      copy direction by comparing addresses**, delegating to `CMOVE`
+      (low-to-high) when `dst <= src` and `CMOVE>` (high-to-low)
+      otherwise, specifically to stay overlap-safe. Rather than test
+      only a trivial non-overlapping case, wrote two dedicated
+      overlapping-region tests (`TSTMOVE2`/`TSTMOVE3`, one for each
+      direction) - each expected result hand-derived byte by byte and
+      then independently re-derived via a small Python simulation
+      before writing the actual test, not guessed at or assumed
+      correct from the reasoning alone. `CMOVE`/`CMOVE>` themselves
+      are tested with non-overlapping regions only, given they are
+      explicitly documented as not overlap-safe in one direction each
+      - `MOVE`'s own existence is precisely the mechanism for
+      handling the overlapping case correctly, not something to
+      duplicate in `CMOVE`'s own tests.
+
+      `TSTCFETCHSTORE` (`C@`/`C!`) specifically pre-fills the cell
+      with a distinctive nonzero high byte before testing, to verify
+      both that `C!` genuinely only touches the low byte (checked via
+      a direct memory read, not just inferred from the later `C@`)
+      and that `C@` genuinely zero-extends (not just returns whatever
+      was already there) - a plain round trip alone could not have
+      distinguished either from a byte-store/byte-fetch pair that
+      happened to leave the high byte untouched by coincidence.
+
+      Zero `FCB`-length/string-length mismatches survived to the
+      collision-check stage this time - all nine caught (`TSTFETCHSTORE`,
+      `TSTPLUSSTORE`, `TSTPAD`, `TSTUNUSED`, `TSTVUNUSED`, `TSTCMOVE`,
+      `TSTCMOVEGT`, and two others) individually and immediately after
+      writing each test, per this session's now-standard practice.
+      Label collisions checked programmatically before insertion -
+      caught 4 real ones this way (`PDFAIL`/`PDDONE`, colliding with
+      section 3.5's own `TSTDPLUS`; `CMDONE`/`CGDONE`, colliding with
+      `CMOVEW`'s/`CMOVEGT`'s own internal completion labels - the same
+      class of issue as `MSTAR`/`LSHIFT`/`RSHIFT`/`HOLDS`/`DUMP`/`TYPE`
+      found in earlier sections), replaced with `PA`/`CV`/`CX`
+      respectively, each re-verified against every label in the file,
+      including this batch's own internal loop labels.
+
+      Checked the `IFEQ`/`ENDC` balance immediately after insertion,
+      per this session's now-standard practice - balanced (35/35) and
+      correctly nested end to end on the first attempt.
+
+      Verified: all 16 depth-check values independently re-derived
+      from real arity and confirmed correct against the final, fully-
+      assembled file state; every real word reference confirmed to
+      resolve, with the apparent "missing" list (character literals,
+      hex literals, a mnemonic, and this batch's own local loop
+      labels) traced to its real, harmless cause rather than dismissed
+      without checking; all 16 tests confirmed wired into `TSTMEMORY`,
+      and `TSTMEMORY` itself confirmed wired into `TSTRUNNER`. Full
+      scenario matrix re-run with `TSTSELECTOR`'s eleventh value
+      included (24 scenarios total) - all pass; explicitly confirmed
+      `TSTSELECTOR=10` includes only this group's own bodies. Byte-
+      exact split-file reassembly confirmed. **MAME-CONFIRMED**: the
+      user reports all `TSTMEMORY` tests now pass, including
+      `TSTCFETCHSTORE` after its own fix (logged separately above) -
+      both overlapping-direction `MOVE` cases, the combined `CODEHERE`/
+      `VARHERE`-region walk-throughs, and every other test in this
+      section all confirmed correct on real hardware.
+
+- [x] **RESOLVED - real bug found by the user's actual MAME run:
+      `TSTCFETCHSTORE` failed because the test's own expected value
+      after `C!` was backwards - `CSTOREW` itself is correct.** Root
+      cause confirmed directly against the user's own register and
+      memory dump: this test expected `$FF34` after storing `$34`
+      into a cell pre-filled with `$FFFF`, assuming the untouched
+      byte would end up as the word's high byte - but `CSTOREW`
+      writes directly at the exact address given (`TSTCBUF` itself,
+      the *lower* address), leaving `TSTCBUF+1` (the higher address)
+      untouched at `$FF`. Since `LDD` on this big-endian 6809 reads
+      the word's high byte from the lower address first, the correct
+      result is `$34FF`, not `$FF34` - exactly what the user's own
+      dump showed (`D=$34FF` at the failing `CMPD`, with the memory
+      dump confirming `34 FF` sitting at `TSTCBUF`/`TSTCBUF+1`). The
+      single-byte write and the zero-extending fetch this test also
+      checks were both already correct; only this one comparison's
+      own arithmetic about which byte ends up where was wrong.
+
+      Fixed by correcting the expected value to `$34FF` and rewriting
+      the test's own header comment, which had described the pre-fill
+      byte's position ambiguously enough to have contributed to the
+      original mistake - now states precisely that `C!` touches the
+      single byte at the exact address given, not "the other half" of
+      a 2-byte cell in some assumed sense.
+
+      Verified: `IFEQ`/`ENDC` balance unaffected (35/35); this test's
+      own depth-check value unchanged (`-2`, since the fix only
+      changes a comparison constant); full scenario matrix re-run
+      crossing both real `SERIALPOLL` settings with every
+      `TSTSELECTOR` value 0-10 (24 scenarios total) - all pass. Byte-
+      exact split-file reassembly confirmed. This specific fix awaits
+      its own MAME confirmation - the user's own register/memory-dump-
+      level detail is what let this be pinpointed precisely rather
+      than guessed at.
+
 ## Structural duplication (identified, some resolved, some not)
 
 - [x] `:`/`CREATE`/`VARIABLE`'s header-building — resolved via `HEADER`

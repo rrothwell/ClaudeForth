@@ -839,6 +839,7 @@ TSTRUNNER: JSR   TSTSYSIO
            JSR   TSTCTRLFLOW
            JSR   TSTDEFWORDS
            JSR   TSTCOMPWORDS
+           JSR   TSTMEMORY
            RTS
 
 ; ------------------------------------------------------------
@@ -10850,6 +10851,1143 @@ AQ2DONE:    LDX  #TSTAQ2NAME
 
 TSTAQ2NAME: FCB  10
             FCC  "TSTABORTQ2"
+
+           ENDC ; <<<<
+
+; ------------------------------------------------------------
+; TSTMEMORY - memory tests (glossary section 3.11, 22 words, 16
+; tests since several are combined into round-trip tests that
+; can only be meaningfully verified together: @/!, C@/C!, 2@/2!,
+; and the CODEHERE-region words (,/C,/ALLOT/HERE) and VARHERE-
+; region words (V,/VC,/VALLOT/VHERE) each combined into one
+; sequential walk-through per region.
+;
+; MOVE is traced from its own code to genuinely choose its copy
+; direction by comparing src and dst addresses, delegating to
+; CMOVE or CMOVE> to stay overlap-safe - so its own tests
+; specifically include both overlap directions (TSTMOVE2/
+; TSTMOVE3), each with its expected result hand-derived and
+; independently simulated in Python before writing the test, not
+; a trivial non-overlapping case alone (TSTMOVE1).
+; ------------------------------------------------------------
+TSTMEMORY: JSR CRW
+           LDX   #TSTMEMMSG
+           PSHU  X
+           LDD   #6
+           PSHU  D
+           JSR   TYPE
+           JSR   CRW
+
+           IFEQ TSTSELECTOR-10  ; >>>>
+
+           JSR   TSTFETCHSTORE
+           JSR   TSTCFETCHSTORE
+           JSR   TSTPLUSSTORE
+           JSR   TST2FETCHSTORE
+           JSR   TSTCODEHERE
+           JSR   TSTVARHERE
+           JSR   TSTPAD
+           JSR   TSTUNUSED
+           JSR   TSTVUNUSED
+           JSR   TSTFILL
+           JSR   TSTERASE
+           JSR   TSTCMOVE
+           JSR   TSTCMOVEGT
+           JSR   TSTMOVE1
+           JSR   TSTMOVE2
+           JSR   TSTMOVE3
+
+           ENDC ; <<<<
+
+           RTS
+
+TSTMEMMSG: FCC "Memory"
+
+           IFEQ TSTSELECTOR-10  ; >>>>
+
+; ------------------------------------------------------------
+; Memory test harness (glossary section 3.11). Mostly simpler,
+; direct memory-access words (no compile-time behavior, no
+; name-parsing) - but , C, ALLOT HERE PAD touch CODEHERE, and
+; V, VC, VALLOT VHERE touch VARHERE, so those still need the
+; same redirect-based safety established for sections 3.8/3.9.
+; TSTCBUF is reused here as general scratch memory for the
+; simpler fetch/store tests, safe since each TSTSELECTOR group
+; runs exclusively of every other.
+;
+; MOVE is traced to genuinely choose its copy direction based on
+; comparing src and dst addresses (delegating to CMOVE or
+; CMOVE> as appropriate) - so its own tests specifically include
+; overlapping regions in both directions, not just a trivial
+; non-overlapping case, to verify that claim for real.
+; ------------------------------------------------------------
+
+; ------------------------------------------------------------
+; TSTFETCHSTORE - unit test for @ and ! together (can only be
+; meaningfully tested as a round trip). Stores a known value at
+; scratch, fetches it back, verifies the match.
+; ------------------------------------------------------------
+TSTFETCHSTORE: STU  TSTU0
+
+               LDD  #TSTGUARD
+               PSHU D
+               LDD  #TSTVAL1
+               PSHU D
+               LDD  #TSTCBUF
+               PSHU D
+               STU  TSTUB4
+
+               JSR  STOREW
+
+               LDD  #TSTCBUF
+               PSHU D
+
+               JSR  ATSIGN
+
+               STU  TSTUAF
+
+               PULU D
+               CMPD #TSTVAL1
+               BNE  FSFAIL
+               PULU D
+               CMPD #TSTGUARD
+               BNE  FSFAIL
+
+               LDD  TSTUB4
+               SUBD TSTUAF
+               CMPD #-2
+               BNE  FSFAIL
+
+               LDD  #TRUEV
+               BRA  FSDONE
+FSFAIL:        LDD  #FALSEV
+FSDONE:        LDX  #TSTFSNAME
+               PSHU X
+               PSHU D
+               JSR  TSTREPORT
+
+               LDU  TSTU0
+               RTS
+
+TSTFSNAME: FCB  13
+           FCC  "TSTFETCHSTORE"
+
+; ------------------------------------------------------------
+; TSTCFETCHSTORE - unit test for C@ and C! together. Pre-fills
+; the cell with a distinctive nonzero pattern ($FFFF) via a
+; direct write (not through C!/C@ themselves), then confirms C!
+; genuinely only touches the single byte at the exact address
+; given - not the "other half" of a 2-byte cell in some assumed
+; sense - and that C@ genuinely zero-extends (not just returns
+; whatever was there).
+;
+; BUG FIX: this test's own expected value after C! was wrong,
+; not CSTOREW - confirmed via MAME: expected $FF34 (assuming
+; the untouched byte, from the $FFFF pre-fill, would end up as
+; the high byte of the word), but CSTOREW writes directly at
+; the given address (TSTCBUF itself, the LOWER address), leaving
+; TSTCBUF+1 (the higher address) untouched at $FF - and since
+; LDD on this big-endian 6809 reads the high byte of the word
+; from the lower address first, that's $34FF, not $FF34. The
+; single-byte write and the zero-extending fetch were both
+; already correct; only this test's own arithmetic about which
+; byte ends up where was wrong.
+; ------------------------------------------------------------
+TSTCFETCHSTORE: LDD  #$FFFF
+                STD  TSTCBUF
+
+                STU  TSTU0
+
+                LDD  #TSTGUARD
+                PSHU D
+                LDD  #$34
+                PSHU D
+                LDD  #TSTCBUF
+                PSHU D
+                STU  TSTUB4
+
+                JSR  CSTOREW
+
+                LDD  TSTCBUF
+                CMPD #$34FF
+                BNE  CFFAIL
+
+                LDD  #TSTCBUF
+                PSHU D
+
+                JSR  CFETCH
+
+                STU  TSTUAF
+
+                PULU D
+                CMPD #$0034
+                BNE  CFFAIL
+                PULU D
+                CMPD #TSTGUARD
+                BNE  CFFAIL
+
+                LDD  TSTUB4
+                SUBD TSTUAF
+                CMPD #-2
+                BNE  CFFAIL
+
+                LDD  #TRUEV
+                BRA  CFDONE
+CFFAIL:         LDD  #FALSEV
+CFDONE:         LDX  #TSTCFNAME
+                PSHU X
+                PSHU D
+                JSR  TSTREPORT
+
+                LDU  TSTU0
+                RTS
+
+TSTCFNAME: FCB  14
+           FCC  "TSTCFETCHSTORE"
+
+; ------------------------------------------------------------
+; TSTPLUSSTORE - unit test for +!. Pre-initializes the cell to a
+; known value, adds a known delta, and verifies the sum landed
+; correctly.
+; ------------------------------------------------------------
+TSTPLUSSTORE: LDD  #TSTVAL1
+              STD  TSTCBUF
+
+              STU  TSTU0
+
+              LDD  #TSTGUARD
+              PSHU D
+              LDD  #100
+              PSHU D
+              LDD  #TSTCBUF
+              PSHU D
+              STU  TSTUB4
+
+              JSR  PLUSSTORE
+
+              STU  TSTUAF
+
+              LDD  TSTCBUF
+              CMPD #TSTVAL1+100
+              BNE  PSFAIL
+
+              PULU D
+              CMPD #TSTGUARD
+              BNE  PSFAIL
+
+              LDD  TSTUB4
+              SUBD TSTUAF
+              CMPD #-4
+              BNE  PSFAIL
+
+              LDD  #TRUEV
+              BRA  PSDONE
+PSFAIL:       LDD  #FALSEV
+PSDONE:       LDX  #TSTPSNAME
+              PSHU X
+              PSHU D
+              JSR  TSTREPORT
+
+              LDU  TSTU0
+              RTS
+
+TSTPSNAME: FCB  12
+           FCC  "TSTPLUSSTORE"
+
+; ------------------------------------------------------------
+; TST2FETCHSTORE - unit test for 2@ and 2! together. Stores a
+; known pair, fetches it back, and verifies the correct
+; ordering (x1 at the lower address, x2 at the higher, matching
+; the documented convention on both ends).
+; ------------------------------------------------------------
+TST2FETCHSTORE: STU  TSTU0
+
+                LDD  #TSTGUARD
+                PSHU D
+                LDD  #TSTVAL1
+                PSHU D
+                LDD  #TSTVAL2
+                PSHU D
+                LDD  #TSTCBUF
+                PSHU D
+                STU  TSTUB4
+
+                JSR  DSTORE
+
+                LDD  #TSTCBUF
+                PSHU D
+
+                JSR  DFETCH
+
+                STU  TSTUAF
+
+                PULU D
+                CMPD #TSTVAL2
+                BNE  DFFAIL
+                PULU D
+                CMPD #TSTVAL1
+                BNE  DFFAIL
+                PULU D
+                CMPD #TSTGUARD
+                BNE  DFFAIL
+
+                LDD  TSTUB4
+                SUBD TSTUAF
+                CMPD #-2
+                BNE  DFFAIL
+
+                LDD  TSTCBUF
+                CMPD #TSTVAL1
+                BNE  DFFAIL
+                LDD  TSTCBUF+2
+                CMPD #TSTVAL2
+                BNE  DFFAIL
+
+                LDD  #TRUEV
+                BRA  DFDONE
+DFFAIL:         LDD  #FALSEV
+DFDONE:         LDX  #TSTDFNAME
+                PSHU X
+                PSHU D
+                JSR  TSTREPORT
+
+                LDU  TSTU0
+                RTS
+
+TSTDFNAME: FCB  14
+           FCC  "TST2FETCHSTORE"
+
+; ------------------------------------------------------------
+; TSTCODEHERE - combined unit test for , C, ALLOT, and HERE
+; together (glossary section 3.11's own CODEHERE-region words).
+; Redirects CODEHERE to scratch and walks through a sequence:
+; HERE reports the redirected value, COMMA appends a cell (and
+; the written cell is verified directly, not just the advance),
+; C, appends a byte (verified the same way), ALLOT reserves then
+; releases bytes (confirming both directions work, matching
+; "reserve (or release, if negative)"), and a final HERE
+; confirms the cumulative result.
+; ------------------------------------------------------------
+TSTCODEHERE: LDD  CODEHERE
+             STD  TSTCSAV
+
+             LDD  #TSTCBUF
+             STD  CODEHERE
+
+             STU  TSTU0
+
+             LDD  #TSTGUARD
+             PSHU D
+             STU  TSTUB4
+
+             JSR  HEREW
+             PULU D
+             CMPD #TSTCBUF
+             BNE  CHFAIL
+
+             LDD  #TSTVAL1
+             PSHU D
+             JSR  COMMA
+             LDD  TSTCBUF
+             CMPD #TSTVAL1
+             BNE  CHFAIL
+             LDD  CODEHERE
+             CMPD #TSTCBUF+2
+             BNE  CHFAIL
+
+             LDD  #$56
+             PSHU D
+             JSR  CCOMMA
+             LDA  TSTCBUF+2
+             CMPA #$56
+             BNE  CHFAIL
+             LDD  CODEHERE
+             CMPD #TSTCBUF+3
+             BNE  CHFAIL
+
+             LDD  #10
+             PSHU D
+             JSR  ALLOT
+             LDD  CODEHERE
+             CMPD #TSTCBUF+13
+             BNE  CHFAIL
+
+             LDD  #-4
+             PSHU D
+             JSR  ALLOT
+             LDD  CODEHERE
+             CMPD #TSTCBUF+9
+             BNE  CHFAIL
+
+             JSR  HEREW
+             PULU D
+             CMPD #TSTCBUF+9
+             BNE  CHFAIL
+
+             STU  TSTUAF
+
+             PULU D
+             CMPD #TSTGUARD
+             BNE  CHFAIL
+
+             LDD  TSTUB4
+             SUBD TSTUAF
+             CMPD #0
+             BNE  CHFAIL
+
+             LDD  #TRUEV
+             BRA  CHDONE
+CHFAIL:      LDD  #FALSEV
+CHDONE:      LDX  #TSTCHNAME
+             PSHU X
+             PSHU D
+             JSR  TSTREPORT
+
+             LDD  TSTCSAV
+             STD  CODEHERE
+
+             LDU  TSTU0
+             RTS
+
+TSTCHNAME: FCB  11
+           FCC  "TSTCODEHERE"
+
+; ------------------------------------------------------------
+; TSTVARHERE - combined unit test for V, VC, VALLOT, and VHERE
+; together - same structure as TSTCODEHERE, but for the
+; mutable/variable region (VARHERE) instead.
+; ------------------------------------------------------------
+TSTVARHERE: LDD  VARHERE
+            STD  TSTVSAV
+
+            LDD  #TSTVBUF
+            STD  VARHERE
+
+            STU  TSTU0
+
+            LDD  #TSTGUARD
+            PSHU D
+            STU  TSTUB4
+
+            JSR  VHEREW
+            PULU D
+            CMPD #TSTVBUF
+            BNE  VHFAIL
+
+            LDD  #TSTVAL1
+            PSHU D
+            JSR  VCOMMA
+            LDD  TSTVBUF
+            CMPD #TSTVAL1
+            BNE  VHFAIL
+            LDD  VARHERE
+            CMPD #TSTVBUF+2
+            BNE  VHFAIL
+
+            LDD  #$56
+            PSHU D
+            JSR  VCCOMMA
+            LDA  TSTVBUF+2
+            CMPA #$56
+            BNE  VHFAIL
+            LDD  VARHERE
+            CMPD #TSTVBUF+3
+            BNE  VHFAIL
+
+            LDD  #10
+            PSHU D
+            JSR  VALLOT
+            LDD  VARHERE
+            CMPD #TSTVBUF+13
+            BNE  VHFAIL
+
+            LDD  #-4
+            PSHU D
+            JSR  VALLOT
+            LDD  VARHERE
+            CMPD #TSTVBUF+9
+            BNE  VHFAIL
+
+            JSR  VHEREW
+            PULU D
+            CMPD #TSTVBUF+9
+            BNE  VHFAIL
+
+            STU  TSTUAF
+
+            PULU D
+            CMPD #TSTGUARD
+            BNE  VHFAIL
+
+            LDD  TSTUB4
+            SUBD TSTUAF
+            CMPD #0
+            BNE  VHFAIL
+
+            LDD  #TRUEV
+            BRA  VHDONE
+VHFAIL:     LDD  #FALSEV
+VHDONE:     LDX  #TSTVHNAME
+            PSHU X
+            PSHU D
+            JSR  TSTREPORT
+
+            LDD  TSTVSAV
+            STD  VARHERE
+
+            LDU  TSTU0
+            RTS
+
+TSTVHNAME: FCB  10
+           FCC  "TSTVARHERE"
+
+; ------------------------------------------------------------
+; TSTPAD - unit test for PAD. Redirects CODEHERE, verifies PAD
+; reports CODEHERE+PADOFFSET, using the same symbolic constant
+; PADW's own code uses rather than a hardcoded number.
+; ------------------------------------------------------------
+TSTPAD: LDD  CODEHERE
+        STD  TSTCSAV
+
+        LDD  #TSTCBUF
+        STD  CODEHERE
+
+        STU  TSTU0
+
+        LDD  #TSTGUARD
+        PSHU D
+        STU  TSTUB4
+
+        JSR  PADW
+
+        STU  TSTUAF
+
+        PULU D
+        CMPD #TSTCBUF+PADOFFSET
+        BNE  PAFAIL
+        PULU D
+        CMPD #TSTGUARD
+        BNE  PAFAIL
+
+        LDD  TSTUB4
+        SUBD TSTUAF
+        CMPD #2
+        BNE  PAFAIL
+
+        LDD  #TRUEV
+        BRA  PADONE
+PAFAIL: LDD  #FALSEV
+PADONE: LDX  #TSTPADNAME
+        PSHU X
+        PSHU D
+        JSR  TSTREPORT
+
+        LDD  TSTCSAV
+        STD  CODEHERE
+
+        LDU  TSTU0
+        RTS
+
+TSTPADNAME: FCB  6
+            FCC  "TSTPAD"
+
+; ------------------------------------------------------------
+; TSTUNUSED - unit test for UNUSED. Redirects CODEHERE, verifies
+; UNUSED reports CODETOP-CODEHERE, using the same symbolic
+; constant UNUSEDW's own code uses.
+; ------------------------------------------------------------
+TSTUNUSED: LDD  CODEHERE
+           STD  TSTCSAV
+
+           LDD  #TSTCBUF
+           STD  CODEHERE
+
+           STU  TSTU0
+
+           LDD  #TSTGUARD
+           PSHU D
+           STU  TSTUB4
+
+           JSR  UNUSEDW
+
+           STU  TSTUAF
+
+           PULU D
+           CMPD #CODETOP-TSTCBUF
+           BNE  UNFAIL
+           PULU D
+           CMPD #TSTGUARD
+           BNE  UNFAIL
+
+           LDD  TSTUB4
+           SUBD TSTUAF
+           CMPD #2
+           BNE  UNFAIL
+
+           LDD  #TRUEV
+           BRA  UNDONE
+UNFAIL:    LDD  #FALSEV
+UNDONE:    LDX  #TSTUNNAME
+           PSHU X
+           PSHU D
+           JSR  TSTREPORT
+
+           LDD  TSTCSAV
+           STD  CODEHERE
+
+           LDU  TSTU0
+           RTS
+
+TSTUNNAME: FCB  9
+           FCC  "TSTUNUSED"
+
+; ------------------------------------------------------------
+; TSTVUNUSED - unit test for VUNUSED. Redirects VARHERE, verifies
+; VUNUSED reports APPVARSEND-VARHERE, using the same symbolic
+; constant VUNUSEDW's own code uses (per its own bug-fix comment,
+; confirmed already correct - this was the real bug found and
+; fixed earlier in a prior session, not something to re-litigate
+; here, just confirm holds).
+; ------------------------------------------------------------
+TSTVUNUSED: LDD  VARHERE
+            STD  TSTVSAV
+
+            LDD  #TSTVBUF
+            STD  VARHERE
+
+            STU  TSTU0
+
+            LDD  #TSTGUARD
+            PSHU D
+            STU  TSTUB4
+
+            JSR  VUNUSEDW
+
+            STU  TSTUAF
+
+            PULU D
+            CMPD #APPVARSEND-TSTVBUF
+            BNE  VUFAIL
+            PULU D
+            CMPD #TSTGUARD
+            BNE  VUFAIL
+
+            LDD  TSTUB4
+            SUBD TSTUAF
+            CMPD #2
+            BNE  VUFAIL
+
+            LDD  #TRUEV
+            BRA  VUDONE
+VUFAIL:     LDD  #FALSEV
+VUDONE:     LDX  #TSTVUNNAME
+            PSHU X
+            PSHU D
+            JSR  TSTREPORT
+
+            LDD  TSTVSAV
+            STD  VARHERE
+
+            LDU  TSTU0
+            RTS
+
+TSTVUNNAME: FCB  10
+            FCC  "TSTVUNUSED"
+
+; ------------------------------------------------------------
+; TSTFILL - unit test for FILL. Fills 5 scratch bytes with a
+; known character, then verifies every one of the 5 bytes
+; individually - not just spot-checking the first and last.
+; ------------------------------------------------------------
+TSTFILL: STU  TSTU0
+
+         LDD  #TSTGUARD
+         PSHU D
+         LDD  #TSTCBUF
+         PSHU D
+         LDD  #5
+         PSHU D
+         LDD  #$41
+         PSHU D
+         STU  TSTUB4
+
+         JSR  FILLW
+
+         STU  TSTUAF
+
+         LDX  #TSTCBUF
+         LDB  #5
+FILVLP:  LDA  ,X+
+         CMPA #$41
+         BNE  FLFAIL
+         DECB
+         BNE  FILVLP
+
+         PULU D
+         CMPD #TSTGUARD
+         BNE  FLFAIL
+
+         LDD  TSTUB4
+         SUBD TSTUAF
+         CMPD #-6
+         BNE  FLFAIL
+
+         LDD  #TRUEV
+         BRA  FLDONE
+FLFAIL:  LDD  #FALSEV
+FLDONE:  LDX  #TSTFLNAME
+         PSHU X
+         PSHU D
+         JSR  TSTREPORT
+
+         LDU  TSTU0
+         RTS
+
+TSTFLNAME: FCB  7
+           FCC  "TSTFILL"
+
+; ------------------------------------------------------------
+; TSTERASE - unit test for ERASE. Pre-fills scratch with a
+; nonzero pattern first (so a no-op couldn't accidentally pass),
+; erases it, and verifies every byte is genuinely zero.
+; ------------------------------------------------------------
+TSTERASE: LDX  #TSTCBUF
+          LDB  #5
+ERSETLP:  LDA  #$FF
+          STA  ,X+
+          DECB
+          BNE  ERSETLP
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          LDD  #TSTCBUF
+          PSHU D
+          LDD  #5
+          PSHU D
+          STU  TSTUB4
+
+          JSR  ERASEW
+
+          STU  TSTUAF
+
+          LDX  #TSTCBUF
+          LDB  #5
+ERSVLP:   LDA  ,X+
+          CMPA #0
+          BNE  ERFAIL
+          DECB
+          BNE  ERSVLP
+
+          PULU D
+          CMPD #TSTGUARD
+          BNE  ERFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #-4
+          BNE  ERFAIL
+
+          LDD  #TRUEV
+          BRA  ERDONE
+ERFAIL:   LDD  #FALSEV
+ERDONE:   LDX  #TSTERNAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTERNAME: FCB  8
+           FCC  "TSTERASE"
+
+; ------------------------------------------------------------
+; TSTCMOVE - unit test for CMOVE. Non-overlapping regions (well
+; separated within TSTCBUF's own 80 bytes) - CMOVE's own
+; overlap-unsafe behavior in the high-over-low direction is
+; exactly what MOVE exists to route around, so CMOVE's own
+; tests stick to the simple, well-defined case; see TSTMOVE2/
+; TSTMOVE3 below for the overlap-specific verification.
+; ------------------------------------------------------------
+TSTCMOVE: LDA  #'A'
+          STA  TSTCBUF
+          LDA  #'B'
+          STA  TSTCBUF+1
+          LDA  #'C'
+          STA  TSTCBUF+2
+          LDA  #'D'
+          STA  TSTCBUF+3
+          LDA  #'E'
+          STA  TSTCBUF+4
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          LDD  #TSTCBUF
+          PSHU D
+          LDD  #TSTCBUF+10
+          PSHU D
+          LDD  #5
+          PSHU D
+          STU  TSTUB4
+
+          JSR  CMOVEW
+
+          STU  TSTUAF
+
+          LDA  TSTCBUF+10
+          CMPA #'A'
+          BNE  CVFAIL
+          LDA  TSTCBUF+11
+          CMPA #'B'
+          BNE  CVFAIL
+          LDA  TSTCBUF+12
+          CMPA #'C'
+          BNE  CVFAIL
+          LDA  TSTCBUF+13
+          CMPA #'D'
+          BNE  CVFAIL
+          LDA  TSTCBUF+14
+          CMPA #'E'
+          BNE  CVFAIL
+
+          PULU D
+          CMPD #TSTGUARD
+          BNE  CVFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #-6
+          BNE  CVFAIL
+
+          LDD  #TRUEV
+          BRA  CVDONE
+CVFAIL:   LDD  #FALSEV
+CVDONE:   LDX  #TSTCMNAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTCMNAME: FCB  8
+           FCC  "TSTCMOVE"
+
+; ------------------------------------------------------------
+; TSTCMOVEGT - unit test for CMOVE>. Non-overlapping regions,
+; same reasoning as TSTCMOVE.
+; ------------------------------------------------------------
+TSTCMOVEGT: LDA  #'A'
+            STA  TSTCBUF
+            LDA  #'B'
+            STA  TSTCBUF+1
+            LDA  #'C'
+            STA  TSTCBUF+2
+            LDA  #'D'
+            STA  TSTCBUF+3
+            LDA  #'E'
+            STA  TSTCBUF+4
+
+            STU  TSTU0
+
+            LDD  #TSTGUARD
+            PSHU D
+            LDD  #TSTCBUF
+            PSHU D
+            LDD  #TSTCBUF+10
+            PSHU D
+            LDD  #5
+            PSHU D
+            STU  TSTUB4
+
+            JSR  CMOVEGT
+
+            STU  TSTUAF
+
+            LDA  TSTCBUF+10
+            CMPA #'A'
+            BNE  CXFAIL
+            LDA  TSTCBUF+11
+            CMPA #'B'
+            BNE  CXFAIL
+            LDA  TSTCBUF+12
+            CMPA #'C'
+            BNE  CXFAIL
+            LDA  TSTCBUF+13
+            CMPA #'D'
+            BNE  CXFAIL
+            LDA  TSTCBUF+14
+            CMPA #'E'
+            BNE  CXFAIL
+
+            PULU D
+            CMPD #TSTGUARD
+            BNE  CXFAIL
+
+            LDD  TSTUB4
+            SUBD TSTUAF
+            CMPD #-6
+            BNE  CXFAIL
+
+            LDD  #TRUEV
+            BRA  CXDONE
+CXFAIL:     LDD  #FALSEV
+CXDONE:     LDX  #TSTCGNAME
+            PSHU X
+            PSHU D
+            JSR  TSTREPORT
+
+            LDU  TSTU0
+            RTS
+
+TSTCGNAME: FCB  10
+           FCC  "TSTCMOVEGT"
+
+; ------------------------------------------------------------
+; TSTMOVE1 - unit test for MOVE, non-overlapping sanity case.
+; ------------------------------------------------------------
+TSTMOVE1: LDA  #'A'
+          STA  TSTCBUF
+          LDA  #'B'
+          STA  TSTCBUF+1
+          LDA  #'C'
+          STA  TSTCBUF+2
+          LDA  #'D'
+          STA  TSTCBUF+3
+          LDA  #'E'
+          STA  TSTCBUF+4
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          LDD  #TSTCBUF
+          PSHU D
+          LDD  #TSTCBUF+20
+          PSHU D
+          LDD  #5
+          PSHU D
+          STU  TSTUB4
+
+          JSR  MOVEW
+
+          STU  TSTUAF
+
+          LDA  TSTCBUF+20
+          CMPA #'A'
+          BNE  MV1FAIL
+          LDA  TSTCBUF+21
+          CMPA #'B'
+          BNE  MV1FAIL
+          LDA  TSTCBUF+22
+          CMPA #'C'
+          BNE  MV1FAIL
+          LDA  TSTCBUF+23
+          CMPA #'D'
+          BNE  MV1FAIL
+          LDA  TSTCBUF+24
+          CMPA #'E'
+          BNE  MV1FAIL
+
+          PULU D
+          CMPD #TSTGUARD
+          BNE  MV1FAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #-6
+          BNE  MV1FAIL
+
+          LDD  #TRUEV
+          BRA  MV1DONE
+MV1FAIL:  LDD  #FALSEV
+MV1DONE:  LDX  #TSTMV1NAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTMV1NAME: FCB  8
+            FCC  "TSTMOVE1"
+
+; ------------------------------------------------------------
+; TSTMOVE2 - unit test for MOVE, overlapping case with dst >
+; src (dst = TSTCBUF+2, src = TSTCBUF, 5 bytes - a 2-byte
+; forward shift). MOVE's own code compares addresses and
+; delegates to CMOVE> (high-to-low) whenever dst > src,
+; specifically to avoid the corruption a naive low-to-high copy
+; would cause here (byte 2 would get overwritten by the copy
+; before ever being read as a source byte). Expected result
+; hand-derived and independently simulated in Python before
+; writing this test, not guessed: "ABABCDE" across bytes 0-6.
+; ------------------------------------------------------------
+TSTMOVE2: LDA  #'A'
+          STA  TSTCBUF
+          LDA  #'B'
+          STA  TSTCBUF+1
+          LDA  #'C'
+          STA  TSTCBUF+2
+          LDA  #'D'
+          STA  TSTCBUF+3
+          LDA  #'E'
+          STA  TSTCBUF+4
+          LDA  #'X'
+          STA  TSTCBUF+5
+          LDA  #'X'
+          STA  TSTCBUF+6
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          LDD  #TSTCBUF
+          PSHU D
+          LDD  #TSTCBUF+2
+          PSHU D
+          LDD  #5
+          PSHU D
+          STU  TSTUB4
+
+          JSR  MOVEW
+
+          STU  TSTUAF
+
+          LDA  TSTCBUF
+          CMPA #'A'
+          BNE  MV2FAIL
+          LDA  TSTCBUF+1
+          CMPA #'B'
+          BNE  MV2FAIL
+          LDA  TSTCBUF+2
+          CMPA #'A'
+          BNE  MV2FAIL
+          LDA  TSTCBUF+3
+          CMPA #'B'
+          BNE  MV2FAIL
+          LDA  TSTCBUF+4
+          CMPA #'C'
+          BNE  MV2FAIL
+          LDA  TSTCBUF+5
+          CMPA #'D'
+          BNE  MV2FAIL
+          LDA  TSTCBUF+6
+          CMPA #'E'
+          BNE  MV2FAIL
+
+          PULU D
+          CMPD #TSTGUARD
+          BNE  MV2FAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #-6
+          BNE  MV2FAIL
+
+          LDD  #TRUEV
+          BRA  MV2DONE
+MV2FAIL:  LDD  #FALSEV
+MV2DONE:  LDX  #TSTMV2NAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTMV2NAME: FCB  8
+            FCC  "TSTMOVE2"
+
+; ------------------------------------------------------------
+; TSTMOVE3 - unit test for MOVE, overlapping case with dst <
+; src (dst = TSTCBUF, src = TSTCBUF+2, 5 bytes - a 2-byte
+; backward shift). MOVE delegates to plain CMOVE (low-to-high)
+; whenever dst < src, avoiding the mirror-image corruption a
+; naive high-to-low copy would cause here. Expected result
+; hand-derived and independently simulated before writing:
+; "ABCDEDE" across bytes 0-6 (bytes 5-6 untouched, outside the
+; destination range).
+; ------------------------------------------------------------
+TSTMOVE3: LDA  #'X'
+          STA  TSTCBUF
+          LDA  #'X'
+          STA  TSTCBUF+1
+          LDA  #'A'
+          STA  TSTCBUF+2
+          LDA  #'B'
+          STA  TSTCBUF+3
+          LDA  #'C'
+          STA  TSTCBUF+4
+          LDA  #'D'
+          STA  TSTCBUF+5
+          LDA  #'E'
+          STA  TSTCBUF+6
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          LDD  #TSTCBUF+2
+          PSHU D
+          LDD  #TSTCBUF
+          PSHU D
+          LDD  #5
+          PSHU D
+          STU  TSTUB4
+
+          JSR  MOVEW
+
+          STU  TSTUAF
+
+          LDA  TSTCBUF
+          CMPA #'A'
+          BNE  MV3FAIL
+          LDA  TSTCBUF+1
+          CMPA #'B'
+          BNE  MV3FAIL
+          LDA  TSTCBUF+2
+          CMPA #'C'
+          BNE  MV3FAIL
+          LDA  TSTCBUF+3
+          CMPA #'D'
+          BNE  MV3FAIL
+          LDA  TSTCBUF+4
+          CMPA #'E'
+          BNE  MV3FAIL
+          LDA  TSTCBUF+5
+          CMPA #'D'
+          BNE  MV3FAIL
+          LDA  TSTCBUF+6
+          CMPA #'E'
+          BNE  MV3FAIL
+
+          PULU D
+          CMPD #TSTGUARD
+          BNE  MV3FAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #-6
+          BNE  MV3FAIL
+
+          LDD  #TRUEV
+          BRA  MV3DONE
+MV3FAIL:  LDD  #FALSEV
+MV3DONE:  LDX  #TSTMV3NAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTMV3NAME: FCB  8
+            FCC  "TSTMOVE3"
 
            ENDC ; <<<<
 
