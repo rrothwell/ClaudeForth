@@ -3719,7 +3719,7 @@ design decisions made since the original version.
       up on real hardware, not just in simulation, validating the
       whole methodology for any future control-flow-adjacent work.
 
-- [ ] **`TSTDEFWORDS` added - defining-words tests (glossary section
+- [x] **`TSTDEFWORDS` added - defining-words tests (glossary section
       3.9, 17 words, 12 tests since `VALUE`/`TO` and `IS`/`ACTION-OF`
       are each combined into one test), wired into `TSTRUNNER` and
       gated as `TSTSELECTOR`'s seventh group (`-6`). A harder testing
@@ -3801,11 +3801,18 @@ design decisions made since the original version.
       matrix re-run with `TSTSELECTOR`'s seventh value included (16
       scenarios total) - all pass; explicitly confirmed `TSTSELECTOR=6`
       includes only this group's own bodies. Byte-exact split-file
-      reassembly confirmed. Not yet confirmed via MAME - given this
-      section's real complexity (name-parsing, real header-building,
-      the `LATEST`-corruption risk found and fixed, `MARKER`'s
-      reversed execution order), this one specifically warrants
-      thorough real-hardware testing before being considered settled.
+      reassembly confirmed. **MAME-CONFIRMED**: the user reports all
+      `TSTDEFWORDS` tests now pass, closing out three real, distinct
+      issues found via real hardware over several rounds - a byte-
+      overflow needing `LBNE` (a genuine `BNE`/`ISFAIL` short-branch
+      overflow, unrelated to this section's own logic), a `WORD`-
+      overwrites-`CODEHERE` corruption bug in `TSTVALTO`/`TSTISOF`'s
+      second phases, a `SETDOES`/`LATEST`-ordering bug in `TSTCRDOES`,
+      and a wrong comparison target in `TSTMARKER`'s own verification
+      logic (not a bug in `MARKER` itself). This section's own
+      complexity - name-parsing, real header-building, the trampoline
+      mechanism - proved out exactly the concern flagged when this
+      group was first delivered.
 
 - [x] **RESOLVED - real assembly-blocking bug found by the user's
       actual lwasm run, not caught by this session's own
@@ -3984,6 +3991,71 @@ design decisions made since the original version.
       chain still 224 entries intact across all 16 relevant scenario
       combinations. Byte-exact split-file reassembly confirmed. This
       specific fix awaits its own MAME confirmation.
+
+- [ ] **`TSTRETSTACK` added - return-stack tests (glossary section
+      3.3, 6 words, 4 tests since `>R`/`R>` and `2>R`/`2R>` are each
+      combined into one round-trip test), wired into `TSTRUNNER` and
+      inserted in the source **in glossary order** (right after
+      `TSTSTACK`'s own tests, before `TSTSARITH`'s), per explicit
+      request - **not** at the end of the file like every prior group.
+      Gated as `TSTSELECTOR`'s eighth value (`-7`), the next available
+      number rather than a value matching this glossary-order
+      position - per explicit request, `TSTSELECTOR`'s own numbering
+      stays as-is for now, with a renumbering-to-match-glossary-order
+      pass explicitly deferred to a future request, not attempted
+      here.
+
+      A genuinely different testing problem from every prior group:
+      these words operate directly on the return stack (`S`) - the
+      same stack holding real subroutine return addresses, including
+      this test framework's own. Traced each word's `PULS`/`PSHS`
+      juggling by hand first: `>R`/`R>`/`2>R`/`2R>` all temporarily
+      lift the caller's own return address off `S`, do the actual
+      move, then restore it on top - so a moved value ends up nested
+      one level inside the *current* subroutine's own return-stack
+      frame, safely retrievable by a later `R>`/`2R>` in the same
+      body. Every `>R`/`2>R` in these tests is balanced by a matching
+      `R>`/`2R>` before this group's own `RTS` - leaving one
+      unbalanced would corrupt the path back to whatever called this
+      test, a real risk specific to this section that no prior group
+      had to guard against.
+
+      `TSTTOR`/`TSTTWOTOR` each include an intermediate depth check
+      (right after the move-out, before the move-back) specifically
+      because a pure round-trip check could pass even if both halves
+      were broken no-ops - the value would simply never have left.
+      `TSTRFETCH`/`TSTTWORFETCH` verify "non-destructive" for real:
+      peek, then retrieve the original afterward and confirm it's
+      still correct, not just that the peek itself returned the right
+      value once.
+
+      Label collisions checked programmatically before insertion -
+      caught one real one this way (`TW`, colliding with `TSTBWR`'s
+      own prefix from section 3.6's `BEGIN`/`WHILE`/`REPEAT` test),
+      replaced with `T2F`, re-verified against every label in the
+      file. Caught and fixed the same `IFEQ`/`ENDC` mistake as
+      section 3.8's own first attempt - forgot the second wrap's
+      closing `ENDC` around the test bodies - but this time caught
+      it immediately via the balance check run right after insertion,
+      not discovered later via a broken production-build simulation.
+
+      Verified: every one of the 6 depth-check values (across 4
+      tests, two of which check both an intermediate and a final
+      depth) independently re-derived from real arity and confirmed
+      correct; every real word reference (`TOR`/`FROMR`/`RFETCH`/
+      `TWOTOR`/`TWOFROMR`/`TWORFETCH`) confirmed to resolve, with the
+      apparent "missing" list from the check itself traced to false
+      positives (register names, a mnemonic omitted from the
+      exclusion list, and this batch's own local `FAIL`/`DONE`
+      labels) rather than dismissed without checking; all 4 tests
+      confirmed wired into `TSTRETSTACK`. Full scenario matrix re-run
+      with `TSTSELECTOR`'s eighth value included (18 scenarios total)
+      - all pass; explicitly confirmed `TSTSELECTOR=7` includes only
+      this group's own bodies, with `TSTSTACK`'s and `TSTCTRLFLOW`'s
+      bodies genuinely absent. Byte-exact split-file reassembly
+      confirmed, including the correct glossary-order placement (
+      confirmed via label position, not just presence). Not yet
+      confirmed via MAME.
 
 ## Structural duplication (identified, some resolved, some not)
 

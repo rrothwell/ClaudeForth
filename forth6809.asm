@@ -758,6 +758,15 @@ TSTCBUF2 EQU   APPVARS+220   ; a SECOND, separate CODEHERE-redirect
                               ; it gets a second chance to execute. 20
                               ; bytes - comfortably fits any short
                               ; parsed name plus its length byte.
+TSTUMID  EQU   APPVARS+240   ; intermediate U capture (section 3.3,
+                              ; return stack): >R/2>R tests capture U
+                              ; right after moving a value to the
+                              ; return stack, before moving it back -
+                              ; a round-trip-only check could pass even
+                              ; if both the move-out and move-back were
+                              ; broken no-ops, since the value would
+                              ; never have actually left; this catches
+                              ; that specifically.
 
 TSTNEG1  EQU   $CFC7         ; -12345 - distinct, non-trivial negative
                               ; test values, needed for arithmetic
@@ -813,6 +822,7 @@ TSTFAILMSGL  EQU  *-TSTFAILMSG
 ; here as they're written.
 ; ------------------------------------------------------------
 TSTRUNNER: JSR   TSTSTACK
+           JSR   TSTRETSTACK
            JSR   TSTSARITH
            JSR   TSTDARITH
            JSR   TSTLOGIC
@@ -1765,6 +1775,287 @@ RO2DONE:   LDX   #TSTDROTNAME
 
 TSTDROTNAME: FCB  7
              FCC  "TSTDROT"
+
+           ENDC ; <<<<
+
+; ------------------------------------------------------------
+; TSTRETSTACK - return-stack tests (glossary section 3.3, 6
+; words, 4 tests since >R/R> and 2>R/2R> are each combined into
+; one round-trip test, matching how they can only be meaningfully
+; tested together - the "must be balanced within the same
+; definition" constraint each word's own glossary entry
+; documents). Every >R/2>R in these tests is balanced by a
+; matching R>/2R> before this group's own RTS - these words
+; operate directly on the return stack, the same stack holding
+; real subroutine return addresses, so leaving one unbalanced
+; would corrupt the path back to whatever called this test.
+;
+; R@/2R@ tests specifically verify "non-destructive" for real:
+; peek, then retrieve the original afterward and confirm it's
+; still correct - not just that the peek itself returned the
+; right value once.
+; ------------------------------------------------------------
+TSTRETSTACK: JSR CRW
+           LDX   #TSTRETMSG
+           PSHU  X
+           LDD   #8
+           PSHU  D
+           JSR   TYPE
+           JSR   CRW
+
+           IFEQ TSTSELECTOR-7  ; >>>>
+
+           JSR   TSTTOR
+           JSR   TSTRFETCH
+           JSR   TSTTWOTOR
+           JSR   TSTTWORFETCH
+
+           ENDC ; <<<<
+
+           RTS
+
+TSTRETMSG: FCC "RetStack"
+
+           IFEQ TSTSELECTOR-7  ; >>>>
+
+; ------------------------------------------------------------
+; Return-stack test harness (glossary section 3.3). Unlike
+; every other test group in this file, these words operate
+; directly on the return stack (S) - the same stack holding
+; real subroutine return addresses, including this very test
+; subroutine's own. Every >R/2>R is balanced by a matching
+; R>/2R> within the same test body, before this test's own
+; RTS - leaving one unbalanced would corrupt the return address
+; needed to get back to TSTRUNNER (or whatever called it).
+; Traced each word's own PULS/PSHS juggling by hand first to
+; confirm this: >R/R>/2>R/2R> all temporarily lift the caller's
+; own return address off S, do the actual move, then restore it
+; on top - so the moved value ends up correctly nested one level
+; inside the current subroutine's own return-stack frame,
+; retrievable by a later R>/2R> in the same body, and cleanly
+; gone by the time this test's own RTS runs.
+; ------------------------------------------------------------
+
+; ------------------------------------------------------------
+; TSTTOR - unit test for >R and R> together. Includes an
+; intermediate check (right after >R, before R>) confirming the
+; value genuinely left the data stack - a pure round-trip check
+; could pass even if both words were broken no-ops, since the
+; value would never actually have left.
+; ------------------------------------------------------------
+TSTTOR:  STU   TSTU0
+
+         LDD   #TSTGUARD
+         PSHU  D
+         LDD   #TSTVAL1
+         PSHU  D
+         STU   TSTUB4
+
+         JSR   TOR
+
+         STU   TSTUMID
+
+         LDD   TSTUB4
+         SUBD  TSTUMID
+         CMPD  #-2
+         BNE   TRFAIL
+
+         JSR   FROMR
+
+         STU   TSTUAF
+
+         PULU  D
+         CMPD  #TSTVAL1
+         BNE   TRFAIL
+         PULU  D
+         CMPD  #TSTGUARD
+         BNE   TRFAIL
+
+         LDD   TSTUB4
+         SUBD  TSTUAF
+         CMPD  #0
+         BNE   TRFAIL
+
+         LDD   #TRUEV
+         BRA   TRDONE
+TRFAIL:  LDD   #FALSEV
+TRDONE:  LDX   #TSTTORNAME
+         PSHU  X
+         PSHU  D
+         JSR   TSTREPORT
+
+         LDU   TSTU0
+         RTS
+
+TSTTORNAME: FCB  6
+            FCC  "TSTTOR"
+
+; ------------------------------------------------------------
+; TSTRFETCH - unit test for R@. Moves a value to the return
+; stack via >R, peeks it via R@ (verifying the copy matches),
+; then retrieves the original via R> (verifying R@ genuinely
+; left it there undisturbed, not just that R@ itself returned
+; the right value once) - confirming "non-destructive" for real,
+; not assumed from the name.
+; ------------------------------------------------------------
+TSTRFETCH: STU  TSTU0
+
+           LDD  #TSTGUARD
+           PSHU D
+           LDD  #TSTVAL1
+           PSHU D
+           STU  TSTUB4
+
+           JSR  TOR
+           JSR  RFETCH
+           JSR  FROMR
+
+           STU  TSTUAF
+
+           PULU D
+           CMPD #TSTVAL1
+           BNE  RFFAIL
+           PULU D
+           CMPD #TSTVAL1
+           BNE  RFFAIL
+           PULU D
+           CMPD #TSTGUARD
+           BNE  RFFAIL
+
+           LDD  TSTUB4
+           SUBD TSTUAF
+           CMPD #2
+           BNE  RFFAIL
+
+           LDD  #TRUEV
+           BRA  RFDONE
+RFFAIL:    LDD  #FALSEV
+RFDONE:    LDX  #TSTRFETCHNAME
+           PSHU X
+           PSHU D
+           JSR  TSTREPORT
+
+           LDU  TSTU0
+           RTS
+
+TSTRFETCHNAME: FCB  9
+               FCC  "TSTRFETCH"
+
+; ------------------------------------------------------------
+; TSTTWOTOR - unit test for 2>R and 2R> together. Same
+; intermediate-check reasoning as TSTTOR, applied to the pair -
+; confirms both cells genuinely left the data stack before
+; verifying the round trip.
+; ------------------------------------------------------------
+TSTTWOTOR: STU  TSTU0
+
+           LDD  #TSTGUARD
+           PSHU D
+           LDD  #TSTVAL1
+           PSHU D
+           LDD  #TSTVAL2
+           PSHU D
+           STU  TSTUB4
+
+           JSR  TWOTOR
+
+           STU  TSTUMID
+
+           LDD  TSTUB4
+           SUBD TSTUMID
+           CMPD #-4
+           BNE  T2RFAIL
+
+           JSR  TWOFROMR
+
+           STU  TSTUAF
+
+           PULU D
+           CMPD #TSTVAL2
+           BNE  T2RFAIL
+           PULU D
+           CMPD #TSTVAL1
+           BNE  T2RFAIL
+           PULU D
+           CMPD #TSTGUARD
+           BNE  T2RFAIL
+
+           LDD  TSTUB4
+           SUBD TSTUAF
+           CMPD #0
+           BNE  T2RFAIL
+
+           LDD  #TRUEV
+           BRA  T2RDONE
+T2RFAIL:   LDD  #FALSEV
+T2RDONE:   LDX  #TSTTWOTORNAME
+           PSHU X
+           PSHU D
+           JSR  TSTREPORT
+
+           LDU  TSTU0
+           RTS
+
+TSTTWOTORNAME: FCB  9
+               FCC  "TSTTWOTOR"
+
+; ------------------------------------------------------------
+; TSTTWORFETCH - unit test for 2R@. Same reasoning as
+; TSTRFETCH, applied to the pair: moves x1,x2 to the return
+; stack via 2>R, peeks via 2R@ (verifying both cells, correctly
+; ordered), then retrieves the originals via 2R> (verifying 2R@
+; genuinely left them there undisturbed).
+; ------------------------------------------------------------
+TSTTWORFETCH: STU  TSTU0
+
+              LDD  #TSTGUARD
+              PSHU D
+              LDD  #TSTVAL1
+              PSHU D
+              LDD  #TSTVAL2
+              PSHU D
+              STU  TSTUB4
+
+              JSR  TWOTOR
+              JSR  TWORFETCH
+              JSR  TWOFROMR
+
+              STU  TSTUAF
+
+              PULU D
+              CMPD #TSTVAL2
+              BNE  T2FFAIL
+              PULU D
+              CMPD #TSTVAL1
+              BNE  T2FFAIL
+              PULU D
+              CMPD #TSTVAL2
+              BNE  T2FFAIL
+              PULU D
+              CMPD #TSTVAL1
+              BNE  T2FFAIL
+              PULU D
+              CMPD #TSTGUARD
+              BNE  T2FFAIL
+
+              LDD  TSTUB4
+              SUBD TSTUAF
+              CMPD #4
+              BNE  T2FFAIL
+
+              LDD  #TRUEV
+              BRA  T2FDONE
+T2FFAIL:       LDD  #FALSEV
+T2FDONE:       LDX  #TSTTWORFETCHNAME
+              PSHU X
+              PSHU D
+              JSR  TSTREPORT
+
+              LDU  TSTU0
+              RTS
+
+TSTTWORFETCHNAME: FCB  12
+                  FCC  "TSTTWORFETCH"
 
            ENDC ; <<<<
 
