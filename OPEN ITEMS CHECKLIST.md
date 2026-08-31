@@ -4062,7 +4062,7 @@ design decisions made since the original version.
       matching `R>`/`2R>` on real hardware, with no corruption of the
       return path back out of this test group.
 
-- [ ] **`TSTSYSIO` added - System/Console I/O tests (glossary section
+- [x] **`TSTSYSIO` added - System/Console I/O tests (glossary section
       3.1, 12 words, 7 tests), wired into `TSTRUNNER` and inserted
       **first** in the source, ahead of `TSTSTACK`, per explicit
       request - matching this session's established practice of
@@ -4142,8 +4142,16 @@ design decisions made since the original version.
       pass; explicitly confirmed `TSTSELECTOR=8` includes only this
       group's own bodies. Byte-exact split-file reassembly confirmed,
       including the correct glossary-order placement ahead of
-      `TSTSTACK` (confirmed via label position). Not yet confirmed
-      via MAME.
+      `TSTSTACK` (confirmed via label position).
+      **MAME-CONFIRMED**: the user reports all `TSTSYSIO` tests now
+      pass under the real, active `SERIALPOLL=1` build - including
+      the terminal output itself visibly showing each test's own
+      emitted character(s) (`A` before `TSTEMIT`, a leading space
+      before `TSTSPACE`, three before `TSTSPACES`, `AB` before
+      `TSTTYPE`) intermixed with the pass/fail reporting exactly as
+      expected, confirming both the `EMITCH`-based and the
+      `SERIALPOLL`-conditional fixes hold correctly on real hardware,
+      not just in simulation.
 
 - [x] **RESOLVED - real bug found by the user's actual MAME run, not
       caught by this session's own verification: 5 of `TSTSYSIO`'s 7
@@ -4214,6 +4222,196 @@ design decisions made since the original version.
       the user's own report and register/memory-level detail is what
       caught the root cause; this response addresses exactly what was
       found.
+
+- [x] **RESOLVED - `TSTSELECTOR`'s comparison values renumbered
+      sequentially starting at 0, matching glossary/source order, per
+      explicit request.** The prior numbering had grown ad hoc across
+      nine separate additions (each new group taking "next available"
+      rather than matching its glossary-order position, per earlier
+      explicit direction deferring exactly this renumbering to a later
+      request). New mapping, all confirmed matching each group's own
+      source position (which already matched glossary order):
+      `TSTSYSIO`(3.1) `8`->`0`, `TSTSTACK`(3.2) `0`->`1`,
+      `TSTRETSTACK`(3.3) `7`->`2`, `TSTSARITH`(3.4) `1`->`3`,
+      `TSTDARITH`(3.5) `2`->`4`, `TSTLOGIC`(3.6) `3`->`5`,
+      `TSTCOMPARE`(3.7) `4`->`6`, `TSTCTRLFLOW`(3.8) `5`->`7`,
+      `TSTDEFWORDS`(3.9) `6`->`8`.
+
+      Applied via a position-bounded replacement, not a blanket find-
+      replace across the whole file - each group's own two `IFEQ
+      TSTSELECTOR-N` occurrences were located and replaced only within
+      that specific group's own source region (bounded by its own
+      label through the next group's), avoiding any risk of a
+      sequential renumber colliding mid-process (e.g. an already-
+      renumbered `-1` accidentally being renumbered again when a
+      different group's original `-1` gets processed later). All 18
+      replacements (2 per group x 9 groups) confirmed exact.
+
+      Checked the rest of the file for stale comment references to
+      specific `TSTSELECTOR` values before considering this complete -
+      found none needing correction: the one literal `TSTSELECTOR=2`
+      appearing in the source is a generic syntax example in the unit-
+      test framework's own header comment, not tied to a specific
+      group's identity, and left as-is. The checklist's own historical
+      entries documenting each group's original, non-sequential value
+      at the time it was added are left untouched as well, being a
+      chronological record of what was actually done, not a live,
+      always-current description of the file's present state.
+
+      Verified: `IFEQ`/`ENDC` balance unaffected (31/31, unchanged
+      from before - this edit only changed values within existing
+      pairs, not the pairs themselves) and correct nesting re-
+      confirmed via a full-file line-by-line trace; full scenario
+      matrix re-run crossing both real `SERIALPOLL` settings with
+      `TSTSELECTOR` 0 through 8 (20 scenarios total) - all pass;
+      explicitly confirmed via simulation, not just inferred from the
+      source text, that every `TSTSELECTOR` value 0-8 now compiles
+      exactly the test group matching its own glossary-section
+      ordinal (a representative test spot-checked per group). Byte-
+      exact split-file reassembly confirmed. Not yet confirmed via
+      MAME, though given this touched only which literal number
+      selects which already-working group - not any group's own logic
+      - the risk profile is low relative to this session's typical
+      finds.
+
+- [x] **`TSTCOMPWORDS` added - compiling-words tests (glossary
+      section 3.10, 13 words, 17 tests since several get separate
+      cases: `'` found/not-found, `[']` compiling/interpreting state,
+      `POSTPONE` normal/immediate word, `SLITERAL` compiling/
+      interpreting state, `ABORT"` false/true flag), wired into
+      `TSTRUNNER` and inserted last in the source (after
+      `TSTDEFWORDS`), matching glossary order - the first new group
+      whose `TSTSELECTOR` value (`-9`) matches its glossary-order
+      position from the moment it was added, since the prior
+      renumbering (above) already made every earlier group's value
+      sequential.
+
+      **`POSTPONE` confirmed this section's hardest case, as
+      anticipated**: a genuine two-level compile-time mechanism.
+      Traced its own code first rather than assumed from the
+      glossary's one-line description - for a normal (non-immediate)
+      word, it compiles `[LIT xt][JSR COMPILE,]` into the current
+      definition, not a direct call - standard ANS semantics
+      (`POSTPONE` appends a word's own *compilation* semantics to the
+      current definition; for an ordinary word that semantics IS
+      "compile a call to it", so appending it only makes sense if the
+      current definition, when it later runs, itself performs that
+      compiling action against whatever is being compiled at that
+      later point - not immediately). For an immediate word, by
+      contrast, it compiles a direct call to the immediate word's own
+      xt - simpler, confirmed by reading `FIND`'s own code that it
+      pushes `1` for immediate words, `-1` otherwise, and `POSTPONE`
+      branches on exactly that. Given the genuine complexity of fully
+      executing the normal-word case's second level (which would need
+      a further redirected `CODEHERE` and a further round of execute-
+      and-verify), both tests instead verify the compiled byte
+      sequence directly - still a meaningful, unambiguous check of
+      the actual mechanism, not a workaround.
+
+      **`ABORT"` confirmed safely testable for both flag cases, not
+      just assumed from its relationship to `ABORT`**: traced
+      `DOABORTQUOTE`'s own runtime code directly and confirmed the
+      true-flag path uses `THROW -2` internally, not the raw, never-
+      returns `ABORT` mechanism plain `ABORT` itself uses (still
+      deliberately untested, per section 3.1's own reasoning - `ABORT`
+      resets the return stack and would hijack this whole test
+      framework's boot sequence). Since `ABORT"`'s own exception is
+      genuinely catchable, both its false-flag (resumes normally,
+      confirmed by checking execution lands exactly past the inline
+      message) and true-flag (`CATCH`-wrapped, confirms `-2`) cases
+      are tested directly.
+
+      `LITERAL` and `>BODY` had already been used extensively as
+      internal helpers in sections 3.8/3.9's own tests, but got
+      dedicated, direct tests here too, per this section's own
+      coverage - each confirms genuine end-to-end behavior (executing
+      a compiled snippet, or computing a real offset), not just
+      reconfirming what their existing indirect use already implied.
+
+      **Three `FCB`-length/string-length mismatches caught by the
+      now-standard programmatic check during writing, not left to be
+      found later**: `TSTCOMPCOMMA` (declared 13, actually 12),
+      `TSTPOSTPONE1` (declared 13, actually 12), `TSTBRACKTICK1`/
+      `TSTBRACKTICK2` (each declared 14, actually 13), `TSTSLITERAL1`/
+      `TSTSLITERAL2` (each declared 13, actually 12) - checked every
+      single test's own name length individually and immediately
+      after writing it, rather than batching the check to the end,
+      given how frequently this specific mistake had already recurred
+      across earlier sections.
+
+      Label collisions checked programmatically before insertion -
+      caught 2 real ones this way (`LTFAIL`/`LTDONE`, colliding with
+      section 3.7's own `TSTLT`; `EXFAIL`/`EXDONE`, colliding with
+      section 3.8's own `TSTEXIT`), replaced with `LI` and `XQ`
+      respectively, each re-verified against every label in the file.
+      Checked the `IFEQ`/`ENDC` balance immediately after insertion,
+      per this session's now-standard practice following the repeated
+      missing-second-`ENDC` mistake in earlier sections - balanced
+      (33/33) and correctly nested end to end on the first attempt
+      this time.
+
+      Verified: every one of the 17 depth-check values independently
+      re-derived from real arity and confirmed correct against the
+      final, fully-assembled file state; every real word reference
+      confirmed to resolve, with the apparent "missing" list (a
+      handful of character-literal tokens, a mnemonic omitted from
+      the exclusion list, and this batch's own local labels) traced to
+      its real, harmless cause rather than dismissed without checking;
+      all 17 tests confirmed wired into `TSTCOMPWORDS`, and
+      `TSTCOMPWORDS` itself confirmed wired into `TSTRUNNER`. Full
+      scenario matrix re-run with `TSTSELECTOR`'s tenth value included
+      (22 scenarios total) - all pass; explicitly confirmed
+      `TSTSELECTOR=9` includes only this group's own bodies, with
+      `TSTDEFWORDS`'s and `TSTSYSIO`'s bodies genuinely absent. Byte-
+      exact split-file reassembly confirmed. **MAME-CONFIRMED**: the
+      user reports all `TSTCOMPWORDS` tests now pass, including
+      `TSTTOBODY` after its own fix (logged separately above) - the
+      `POSTPONE` normal/immediate-word cases, both `ABORT"` flag
+      cases, and every other test in this section all confirmed
+      correct on real hardware, not just in simulation.
+
+- [x] **RESOLVED - real bug found by the user's actual MAME run,
+      pinpointed precisely from a register/memory dump: `TSTTOBODY`
+      failed because the test's own assumption about `TOBODY`'s
+      return value was wrong - `TOBODY` itself is correct.** Root
+      cause confirmed by re-reading `TOBODY`'s own code directly
+      rather than trusting the earlier trace: it computes `xt+5`,
+      then *dereferences* it (`LDD ,X`), returning the value stored
+      there - not `xt+5` itself. This test's own comment had
+      described it as "a pure, fixed-offset computation... not
+      dependent on what's actually at that offset" - simply wrong,
+      and the test never initialized `TSTCBUF+5` to anything, so it
+      compared the real returned value against whatever garbage
+      happened to already be sitting there ($BDEB in the user's own
+      register dump, exactly matching the two bytes shown at that
+      address in the accompanying memory dump - not a coincidence,
+      the precise mechanism the trace predicted).
+
+      Reconciled this directly against why section 3.9's `DEFER@`/
+      `DEFER!`/`TO`/`IS` tests, which also rely on this exact same
+      `TOBODY` and already passed on real hardware, never surfaced
+      this: those tests set up real trampolines (via `VALUEW`/
+      `DEFERW`), whose own compile-time code stores a genuinely
+      meaningful value at `xt+5` (for `DEFER`, the current target xt;
+      for `VALUE`, the stored value itself) - for this system's own
+      trampoline design, "the body" *is* the value stored at `xt+5`,
+      not `xt+5`'s own address. `TOBODY` was never broken; this one
+      test's own understanding of what it does was.
+
+      Fixed by setting a known value at `TSTCBUF+5` before calling
+      `TOBODY`, and verifying it returns exactly that value - not the
+      address. Also corrected the test's own header comment, which
+      had baked in the same wrong assumption.
+
+      Verified: `IFEQ`/`ENDC` balance unaffected (33/33); this test's
+      own depth-check value unchanged (`0`, since the fix only adds a
+      memory write before the stack-tracking baseline, touching
+      nothing on `U`); full scenario matrix re-run crossing both real
+      `SERIALPOLL` settings with every `TSTSELECTOR` value 0-9 (22
+      scenarios total) - all pass. Byte-exact split-file reassembly
+      confirmed. This specific fix awaits its own MAME confirmation -
+      the user's own register/memory-dump-level detail is what let
+      this be pinpointed precisely rather than guessed at.
 
 ## Structural duplication (identified, some resolved, some not)
 
