@@ -52,7 +52,7 @@ OR
 brew install minicom
 minicom -D /dev/ttys001 -b115200 -8
 ```
-When finished (on Macos) exit using: __ESC + Z__, __X__.
+When finished (on MacOS) exit using: __ESC + Z__, __X__.
 
 ASSIST 09 can now be exercised from the terminal new terminal window/screen.
 Start Basic and write FOR NEXT loop:

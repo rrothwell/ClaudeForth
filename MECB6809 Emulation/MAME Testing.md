@@ -22,7 +22,7 @@ cd $HOME/git/mame0288/
 ./mecb6809 mecb6809 -rs232 pty -window -resolution 640x480 -debug
 ```
 The forth6809.bin file has to be renamed to mecb6809.bin,
- otherwise the mecb6809 driver does not recognise the rom file.
+ otherwise the mecb6809 driver does not recognise the ROM file.
 
 In another terminal
 ```bash

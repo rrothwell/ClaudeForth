@@ -3498,7 +3498,7 @@ this work.
       pinpointed to the exact, precise expected value rather than
       re-derived from scratch or guessed at.
 
-- [ ] **`TSTBASERADIX` added - base/radix control tests (glossary
+- [x] **`TSTBASERADIX` added - base/radix control tests (glossary
       section 3.14, 4 words: `BASE`/`DECIMAL`/`HEX`/`BINARY`), wired
       into `TSTRUNNER` and inserted last in the source (after
       `TSTNUMOUT`), matching glossary order, gated as `TSTSELECTOR`'s
@@ -3548,7 +3548,92 @@ this work.
       with `TSTSELECTOR`'s fourteenth value included (30 scenarios
       total) - all pass; explicitly confirmed `TSTSELECTOR=13`
       includes only this group's own body. Byte-exact split-file
-      reassembly confirmed. Not yet confirmed via MAME.
+      reassembly confirmed. **MAME-CONFIRMED**: the user reports
+      `TSTBASE` passes - `HEX`/`BINARY`/`DECIMAL` all confirmed
+      setting the real `BASE` correctly in sequence, and `BASE`
+      itself confirmed returning a genuinely live address, on real
+      hardware.
+
+- [ ] **`TSTEXCEPTION` added - exception handling tests (glossary
+      section 3.15, 2 words: `CATCH`/`THROW`, 4 tests since the two
+      can only be meaningfully tested together - `THROW`'s own effect
+      is only observable through a `CATCH` that traps it), wired into
+      `TSTRUNNER` and inserted last in the source (after
+      `TSTBASERADIX`), matching glossary order, gated as
+      `TSTSELECTOR`'s fifteenth value (`-14`).
+
+      **`CATCH`/`THROW` had already been used extensively as this
+      whole session's own error-testing mechanism throughout sections
+      3.8-3.14** - dozens of prior `-13`/`-14`/etc. throw-code checks
+      across earlier sections already give substantial indirect
+      evidence they work correctly - but this section still got its
+      own, direct, dedicated tests, matching the established practice
+      of every glossary section getting real coverage rather than
+      resting on incidental use elsewhere.
+
+      **Critical safety constraint confirmed by reading `THROW`'s own
+      code directly, not assumed from the glossary alone**: with no
+      active `CATCH`, `THROW` jumps straight to `ABORT` - already
+      established in section 3.1 as unsafe to trigger directly, since
+      it resets the return stack and would destroy this whole test
+      framework's own call chain. Every `THROW` in this section's own
+      tests is either wrapped in a genuine, active `CATCH` (via a
+      dedicated internal helper, `TSTTHROWHLP`, defined specifically
+      so it can only ever be invoked that way - never called directly)
+      or is a `THROW(0)` call, confirmed via `THROW`'s own code to be
+      a pure, unconditional no-op that never touches `HANDLER` or
+      `ABORT` at all, making that one specific case safe to call
+      directly without a wrapping `CATCH`.
+
+      `TSTCATCHTHROW` specifically has `TSTTHROWHLP` push two dummy
+      values before throwing, then verifies they're genuinely gone
+      afterward - confirming `CATCH`'s own documented "restores data
+      stack depth... on either path" for real, not just that the
+      final result happens to look right. `TSTHANDLERSAVE` verifies
+      the `HANDLER` half of that same documented guarantee directly,
+      reading `HANDLER` itself before and after `CATCH` calls on both
+      the success path (wrapping `DUP`) and the throw path (wrapping
+      `TSTTHROWHLP` again), rather than only inferring it from stack-
+      level behavior the other tests already cover.
+
+      **Caught and fixed a real depth-check mistake in `TSTHANDLERSAVE`
+      before it was ever inserted** - the same class of mistake found
+      via MAME in section 3.13's own `TSTNUMSIGN`: `TSTUAF` is
+      captured immediately after the second `CATCH` call returns,
+      with the thrown code still sitting on the stack alongside
+      `GUARD` (2 cells), not after the subsequent pops that verify it
+      (which would have left only `GUARD`, 1 cell) - the expected
+      depth was originally written as `0`, re-traced carefully and
+      corrected to the true value (`2`) during drafting, the same way
+      the earlier instance of this exact mistake had to be found by
+      the user via a live MAME run instead.
+
+      Added a new scratch constant (`TSTHANDSAV`) for saving/
+      restoring the real `HANDLER` across `TSTHANDLERSAVE`'s own
+      dual-path check.
+
+      Checked the group wrapper name (`TSTEXCEPTION`) against the
+      whole file before use, per the practice established after the
+      `TSTCOMPARE` collision in an earlier section - safe. Checked
+      every column-1 mnemonic occurrence immediately after insertion,
+      per the practice established after the indentation mistake
+      found via a failed lwasm run in section 3.13 - zero found. One
+      real internal-label collision caught by the standard check
+      (`TZFAIL`/`TZDONE`, colliding with an existing, unrelated
+      test's own labels from an earlier section), replaced with `TV`.
+
+      Verified: `IFEQ`/`ENDC` balance immediately after insertion -
+      balanced (59/59) and correctly nested end to end on the first
+      attempt; every one of the 4 tests' own depth-check values
+      independently re-derived from real arity and confirmed correct
+      against the final, fully-assembled file state; every real word
+      reference confirmed to resolve; all 4 tests confirmed wired
+      into `TSTEXCEPTION`, and `TSTEXCEPTION` itself confirmed wired
+      into `TSTRUNNER`. Full scenario matrix re-run with
+      `TSTSELECTOR`'s fifteenth value included (32 scenarios total) -
+      all pass; explicitly confirmed `TSTSELECTOR=14` includes only
+      this group's own bodies. Byte-exact split-file reassembly
+      confirmed. Not yet confirmed via MAME.
 
 ## Structural duplication (identified, some resolved, some not)
 

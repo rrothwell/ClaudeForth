@@ -807,6 +807,16 @@ TSTBASAV EQU   APPVARS+243   ; section 3.13 (Numeric Output): saves the
                               ; pre-COLD execution context) to already
                               ; hold a valid value.
 
+TSTHANDSAV EQU APPVARS+245   ; section 3.15 (Exception Handling): saves
+                              ; the real HANDLER across a test verifying
+                              ; CATCH correctly restores it afterward,
+                              ; on both the success and throw paths -
+                              ; confirmed via CATCH's own code that it
+                              ; saves/restores HANDLER around every
+                              ; call regardless of outcome, matching its
+                              ; own documented "restores... HANDLER on
+                              ; either path".
+
 TSTNEG1  EQU   $CFC7         ; -12345 - distinct, non-trivial negative
                               ; test values, needed for arithmetic
                               ; tests (ABS, NEGATE, MIN/MAX, signed
@@ -874,6 +884,7 @@ TSTRUNNER: JSR   TSTSYSIO
            JSR   TSTSTRPARSE
            JSR   TSTNUMOUT
            JSR   TSTBASERADIX
+           JSR   TSTEXCEPTION
            RTS
 
 ; ------------------------------------------------------------
@@ -15056,6 +15067,324 @@ BSDONE:  LDX  #TSTBSNAME
 
 TSTBSNAME: FCB  7
            FCC  "TSTBASE"
+
+           ENDC ; <<<<
+
+; ------------------------------------------------------------
+; TSTEXCEPTION - exception handling tests (glossary section
+; 3.15, 2 words, 4 tests since CATCH/THROW can only be
+; meaningfully tested together - THROW's own effect is only
+; observable through a CATCH that traps it). Already used
+; extensively as this whole session's own error-testing
+; mechanism throughout sections 3.8-3.14, so their correctness
+; has substantial indirect evidence already; this section still
+; gets its own, direct, dedicated tests.
+;
+; Critical safety constraint, confirmed by reading THROW's own
+; code directly: with no active CATCH, THROW jumps straight to
+; ABORT (unsafe to trigger directly - it resets the return
+; stack, destroying this whole test framework's own call chain,
+; per section 3.1's own established reasoning). Every THROW in
+; this section's own tests is either wrapped in a genuine,
+; active CATCH (via a dedicated internal helper, TSTTHROWHLP,
+; that only ever gets invoked that way), or is a THROW(0) call -
+; confirmed via THROW's own code to be a pure, unconditional
+; no-op that never touches HANDLER or ABORT at all, so that one
+; specific case is safe to call directly.
+;
+; TSTCATCHTHROW specifically verifies the two dummy values
+; TSTTHROWHLP pushes before throwing are genuinely gone
+; afterward, confirming CATCH's own documented "restores data
+; stack depth... on either path" for real. TSTHANDLERSAVE
+; verifies the HANDLER half of that same documented guarantee
+; directly, by reading HANDLER itself before and after CATCH
+; calls on both the success and throw paths, rather than only
+; inferring it from stack-level behavior.
+; ------------------------------------------------------------
+TSTEXCEPTION: JSR CRW
+           LDX   #TSTEXCMSG
+           PSHU  X
+           LDD   #6
+           PSHU  D
+           JSR   TYPE
+           JSR   CRW
+
+           IFEQ TSTSELECTOR-14  ; >>>>
+
+           JSR   TSTCATCHOK
+           JSR   TSTCATCHTHROW
+           JSR   TSTTHROWZERO
+           JSR   TSTHANDLERSAVE
+
+           ENDC ; <<<<
+
+           RTS
+
+TSTEXCMSG: FCC "Except"
+
+           IFEQ TSTSELECTOR-14  ; >>>>
+
+; ------------------------------------------------------------
+; Exception Handling test harness (glossary section 3.15).
+; CATCH/THROW have already been used extensively as this whole
+; session's own error-testing mechanism throughout sections
+; 3.8-3.14, so their correctness has substantial indirect
+; evidence already - this section still gets its own, direct
+; tests, matching the established practice of every section
+; getting dedicated coverage rather than relying on incidental
+; use elsewhere.
+;
+; Critical safety constraint, confirmed by reading THROW's own
+; code directly: with no active CATCH, THROW jumps straight to
+; ABORT (already established elsewhere in this session as unsafe
+; to trigger directly - it resets the return stack, destroying
+; this whole test framework's own call chain). Every THROW in
+; this section's own tests is either wrapped in a genuine,
+; active CATCH, or is a THROW(0) call - confirmed via CATCH's own
+; code to be a pure no-op that never touches HANDLER or ABORT at
+; all, so that specific case is safe to call directly.
+; ------------------------------------------------------------
+
+; ------------------------------------------------------------
+; TSTCATCHOK - unit test for CATCH, success path. Wraps DUP (a
+; genuine, real dictionary word, not a synthetic stand-in) and
+; verifies both that DUP's own effect genuinely happened (the
+; value really was duplicated) and that CATCH itself returns 0.
+; ------------------------------------------------------------
+TSTCATCHOK: STU  TSTU0
+
+            LDD  #TSTGUARD
+            PSHU D
+            LDD  #TSTVAL1
+            PSHU D
+            LDX  #DUP
+            PSHU X
+            STU  TSTUB4
+
+            JSR  CATCH
+
+            STU  TSTUAF
+
+            PULU D
+            CMPD #0
+            BNE  COFAIL
+            PULU D
+            CMPD #TSTVAL1
+            BNE  COFAIL
+            PULU D
+            CMPD #TSTVAL1
+            BNE  COFAIL
+            PULU D
+            CMPD #TSTGUARD
+            BNE  COFAIL
+
+            LDD  TSTUB4
+            SUBD TSTUAF
+            CMPD #2
+            BNE  COFAIL
+
+            LDD  #TRUEV
+            BRA  CODONE
+COFAIL:     LDD  #FALSEV
+CODONE:     LDX  #TSTCONAME
+            PSHU X
+            PSHU D
+            JSR  TSTREPORT
+
+            LDU  TSTU0
+            RTS
+
+TSTCONAME: FCB  10
+           FCC  "TSTCATCHOK"
+
+; ------------------------------------------------------------
+; TSTTHROWHLP - internal helper, not a dictionary word or a
+; test of its own. Pushes two dummy values (to verify CATCH's
+; own stack-depth restoration genuinely discards them, not just
+; that a thrown code arrives correctly) then throws a known,
+; distinctive, non-trivial code. Only ever invoked via CATCH
+; (below), never called directly - calling it any other way
+; would hit THROW's own uncaught path (JMP ABORT), which this
+; whole test framework cannot survive.
+; ------------------------------------------------------------
+TSTTHROWHLP: LDD  #TSTVAL1
+             PSHU D
+             LDD  #TSTVAL2
+             PSHU D
+             LDD  #TSTNEG1
+             PSHU D
+             JSR  THROW
+             RTS
+
+; ------------------------------------------------------------
+; TSTCATCHTHROW - unit test for CATCH, exception path, and for
+; THROW's own non-local exit together (the two can only be
+; meaningfully tested as a pair - THROW's own effect is only
+; observable through a CATCH that traps it). Verifies CATCH
+; returns the exact thrown code, and specifically verifies the
+; two dummy values TSTTHROWHLP pushes before throwing are
+; genuinely gone afterward - confirming the documented "restores
+; data stack depth... on either path" for real, not just that
+; the final result happens to look right.
+; ------------------------------------------------------------
+TSTCATCHTHROW: STU  TSTU0
+
+               LDD  #TSTGUARD
+               PSHU D
+               LDX  #TSTTHROWHLP
+               PSHU X
+               STU  TSTUB4
+
+               JSR  CATCH
+
+               STU  TSTUAF
+
+               PULU D
+               CMPD #TSTNEG1
+               BNE  CTFAIL2
+               PULU D
+               CMPD #TSTGUARD
+               BNE  CTFAIL2
+
+               LDD  TSTUB4
+               SUBD TSTUAF
+               CMPD #0
+               BNE  CTFAIL2
+
+               LDD  #TRUEV
+               BRA  CTDONE2
+CTFAIL2:       LDD  #FALSEV
+CTDONE2:       LDX  #TSTCTNAME2
+               PSHU X
+               PSHU D
+               JSR  TSTREPORT
+
+               LDU  TSTU0
+               RTS
+
+TSTCTNAME2: FCB  13
+            FCC  "TSTCATCHTHROW"
+
+; ------------------------------------------------------------
+; TSTTHROWZERO - unit test for THROW(0). Confirmed via its own
+; code that N=0 is a genuine, unconditional no-op (BEQ THDONE
+; skips everything, never touching HANDLER or ABORT), so this
+; is the one THROW call in this section safe to make directly,
+; without any CATCH wrapping it. Verifies it consumes its
+; argument and does nothing else - no non-local exit, no stack
+; disturbance beyond popping the 0 itself.
+; ------------------------------------------------------------
+TSTTHROWZERO: STU  TSTU0
+
+              LDD  #TSTGUARD
+              PSHU D
+              LDD  #0
+              PSHU D
+              STU  TSTUB4
+
+              JSR  THROW
+
+              STU  TSTUAF
+
+              PULU D
+              CMPD #TSTGUARD
+              BNE  TVFAIL
+
+              LDD  TSTUB4
+              SUBD TSTUAF
+              CMPD #-2
+              BNE  TVFAIL
+
+              LDD  #TRUEV
+              BRA  TVDONE
+TVFAIL:       LDD  #FALSEV
+TVDONE:       LDX  #TSTTZNAME
+              PSHU X
+              PSHU D
+              JSR  TSTREPORT
+
+              LDU  TSTU0
+              RTS
+
+TSTTZNAME: FCB  12
+           FCC  "TSTTHROWZERO"
+
+; ------------------------------------------------------------
+; TSTHANDLERSAVE - unit test verifying CATCH correctly restores
+; HANDLER afterward, on both paths - the success path (wrapping
+; DUP) and the throw path (wrapping TSTTHROWHLP again). Confirms
+; the documented "restores... HANDLER on either path" directly,
+; by reading HANDLER itself before and after each call, rather
+; than only inferring it from the stack-level behavior CATCH's
+; other tests already cover.
+; ------------------------------------------------------------
+TSTHANDLERSAVE: LDD  HANDLER
+                STD  TSTHANDSAV
+
+                STU  TSTU0
+
+                LDD  #TSTGUARD
+                PSHU D
+                STU  TSTUB4
+
+                LDD  #TSTVAL1
+                PSHU D
+                LDX  #DUP
+                PSHU X
+
+                JSR  CATCH
+
+                LDD  HANDLER
+                CMPD TSTHANDSAV
+                BNE  HNFAIL
+
+                PULU D
+                CMPD #0
+                BNE  HNFAIL
+                PULU D
+                CMPD #TSTVAL1
+                BNE  HNFAIL
+                PULU D
+                CMPD #TSTVAL1
+                BNE  HNFAIL
+
+                LDX  #TSTTHROWHLP
+                PSHU X
+
+                JSR  CATCH
+
+                STU  TSTUAF
+
+                LDD  HANDLER
+                CMPD TSTHANDSAV
+                BNE  HNFAIL
+
+                PULU D
+                CMPD #TSTNEG1
+                BNE  HNFAIL
+
+                PULU D
+                CMPD #TSTGUARD
+                BNE  HNFAIL
+
+                LDD  TSTUB4
+                SUBD TSTUAF
+                CMPD #2
+                BNE  HNFAIL
+
+                LDD  #TRUEV
+                BRA  HNDONE
+HNFAIL:         LDD  #FALSEV
+HNDONE:         LDX  #TSTHNNAME
+                PSHU X
+                PSHU D
+                JSR  TSTREPORT
+
+                LDU  TSTU0
+                RTS
+
+TSTHNNAME: FCB  14
+           FCC  "TSTHANDLERSAVE"
 
            ENDC ; <<<<
 
