@@ -3498,6 +3498,58 @@ this work.
       pinpointed to the exact, precise expected value rather than
       re-derived from scratch or guessed at.
 
+- [ ] **`TSTBASERADIX` added - base/radix control tests (glossary
+      section 3.14, 4 words: `BASE`/`DECIMAL`/`HEX`/`BINARY`), wired
+      into `TSTRUNNER` and inserted last in the source (after
+      `TSTNUMOUT`), matching glossary order, gated as `TSTSELECTOR`'s
+      fourteenth value (`-13`). A small, simple section - all four
+      words are pure `BASE` state-setting/reading with no I/O
+      involved, so none of this section's own testing needed the
+      `SERIALPOLL`-conditional complexity every printing-heavy section
+      since 3.1 has required.
+
+      Combined into a single test (`TSTBASE`) rather than four
+      separate ones - each word's own effect is a single, trivially-
+      verified `BASE` read or write, so four separate tests would
+      just repeat the identical save/set/verify/restore shape four
+      times over with nothing meaningfully different to isolate.
+      Sets `BASE` via `HEX`/`BINARY`/`DECIMAL` in turn (verifying the
+      correct value lands each time), then calls `BASE` itself and
+      verifies both that it returns the variable's own address (not
+      its value, per its own documented `( -- addr )`) and that
+      reading through that returned address reflects `DECIMAL`'s own,
+      most recent setting - confirming the address is genuinely live,
+      not just structurally correct.
+
+      Reused `TSTBASAV` (the scratch constant added in section 3.13,
+      when the real, pre-`COLD` `BASE=0` bug was found and fixed) to
+      save and restore the real `BASE` across this test too, per the
+      same established reasoning - this section's own tests
+      deliberately set `BASE` to specific values as their whole point,
+      so leaving the real value disturbed afterward would be a
+      regression of exactly the kind that bug-fix was meant to
+      prevent going forward.
+
+      Checked the group wrapper name (`TSTBASERADIX`) against the
+      whole file before use, per the practice established after the
+      `TSTCOMPARE` collision in an earlier section - safe, no
+      collision. Checked every column-1 mnemonic occurrence
+      immediately after insertion too, per the practice established
+      after the indentation mistake found via a failed lwasm run in
+      section 3.13 - zero found.
+
+      Verified: `IFEQ`/`ENDC` balance immediately after insertion -
+      balanced (57/57) and correctly nested end to end on the first
+      attempt; the test's own depth-check value and all four
+      intermediate value checks confirmed correct; real word
+      reference confirmed to resolve for all four words; the test
+      confirmed wired into `TSTBASERADIX`, and `TSTBASERADIX` itself
+      confirmed wired into `TSTRUNNER`. Full scenario matrix re-run
+      with `TSTSELECTOR`'s fourteenth value included (30 scenarios
+      total) - all pass; explicitly confirmed `TSTSELECTOR=13`
+      includes only this group's own body. Byte-exact split-file
+      reassembly confirmed. Not yet confirmed via MAME.
+
 ## Structural duplication (identified, some resolved, some not)
 
 - [x] `:`/`CREATE`/`VARIABLE`'s header-building — resolved via `HEADER`

@@ -873,6 +873,7 @@ TSTRUNNER: JSR   TSTSYSIO
            JSR   TSTMEMORY
            JSR   TSTSTRPARSE
            JSR   TSTNUMOUT
+           JSR   TSTBASERADIX
            RTS
 
 ; ------------------------------------------------------------
@@ -14940,6 +14941,121 @@ DRRDONE:  LDX  #TSTDRRNAME
 
 TSTDRRNAME: FCB  8
             FCC  "TSTDDOTR"
+
+           ENDC ; <<<<
+
+; ------------------------------------------------------------
+; TSTBASERADIX - base/radix control tests (glossary section
+; 3.14, 4 words, 1 combined test - each word's own effect is a
+; single BASE read/write, trivially covered together rather than
+; separately). No I/O involved, so no SERIALPOLL-conditional
+; complexity needed here, unlike the printing-heavy sections.
+; ------------------------------------------------------------
+TSTBASERADIX: JSR CRW
+           LDX   #TSTBRMSG
+           PSHU  X
+           LDD   #9
+           PSHU  D
+           JSR   TYPE
+           JSR   CRW
+
+           IFEQ TSTSELECTOR-13  ; >>>>
+
+           JSR   TSTBASE
+
+           ENDC ; <<<<
+
+           RTS
+
+TSTBRMSG: FCC "BaseRadix"
+
+           IFEQ TSTSELECTOR-13  ; >>>>
+
+; ------------------------------------------------------------
+; Base/Radix Control test harness (glossary section 3.14). All
+; four words are pure state-setting/reading with no I/O
+; involved, so none of this section's tests need the
+; SERIALPOLL-conditional complexity used throughout the printing
+; sections. Combined into one test, given each word's own
+; effect is trivially verified by reading BASE directly - four
+; separate tests would just repeat the same save/set/verify/
+; restore shape four times over. TSTBASAV (added in section
+; 3.13, when the real, pre-COLD BASE=0 bug was found and fixed)
+; is reused here to save/restore the real BASE across this test
+; too, per the same established reasoning.
+; ------------------------------------------------------------
+
+; ------------------------------------------------------------
+; TSTBASE - combined unit test for BASE, DECIMAL, HEX, and
+; BINARY. Sets BASE via each of HEX/BINARY/DECIMAL in turn,
+; verifying the correct value lands each time, then calls BASE
+; itself and verifies both that it returns the variable's own
+; address (not its value, per "( -- addr )") and that reading
+; through that address reflects DECIMAL's own, most recent
+; setting (10).
+; ------------------------------------------------------------
+TSTBASE: LDD  BASE
+         STD  TSTBASAV
+
+         STU  TSTU0
+
+         JSR  HEXW
+         LDD  BASE
+         CMPD #16
+         BNE  BSFAIL
+
+         JSR  BINARYW
+         LDD  BASE
+         CMPD #2
+         BNE  BSFAIL
+
+         JSR  DECIMAL
+         LDD  BASE
+         CMPD #10
+         BNE  BSFAIL
+
+         LDD  #TSTGUARD
+         PSHU D
+         STU  TSTUB4
+
+         JSR  BASEW
+
+         STU  TSTUAF
+
+         PULU D
+         CMPD #BASE
+         BNE  BSFAIL
+
+         TFR  D,X
+         LDD  ,X
+         CMPD #10
+         BNE  BSFAIL
+
+         PULU D
+         CMPD #TSTGUARD
+         BNE  BSFAIL
+
+         LDD  TSTUB4
+         SUBD TSTUAF
+         CMPD #2
+         BNE  BSFAIL
+
+         LDD  #TRUEV
+         BRA  BSDONE
+BSFAIL:  LDD  #FALSEV
+BSDONE:  LDX  #TSTBSNAME
+         PSHU X
+         PSHU D
+         JSR  TSTREPORT
+
+         LDD  TSTBASAV
+         STD  BASE
+
+         LDU  TSTU0
+         RTS
+
+TSTBSNAME: FCB  7
+           FCC  "TSTBASE"
 
            ENDC ; <<<<
 
