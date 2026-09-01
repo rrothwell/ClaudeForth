@@ -3703,7 +3703,7 @@ this work.
       real hardware, and `\`'s genuine `SRCLEN`-following behavior
       confirmed correct.
 
-- [ ] **`TSTENVSYS` added - environmental & system queries tests
+- [x] **`TSTENVSYS` added - environmental & system queries tests
       (glossary section 3.17, 10 words, 8 tests since `TIB`/`#TIB`/
       `>IN`/`SPAN`/`BL` are combined into one test, matching the
       established approach from section 3.14's own `TSTBASE`, and
@@ -3775,7 +3775,14 @@ this work.
       `TSTSELECTOR`'s seventeenth value included (36 scenarios total)
       - all pass; explicitly confirmed `TSTSELECTOR=16` includes only
       this group's own bodies. Byte-exact split-file reassembly
-      confirmed. Not yet confirmed via MAME.
+      confirmed. **MAME-CONFIRMED**: the user reports all 8 tests
+      pass, including `TSTEVALUATE` after its own two-round fix
+      (`LATEST` and `CODEHERE` both needing redirection, logged
+      separately above) - both `ENVIRONMENT?` bug-fix-regression
+      checks (`/COUNTED-STRING`+`MAX-N` and the double-cell `MAX-D`
+      path), `REFILL`'s safely-testable string-source path, and every
+      other test in this section all confirmed correct on real
+      hardware.
 
 - [x] **RESOLVED (in two rounds - the first fix was real but
       incomplete) - real bug found by the user's actual MAME run: the
@@ -3849,6 +3856,130 @@ this work.
       possible to draw, and what prompted going back for the actual,
       complete root cause rather than assuming the first, real but
       partial fix was sufficient.
+
+- [ ] **`TSTTOOLS` added - tools word set tests (glossary section
+      3.18, 3 words: `.S`/`WORDS`/`DUMP`), wired into `TSTRUNNER` and
+      inserted last in the source (after `TSTENVSYS`), matching
+      glossary order, gated as `TSTSELECTOR`'s eighteenth value
+      (`-17`).
+
+      **`WORDS` confirmed via its own code to depend directly on
+      `LATEST`** (walks from `LATEST` until the chain terminates at
+      0) - applying the lesson section 3.17's own `TSTEVALUATE`
+      surfaced from the start this time: built a small, two-entry
+      fake dictionary chain (`"CD"` pointing back to `"AB"`,
+      terminated with 0) and redirected `LATEST` to it, rather than
+      discovering the same real, pre-`COLD` dependency the hard way
+      again.
+
+      **`DUMP` confirmed to carry real, already-documented bug-fix
+      history worth designing a test around, not just noting**: a
+      prior version's ASCII column read past the actual byte count on
+      a partial final line, showing garbage for the unused portion -
+      fixed via `DUVALID` tracking. This section's own test
+      deliberately dumps a non-multiple-of-16 byte count (5), the
+      exact scenario that bug affected, and specifically verifies the
+      ASCII column's own blanking for the remaining 11 columns (via a
+      loop, not 11 unrolled checks) - the bug-relevant part - rather
+      than only checking the real hex data was correct.
+
+      **`.S` required a genuinely different testing approach from
+      every other test in this whole session**: it prints the *entire*
+      real data stack, including whatever the calling chain (all the
+      way up through `TSTRUNNER`) already left there before this test
+      even started - unlike every other test, there's no way to
+      predict the complete output in advance. Rather than force an
+      exact-output check the way every other printing word's test in
+      this session has done, this test instead verifies the core,
+      documented guarantee directly: the stack is genuinely unchanged
+      afterward (confirmed by popping the same values back and
+      comparing), plus, in interrupt mode only (where the very first
+      characters queued are unambiguously this test's own top value,
+      since `.S` starts from the current top of stack), that those
+      first characters match - a deliberately narrower check than
+      usual, given the genuine unpredictability of what precedes or
+      follows in the real stack.
+
+      **Caught and fixed two real mistakes during drafting, before
+      either was ever inserted**: `TSTDOTS`' own first draft put
+      `IFEQ` on the same line as its own label (`TSTDOTS: IFEQ
+      SERIALPOLL`) - the exact same mistake, and exact same real risk
+      (an untested pattern lwasm might not parse as intended), that
+      caused a genuine assembly error in section 3.13; caught by this
+      session's own balance-check script failing to match the line
+      (the same detection signal as before), not by a live lwasm run
+      this time. `TSTDUMP`'s own first draft had a genuine register
+      conflict in its ASCII-column blank-verification loop - using
+      `D`/`B` as both the loop counter and the `OUTBUF` index
+      simultaneously, which would have corrupted the index on the
+      very first iteration; caught by manually re-tracing the loop's
+      own register usage rather than trusting it compiled cleanly,
+      and fixed by moving the counter to `Y`, leaving `B` free.
+
+      Label collisions checked programmatically before insertion -
+      caught one real one this way (`DSFAIL`/`DSDONE`, colliding with
+      `DOTS`' own real internal completion label - the same class of
+      issue as `MSTAR`/`LSHIFT`/`RSHIFT`/`HOLDS`/`DUMP`/`TYPE`/`WORD`
+      found in earlier sections), replaced with `DY`. Checked every
+      column-1 mnemonic occurrence immediately after insertion too -
+      zero found.
+
+      Verified: `IFEQ`/`ENDC` balance immediately after insertion -
+      balanced (71/71) and correctly nested end to end; every one of
+      the 3 tests' own depth-check values independently re-derived
+      from real arity and confirmed correct against the final, fully-
+      assembled file state; every real word reference confirmed to
+      resolve, with `WORDSW`/`DUMPW` initially hidden from the
+      automated check by this session's own recurring local-prefix-
+      exclusion artifact, confirmed directly via literal call-site
+      counts rather than trusted blindly; all 3 tests confirmed wired
+      into `TSTTOOLS`, and `TSTTOOLS` itself confirmed wired into
+      `TSTRUNNER`. Full scenario matrix re-run with `TSTSELECTOR`'s
+      eighteenth value included (38 scenarios total) - all pass;
+      explicitly confirmed `TSTSELECTOR=17` includes only this
+      group's own bodies, and explicitly confirmed via simulation
+      that `TSTDUMP`'s own `SERIALPOLL` branches genuinely diverge as
+      intended. Byte-exact split-file reassembly confirmed. Not yet
+      confirmed via MAME.
+
+- [x] **RESOLVED - real bug found by the user's actual MAME run:
+      `TSTDOTS` entered an infinite loop when `.S` internally called
+      `DOT`.** Root cause: the exact same `BASE=0` infinite loop
+      already found and fixed in section 3.13 - `.S` calls `DOT` for
+      each stack item, `DOT` calls `NUMSIGN`/`UDDIGIT`, and with
+      `BASE=0` (only set by `COLD`, which hasn't run yet at this
+      whole test framework's own pre-`COLD` execution point), that
+      restoring-division mechanism degrades into an unconditional
+      shift, so the value being converted never genuinely decreases -
+      the same mechanism, the same class of gap, just not yet applied
+      to this specific test when it was first written. Simply forgot
+      to carry the section 3.13 lesson forward to `TSTDOTS`
+      specifically.
+
+      Checked whether `WORDS` and `DUMP` needed the same fix before
+      assuming only `TSTDOTS` was affected: confirmed via their own
+      code, not assumed. `WORDS` does no numeric conversion at all
+      (just `TYPE`s name text via the dictionary chain walk), so it
+      was never at risk. `DUMP`'s own hex conversion (`HEXDIGIT`/
+      `HEXBYTE`) is a fixed, hardcoded base-16 converter - confirmed
+      directly by re-reading its own code, which compares against the
+      literal value `10` and adds `'A'-10` or `'0'` outright, never
+      referencing `BASE` at all - genuinely independent of it, not
+      just assumed safe by inference.
+
+      Fixed by adding the same save/set/restore of `BASE` already
+      established in section 3.13, reusing the existing `TSTBASAV`
+      scratch constant rather than adding a new one.
+
+      Verified: `IFEQ`/`ENDC` balance unaffected (71/71, unchanged -
+      this fix only added `LDD`/`STD` memory operations, no new
+      conditional blocks); this test's own depth-check values
+      unchanged (the fix touches only `BASE`, never `U`); zero
+      column-1 mnemonic issues; full scenario matrix re-run crossing
+      both real `SERIALPOLL` settings with every `TSTSELECTOR` value
+      0-17 (38 scenarios total) - all pass. Byte-exact split-file
+      reassembly confirmed. This specific fix awaits its own MAME
+      confirmation.
 
 ## Structural duplication (identified, some resolved, some not)
 

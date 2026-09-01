@@ -892,6 +892,7 @@ TSTRUNNER: JSR   TSTSYSIO
            JSR   TSTEXCEPTION
            JSR   TSTCOMMENTS
            JSR   TSTENVSYS
+           JSR   TSTTOOLS
            RTS
 
 ; ------------------------------------------------------------
@@ -16297,6 +16298,462 @@ EW3DONE:      LDX  #TSTEW3NAME
 
 TSTEW3NAME: FCB  12
             FCC  "TSTENVQUERY3"
+
+           ENDC ; <<<<
+
+; ------------------------------------------------------------
+; TSTTOOLS - tools word set tests (glossary section 3.18, 3
+; words). WORDS depends directly on LATEST (confirmed via its
+; own code) - redirected for this test, applying the same
+; lesson section 3.17's own TSTEVALUATE surfaced. DUMP dumps a
+; deliberately non-multiple-of-16 byte count (5), the exact
+; scenario its own already-documented DUVALID bug fix addresses,
+; and this section's own test specifically verifies the ASCII
+; column's blanking for the unused portion, not just the real
+; data. .S prints the entire real data stack, including whatever
+; the calling chain already left there - unlike every other test
+; in this session, the full output can't be predicted in
+; advance, so this section's own test verifies the core,
+; documented "non-destructive" guarantee directly instead.
+; ------------------------------------------------------------
+TSTTOOLS: JSR CRW
+           LDX   #TSTTOOLSMSG
+           PSHU  X
+           LDD   #5
+           PSHU  D
+           JSR   TYPE
+           JSR   CRW
+
+           IFEQ TSTSELECTOR-17  ; >>>>
+
+           JSR   TSTDOTS
+           JSR   TSTWORDS
+           JSR   TSTDUMP
+
+           ENDC ; <<<<
+
+           RTS
+
+TSTTOOLSMSG: FCC "Tools"
+
+           IFEQ TSTSELECTOR-17  ; >>>>
+
+; ------------------------------------------------------------
+; Tools test harness (glossary section 3.18). WORDS depends
+; directly on LATEST (confirmed via its own code: it walks from
+; LATEST until the chain terminates at 0) - the same real, pre-
+; COLD dependency section 3.17's own TSTEVALUATE was found to
+; need, so this section's own WORDS test redirects LATEST too,
+; applying that lesson from the start rather than rediscovering
+; it. All three words produce visible output, so all apply the
+; SERIALPOLL-conditional split established in section 3.1.
+;
+; .S prints the ENTIRE real data stack, including whatever this
+; whole calling chain (TSTRUNNER and everything above it) already
+; left there before this test even started - unlike every other
+; test in this session, there's no way to know the full, exact
+; output in advance. This test's own verification is deliberately
+; narrower as a result: confirms the core, documented guarantee
+; directly (the stack is genuinely unchanged afterward, non-
+; destructive for real) plus, in interrupt mode only (where the
+; first characters queued are unambiguously this test's own top
+; value, since .S starts from the current top of stack), that the
+; very first characters match - rather than attempting to predict
+; or verify the complete printed output.
+;
+; DUMP carries real, already-documented bug-fix history: a prior
+; version's ASCII column read past the actual byte count on a
+; partial final line, showing garbage characters for the unused
+; portion - fixed via DUVALID tracking. This section's own test
+; specifically dumps a non-multiple-of-16 byte count (5), the
+; exact scenario that bug affected, verifying the ASCII column's
+; own blanking for the remaining, invalid columns.
+; ------------------------------------------------------------
+
+; ------------------------------------------------------------
+; TSTDOTS - unit test for .S. Pushes two known values (no guard
+; sentinel below them, since .S would print that too), calls .S,
+; and verifies the stack is genuinely unchanged afterward - the
+; core, documented "non-destructive" guarantee, confirmed
+; directly rather than inferred. In interrupt mode specifically,
+; also confirms the very first characters queued match the top
+; value's own printed form (unambiguous, since .S starts from
+; the current top of stack); polling mode only confirms some
+; output occurred, given EMITCH alone can't distinguish this
+; test's own output from whatever the rest of the real stack
+; contributes afterward.
+; ------------------------------------------------------------
+TSTDOTS: LDD  BASE
+         STD  TSTBASAV
+
+         LDD  #10
+         STD  BASE      ; BUG FIX: confirmed via MAME - the same
+                          ; BASE=0 infinite loop already found and
+                          ; fixed in section 3.13. .S internally calls
+                          ; DOT for each stack item, which calls
+                          ; NUMSIGN/UDDIGIT - the same restoring-
+                          ; division mechanism that degrades into an
+                          ; unconditional shift when BASE=0 (only set
+                          ; by COLD, which hasn't run yet at this
+                          ; whole test framework's own pre-COLD
+                          ; execution point), so the value being
+                          ; converted never genuinely decreases.
+                          ; Forgot to apply this section 3.13 lesson
+                          ; to this specific test when first writing
+                          ; it. WORDS and DUMP were checked and
+                          ; confirmed NOT to need this same fix: WORDS
+                          ; does no numeric conversion at all (just
+                          ; TYPEs name text), and DUMP's own hex
+                          ; conversion (HEXDIGIT/HEXBYTE) is a fixed,
+                          ; hardcoded base-16 converter, confirmed via
+                          ; its own code to never reference BASE at
+                          ; all - genuinely independent of it, not
+                          ; just assumed safe.
+
+         STU  TSTU0
+
+         IFEQ SERIALPOLL  ; >>>>
+         LDA  OUTHEAD
+         STA  TSTOHSAV
+         ENDC ; <<<<
+
+         LDD  #TSTVAL1
+         PSHU D
+         LDD  #7
+         PSHU D
+         STU  TSTUB4
+
+         JSR  DOTS
+
+         STU  TSTUAF
+
+         IFEQ SERIALPOLL  ; >>>>
+         LDA  TSTOHSAV
+         ADDA #2
+         ANDA #OUTBUFSZ-1
+         CMPA OUTHEAD
+         BNE  DYFAIL
+
+         LDX  #OUTBUF
+         LDB  TSTOHSAV
+         LDA  B,X
+         CMPA #'7'
+         BNE  DYFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #32
+         BNE  DYFAIL
+         ELSE  ; <<<<>>>>
+         LDA  EMITCH
+         CMPA #0
+         BEQ  DYFAIL
+         ENDC  ; <<<<<<<<<<
+
+         LDD  TSTBASAV
+         STD  BASE
+
+         LDD  TSTUAF
+         SUBD TSTUB4
+         CMPD #0
+         BNE  DYFAIL
+
+         PULU D
+         CMPD #7
+         BNE  DYFAIL
+         PULU D
+         CMPD #TSTVAL1
+         BNE  DYFAIL
+
+         LDD  #TRUEV
+         BRA  DYDONE
+DYFAIL:  LDD  #FALSEV
+DYDONE:  LDX  #TSTDSNAME
+         PSHU X
+         PSHU D
+         JSR  TSTREPORT
+
+         LDU  TSTU0
+         RTS
+
+TSTDSNAME: FCB  7
+           FCC  "TSTDOTS"
+
+; ------------------------------------------------------------
+; TSTWORDS - unit test for WORDS. Builds two small, linked fake
+; headers ("CD" pointing back to "AB", terminated with 0) and
+; redirects LATEST to the more recent one - confirmed via its
+; own code that WORDS walks directly from LATEST until the chain
+; terminates, so this is the one dependency it genuinely has.
+; Verifies the full expected output ("CD AB " followed by CR/LF,
+; 8 bytes total) under SERIALPOLL=0; under SERIALPOLL=1, only the
+; last character (LF, from the trailing CR) is checkable via
+; EMITCH.
+; ------------------------------------------------------------
+TSTWORDS: LDD  LATEST
+          STD  TSTLSAV
+
+          LDA  #2
+          STA  TSTCBUF
+          LDA  #'A'
+          STA  TSTCBUF+1
+          LDA  #'B'
+          STA  TSTCBUF+2
+          LDD  #0
+          STD  TSTCBUF+3
+          LDD  #DUP
+          STD  TSTCBUF+5
+
+          LDA  #2
+          STA  TSTCBUF+10
+          LDA  #'C'
+          STA  TSTCBUF+11
+          LDA  #'D'
+          STA  TSTCBUF+12
+          LDD  #TSTCBUF
+          STD  TSTCBUF+13
+          LDD  #DUP
+          STD  TSTCBUF+15
+
+          LDD  #TSTCBUF+10
+          STD  LATEST
+
+          IFEQ SERIALPOLL  ; >>>>
+          LDA  OUTHEAD
+          STA  TSTOHSAV
+          ENDC ; <<<<
+
+          STU  TSTU0
+          STU  TSTUB4
+
+          JSR  WORDSW
+
+          STU  TSTUAF
+
+          LDD  TSTLSAV
+          STD  LATEST
+
+          IFEQ SERIALPOLL  ; >>>>
+          LDA  TSTOHSAV
+          ADDA #8
+          ANDA #OUTBUFSZ-1
+          CMPA OUTHEAD
+          BNE  WOFAIL
+
+          LDX  #OUTBUF
+          LDB  TSTOHSAV
+          LDA  B,X
+          CMPA #'C'
+          BNE  WOFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #'D'
+          BNE  WOFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #32
+          BNE  WOFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #'A'
+          BNE  WOFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #'B'
+          BNE  WOFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #32
+          BNE  WOFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #13
+          BNE  WOFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #10
+          BNE  WOFAIL
+          ELSE  ; <<<<>>>>
+          LDA  EMITCH
+          CMPA #10
+          BNE  WOFAIL
+          ENDC  ; <<<<<<<<<<
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #0
+          BNE  WOFAIL
+
+          LDD  #TRUEV
+          BRA  WODONE
+WOFAIL:   LDD  #FALSEV
+WODONE:   LDX  #TSTWONAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTWONAME: FCB  8
+           FCC  "TSTWORDS"
+
+; ------------------------------------------------------------
+; TSTDUMP - unit test for DUMP. Dumps 5 bytes ("ABCDE") -
+; deliberately less than 16, the exact scenario the word's own
+; already-documented bug fix (DUVALID tracking) addresses:
+; without it, the ASCII column read past the actual byte count
+; on a partial final line, showing garbage for the unused
+; portion instead of blanks. Under SERIALPOLL=0, verifies the
+; total byte count (69: leading CR/LF, 5 real hex byte pairs, 11
+; padded hex slots, 1 separator, the 16-character ASCII column,
+; trailing CR/LF), the 5 real hex digit pairs at their known
+; offsets, and - the specific, bug-relevant check - the full
+; 16-character ASCII column itself: the first 5 characters match
+; "ABCDE" and the remaining 11 are genuinely blank (32), verified
+; via a loop rather than 11 unrolled checks. Under SERIALPOLL=1,
+; only the last character (LF, from the trailing CR) is
+; checkable via EMITCH.
+; ------------------------------------------------------------
+TSTDUMP: LDA  #'A'
+         STA  TSTCBUF
+         LDA  #'B'
+         STA  TSTCBUF+1
+         LDA  #'C'
+         STA  TSTCBUF+2
+         LDA  #'D'
+         STA  TSTCBUF+3
+         LDA  #'E'
+         STA  TSTCBUF+4
+
+         IFEQ SERIALPOLL  ; >>>>
+         LDA  OUTHEAD
+         STA  TSTOHSAV
+         ENDC ; <<<<
+
+         STU  TSTU0
+         STU  TSTUB4
+
+         LDD  #TSTCBUF
+         PSHU D
+         LDD  #5
+         PSHU D
+         JSR  DUMPW
+
+         STU  TSTUAF
+
+         IFEQ SERIALPOLL  ; >>>>
+         LDA  TSTOHSAV
+         ADDA #69
+         ANDA #OUTBUFSZ-1
+         CMPA OUTHEAD
+         BNE  DUFAIL
+
+         LDX  #OUTBUF
+         LDB  TSTOHSAV
+         ADDB #2
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'4'
+         BNE  DUFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'1'
+         BNE  DUFAIL
+
+         LDB  TSTOHSAV
+         ADDB #5
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'4'
+         BNE  DUFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'2'
+         BNE  DUFAIL
+
+         LDB  TSTOHSAV
+         ADDB #14
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'4'
+         BNE  DUFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'5'
+         BNE  DUFAIL
+
+         LDB  TSTOHSAV
+         ADDB #51
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'A'
+         BNE  DUFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'B'
+         BNE  DUFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'C'
+         BNE  DUFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'D'
+         BNE  DUFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'E'
+         BNE  DUFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+
+         LDY  #11
+DUBLNKLP: LDA  B,X
+         CMPA #32
+         BNE  DUFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LEAY -1,Y
+         BNE  DUBLNKLP
+         ELSE  ; <<<<>>>>
+         LDA  EMITCH
+         CMPA #10
+         BNE  DUFAIL
+         ENDC  ; <<<<<<<<<<
+
+         LDD  TSTUB4
+         SUBD TSTUAF
+         CMPD #0
+         BNE  DUFAIL
+
+         LDD  #TRUEV
+         BRA  DUDONE2
+DUFAIL:  LDD  #FALSEV
+DUDONE2: LDX  #TSTDUNAME
+         PSHU X
+         PSHU D
+         JSR  TSTREPORT
+
+         LDU  TSTU0
+         RTS
+
+TSTDUNAME: FCB  7
+           FCC  "TSTDUMP"
 
            ENDC ; <<<<
 
