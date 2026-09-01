@@ -4529,6 +4529,96 @@ design decisions made since the original version.
       level detail is what let this be pinpointed precisely rather
       than guessed at.
 
+- [ ] **`TSTSTRPARSE` added - strings & parsing tests (glossary
+      section 3.12, 16 words, 19 tests since several get separate
+      cases: `[CHAR]` compiling/interpreting state, `S"` compiling/
+      interpreting state (this word genuinely has both), `SEARCH`
+      found/not-found, `REPLACES`/`SUBSTITUTE` combined across two
+      tests, `SNAME` found/not-found), wired into `TSTRUNNER` and
+      inserted last in the source (after `TSTMEMORY`), matching
+      glossary order, gated as `TSTSELECTOR`'s twelfth value (`-11`).
+
+      **A real, significant naming collision caught by the standard
+      collision check, not just an internal-label clash like earlier
+      sections' finds**: this section's own `COMPARE` (string
+      comparison) word's test was originally named `TSTCOMPARE` -
+      which turned out to already be the group-level wrapper name for
+      section 3.7's entire comparison-operators test group (`=`, `<`,
+      `>`, etc. - a completely different, pre-existing thing, not an
+      internal label inside some word's own implementation). Renamed
+      to `TSTSCOMPARE` throughout, including its own display name (the
+      string `TSTREPORT` prints), confirmed via simulation that the
+      real section 3.7 `TSTCOMPARE` wrapper is completely unaffected
+      and still compiles correctly, and confirmed `TSTSCOMPARE` itself
+      doesn't collide with anything either. Three more internal-label
+      collisions caught the same way as earlier sections (`PNDONE`
+      inside `PARSENAME`'s own real implementation, `UEDONE` inside
+      `UNESCAPEW`'s own real implementation, `DQFAIL`/`DQDONE`
+      colliding with an existing section 3.7 test's own labels),
+      replaced with `PZ`/`UX`/`DX` respectively.
+
+      **`.` confirmed to have no `STATE` check at all in its own
+      code** - matches "no interpretation semantics, per ANS" without
+      a specific `-14` throw (unlike `[CHAR]`/`S"`, which do throw),
+      so only its compiling case is tested, matching how it's
+      actually meant to be used. Its own runtime (`DOTSTR`) calls
+      `TYPE` internally, which - per section 3.1's own already-
+      debugged finding - has two entirely different implementations
+      gated by `SERIALPOLL`; this test applies that same lesson from
+      the start rather than re-discovering it via a failed MAME run,
+      using the same split established for `TSTCR`: full `OUTHEAD`/
+      `OUTBUF` verification under `SERIALPOLL=0`, a narrower `EMITCH`-
+      based check under `SERIALPOLL=1`.
+
+      **`PARSE` and `PARSE-NAME` each get a test specifically designed
+      to isolate their one documented behavioral difference** - a fake
+      source starting with the delimiter itself, confirming `PARSE`
+      genuinely does not skip it (returns a zero-length token
+      immediately) while `PARSE-NAME` genuinely does skip leading
+      spaces - rather than two generic parse tests that could pass
+      even if the two words were accidentally sharing one code path.
+
+      **`SUBSTITUTE`'s own expected outputs were independently
+      simulated in Python against the algorithm as traced from the
+      real source**, not hand-derived and assumed correct - covering
+      all 4 of its own documented `%`-delimiter cases across two
+      tests: `TSTREPLSUBS1` (the `%%`-collapses-to-`%` case, a
+      registered-name substitution, and a non-registered-name pass-
+      through, all in one template) and `TSTREPLSUBS2` (an unpaired
+      trailing `%` with no closing delimiter, tested in isolation for
+      clearer failure diagnosis). `UNESCAPE`'s and `REPLACES`'s own
+      extensive prior-session bug-fix comments (doubling `%`, not
+      backslash-escaping; single-slot registration) were confirmed
+      fresh against the actual current code before designing tests
+      around them, not trusted blindly.
+
+      Nine `FCB`-length/string-length mismatches caught individually
+      and immediately after writing each test, per this session's now-
+      standard practice (`TSTCHARW`, `TSTPARSE`, `TSTPARSENAME`,
+      `TSTBRACKCHAR1`/`TSTBRACKCHAR2`, `TSTDASHTRAILING`,
+      `TSTSLASHSTRING`, `TSTREPLSUBS1`, `TSTSCOMPARE` after its own
+      rename left a stale length byte from the old, shorter name).
+
+      Checked the `IFEQ`/`ENDC` balance immediately after insertion,
+      per this session's now-standard practice - balanced (39/39) and
+      correctly nested end to end on the first attempt.
+
+      Verified: all 19 depth-check values independently re-derived
+      from real arity and confirmed correct against the final, fully-
+      assembled file state; every real word reference confirmed to
+      resolve, with the apparent "missing" list (character literals,
+      mnemonics, directives, and this batch's own local labels) traced
+      to its real, harmless cause rather than dismissed without
+      checking; all 19 tests confirmed wired into `TSTSTRPARSE`, and
+      `TSTSTRPARSE` itself confirmed wired into `TSTRUNNER`. Full
+      scenario matrix re-run with `TSTSELECTOR`'s twelfth value
+      included (26 scenarios total) - all pass; explicitly confirmed
+      `TSTSELECTOR=11` includes only this group's own bodies, and
+      separately confirmed via simulation that the real section 3.7
+      `TSTCOMPARE` group's own body is still present and unaffected by
+      this section's rename. Byte-exact split-file reassembly
+      confirmed. Not yet confirmed via MAME.
+
 ## Structural duplication (identified, some resolved, some not)
 
 - [x] `:`/`CREATE`/`VARIABLE`'s header-building — resolved via `HEADER`

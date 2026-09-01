@@ -840,6 +840,7 @@ TSTRUNNER: JSR   TSTSYSIO
            JSR   TSTDEFWORDS
            JSR   TSTCOMPWORDS
            JSR   TSTMEMORY
+           JSR   TSTSTRPARSE
            RTS
 
 ; ------------------------------------------------------------
@@ -11988,6 +11989,1668 @@ MV3DONE:  LDX  #TSTMV3NAME
 
 TSTMV3NAME: FCB  8
             FCC  "TSTMOVE3"
+
+           ENDC ; <<<<
+
+; ------------------------------------------------------------
+; TSTSTRPARSE - strings & parsing tests (glossary section 3.12,
+; 16 words, 19 tests since several get separate cases: [CHAR]
+; compiling/interpreting state, S" compiling/interpreting state
+; (this word genuinely has both), SEARCH found/not-found,
+; REPLACES/SUBSTITUTE combined across two tests (covering all 4
+; of SUBSTITUTE's own documented %-delimiter cases), SNAME
+; found/not-found.
+;
+; . has no STATE check at all in its own code (confirmed by
+; reading it directly - matches "no interpretation semantics,
+; per ANS" without a specific -14 throw, unlike [CHAR]/S"), so
+; only its compiling case is tested. Its own runtime calls TYPE
+; internally, so its own test applies the SERIALPOLL-conditional
+; lesson from section 3.1 from the start, rather than
+; re-discovering it via a failed MAME run.
+;
+; SUBSTITUTE/REPLACES/UNESCAPE all carry extensive prior-session
+; bug-fix history in their own comments - confirmed fresh against
+; the actual current code (not re-derived from scratch), and
+; SUBSTITUTE's own expected outputs independently simulated in
+; Python against the traced algorithm before writing the tests,
+; not hand-derived and assumed correct.
+;
+; Note: this section's own COMPARE (string comparison) word's
+; test is named TSTSCOMPARE, not TSTCOMPARE - the latter was
+; already taken by section 3.7's own comparison-operators group
+; wrapper, caught by the standard collision check before
+; insertion.
+; ------------------------------------------------------------
+TSTSTRPARSE: JSR CRW
+           LDX   #TSTSTRPMSG
+           PSHU  X
+           LDD   #8
+           PSHU  D
+           JSR   TYPE
+           JSR   CRW
+
+           IFEQ TSTSELECTOR-11  ; >>>>
+
+           JSR   TSTCOUNT
+           JSR   TSTCHARW
+           JSR   TSTBRACKCHAR1
+           JSR   TSTBRACKCHAR2
+           JSR   TSTPARSE
+           JSR   TSTPARSENAME
+           JSR   TSTSQUOTE1
+           JSR   TSTSQUOTE2
+           JSR   TSTDOTQUOTE
+           JSR   TSTSCOMPARE
+           JSR   TSTSEARCH1
+           JSR   TSTSEARCH2
+           JSR   TSTDASHTRAILING
+           JSR   TSTSLASHSTRING
+           JSR   TSTREPLSUBS1
+           JSR   TSTREPLSUBS2
+           JSR   TSTSNAME1
+           JSR   TSTSNAME2
+           JSR   TSTUNESCAPE
+
+           ENDC ; <<<<
+
+           RTS
+
+TSTSTRPMSG: FCC "StrParse"
+
+           IFEQ TSTSELECTOR-11  ; >>>>
+
+; ------------------------------------------------------------
+; Strings & Parsing test harness (glossary section 3.12). Reuses
+; the redirect infrastructure from sections 3.8-3.10 for the
+; name-parsing words (WORD/CHAR/[CHAR]/S"/."). DOTQUOTE's own
+; runtime (DOTSTR) calls TYPE internally, which - per section
+; 3.1's own already-debugged finding - has two entirely
+; different implementations gated by SERIALPOLL; its own test
+; below applies that same lesson from the start rather than
+; re-discovering it.
+;
+; SUBSTITUTE/REPLACES/UNESCAPE all have extensive prior-session
+; bug-fix history baked into their own comments (SUBSTITUTE's
+; %-delimiter algorithm, UNESCAPE's doubling-not-escaping
+; behavior) - trusted as ground truth here (each confirmed via a
+; prior MAME-tested session), verified fresh against the actual
+; code rather than re-derived from scratch, and tested against
+; that confirmed, current behavior.
+; ------------------------------------------------------------
+
+; ------------------------------------------------------------
+; TSTCOUNT - unit test for COUNT. Builds a counted string at
+; scratch, verifies the returned (addr len) correctly skips the
+; count byte and reports its value.
+; ------------------------------------------------------------
+TSTCOUNT: LDA  #5
+          STA  TSTCBUF
+          LDA  #'H'
+          STA  TSTCBUF+1
+          LDA  #'E'
+          STA  TSTCBUF+2
+          LDA  #'L'
+          STA  TSTCBUF+3
+          LDA  #'L'
+          STA  TSTCBUF+4
+          LDA  #'O'
+          STA  TSTCBUF+5
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          LDD  #TSTCBUF
+          PSHU D
+          STU  TSTUB4
+
+          JSR  COUNT
+
+          STU  TSTUAF
+
+          PULU D
+          CMPD #5
+          BNE  CTFAIL
+          PULU D
+          CMPD #TSTCBUF+1
+          BNE  CTFAIL
+          PULU D
+          CMPD #TSTGUARD
+          BNE  CTFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #2
+          BNE  CTFAIL
+
+          LDD  #TRUEV
+          BRA  CTDONE
+CTFAIL:   LDD  #FALSEV
+CTDONE:   LDX  #TSTCTNAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTCTNAME: FCB  8
+           FCC  "TSTCOUNT"
+
+; ------------------------------------------------------------
+; TSTCHARW - unit test for CHAR. Redirects CODEHERE (WORD's own
+; parse output still lands there internally, even though CHAR
+; itself doesn't compile anything) and the source, parses a
+; space-delimited fake source ("AB CD"), and verifies it returns
+; 'A' - the first character of the first word.
+; ------------------------------------------------------------
+TSTCHARW: LDD  CODEHERE
+          STD  TSTCSAV
+          LDD  SRCADDR
+          STD  TSTSASAV
+          LDD  SRCLEN
+          STD  TSTSLSAV
+          LDD  TOIN
+          STD  TSTTISAV
+
+          LDA  #'A'
+          STA  TSTNAMEB
+          LDA  #'B'
+          STA  TSTNAMEB+1
+          LDA  #32
+          STA  TSTNAMEB+2
+          LDA  #'C'
+          STA  TSTNAMEB+3
+          LDA  #'D'
+          STA  TSTNAMEB+4
+
+          LDD  #TSTCBUF
+          STD  CODEHERE
+          LDD  #TSTNAMEB
+          STD  SRCADDR
+          LDD  #5
+          STD  SRCLEN
+          LDD  #0
+          STD  TOIN
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          STU  TSTUB4
+
+          JSR  CHARW
+
+          STU  TSTUAF
+
+          LDD  TSTCSAV
+          STD  CODEHERE
+          LDD  TSTSASAV
+          STD  SRCADDR
+          LDD  TSTSLSAV
+          STD  SRCLEN
+          LDD  TSTTISAV
+          STD  TOIN
+
+          PULU D
+          CMPD #'A'
+          BNE  CWFAIL
+          PULU D
+          CMPD #TSTGUARD
+          BNE  CWFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #2
+          BNE  CWFAIL
+
+          LDD  #TRUEV
+          BRA  CWDONE
+CWFAIL:   LDD  #FALSEV
+CWDONE:   LDX  #TSTCWNAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTCWNAME: FCB  8
+           FCC  "TSTCHARW"
+
+; ------------------------------------------------------------
+; TSTBRACKCHAR1 - unit test for [CHAR], compiling-state case.
+; Compile-only (throws -14 otherwise, per its own STATE check).
+; Compiles the character as a literal, then executes the result
+; to confirm it genuinely pushes 'A'.
+; ------------------------------------------------------------
+TSTBRACKCHAR1: LDD  CODEHERE
+               STD  TSTCSAV
+               LDD  SRCADDR
+               STD  TSTSASAV
+               LDD  SRCLEN
+               STD  TSTSLSAV
+               LDD  TOIN
+               STD  TSTTISAV
+               LDD  STATE
+               STD  TSTSTSAV
+
+               LDA  #'A'
+               STA  TSTNAMEB
+               LDA  #'B'
+               STA  TSTNAMEB+1
+               LDA  #32
+               STA  TSTNAMEB+2
+
+               LDD  #TSTCBUF
+               STD  CODEHERE
+               LDD  #TSTNAMEB
+               STD  SRCADDR
+               LDD  #3
+               STD  SRCLEN
+               LDD  #0
+               STD  TOIN
+               LDD  #-1
+               STD  STATE
+
+               JSR  BRACKCHAR
+
+               LDD  #OPRTS
+               PSHU D
+               JSR  CCOMMA
+
+               LDD  TSTCSAV
+               STD  CODEHERE
+               LDD  TSTSASAV
+               STD  SRCADDR
+               LDD  TSTSLSAV
+               STD  SRCLEN
+               LDD  TSTTISAV
+               STD  TOIN
+               LDD  TSTSTSAV
+               STD  STATE
+
+               STU  TSTU0
+
+               LDD  #TSTGUARD
+               PSHU D
+               STU  TSTUB4
+
+               LDX  #TSTCBUF
+               JSR  ,X
+
+               STU  TSTUAF
+
+               PULU D
+               CMPD #'A'
+               BNE  BC1FAIL
+               PULU D
+               CMPD #TSTGUARD
+               BNE  BC1FAIL
+
+               LDD  TSTUB4
+               SUBD TSTUAF
+               CMPD #2
+               BNE  BC1FAIL
+
+               LDD  #TRUEV
+               BRA  BC1DONE
+BC1FAIL:       LDD  #FALSEV
+BC1DONE:       LDX  #TSTBC1NAME
+               PSHU X
+               PSHU D
+               JSR  TSTREPORT
+
+               LDU  TSTU0
+               RTS
+
+TSTBC1NAME: FCB  13
+            FCC  "TSTBRACKCHAR1"
+
+; ------------------------------------------------------------
+; TSTBRACKCHAR2 - unit test for [CHAR], interpreting-state case.
+; STATE=0, verifies -14 via CATCH.
+; ------------------------------------------------------------
+TSTBRACKCHAR2: LDD  CODEHERE
+               STD  TSTCSAV
+               LDD  SRCADDR
+               STD  TSTSASAV
+               LDD  SRCLEN
+               STD  TSTSLSAV
+               LDD  TOIN
+               STD  TSTTISAV
+               LDD  STATE
+               STD  TSTSTSAV
+
+               LDA  #'A'
+               STA  TSTNAMEB
+               LDA  #'B'
+               STA  TSTNAMEB+1
+               LDA  #32
+               STA  TSTNAMEB+2
+
+               LDD  #TSTCBUF
+               STD  CODEHERE
+               LDD  #TSTNAMEB
+               STD  SRCADDR
+               LDD  #3
+               STD  SRCLEN
+               LDD  #0
+               STD  TOIN
+               LDD  #0
+               STD  STATE
+
+               STU  TSTU0
+
+               LDX  #BRACKCHAR
+               PSHU X
+               STU  TSTUB4
+
+               JSR  CATCH
+
+               STU  TSTUAF
+
+               LDD  TSTCSAV
+               STD  CODEHERE
+               LDD  TSTSASAV
+               STD  SRCADDR
+               LDD  TSTSLSAV
+               STD  SRCLEN
+               LDD  TSTTISAV
+               STD  TOIN
+               LDD  TSTSTSAV
+               STD  STATE
+
+               PULU D
+               CMPD #-14
+               BNE  BC2FAIL
+
+               LDD  TSTUB4
+               SUBD TSTUAF
+               CMPD #0
+               BNE  BC2FAIL
+
+               LDD  #TRUEV
+               BRA  BC2DONE
+BC2FAIL:       LDD  #FALSEV
+BC2DONE:       LDX  #TSTBC2NAME
+               PSHU X
+               PSHU D
+               JSR  TSTREPORT
+
+               LDU  TSTU0
+               RTS
+
+TSTBC2NAME: FCB  13
+            FCC  "TSTBRACKCHAR2"
+
+; ------------------------------------------------------------
+; TSTPARSE - unit test for PARSE. Uses a fake source starting
+; with the delimiter itself (",XY", delimiter ',') specifically
+; to verify PARSE's own documented distinguishing behavior -
+; "does not skip leading delimiters, unlike WORD" - the leading
+; comma should be hit immediately, returning a zero-length token
+; right where TOIN started, not skipped over to find "XY".
+; ------------------------------------------------------------
+TSTPARSE: LDD  SRCADDR
+          STD  TSTSASAV
+          LDD  SRCLEN
+          STD  TSTSLSAV
+          LDD  TOIN
+          STD  TSTTISAV
+
+          LDA  #','
+          STA  TSTNAMEB
+          LDA  #'X'
+          STA  TSTNAMEB+1
+          LDA  #'Y'
+          STA  TSTNAMEB+2
+
+          LDD  #TSTNAMEB
+          STD  SRCADDR
+          LDD  #3
+          STD  SRCLEN
+          LDD  #0
+          STD  TOIN
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          LDD  #','
+          PSHU D
+          STU  TSTUB4
+
+          JSR  PARSEW
+
+          STU  TSTUAF
+
+          LDD  TSTSASAV
+          STD  SRCADDR
+          LDD  TSTSLSAV
+          STD  SRCLEN
+          LDD  TSTTISAV
+          STD  TOIN
+
+          PULU D
+          CMPD #0
+          BNE  PRFAIL
+          PULU D
+          CMPD #TSTNAMEB
+          BNE  PRFAIL
+          PULU D
+          CMPD #TSTGUARD
+          BNE  PRFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #2
+          BNE  PRFAIL
+
+          LDD  #TRUEV
+          BRA  PRDONE
+PRFAIL:   LDD  #FALSEV
+PRDONE:   LDX  #TSTPRNAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTPRNAME: FCB  8
+           FCC  "TSTPARSE"
+
+; ------------------------------------------------------------
+; TSTPARSENAME - unit test for PARSE-NAME. Fake source with 2
+; leading spaces before the token ("  AB CD"), verifying it
+; genuinely skips them - the opposite of PARSE's own behavior,
+; confirming the two aren't accidentally sharing one code path
+; that only happens to work for one of them.
+; ------------------------------------------------------------
+TSTPARSENAME: LDD  SRCADDR
+              STD  TSTSASAV
+              LDD  SRCLEN
+              STD  TSTSLSAV
+              LDD  TOIN
+              STD  TSTTISAV
+
+              LDA  #32
+              STA  TSTNAMEB
+              LDA  #32
+              STA  TSTNAMEB+1
+              LDA  #'A'
+              STA  TSTNAMEB+2
+              LDA  #'B'
+              STA  TSTNAMEB+3
+              LDA  #32
+              STA  TSTNAMEB+4
+              LDA  #'C'
+              STA  TSTNAMEB+5
+              LDA  #'D'
+              STA  TSTNAMEB+6
+
+              LDD  #TSTNAMEB
+              STD  SRCADDR
+              LDD  #7
+              STD  SRCLEN
+              LDD  #0
+              STD  TOIN
+
+              STU  TSTU0
+
+              LDD  #TSTGUARD
+              PSHU D
+              STU  TSTUB4
+
+              JSR  PARSENAME
+
+              STU  TSTUAF
+
+              LDD  TSTSASAV
+              STD  SRCADDR
+              LDD  TSTSLSAV
+              STD  SRCLEN
+              LDD  TSTTISAV
+              STD  TOIN
+
+              PULU D
+              CMPD #2
+              BNE  PZFAIL
+              PULU D
+              CMPD #TSTNAMEB+2
+              BNE  PZFAIL
+              PULU D
+              CMPD #TSTGUARD
+              BNE  PZFAIL
+
+              LDD  TSTUB4
+              SUBD TSTUAF
+              CMPD #4
+              BNE  PZFAIL
+
+              LDD  #TRUEV
+              BRA  PZDONE
+PZFAIL:       LDD  #FALSEV
+PZDONE:       LDX  #TSTPNNAME
+              PSHU X
+              PSHU D
+              JSR  TSTREPORT
+
+              LDU  TSTU0
+              RTS
+
+TSTPNNAME: FCB  12
+           FCC  "TSTPARSENAME"
+
+; ------------------------------------------------------------
+; TSTSQUOTE1 - unit test for S", compiling-state case. Compiles
+; a known 2-character string, then executes the result to
+; confirm it genuinely pushes (addr len) with the correct
+; content at addr - not just that the call returned two numbers.
+; ------------------------------------------------------------
+TSTSQUOTE1: LDD  CODEHERE
+            STD  TSTCSAV
+            LDD  SRCADDR
+            STD  TSTSASAV
+            LDD  SRCLEN
+            STD  TSTSLSAV
+            LDD  TOIN
+            STD  TSTTISAV
+            LDD  STATE
+            STD  TSTSTSAV
+
+            LDA  #'H'
+            STA  TSTNAMEB
+            LDA  #'I'
+            STA  TSTNAMEB+1
+            LDA  #34
+            STA  TSTNAMEB+2
+
+            LDD  #TSTCBUF
+            STD  CODEHERE
+            LDD  #TSTNAMEB
+            STD  SRCADDR
+            LDD  #3
+            STD  SRCLEN
+            LDD  #0
+            STD  TOIN
+            LDD  #-1
+            STD  STATE
+
+            JSR  SQUOTE
+
+            LDD  #OPRTS
+            PSHU D
+            JSR  CCOMMA
+
+            LDD  TSTCSAV
+            STD  CODEHERE
+            LDD  TSTSASAV
+            STD  SRCADDR
+            LDD  TSTSLSAV
+            STD  SRCLEN
+            LDD  TSTTISAV
+            STD  TOIN
+            LDD  TSTSTSAV
+            STD  STATE
+
+            STU  TSTU0
+
+            LDD  #TSTGUARD
+            PSHU D
+            STU  TSTUB4
+
+            LDX  #TSTCBUF
+            JSR  ,X
+
+            STU  TSTUAF
+
+            PULU D
+            CMPD #2
+            BNE  SQ1FAIL
+
+            PULU D
+            TFR  D,X
+            LDA  ,X
+            CMPA #'H'
+            BNE  SQ1FAIL
+            LDA  1,X
+            CMPA #'I'
+            BNE  SQ1FAIL
+
+            PULU D
+            CMPD #TSTGUARD
+            BNE  SQ1FAIL
+
+            LDD  TSTUB4
+            SUBD TSTUAF
+            CMPD #4
+            BNE  SQ1FAIL
+
+            LDD  #TRUEV
+            BRA  SQ1DONE
+SQ1FAIL:    LDD  #FALSEV
+SQ1DONE:    LDX  #TSTSQ1NAME
+            PSHU X
+            PSHU D
+            JSR  TSTREPORT
+
+            LDU  TSTU0
+            RTS
+
+TSTSQ1NAME: FCB  10
+            FCC  "TSTSQUOTE1"
+
+; ------------------------------------------------------------
+; TSTSQUOTE2 - unit test for S", interpreting-state case.
+; Redirects CODEHERE first so PAD's own computed address (which
+; SQUOTE's own interpreting branch writes to) is predictable,
+; then calls S" directly (no compile/execute step needed, since
+; interpreting S" stages the string and returns immediately) and
+; verifies the returned (addr len) content, plus that addr
+; genuinely landed at PAD's current, redirected address.
+; ------------------------------------------------------------
+TSTSQUOTE2: LDD  CODEHERE
+            STD  TSTCSAV
+            LDD  SRCADDR
+            STD  TSTSASAV
+            LDD  SRCLEN
+            STD  TSTSLSAV
+            LDD  TOIN
+            STD  TSTTISAV
+            LDD  STATE
+            STD  TSTSTSAV
+
+            LDA  #'H'
+            STA  TSTNAMEB
+            LDA  #'I'
+            STA  TSTNAMEB+1
+            LDA  #34
+            STA  TSTNAMEB+2
+
+            LDD  #TSTCBUF
+            STD  CODEHERE
+            LDD  #TSTNAMEB
+            STD  SRCADDR
+            LDD  #3
+            STD  SRCLEN
+            LDD  #0
+            STD  TOIN
+            LDD  #0
+            STD  STATE
+
+            STU  TSTU0
+
+            LDD  #TSTGUARD
+            PSHU D
+            STU  TSTUB4
+
+            JSR  SQUOTE
+
+            STU  TSTUAF
+
+            LDD  TSTCSAV
+            STD  CODEHERE
+            LDD  TSTSASAV
+            STD  SRCADDR
+            LDD  TSTSLSAV
+            STD  SRCLEN
+            LDD  TSTTISAV
+            STD  TOIN
+            LDD  TSTSTSAV
+            STD  STATE
+
+            PULU D
+            CMPD #2
+            BNE  SQ2FAIL
+
+            PULU D
+            CMPD #TSTCBUF+PADOFFSET
+            BNE  SQ2FAIL
+
+            TFR  D,X
+            LDA  ,X
+            CMPA #'H'
+            BNE  SQ2FAIL
+            LDA  1,X
+            CMPA #'I'
+            BNE  SQ2FAIL
+
+            PULU D
+            CMPD #TSTGUARD
+            BNE  SQ2FAIL
+
+            LDD  TSTUB4
+            SUBD TSTUAF
+            CMPD #4
+            BNE  SQ2FAIL
+
+            LDD  #TRUEV
+            BRA  SQ2DONE
+SQ2FAIL:    LDD  #FALSEV
+SQ2DONE:    LDX  #TSTSQ2NAME
+            PSHU X
+            PSHU D
+            JSR  TSTREPORT
+
+            LDU  TSTU0
+            RTS
+
+TSTSQ2NAME: FCB  10
+            FCC  "TSTSQUOTE2"
+
+; ------------------------------------------------------------
+; TSTDOTQUOTE - unit test for .". No STATE check at all in its
+; own code (confirmed by reading it directly - matches "no
+; interpretation semantics, per ANS" without a specific -14
+; throw, unlike [CHAR]/S"), so only the compiling case is
+; tested, matching how it's actually meant to be used. Its own
+; runtime (DOTSTR) calls TYPE internally, which has two entirely
+; different implementations gated by SERIALPOLL (the same real
+; finding from section 3.1) - applying that lesson from the
+; start here rather than re-discovering it: EMITCH works
+; universally for a single-character check, but this outputs
+; multiple characters, so - matching TSTCR's own established
+; fix - the full OUTHEAD/OUTBUF check only applies under
+; SERIALPOLL=0, with a narrower EMITCH-based check (last
+; character only, plus the stack-depth check) for SERIALPOLL=1.
+; ------------------------------------------------------------
+TSTDOTQUOTE: LDD  CODEHERE
+             STD  TSTCSAV
+             LDD  SRCADDR
+             STD  TSTSASAV
+             LDD  SRCLEN
+             STD  TSTSLSAV
+             LDD  TOIN
+             STD  TSTTISAV
+
+             LDA  #'H'
+             STA  TSTNAMEB
+             LDA  #'I'
+             STA  TSTNAMEB+1
+             LDA  #34
+             STA  TSTNAMEB+2
+
+             LDD  #TSTCBUF
+             STD  CODEHERE
+             LDD  #TSTNAMEB
+             STD  SRCADDR
+             LDD  #3
+             STD  SRCLEN
+             LDD  #0
+             STD  TOIN
+
+             JSR  DOTQUOTE
+
+             LDD  #OPRTS
+             PSHU D
+             JSR  CCOMMA
+
+             LDD  TSTCSAV
+             STD  CODEHERE
+             LDD  TSTSASAV
+             STD  SRCADDR
+             LDD  TSTSLSAV
+             STD  SRCLEN
+             LDD  TSTTISAV
+             STD  TOIN
+
+             IFEQ SERIALPOLL  ; >>>>
+             LDA  OUTHEAD
+             STA  TSTOHSAV
+             ENDC ; <<<<
+
+             STU  TSTU0
+
+             LDD  #TSTGUARD
+             PSHU D
+             STU  TSTUB4
+
+             LDX  #TSTCBUF
+             JSR  ,X
+
+             STU  TSTUAF
+
+             IFEQ SERIALPOLL  ; >>>>
+             LDA  TSTOHSAV
+             ADDA #2
+             ANDA #OUTBUFSZ-1
+             CMPA OUTHEAD
+             BNE  DXFAIL
+
+             LDX  #OUTBUF
+             LDB  TSTOHSAV
+             LDA  B,X
+             CMPA #'H'
+             BNE  DXFAIL
+             INCB
+             ANDB #OUTBUFSZ-1
+             LDA  B,X
+             CMPA #'I'
+             BNE  DXFAIL
+             ELSE  ; <<<<>>>>
+             LDA  EMITCH
+             CMPA #'I'
+             BNE  DXFAIL
+             ENDC  ; <<<<<<<<<<
+
+             PULU D
+             CMPD #TSTGUARD
+             BNE  DXFAIL
+
+             LDD  TSTUB4
+             SUBD TSTUAF
+             CMPD #0
+             BNE  DXFAIL
+
+             LDD  #TRUEV
+             BRA  DXDONE
+DXFAIL:      LDD  #FALSEV
+DXDONE:      LDX  #TSTDQNAME
+             PSHU X
+             PSHU D
+             JSR  TSTREPORT
+
+             LDU  TSTU0
+             RTS
+
+TSTDQNAME: FCB  11
+           FCC  "TSTDOTQUOTE"
+
+; ------------------------------------------------------------
+; TSTSCOMPARE - unit test for COMPARE. Four sequential sub-cases
+; within one test body, each popping and verifying its own
+; result immediately: less-than, equal, greater-than, and the
+; prefix tie-break case specifically (a shorter string that's a
+; true prefix of a longer one compares less, per the standard
+; three-way convention) - not just LT/EQ/GT on same-length
+; strings, which alone wouldn't exercise the tie-break path at
+; all.
+; ------------------------------------------------------------
+TSTSCOMPARE: LDA  #'A'
+            STA  TSTCBUF
+            LDA  #'B'
+            STA  TSTCBUF+1
+            LDA  #'A'
+            STA  TSTCBUF+2
+            LDA  #'C'
+            STA  TSTCBUF+3
+
+            STU  TSTU0
+
+            LDD  #TSTGUARD
+            PSHU D
+            STU  TSTUB4
+
+            LDD  #TSTCBUF
+            PSHU D
+            LDD  #2
+            PSHU D
+            LDD  #TSTCBUF+2
+            PSHU D
+            LDD  #2
+            PSHU D
+            JSR  COMPAREW
+            PULU D
+            CMPD #-1
+            BNE  CQFAIL
+
+            LDD  #TSTCBUF
+            PSHU D
+            LDD  #2
+            PSHU D
+            LDD  #TSTCBUF
+            PSHU D
+            LDD  #2
+            PSHU D
+            JSR  COMPAREW
+            PULU D
+            CMPD #0
+            BNE  CQFAIL
+
+            LDD  #TSTCBUF+2
+            PSHU D
+            LDD  #2
+            PSHU D
+            LDD  #TSTCBUF
+            PSHU D
+            LDD  #2
+            PSHU D
+            JSR  COMPAREW
+            PULU D
+            CMPD #1
+            BNE  CQFAIL
+
+            LDD  #TSTCBUF
+            PSHU D
+            LDD  #2
+            PSHU D
+            LDD  #TSTCBUF
+            PSHU D
+            LDD  #3
+            PSHU D
+            JSR  COMPAREW
+            PULU D
+            CMPD #-1
+            BNE  CQFAIL
+
+            STU  TSTUAF
+
+            PULU D
+            CMPD #TSTGUARD
+            BNE  CQFAIL
+
+            LDD  TSTUB4
+            SUBD TSTUAF
+            CMPD #0
+            BNE  CQFAIL
+
+            LDD  #TRUEV
+            BRA  CQDONE
+CQFAIL:     LDD  #FALSEV
+CQDONE:     LDX  #TSTCQNAME
+            PSHU X
+            PSHU D
+            JSR  TSTREPORT
+
+            LDU  TSTU0
+            RTS
+
+TSTCQNAME: FCB  11
+           FCC  "TSTSCOMPARE"
+
+; ------------------------------------------------------------
+; TSTSEARCH1 - unit test for SEARCH, found case. Haystack
+; "HELLOWORLD", needle "WOR" - verifies the returned addr3 lands
+; exactly at the match position (not just that flag is true),
+; len3 equals the needle's own length, and flag is true.
+; ------------------------------------------------------------
+TSTSEARCH1: LDA  #'H'
+            STA  TSTCBUF
+            LDA  #'E'
+            STA  TSTCBUF+1
+            LDA  #'L'
+            STA  TSTCBUF+2
+            LDA  #'L'
+            STA  TSTCBUF+3
+            LDA  #'O'
+            STA  TSTCBUF+4
+            LDA  #'W'
+            STA  TSTCBUF+5
+            LDA  #'O'
+            STA  TSTCBUF+6
+            LDA  #'R'
+            STA  TSTCBUF+7
+            LDA  #'L'
+            STA  TSTCBUF+8
+            LDA  #'D'
+            STA  TSTCBUF+9
+
+            LDA  #'W'
+            STA  TSTCBUF+20
+            LDA  #'O'
+            STA  TSTCBUF+21
+            LDA  #'R'
+            STA  TSTCBUF+22
+
+            STU  TSTU0
+
+            LDD  #TSTGUARD
+            PSHU D
+            LDD  #TSTCBUF
+            PSHU D
+            LDD  #10
+            PSHU D
+            LDD  #TSTCBUF+20
+            PSHU D
+            LDD  #3
+            PSHU D
+            STU  TSTUB4
+
+            JSR  SEARCHW
+
+            STU  TSTUAF
+
+            PULU D
+            CMPD #TRUEV
+            BNE  SR1FAIL
+            PULU D
+            CMPD #3
+            BNE  SR1FAIL
+            PULU D
+            CMPD #TSTCBUF+5
+            BNE  SR1FAIL
+            PULU D
+            CMPD #TSTGUARD
+            BNE  SR1FAIL
+
+            LDD  TSTUB4
+            SUBD TSTUAF
+            CMPD #-2
+            BNE  SR1FAIL
+
+            LDD  #TRUEV
+            BRA  SR1DONE
+SR1FAIL:    LDD  #FALSEV
+SR1DONE:    LDX  #TSTSR1NAME
+            PSHU X
+            PSHU D
+            JSR  TSTREPORT
+
+            LDU  TSTU0
+            RTS
+
+TSTSR1NAME: FCB  10
+            FCC  "TSTSEARCH1"
+
+; ------------------------------------------------------------
+; TSTSEARCH2 - unit test for SEARCH, not-found case. Verifies
+; addr3/len3 fall back to the original haystack (addr1/len1)
+; unchanged, and flag is false.
+; ------------------------------------------------------------
+TSTSEARCH2: LDA  #'H'
+            STA  TSTCBUF
+            LDA  #'E'
+            STA  TSTCBUF+1
+            LDA  #'L'
+            STA  TSTCBUF+2
+            LDA  #'L'
+            STA  TSTCBUF+3
+            LDA  #'O'
+            STA  TSTCBUF+4
+
+            LDA  #'X'
+            STA  TSTCBUF+20
+            LDA  #'Y'
+            STA  TSTCBUF+21
+
+            STU  TSTU0
+
+            LDD  #TSTGUARD
+            PSHU D
+            LDD  #TSTCBUF
+            PSHU D
+            LDD  #5
+            PSHU D
+            LDD  #TSTCBUF+20
+            PSHU D
+            LDD  #2
+            PSHU D
+            STU  TSTUB4
+
+            JSR  SEARCHW
+
+            STU  TSTUAF
+
+            PULU D
+            CMPD #FALSEV
+            BNE  SR2FAIL
+            PULU D
+            CMPD #5
+            BNE  SR2FAIL
+            PULU D
+            CMPD #TSTCBUF
+            BNE  SR2FAIL
+            PULU D
+            CMPD #TSTGUARD
+            BNE  SR2FAIL
+
+            LDD  TSTUB4
+            SUBD TSTUAF
+            CMPD #-2
+            BNE  SR2FAIL
+
+            LDD  #TRUEV
+            BRA  SR2DONE
+SR2FAIL:    LDD  #FALSEV
+SR2DONE:    LDX  #TSTSR2NAME
+            PSHU X
+            PSHU D
+            JSR  TSTREPORT
+
+            LDU  TSTU0
+            RTS
+
+TSTSR2NAME: FCB  10
+            FCC  "TSTSEARCH2"
+
+; ------------------------------------------------------------
+; TSTDASHTRAILING - unit test for -TRAILING. "AB   " (2 letters,
+; 3 trailing spaces, len=5) trims to len=2, addr unchanged -
+; confirmed via its own code that it's a peek-and-modify-top
+; operation on the stack, not a pop-then-push of a new addr.
+; ------------------------------------------------------------
+TSTDASHTRAILING: LDA  #'A'
+                 STA  TSTCBUF
+                 LDA  #'B'
+                 STA  TSTCBUF+1
+                 LDA  #32
+                 STA  TSTCBUF+2
+                 LDA  #32
+                 STA  TSTCBUF+3
+                 LDA  #32
+                 STA  TSTCBUF+4
+
+                 STU  TSTU0
+
+                 LDD  #TSTGUARD
+                 PSHU D
+                 LDD  #TSTCBUF
+                 PSHU D
+                 LDD  #5
+                 PSHU D
+                 STU  TSTUB4
+
+                 JSR  DASHTRAILING
+
+                 STU  TSTUAF
+
+                 PULU D
+                 CMPD #2
+                 BNE  DTFAIL2
+                 PULU D
+                 CMPD #TSTCBUF
+                 BNE  DTFAIL2
+                 PULU D
+                 CMPD #TSTGUARD
+                 BNE  DTFAIL2
+
+                 LDD  TSTUB4
+                 SUBD TSTUAF
+                 CMPD #0
+                 BNE  DTFAIL2
+
+                 LDD  #TRUEV
+                 BRA  DTDONE2
+DTFAIL2:         LDD  #FALSEV
+DTDONE2:         LDX  #TSTDTNAME
+                 PSHU X
+                 PSHU D
+                 JSR  TSTREPORT
+
+                 LDU  TSTU0
+                 RTS
+
+TSTDTNAME: FCB  15
+           FCC  "TSTDASHTRAILING"
+
+; ------------------------------------------------------------
+; TSTSLASHSTRING - unit test for /STRING. "HELLO" trimmed by 2
+; from the front - verifies both the advanced address and the
+; reduced length.
+; ------------------------------------------------------------
+TSTSLASHSTRING: LDA  #'H'
+                STA  TSTCBUF
+                LDA  #'E'
+                STA  TSTCBUF+1
+                LDA  #'L'
+                STA  TSTCBUF+2
+                LDA  #'L'
+                STA  TSTCBUF+3
+                LDA  #'O'
+                STA  TSTCBUF+4
+
+                STU  TSTU0
+
+                LDD  #TSTGUARD
+                PSHU D
+                LDD  #TSTCBUF
+                PSHU D
+                LDD  #5
+                PSHU D
+                LDD  #2
+                PSHU D
+                STU  TSTUB4
+
+                JSR  SLASHSTRING
+
+                STU  TSTUAF
+
+                PULU D
+                CMPD #3
+                BNE  SLSFAIL
+                PULU D
+                CMPD #TSTCBUF+2
+                BNE  SLSFAIL
+                PULU D
+                CMPD #TSTGUARD
+                BNE  SLSFAIL
+
+                LDD  TSTUB4
+                SUBD TSTUAF
+                CMPD #-2
+                BNE  SLSFAIL
+
+                LDD  #TRUEV
+                BRA  SLSDONE
+SLSFAIL:        LDD  #FALSEV
+SLSDONE:        LDX  #TSTSLSNAME
+                PSHU X
+                PSHU D
+                JSR  TSTREPORT
+
+                LDU  TSTU0
+                RTS
+
+TSTSLSNAME: FCB  14
+            FCC  "TSTSLASHSTRING"
+
+; ------------------------------------------------------------
+; TSTREPLSUBS1 - unit test for REPLACES and SUBSTITUTE together
+; (can only be meaningfully tested together - SUBSTITUTE depends
+; on a prior REPLACES registration). Registers "X"->"Z", then
+; runs the template "%%A%X%B%Y%" through SUBSTITUTE - covering
+; three of the four documented cases in one pass: "%%" collapses
+; to a single '%', "%X%" (a registered name) gets replaced
+; (count incremented), and "%Y%" (not registered) passes through
+; unchanged, delimiters included. Expected result ("%AZB%Y%",
+; count=1) independently simulated in Python against the actual
+; traced algorithm before writing this test, not hand-derived
+; and hoped correct - see TSTREPLSUBS2 for the fourth case
+; (unpaired trailing '%'), tested separately for clearer failure
+; diagnosis.
+; ------------------------------------------------------------
+TSTREPLSUBS1: LDA  #'Z'
+              STA  TSTCBUF
+
+              LDA  #'X'
+              STA  TSTCBUF+10
+
+              LDA  #'%'
+              STA  TSTCBUF+20
+              LDA  #'%'
+              STA  TSTCBUF+21
+              LDA  #'A'
+              STA  TSTCBUF+22
+              LDA  #'%'
+              STA  TSTCBUF+23
+              LDA  #'X'
+              STA  TSTCBUF+24
+              LDA  #'%'
+              STA  TSTCBUF+25
+              LDA  #'B'
+              STA  TSTCBUF+26
+              LDA  #'%'
+              STA  TSTCBUF+27
+              LDA  #'Y'
+              STA  TSTCBUF+28
+              LDA  #'%'
+              STA  TSTCBUF+29
+
+              STU  TSTU0
+
+              LDD  #TSTGUARD
+              PSHU D
+              STU  TSTUB4
+
+              LDD  #TSTCBUF
+              PSHU D
+              LDD  #1
+              PSHU D
+              LDD  #TSTCBUF+10
+              PSHU D
+              LDD  #1
+              PSHU D
+              JSR  REPLACESW
+
+              LDD  #TSTCBUF+20
+              PSHU D
+              LDD  #10
+              PSHU D
+              LDD  #TSTCBUF+40
+              PSHU D
+              LDD  #20
+              PSHU D
+              JSR  SUBSTITUTEW
+
+              STU  TSTUAF
+
+              PULU D
+              CMPD #1
+              BNE  RS1FAIL
+              PULU D
+              CMPD #7
+              BNE  RS1FAIL
+              PULU D
+              CMPD #TSTCBUF+40
+              BNE  RS1FAIL
+
+              LDX  #TSTCBUF+40
+              LDA  ,X
+              CMPA #'%'
+              BNE  RS1FAIL
+              LDA  1,X
+              CMPA #'A'
+              BNE  RS1FAIL
+              LDA  2,X
+              CMPA #'Z'
+              BNE  RS1FAIL
+              LDA  3,X
+              CMPA #'B'
+              BNE  RS1FAIL
+              LDA  4,X
+              CMPA #'%'
+              BNE  RS1FAIL
+              LDA  5,X
+              CMPA #'Y'
+              BNE  RS1FAIL
+              LDA  6,X
+              CMPA #'%'
+              BNE  RS1FAIL
+
+              PULU D
+              CMPD #TSTGUARD
+              BNE  RS1FAIL
+
+              LDD  TSTUB4
+              SUBD TSTUAF
+              CMPD #6
+              BNE  RS1FAIL
+
+              LDD  #TRUEV
+              BRA  RS1DONE
+RS1FAIL:      LDD  #FALSEV
+RS1DONE:      LDX  #TSTRS1NAME
+              PSHU X
+              PSHU D
+              JSR  TSTREPORT
+
+              LDU  TSTU0
+              RTS
+
+TSTRS1NAME: FCB  12
+            FCC  "TSTREPLSUBS1"
+
+; ------------------------------------------------------------
+; TSTREPLSUBS2 - unit test for SUBSTITUTE's fourth documented
+; case: an unpaired trailing '%' with no closing delimiter
+; anywhere in the remainder passes the residue through
+; unchanged. Template "AB%CD" (the '%' never finds a partner)
+; -> "AB%CD", count=0. Same REPLACES registration reused from
+; TSTREPLSUBS1's own reasoning - a second REPLACES call
+; overwrites the first (documented as single-slot only), so this
+; test registers its own pair fresh rather than relying on any
+; prior test's own registration still being active.
+; ------------------------------------------------------------
+TSTREPLSUBS2: LDA  #'Z'
+              STA  TSTCBUF
+
+              LDA  #'X'
+              STA  TSTCBUF+10
+
+              LDA  #'A'
+              STA  TSTCBUF+20
+              LDA  #'B'
+              STA  TSTCBUF+21
+              LDA  #'%'
+              STA  TSTCBUF+22
+              LDA  #'C'
+              STA  TSTCBUF+23
+              LDA  #'D'
+              STA  TSTCBUF+24
+
+              STU  TSTU0
+
+              LDD  #TSTGUARD
+              PSHU D
+              STU  TSTUB4
+
+              LDD  #TSTCBUF
+              PSHU D
+              LDD  #1
+              PSHU D
+              LDD  #TSTCBUF+10
+              PSHU D
+              LDD  #1
+              PSHU D
+              JSR  REPLACESW
+
+              LDD  #TSTCBUF+20
+              PSHU D
+              LDD  #5
+              PSHU D
+              LDD  #TSTCBUF+40
+              PSHU D
+              LDD  #20
+              PSHU D
+              JSR  SUBSTITUTEW
+
+              STU  TSTUAF
+
+              PULU D
+              CMPD #0
+              BNE  RS2FAIL
+              PULU D
+              CMPD #5
+              BNE  RS2FAIL
+              PULU D
+              CMPD #TSTCBUF+40
+              BNE  RS2FAIL
+
+              LDX  #TSTCBUF+40
+              LDA  ,X
+              CMPA #'A'
+              BNE  RS2FAIL
+              LDA  1,X
+              CMPA #'B'
+              BNE  RS2FAIL
+              LDA  2,X
+              CMPA #'%'
+              BNE  RS2FAIL
+              LDA  3,X
+              CMPA #'C'
+              BNE  RS2FAIL
+              LDA  4,X
+              CMPA #'D'
+              BNE  RS2FAIL
+
+              PULU D
+              CMPD #TSTGUARD
+              BNE  RS2FAIL
+
+              LDD  TSTUB4
+              SUBD TSTUAF
+              CMPD #6
+              BNE  RS2FAIL
+
+              LDD  #TRUEV
+              BRA  RS2DONE
+RS2FAIL:      LDD  #FALSEV
+RS2DONE:      LDX  #TSTRS2NAME
+              PSHU X
+              PSHU D
+              JSR  TSTREPORT
+
+              LDU  TSTU0
+              RTS
+
+TSTRS2NAME: FCB  12
+            FCC  "TSTREPLSUBS2"
+
+; ------------------------------------------------------------
+; TSTSNAME1 - unit test for SNAME, found case. Searches the
+; real, live dictionary (confirmed via its own code that it
+; walks from the real LATEST, not a redirectable copy - no
+; redirect needed or possible here) for DUP's own xt, verifying
+; the returned name content matches "DUP" exactly, not just a
+; nonzero length.
+; ------------------------------------------------------------
+TSTSNAME1: STU  TSTU0
+
+           LDD  #TSTGUARD
+           PSHU D
+           LDD  #DUP
+           PSHU D
+           STU  TSTUB4
+
+           JSR  SNAMEW
+
+           STU  TSTUAF
+
+           PULU D
+           CMPD #3
+           BNE  SN1FAIL
+
+           PULU D
+           TFR  D,X
+           LDA  ,X
+           CMPA #'D'
+           BNE  SN1FAIL
+           LDA  1,X
+           CMPA #'U'
+           BNE  SN1FAIL
+           LDA  2,X
+           CMPA #'P'
+           BNE  SN1FAIL
+
+           PULU D
+           CMPD #TSTGUARD
+           BNE  SN1FAIL
+
+           LDD  TSTUB4
+           SUBD TSTUAF
+           CMPD #2
+           BNE  SN1FAIL
+
+           LDD  #TRUEV
+           BRA  SN1DONE
+SN1FAIL:   LDD  #FALSEV
+SN1DONE:   LDX  #TSTSN1NAME
+           PSHU X
+           PSHU D
+           JSR  TSTREPORT
+
+           LDU  TSTU0
+           RTS
+
+TSTSN1NAME: FCB  9
+            FCC  "TSTSNAME1"
+
+; ------------------------------------------------------------
+; TSTSNAME2 - unit test for SNAME, not-found case. TSTCBUF (a
+; scratch APPVARS address, nowhere near the real code/dictionary
+; region) doesn't match any real word's own CFA - verifies
+; SNAME correctly reports (0 0) rather than a false match or a
+; crash walking off the end of the chain.
+; ------------------------------------------------------------
+TSTSNAME2: STU  TSTU0
+
+           LDD  #TSTGUARD
+           PSHU D
+           LDD  #TSTCBUF
+           PSHU D
+           STU  TSTUB4
+
+           JSR  SNAMEW
+
+           STU  TSTUAF
+
+           PULU D
+           CMPD #0
+           BNE  SN2FAIL
+           PULU D
+           CMPD #0
+           BNE  SN2FAIL
+           PULU D
+           CMPD #TSTGUARD
+           BNE  SN2FAIL
+
+           LDD  TSTUB4
+           SUBD TSTUAF
+           CMPD #2
+           BNE  SN2FAIL
+
+           LDD  #TRUEV
+           BRA  SN2DONE
+SN2FAIL:   LDD  #FALSEV
+SN2DONE:   LDX  #TSTSN2NAME
+           PSHU X
+           PSHU D
+           JSR  TSTREPORT
+
+           LDU  TSTU0
+           RTS
+
+TSTSN2NAME: FCB  9
+            FCC  "TSTSNAME2"
+
+; ------------------------------------------------------------
+; TSTUNESCAPE - unit test for UNESCAPE. Source "A%B" (3 chars,
+; one '%' in the middle) doubles the '%' to produce "A%%B" (4
+; chars) - confirmed via its own code and a prior session's
+; already-corrected design comment that this is genuinely a
+; doubling operation, not backslash-sequence decoding. Verifies
+; every output character individually and the grown length,
+; not just that some output was produced.
+; ------------------------------------------------------------
+TSTUNESCAPE: LDA  #'A'
+             STA  TSTCBUF
+             LDA  #'%'
+             STA  TSTCBUF+1
+             LDA  #'B'
+             STA  TSTCBUF+2
+
+             STU  TSTU0
+
+             LDD  #TSTGUARD
+             PSHU D
+             LDD  #TSTCBUF
+             PSHU D
+             LDD  #3
+             PSHU D
+             LDD  #TSTCBUF+10
+             PSHU D
+             STU  TSTUB4
+
+             JSR  UNESCAPEW
+
+             STU  TSTUAF
+
+             PULU D
+             CMPD #4
+             BNE  UXFAIL
+             PULU D
+             CMPD #TSTCBUF+10
+             BNE  UXFAIL
+
+             TFR  D,X
+             LDA  ,X
+             CMPA #'A'
+             BNE  UXFAIL
+             LDA  1,X
+             CMPA #'%'
+             BNE  UXFAIL
+             LDA  2,X
+             CMPA #'%'
+             BNE  UXFAIL
+             LDA  3,X
+             CMPA #'B'
+             BNE  UXFAIL
+
+             PULU D
+             CMPD #TSTGUARD
+             BNE  UXFAIL
+
+             LDD  TSTUB4
+             SUBD TSTUAF
+             CMPD #-2
+             BNE  UXFAIL
+
+             LDD  #TRUEV
+             BRA  UXDONE
+UXFAIL:      LDD  #FALSEV
+UXDONE:      LDX  #TSTUENAME
+             PSHU X
+             PSHU D
+             JSR  TSTREPORT
+
+             LDU  TSTU0
+             RTS
+
+TSTUENAME: FCB  11
+           FCC  "TSTUNESCAPE"
 
            ENDC ; <<<<
 
