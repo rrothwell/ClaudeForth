@@ -817,6 +817,11 @@ TSTHANDSAV EQU APPVARS+245   ; section 3.15 (Exception Handling): saves
                               ; own documented "restores... HANDLER on
                               ; either path".
 
+TSTSISAV EQU   APPVARS+247   ; section 3.17 (Environmental & System
+                              ; Queries): saves the real SRCID across
+                              ; TSTSOURCEID's and TSTREFILL's own tests,
+                              ; both of which redirect SRCID directly.
+
 TSTNEG1  EQU   $CFC7         ; -12345 - distinct, non-trivial negative
                               ; test values, needed for arithmetic
                               ; tests (ABS, NEGATE, MIN/MAX, signed
@@ -886,6 +891,7 @@ TSTRUNNER: JSR   TSTSYSIO
            JSR   TSTBASERADIX
            JSR   TSTEXCEPTION
            JSR   TSTCOMMENTS
+           JSR   TSTENVSYS
            RTS
 
 ; ------------------------------------------------------------
@@ -15580,6 +15586,717 @@ BLDONE:       LDX  #TSTBLNAME
 
 TSTBLNAME: FCB  12
            FCC  "TSTBACKSLASH"
+
+           ENDC ; <<<<
+
+; ------------------------------------------------------------
+; TSTENVSYS - environmental & system queries tests (glossary
+; section 3.17, 10 words, 8 tests since TIB/#TIB/>IN/SPAN/BL are
+; combined into one test, and ENVIRONMENT? gets three separate
+; tests of its own - single-cell, double-cell, and unsupported-
+; string cases).
+;
+; REFILL genuinely blocks on real input when the source is the
+; terminal (confirmed by reading its own code: the terminal
+; branch calls QUERY, which per section 3.1's own already-
+; established finding calls ACCEPT, which calls KEY, which spins
+; forever without real input) - only its safely-testable path
+; (source is a string) is tested here, matching the same
+; reasoning already applied to KEY/ACCEPT/EXPECT/QUERY
+; themselves. EVALUATE genuinely executes its given string as
+; real Forth source via JSR INTERPRET - confirmed safe via
+; INTERPRET's own code (it simply stops when input is exhausted,
+; no automatic REFILL, so no blocking risk), making a short,
+; deliberately harmless string ("1 2 +") safe to evaluate
+; directly.
+;
+; ENVIRONMENT? carries substantial, already-documented bug-fix
+; history (a COMPAREW-clobbers-X bug, confirmed via MAME with the
+; exact $4E4D symptom). This section's own tests specifically
+; query "/COUNTED-STRING" immediately followed by "MAX-N" - the
+; exact adjacent pair the bug-fix comment describes - so a
+; regression of that specific mechanism would be caught again,
+; not just assumed fixed from the comment alone.
+; ------------------------------------------------------------
+TSTENVSYS: JSR CRW
+           LDX   #TSTENVSYSMSG
+           PSHU  X
+           LDD   #6
+           PSHU  D
+           JSR   TYPE
+           JSR   CRW
+
+           IFEQ TSTSELECTOR-16  ; >>>>
+
+           JSR   TSTENVVARS
+           JSR   TSTSOURCE
+           JSR   TSTSOURCEID
+           JSR   TSTREFILL
+           JSR   TSTEVALUATE
+           JSR   TSTENVQUERY1
+           JSR   TSTENVQUERY2
+           JSR   TSTENVQUERY3
+
+           ENDC ; <<<<
+
+           RTS
+
+TSTENVSYSMSG: FCC "EnvSys"
+
+           IFEQ TSTSELECTOR-16  ; >>>>
+
+; ------------------------------------------------------------
+; Environmental & System Queries test harness (glossary section
+; 3.17). Five words (TIB/#TIB/>IN/SPAN/BL) are simple constant/
+; variable readers, combined into one test rather than five
+; separate ones, matching the established approach from section
+; 3.14's own TSTBASE.
+;
+; REFILL genuinely blocks on real input when the source is the
+; terminal (confirmed by reading its own code directly: the
+; terminal branch calls QUERY, which - per section 3.1's own
+; already-established finding - calls ACCEPT, which calls KEY,
+; which spins forever without real input). Only its safely-
+; testable path (source is a string, SRCID<>0) is tested here,
+; matching the same reasoning already applied to KEY/ACCEPT/
+; EXPECT/QUERY themselves in section 3.1.
+;
+; EVALUATE genuinely executes its given string as real Forth
+; source via JSR INTERPRET - confirmed via INTERPRET's own code
+; that it simply stops and returns when input is exhausted (no
+; automatic REFILL, so no blocking risk), making a short,
+; deliberately harmless string ("1 2 +") safe to evaluate
+; directly.
+;
+; ENVIRONMENT? carries substantial, already-documented bug-fix
+; history (a COMPAREW-clobbers-X bug, confirmed via MAME with the
+; exact $4E4D symptom - reading two bytes of the NEXT table
+; entry's own name text as if they were the current entry's
+; value). This section's own tests specifically query
+; "/COUNTED-STRING" immediately followed by "MAX-N" - the exact
+; adjacent pair the bug-fix comment describes - so a regression
+; of that specific mechanism would be caught again, not just
+; assumed fixed from the comment alone.
+; ------------------------------------------------------------
+
+; ------------------------------------------------------------
+; TSTENVVARS - combined unit test for TIB, #TIB, >IN, SPAN, and
+; BL. The first four are variables (return their own address);
+; BL is a constant (returns 32 directly).
+; ------------------------------------------------------------
+TSTENVVARS: STU  TSTU0
+
+            LDD  #TSTGUARD
+            PSHU D
+            STU  TSTUB4
+
+            JSR  TIBW
+            PULU D
+            CMPD #TIBBUF
+            BNE  EVFAIL
+
+            JSR  NTIBW
+            PULU D
+            CMPD #NTIB
+            BNE  EVFAIL
+
+            JSR  TOINW
+            PULU D
+            CMPD #TOIN
+            BNE  EVFAIL
+
+            JSR  SPANW
+            PULU D
+            CMPD #SPAN
+            BNE  EVFAIL
+
+            JSR  BLW
+            PULU D
+            CMPD #32
+            BNE  EVFAIL
+
+            STU  TSTUAF
+
+            PULU D
+            CMPD #TSTGUARD
+            BNE  EVFAIL
+
+            LDD  TSTUB4
+            SUBD TSTUAF
+            CMPD #0
+            BNE  EVFAIL
+
+            LDD  #TRUEV
+            BRA  EVDONE
+EVFAIL:     LDD  #FALSEV
+EVDONE:     LDX  #TSTEVNAME
+            PSHU X
+            PSHU D
+            JSR  TSTREPORT
+
+            LDU  TSTU0
+            RTS
+
+TSTEVNAME: FCB  10
+           FCC  "TSTENVVARS"
+
+; ------------------------------------------------------------
+; TSTSOURCE - unit test for SOURCE. Redirects SRCADDR/SRCLEN to
+; known, distinctive values, verifies SOURCE returns exactly
+; those.
+; ------------------------------------------------------------
+TSTSOURCE: LDD  SRCADDR
+           STD  TSTSASAV
+           LDD  SRCLEN
+           STD  TSTSLSAV
+
+           LDD  #TSTCBUF
+           STD  SRCADDR
+           LDD  #7
+           STD  SRCLEN
+
+           STU  TSTU0
+
+           LDD  #TSTGUARD
+           PSHU D
+           STU  TSTUB4
+
+           JSR  SOURCEW
+
+           STU  TSTUAF
+
+           LDD  TSTSASAV
+           STD  SRCADDR
+           LDD  TSTSLSAV
+           STD  SRCLEN
+
+           PULU D
+           CMPD #7
+           BNE  SOFAIL
+           PULU D
+           CMPD #TSTCBUF
+           BNE  SOFAIL
+           PULU D
+           CMPD #TSTGUARD
+           BNE  SOFAIL
+
+           LDD  TSTUB4
+           SUBD TSTUAF
+           CMPD #4
+           BNE  SOFAIL
+
+           LDD  #TRUEV
+           BRA  SODONE
+SOFAIL:    LDD  #FALSEV
+SODONE:    LDX  #TSTSONAME
+           PSHU X
+           PSHU D
+           JSR  TSTREPORT
+
+           LDU  TSTU0
+           RTS
+
+TSTSONAME: FCB  9
+           FCC  "TSTSOURCE"
+
+; ------------------------------------------------------------
+; TSTSOURCEID - unit test for SOURCE-ID. Redirects SRCID to a
+; known, distinctive value, verifies SOURCE-ID returns exactly
+; that.
+; ------------------------------------------------------------
+TSTSOURCEID: LDD  SRCID
+             STD  TSTSISAV
+
+             LDD  #-1
+             STD  SRCID
+
+             STU  TSTU0
+
+             LDD  #TSTGUARD
+             PSHU D
+             STU  TSTUB4
+
+             JSR  SOURCEID
+
+             STU  TSTUAF
+
+             LDD  TSTSISAV
+             STD  SRCID
+
+             PULU D
+             CMPD #-1
+             BNE  SIFAIL
+             PULU D
+             CMPD #TSTGUARD
+             BNE  SIFAIL
+
+             LDD  TSTUB4
+             SUBD TSTUAF
+             CMPD #2
+             BNE  SIFAIL
+
+             LDD  #TRUEV
+             BRA  SIDONE
+SIFAIL:      LDD  #FALSEV
+SIDONE:      LDX  #TSTSINAME
+             PSHU X
+             PSHU D
+             JSR  TSTREPORT
+
+             LDU  TSTU0
+             RTS
+
+TSTSINAME: FCB  11
+           FCC  "TSTSOURCEID"
+
+; ------------------------------------------------------------
+; TSTREFILL - unit test for REFILL, string-source path only.
+; Confirmed via its own code that the terminal-source path
+; (SRCID=0) genuinely blocks on real input (calls QUERY, which
+; per section 3.1's own established finding calls ACCEPT, which
+; calls KEY, which spins forever without it) - deliberately not
+; tested, matching the same reasoning already applied to KEY/
+; ACCEPT/EXPECT/QUERY themselves. Only the safely-testable path
+; (source is a string, SRCID<>0) is exercised: redirects SRCID
+; to a nonzero value and verifies REFILL correctly reports
+; false, matching its own documented "fails (false) if the
+; current source is a string, per ANS".
+; ------------------------------------------------------------
+TSTREFILL: LDD  SRCID
+           STD  TSTSISAV
+
+           LDD  #-1
+           STD  SRCID
+
+           STU  TSTU0
+
+           LDD  #TSTGUARD
+           PSHU D
+           STU  TSTUB4
+
+           JSR  REFILLW
+
+           STU  TSTUAF
+
+           LDD  TSTSISAV
+           STD  SRCID
+
+           PULU D
+           CMPD #FALSEV
+           BNE  RFFAIL2
+           PULU D
+           CMPD #TSTGUARD
+           BNE  RFFAIL2
+
+           LDD  TSTUB4
+           SUBD TSTUAF
+           CMPD #2
+           BNE  RFFAIL2
+
+           LDD  #TRUEV
+           BRA  RFDONE2
+RFFAIL2:   LDD  #FALSEV
+RFDONE2:   LDX  #TSTRFNAME2
+           PSHU X
+           PSHU D
+           JSR  TSTREPORT
+
+           LDU  TSTU0
+           RTS
+
+TSTRFNAME2: FCB  9
+            FCC  "TSTREFILL"
+
+; ------------------------------------------------------------
+; TSTEVALUATE - unit test for EVALUATE. Evaluates the string
+; "1 2 +" (confirmed safe via INTERPRET's own code: it simply
+; stops and returns when input is exhausted, no automatic
+; REFILL, so no blocking risk) - verifies the result (3) lands
+; on the data stack, and that the whole input-source state
+; (SRCADDR/SRCLEN/SRCID/TOIN) is genuinely restored to what it
+; was before the call, not left pointing at the evaluated
+; string. BASE is explicitly saved/set/restored too, per section
+; 3.13's own established lesson, so "1"/"2" parse as decimal
+; regardless of what BASE happened to hold at test time.
+; ------------------------------------------------------------
+TSTEVALUATE: LDD  SRCADDR
+             STD  TSTSASAV
+             LDD  SRCLEN
+             STD  TSTSLSAV
+             LDD  SRCID
+             STD  TSTSISAV
+             LDD  TOIN
+             STD  TSTTISAV
+             LDD  BASE
+             STD  TSTBASAV
+             LDD  LATEST
+             STD  TSTLSAV
+             LDD  CODEHERE
+             STD  TSTCSAV
+
+             LDD  #10
+             STD  BASE
+             LDD  #BASELATEST  ; BUG FIX: confirmed via MAME - LATEST,
+             STD  LATEST       ; like BASE, is only set by COLD (right
+                                ; alongside "BASE=10", in the very same
+                                ; init block), which hasn't run yet at
+                                ; this whole test framework's own,
+                                ; pre-COLD execution point. With
+                                ; LATEST=0, FIND reports every word,
+                                ; including the real "+" this test
+                                ; evaluates, as not found - INTERPRET
+                                ; then falls through trying to parse
+                                ; "+" as a number, fails that too, and
+                                ; throws an error this test never
+                                ; catches, landing at THUNCAU's own
+                                ; JMP ABORT - which resets the return
+                                ; stack, explaining exactly why the
+                                ; user's own test run terminated
+                                ; without ever reaching TSTENVQUERY1/2/
+                                ; 3. The same class of gap as section
+                                ; 3.13's own BASE=0 finding, just for a
+                                ; different variable this section's
+                                ; own EVALUATE test was the first to
+                                ; genuinely depend on.
+
+             LDD  #TSTCBUF2  ; SECOND BUG FIX: the LATEST fix above
+             STD  CODEHERE   ; alone didn't resolve this - confirmed
+                                ; via a second MAME run (the failure
+                                ; persisted, with the terminal output
+                                ; varying between runs, a strong sign
+                                ; of memory corruption rather than a
+                                ; single deterministic missing-value
+                                ; problem). Root cause: CODEHERE, like
+                                ; BASE and LATEST, is only set by COLD
+                                ; and was never redirected by this
+                                ; test at all - unlike every other
+                                ; test in this whole session involving
+                                ; WORD (which EVALUATE's own internal
+                                ; JSR INTERPRET calls repeatedly, once
+                                ; per token). With CODEHERE=0
+                                ; (unredirected), WORD's own write of
+                                ; each parsed token's [len][text]
+                                ; landed straight at address $0000 -
+                                ; which is STATE's own address (offset
+                                ; $00, the very first bytes of
+                                ; GLOBALS, confirmed by re-reading its
+                                ; own RMB declaration directly). Even
+                                ; a single-character token like "1"
+                                ; overwrites STATE with a nonzero
+                                ; value, flipping INTERPRET into
+                                ; thinking it's compiling rather than
+                                ; interpreting mid-parse - explaining
+                                ; both the sequence's own termination
+                                ; and why the visible output varied
+                                ; between runs (the exact corruption
+                                ; pattern depends on residual memory
+                                ; state from whatever ran immediately
+                                ; before). Redirected to TSTCBUF2, not
+                                ; TSTCBUF, specifically because TSTCBUF
+                                ; already holds this test's own source
+                                ; string ("1 2 +") - redirecting to the
+                                ; same buffer would let WORD overwrite
+                                ; the very source text still being
+                                ; parsed.
+
+             LDA  #'1'
+             STA  TSTCBUF
+             LDA  #32
+             STA  TSTCBUF+1
+             LDA  #'2'
+             STA  TSTCBUF+2
+             LDA  #32
+             STA  TSTCBUF+3
+             LDA  #'+'
+             STA  TSTCBUF+4
+
+             STU  TSTU0
+
+             LDD  #TSTGUARD
+             PSHU D
+             LDD  #TSTCBUF
+             PSHU D
+             LDD  #5
+             PSHU D
+             STU  TSTUB4
+
+             JSR  EVALUATEW
+
+             STU  TSTUAF
+
+             LDD  SRCADDR
+             CMPD TSTSASAV
+             BNE  ELFAIL
+             LDD  SRCLEN
+             CMPD TSTSLSAV
+             BNE  ELFAIL
+             LDD  SRCID
+             CMPD TSTSISAV
+             BNE  ELFAIL
+             LDD  TOIN
+             CMPD TSTTISAV
+             BNE  ELFAIL
+
+             LDD  TSTBASAV
+             STD  BASE
+             LDD  TSTLSAV
+             STD  LATEST
+             LDD  TSTCSAV
+             STD  CODEHERE
+
+             PULU D
+             CMPD #3
+             BNE  ELFAIL
+             PULU D
+             CMPD #TSTGUARD
+             BNE  ELFAIL
+
+             LDD  TSTUB4
+             SUBD TSTUAF
+             CMPD #-2
+             BNE  ELFAIL
+
+             LDD  #TRUEV
+             BRA  ELDONE
+ELFAIL:      LDD  #FALSEV
+ELDONE:      LDX  #TSTELNAME
+             PSHU X
+             PSHU D
+             JSR  TSTREPORT
+
+             LDU  TSTU0
+             RTS
+
+TSTELNAME: FCB  11
+           FCC  "TSTEVALUATE"
+
+; ------------------------------------------------------------
+; TSTENVQUERY1 - unit test for ENVIRONMENT?, verifying the exact
+; adjacent-entry pair its own bug-fix comment describes:
+; "/COUNTED-STRING" (255) immediately followed by "MAX-N"
+; (32767) - the specific mechanism that once let COMPAREW's own
+; X-clobbering read bytes from the wrong table entry, confirmed
+; via MAME with the exact $4E4D symptom (per the code's own
+; comment). Querying this exact pair again here means a
+; regression of that specific mechanism would be caught, not
+; just assumed still fixed from the comment alone.
+; ------------------------------------------------------------
+TSTENVQUERY1: LDA  #'/'
+              STA  TSTCBUF
+              LDA  #'C'
+              STA  TSTCBUF+1
+              LDA  #'O'
+              STA  TSTCBUF+2
+              LDA  #'U'
+              STA  TSTCBUF+3
+              LDA  #'N'
+              STA  TSTCBUF+4
+              LDA  #'T'
+              STA  TSTCBUF+5
+              LDA  #'E'
+              STA  TSTCBUF+6
+              LDA  #'D'
+              STA  TSTCBUF+7
+              LDA  #'-'
+              STA  TSTCBUF+8
+              LDA  #'S'
+              STA  TSTCBUF+9
+              LDA  #'T'
+              STA  TSTCBUF+10
+              LDA  #'R'
+              STA  TSTCBUF+11
+              LDA  #'I'
+              STA  TSTCBUF+12
+              LDA  #'N'
+              STA  TSTCBUF+13
+              LDA  #'G'
+              STA  TSTCBUF+14
+
+              LDA  #'M'
+              STA  TSTCBUF+20
+              LDA  #'A'
+              STA  TSTCBUF+21
+              LDA  #'X'
+              STA  TSTCBUF+22
+              LDA  #'-'
+              STA  TSTCBUF+23
+              LDA  #'N'
+              STA  TSTCBUF+24
+
+              STU  TSTU0
+
+              LDD  #TSTGUARD
+              PSHU D
+              STU  TSTUB4
+
+              LDD  #TSTCBUF
+              PSHU D
+              LDD  #15
+              PSHU D
+              JSR  ENVQUERY
+
+              PULU D
+              CMPD #TRUEV
+              BNE  EN1FAIL
+              PULU D
+              CMPD #255
+              BNE  EN1FAIL
+
+              LDD  #TSTCBUF+20
+              PSHU D
+              LDD  #5
+              PSHU D
+              JSR  ENVQUERY
+
+              STU  TSTUAF
+
+              PULU D
+              CMPD #TRUEV
+              BNE  EN1FAIL
+              PULU D
+              CMPD #32767
+              BNE  EN1FAIL
+
+              PULU D
+              CMPD #TSTGUARD
+              BNE  EN1FAIL
+
+              LDD  TSTUB4
+              SUBD TSTUAF
+              CMPD #4
+              BNE  EN1FAIL
+
+              LDD  #TRUEV
+              BRA  EN1DONE
+EN1FAIL:       LDD  #FALSEV
+EN1DONE:       LDX  #TSTEN1NAME
+              PSHU X
+              PSHU D
+              JSR  TSTREPORT
+
+              LDU  TSTU0
+              RTS
+
+TSTEN1NAME: FCB  12
+           FCC  "TSTENVQUERY1"
+
+; ------------------------------------------------------------
+; TSTENVQUERY2 - unit test for ENVIRONMENT?, double-cell case.
+; Queries "MAX-D" - confirmed via its own table entry to be
+; $7FFFFFFF (low cell $FFFF, high cell $7FFF) - exercising the
+; separate double-cell table path (ENVTABLE2/ENV2START), not
+; just the single-cell one TSTENVQUERY1 already covers.
+; ------------------------------------------------------------
+TSTENVQUERY2: LDA  #'M'
+              STA  TSTCBUF
+              LDA  #'A'
+              STA  TSTCBUF+1
+              LDA  #'X'
+              STA  TSTCBUF+2
+              LDA  #'-'
+              STA  TSTCBUF+3
+              LDA  #'D'
+              STA  TSTCBUF+4
+
+              STU  TSTU0
+
+              LDD  #TSTGUARD
+              PSHU D
+              STU  TSTUB4
+
+              LDD  #TSTCBUF
+              PSHU D
+              LDD  #5
+              PSHU D
+              JSR  ENVQUERY
+
+              STU  TSTUAF
+
+              PULU D
+              CMPD #TRUEV
+              BNE  EW2FAIL
+              PULU D
+              CMPD #$7FFF
+              BNE  EW2FAIL
+              PULU D
+              CMPD #$FFFF
+              BNE  EW2FAIL
+
+              PULU D
+              CMPD #TSTGUARD
+              BNE  EW2FAIL
+
+              LDD  TSTUB4
+              SUBD TSTUAF
+              CMPD #6
+              BNE  EW2FAIL
+
+              LDD  #TRUEV
+              BRA  EW2DONE
+EW2FAIL:      LDD  #FALSEV
+EW2DONE:      LDX  #TSTEW2NAME
+              PSHU X
+              PSHU D
+              JSR  TSTREPORT
+
+              LDU  TSTU0
+              RTS
+
+TSTEW2NAME: FCB  12
+            FCC  "TSTENVQUERY2"
+
+; ------------------------------------------------------------
+; TSTENVQUERY3 - unit test for ENVIRONMENT?, unsupported string
+; case. Queries "ZZZZZ" - genuinely absent from both tables -
+; verifies false is reported, matching the documented "-- false"
+; result for an unrecognized string.
+; ------------------------------------------------------------
+TSTENVQUERY3: LDA  #'Z'
+              STA  TSTCBUF
+              STA  TSTCBUF+1
+              STA  TSTCBUF+2
+              STA  TSTCBUF+3
+              STA  TSTCBUF+4
+
+              STU  TSTU0
+
+              LDD  #TSTGUARD
+              PSHU D
+              STU  TSTUB4
+
+              LDD  #TSTCBUF
+              PSHU D
+              LDD  #5
+              PSHU D
+              JSR  ENVQUERY
+
+              STU  TSTUAF
+
+              PULU D
+              CMPD #FALSEV
+              BNE  EW3FAIL
+              PULU D
+              CMPD #TSTGUARD
+              BNE  EW3FAIL
+
+              LDD  TSTUB4
+              SUBD TSTUAF
+              CMPD #2
+              BNE  EW3FAIL
+
+              LDD  #TRUEV
+              BRA  EW3DONE
+EW3FAIL:      LDD  #FALSEV
+EW3DONE:      LDX  #TSTEW3NAME
+              PSHU X
+              PSHU D
+              JSR  TSTREPORT
+
+              LDU  TSTU0
+              RTS
+
+TSTEW3NAME: FCB  12
+            FCC  "TSTENVQUERY3"
 
            ENDC ; <<<<
 

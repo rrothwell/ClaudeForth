@@ -3640,7 +3640,7 @@ this work.
       restoration across both paths all confirmed correct on real
       hardware.
 
-- [ ] **`TSTCOMMENTS` added - comments tests (glossary section 3.16,
+- [x] **`TSTCOMMENTS` added - comments tests (glossary section 3.16,
       2 words: `(` and `\`), wired into `TSTRUNNER` and inserted last
       in the source (after `TSTEXCEPTION`), matching glossary order,
       gated as `TSTSELECTOR`'s sixteenth value (`-15`). Both words
@@ -3698,7 +3698,157 @@ this work.
       with `TSTSELECTOR`'s sixteenth value included (34 scenarios
       total) - all pass; explicitly confirmed `TSTSELECTOR=15`
       includes only this group's own bodies. Byte-exact split-file
-      reassembly confirmed. Not yet confirmed via MAME.
+      reassembly confirmed. **MAME-CONFIRMED**: the user reports both
+      tests pass - `(`'s own stray-value bug fix confirmed holding on
+      real hardware, and `\`'s genuine `SRCLEN`-following behavior
+      confirmed correct.
+
+- [ ] **`TSTENVSYS` added - environmental & system queries tests
+      (glossary section 3.17, 10 words, 8 tests since `TIB`/`#TIB`/
+      `>IN`/`SPAN`/`BL` are combined into one test, matching the
+      established approach from section 3.14's own `TSTBASE`, and
+      `ENVIRONMENT?` gets three separate tests of its own - single-
+      cell, double-cell, and unsupported-string cases), wired into
+      `TSTRUNNER` and inserted last in the source (after
+      `TSTCOMMENTS`), matching glossary order, gated as
+      `TSTSELECTOR`'s seventeenth value (`-16`).
+
+      **Two safety findings confirmed directly from the actual code,
+      not assumed from the glossary**: `REFILL`'s terminal-source
+      branch calls `QUERY`, which - per section 3.1's own already-
+      established finding - calls `ACCEPT`, which calls `KEY`, which
+      spins forever without real input; only its safely-testable path
+      (source is a string, `SRCID<>0`, returning `FALSE` immediately)
+      is tested, matching the same reasoning already applied to `KEY`/
+      `ACCEPT`/`EXPECT`/`QUERY` themselves. `EVALUATE` genuinely
+      executes its given string as real Forth source via `JSR
+      INTERPRET` - confirmed safe by reading `INTERPRET`'s own code
+      directly: it simply stops and returns when input is exhausted,
+      with no automatic `REFILL` call, so no blocking risk - making a
+      short, deliberately harmless string (`"1 2 +"`) safe to
+      evaluate directly. `TSTEVALUATE` verifies both the arithmetic
+      result and that the whole input-source state (`SRCADDR`/
+      `SRCLEN`/`SRCID`/`TOIN`) is genuinely restored afterward, not
+      left pointing at the evaluated string.
+
+      **`ENVIRONMENT?` confirmed to carry substantial, already-
+      documented bug-fix history worth designing a test around, not
+      just noting**: its own code comment describes a prior
+      `COMPAREW`-clobbers-`X` bug, confirmed via MAME with the exact
+      `$4E4D` symptom (reading two bytes of the *next* table entry's
+      own name text as the current entry's value) - specifically
+      when `/COUNTED-STRING` was queried, since its own match left
+      `X` sitting exactly at the start of `MAX-N`'s own string.
+      `TSTENVQUERY1` queries that exact adjacent pair again,
+      `/COUNTED-STRING` immediately followed by `MAX-N`, so a
+      regression of that specific mechanism would be caught again,
+      not just assumed still fixed from the comment alone.
+      `TSTENVQUERY2` separately exercises the double-cell table path
+      (`MAX-D`, `$7FFFFFFF`) that the single-cell path can't cover,
+      and `TSTENVQUERY3` confirms an unsupported string correctly
+      reports `false`.
+
+      Added a new scratch constant (`TSTSISAV`) for saving/restoring
+      the real `SRCID` across `TSTSOURCEID`'s and `TSTREFILL`'s own
+      tests, both of which redirect it directly.
+
+      Caught a real naming collision during the standard check before
+      insertion: `TSTENVQUERY1`'s own display-name label
+      (`TSTEQNAME`) collided with an *existing* test's own label from
+      an earlier section (`TSTEQ`, the `=` comparison test) - not
+      just an internal `FAIL`/`DONE` pair this time, but the name-
+      string label itself. Renamed the whole prefix (`EQ` to `EN1`)
+      rather than patching around just the one colliding label.
+
+      Verified: `IFEQ`/`ENDC` balance immediately after insertion -
+      balanced (63/63) and correctly nested end to end on the first
+      attempt; zero column-1 mnemonic issues; every one of the 8
+      tests' own depth-check values independently re-derived from
+      real arity and confirmed correct against the final, fully-
+      assembled file state; every real word reference confirmed to
+      resolve, with `EVALUATEW`/`SOURCEW`/`SOURCEID` initially hidden
+      from the automated check by this session's own recurring local-
+      prefix-exclusion artifact, confirmed directly via literal call-
+      site counts rather than trusted blindly; all 8 tests confirmed
+      wired into `TSTENVSYS`, and `TSTENVSYS` itself confirmed wired
+      into `TSTRUNNER`. Full scenario matrix re-run with
+      `TSTSELECTOR`'s seventeenth value included (36 scenarios total)
+      - all pass; explicitly confirmed `TSTSELECTOR=16` includes only
+      this group's own bodies. Byte-exact split-file reassembly
+      confirmed. Not yet confirmed via MAME.
+
+- [x] **RESOLVED (in two rounds - the first fix was real but
+      incomplete) - real bug found by the user's actual MAME run: the
+      full test sequence terminated partway through `TSTEVALUATE`,
+      never reaching `TSTENVQUERY1`/`2`/`3`.**
+
+      **Round 1** identified a genuine issue - `LATEST`, like `BASE`
+      (section 3.13's own earlier finding), is only set by `COLD`
+      (`LDD #BASELATEST`/`STD LATEST`, right alongside `BASE=10` in
+      the same init block), which hasn't run yet at this whole test
+      framework's own pre-`COLD` execution point. With `LATEST=0`,
+      `FIND` would report every word as not found. This fix (save/
+      set/restore `LATEST` around the call) was applied and delivered
+      - but the user's own follow-up MAME run showed the sequence
+      still terminated, with the specific value left visible in the
+      terminal output differing between runs (`2`, then `1`) - a
+      strong sign of genuine memory corruption rather than a single,
+      deterministic missing-value problem, prompting a full second
+      round of investigation rather than assuming the first fix
+      needed only a minor adjustment.
+
+      **Round 2 found the actual, complete root cause**: `CODEHERE`
+      had never been redirected by this test at all - unlike every
+      other test in this entire session involving `WORD` (which
+      `EVALUATE`'s own internal `JSR INTERPRET` calls repeatedly, once
+      per token). With `CODEHERE=0` (also only set by `COLD`, same as
+      `BASE`/`LATEST`), `WORD`'s own write of each parsed token's
+      `[len][text]` landed straight at address `$0000` - which is
+      `STATE`'s own address (confirmed by re-reading its own `RMB`
+      declaration directly: offset `$00`, the very first bytes of
+      `GLOBALS`, which itself starts at `$0000`). Even a single-
+      character token like `"1"` overwrites `STATE` with a nonzero
+      value, flipping `INTERPRET` into thinking it's compiling rather
+      than interpreting mid-parse - fully explaining both the
+      sequence's own termination and why the visible output varied
+      between runs (the exact corruption pattern depends on residual
+      memory state from whatever ran immediately before).
+
+      This was never a bug in `EVALUATE`/`INTERPRET`/`FIND`/`WORD`
+      themselves, all of which reasonably assume the real dictionary
+      chain and a valid `CODEHERE` are already established by the
+      time they're used - true for any normal, post-`COLD` use, just
+      not true during this framework's own pre-`COLD` execution
+      window. `TSTEVALUATE` is the first test in this whole section to
+      invoke the *real* `INTERPRET`/`WORD`/`FIND` path together
+      against the real, unredirected global state, rather than
+      calling a single lower-level primitive directly the way most
+      other tests do.
+
+      Fixed by adding a second, separate redirect: `CODEHERE` saved,
+      set to `TSTCBUF2` (the existing, second scratch buffer already
+      established in section 3.9 for exactly this kind of conflict -
+      not `TSTCBUF`, which this test also uses to hold its own source
+      string, `"1 2 +"`; redirecting `CODEHERE` there too would have
+      let `WORD` overwrite the very source text still being parsed),
+      and restored afterward alongside the existing `BASE`/`LATEST`
+      restores.
+
+      Verified: `IFEQ`/`ENDC` balance unaffected (63/63, unchanged -
+      this fix only added `LDD`/`STD` memory operations, no new
+      conditional blocks); this test's own depth-check values
+      unchanged (the fix touches only `CODEHERE`, never `U`); zero
+      column-1 mnemonic issues; full scenario matrix re-run crossing
+      both real `SERIALPOLL` settings with every `TSTSELECTOR` value
+      0-16 (36 scenarios total) - all pass. Byte-exact split-file
+      reassembly confirmed. This specific fix awaits its own MAME
+      confirmation - the user's own observation across two separate
+      runs (the sequence stopping in the same place both times, but
+      with a different value left visible) is what made the
+      distinction between "wrong value" and "memory corruption"
+      possible to draw, and what prompted going back for the actual,
+      complete root cause rather than assuming the first, real but
+      partial fix was sufficient.
 
 ## Structural duplication (identified, some resolved, some not)
 
