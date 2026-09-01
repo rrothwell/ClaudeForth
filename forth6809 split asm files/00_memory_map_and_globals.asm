@@ -776,6 +776,37 @@ TSTOHSAV EQU   APPVARS+242   ; section 3.1 (System/Console I/O):
                               ; just that the call returned without
                               ; crashing.
 
+TSTBASAV EQU   APPVARS+243   ; section 3.13 (Numeric Output): saves the
+                              ; real BASE across tests that do digit
+                              ; conversion. Real bug found via MAME:
+                              ; this whole test framework runs before
+                              ; COLD (confirmed by tracing the boot
+                              ; sequence directly - COLDSTRT clears all
+                              ; of GLOBALS, including BASE, to zero,
+                              ; then calls TSTRUNNER, with COLD's own
+                              ; "BASE=10" initialization not running
+                              ; until later) - so BASE reads as zero at
+                              ; test time, not 10. With BASE=0,
+                              ; UDDIGIT's own restoring-division
+                              ; algorithm degrades into an unconditional
+                              ; shift (the "subtract and check" step
+                              ; never actually subtracts, since nothing
+                              ; can compare below zero), so the value
+                              ; being converted never genuinely
+                              ; decreases - NUMSIGNS' own loop-until-
+                              ; zero condition then never becomes true.
+                              ; Every test in this section doing digit
+                              ; conversion now explicitly saves BASE,
+                              ; sets it to 10, and restores it
+                              ; afterward - the same save/set/restore
+                              ; pattern already established for
+                              ; CODEHERE/STATE/SRCADDR etc throughout
+                              ; this whole session, just not initially
+                              ; applied to BASE since it was assumed
+                              ; (incorrectly, for this specific,
+                              ; pre-COLD execution context) to already
+                              ; hold a valid value.
+
 TSTNEG1  EQU   $CFC7         ; -12345 - distinct, non-trivial negative
                               ; test values, needed for arithmetic
                               ; tests (ABS, NEGATE, MIN/MAX, signed
@@ -841,6 +872,7 @@ TSTRUNNER: JSR   TSTSYSIO
            JSR   TSTCOMPWORDS
            JSR   TSTMEMORY
            JSR   TSTSTRPARSE
+           JSR   TSTNUMOUT
            RTS
 
 ; ------------------------------------------------------------
@@ -13651,6 +13683,1263 @@ UXDONE:      LDX  #TSTUENAME
 
 TSTUENAME: FCB  11
            FCC  "TSTUNESCAPE"
+
+           ENDC ; <<<<
+
+; ------------------------------------------------------------
+; TSTNUMOUT - numeric output tests (glossary section 3.13, 14
+; words, 13 tests since #S and #> are combined into one test,
+; matching how they're naturally used together as the tail of
+; the standard pictured-output idiom "<# ... #S #>").
+;
+; The pictured-numeric-output core (<# # #S #> HOLD HOLDS) is
+; pure string-building with no I/O, tested directly. SIGN
+; carries real bug-fix history - a prior bare BPL right after
+; PULU didn't affect condition codes on real 6809 hardware, and
+; the bug was masked for every internal caller by caller-side
+; luck (each ran a flag-setting LDD right before calling SIGN).
+; This section's own SIGN test deliberately poisons the flags
+; with an unrelated CMPX immediately before each direct call,
+; so it exercises the exact previously-broken scenario rather
+; than repeating the same kind of luck that hid the bug.
+;
+; The high-level printing words (./U./.R/U.R/?/D./D.R) all
+; produce real output via TYPE/EMIT internally, so each applies
+; the SERIALPOLL-conditional split established in section 3.1 -
+; full OUTHEAD/OUTBUF verification under SERIALPOLL=0, an
+; EMITCH-based last-character check under SERIALPOLL=1. .R/U.R/
+; D.R specifically test the padding path (a width wider than the
+; actual digits), not just a no-padding sanity case. D./D.R use
+; a genuine double-cell value (-100000, computed and verified
+; independently in Python before writing the tests) to exercise
+; the 32-bit negation path, not a value that happens to fit in
+; one cell.
+;
+; Note: this section's own COMPARE-adjacent naming risk doesn't
+; apply here, but every group wrapper name (TSTNUMOUT) and every
+; internal FAIL/DONE prefix was still checked against the whole
+; file before insertion, per the standard practice that caught
+; the TSTCOMPARE collision in the prior section.
+; ------------------------------------------------------------
+TSTNUMOUT: JSR CRW
+           LDX   #TSTNUMOUTMSG
+           PSHU  X
+           LDD   #6
+           PSHU  D
+           JSR   TYPE
+           JSR   CRW
+
+           IFEQ TSTSELECTOR-12  ; >>>>
+
+           JSR   TSTLTNUM
+           JSR   TSTHOLD
+           JSR   TSTHOLDS
+           JSR   TSTSIGN
+           JSR   TSTNUMSIGN
+           JSR   TSTNUMSIGNSGT
+           JSR   TSTDOT
+           JSR   TSTUDOT
+           JSR   TSTDOTR
+           JSR   TSTUDOTR
+           JSR   TSTQMARK
+           JSR   TSTDDOT
+           JSR   TSTDDOTR
+
+           ENDC ; <<<<
+
+           RTS
+
+TSTNUMOUTMSG: FCC "NumOut"
+
+           IFEQ TSTSELECTOR-12  ; >>>>
+
+; ------------------------------------------------------------
+; Numeric Output test harness (glossary section 3.13). The
+; pictured-numeric-output core (<# # #S #> HOLD HOLDS SIGN) is
+; pure string-building with no I/O, tested directly. The
+; high-level printing words (./U./.R/U.R/?/D./D.R) all produce
+; real output via TYPE and/or EMIT internally, so per section
+; 3.1's own already-debugged finding, each applies the
+; SERIALPOLL-conditional split established there: full OUTHEAD/
+; OUTBUF verification under SERIALPOLL=0, an EMITCH-based check
+; of the last character under SERIALPOLL=1 - accepted as a
+; known, honest limitation for words ending in a trailing space
+; (./U./D. all print a fixed final space character, so the
+; polling-mode check there confirms less than for the
+; no-trailing-space words, but is still correct and consistent
+; with the same trade-off already established for TSTCR/
+; TSTSPACES/TSTTYPE/TSTDOTQUOTE in earlier sections).
+;
+; SIGN itself carries real bug-fix history: a prior version used
+; a bare BPL immediately after PULU, which doesn't affect
+; condition codes on real 6809 hardware - the bug was masked for
+; every internal caller by "caller-side luck" (each happened to
+; run a flag-setting LDD right before calling SIGN). This
+; section's own SIGN test deliberately poisons the flags with an
+; unrelated, known-positive value immediately before the actual
+; PSHU/JSR SIGN sequence specifically so a standalone call - the
+; exact scenario the bug-fix comment says was previously broken
+; - is what gets tested, not a scenario that happens to work via
+; the same kind of caller-side luck that hid the original bug.
+; ------------------------------------------------------------
+
+; ------------------------------------------------------------
+; TSTLTNUM - unit test for <#. No stack effect of its own -
+; verifies it sets HLD to PAD's current (redirected) address.
+; ------------------------------------------------------------
+TSTLTNUM: LDD  CODEHERE
+          STD  TSTCSAV
+
+          LDD  #TSTCBUF
+          STD  CODEHERE
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          STU  TSTUB4
+
+          JSR  LTNUM
+
+          STU  TSTUAF
+
+          LDD  HLD
+          CMPD #TSTCBUF+PADOFFSET
+          BNE  LNFAIL
+
+          PULU D
+          CMPD #TSTGUARD
+          BNE  LNFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #0
+          BNE  LNFAIL
+
+          LDD  #TRUEV
+          BRA  LNDONE
+LNFAIL:   LDD  #FALSEV
+LNDONE:   LDX  #TSTLNNAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDD  TSTCSAV
+          STD  CODEHERE
+
+          LDU  TSTU0
+          RTS
+
+TSTLNNAME: FCB  8
+           FCC  "TSTLTNUM"
+
+; ------------------------------------------------------------
+; TSTHOLD - unit test for HOLD. Holds 'A' then 'B' - since HOLD
+; grows the buffer downward and prepends (decrements HLD first,
+; then writes at the new, lower position), the second-held
+; character ends up at the lower address, so reading forward
+; from the final HLD should give "BA", not "AB".
+; ------------------------------------------------------------
+TSTHOLD: LDD  CODEHERE
+         STD  TSTCSAV
+
+         LDD  #TSTCBUF
+         STD  CODEHERE
+
+         STU  TSTU0
+
+         LDD  #TSTGUARD
+         PSHU D
+         STU  TSTUB4
+
+         JSR  LTNUM
+
+         LDD  #'A'
+         PSHU D
+         JSR  HOLD
+
+         LDD  #'B'
+         PSHU D
+         JSR  HOLD
+
+         STU  TSTUAF
+
+         LDX  HLD
+         LDA  ,X
+         CMPA #'B'
+         BNE  HDFAIL
+         LDA  1,X
+         CMPA #'A'
+         BNE  HDFAIL
+
+         PULU D
+         CMPD #TSTGUARD
+         BNE  HDFAIL
+
+         LDD  TSTUB4
+         SUBD TSTUAF
+         CMPD #0
+         BNE  HDFAIL
+
+         LDD  #TRUEV
+         BRA  HDDONE
+HDFAIL:  LDD  #FALSEV
+HDDONE:  LDX  #TSTHDNAME
+         PSHU X
+         PSHU D
+         JSR  TSTREPORT
+
+         LDD  TSTCSAV
+         STD  CODEHERE
+
+         LDU  TSTU0
+         RTS
+
+TSTHDNAME: FCB  7
+           FCC  "TSTHOLD"
+
+; ------------------------------------------------------------
+; TSTHOLDS - unit test for HOLDS. Holds the string "XY" - since
+; HOLDS iterates its source backward (last character first) and
+; HOLD itself prepends, the two behaviors combine to preserve
+; the original forward order in the pictured buffer, matching
+; its own documented "depends on HOLD's exact decrement-by-one
+; behavior".
+; ------------------------------------------------------------
+TSTHOLDS: LDD  CODEHERE
+          STD  TSTCSAV
+
+          LDD  #TSTCBUF
+          STD  CODEHERE
+
+          LDA  #'X'
+          STA  TSTNAMEB
+          LDA  #'Y'
+          STA  TSTNAMEB+1
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          STU  TSTUB4
+
+          JSR  LTNUM
+
+          LDD  #TSTNAMEB
+          PSHU D
+          LDD  #2
+          PSHU D
+          JSR  HOLDS
+
+          STU  TSTUAF
+
+          LDX  HLD
+          LDA  ,X
+          CMPA #'X'
+          BNE  HOFAIL
+          LDA  1,X
+          CMPA #'Y'
+          BNE  HOFAIL
+
+          PULU D
+          CMPD #TSTGUARD
+          BNE  HOFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #0
+          BNE  HOFAIL
+
+          LDD  #TRUEV
+          BRA  HODONE
+HOFAIL:   LDD  #FALSEV
+HODONE:   LDX  #TSTHSNAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDD  TSTCSAV
+          STD  CODEHERE
+
+          LDU  TSTU0
+          RTS
+
+TSTHSNAME: FCB  8
+           FCC  "TSTHOLDS"
+
+; ------------------------------------------------------------
+; TSTSIGN - unit test for SIGN. Deliberately poisons the CPU
+; flags with an unrelated CMPX (setting them to reflect a
+; positive comparison result, without touching D or the value
+; about to be pushed) immediately before each PSHU/JSR SIGN
+; call - specifically so this test exercises the exact scenario
+; the word's own bug-fix comment says was previously broken (a
+; direct, standalone call not preceded by a flag-setting LDD of
+; the true value), rather than relying on the same kind of
+; caller-side luck that hid the original bug. Two sub-cases:
+; negative (with flags poisoned toward positive, confirming the
+; minus sign still gets added - would fail if SIGN reverted to
+; testing stale flags instead of the value it just popped) and
+; positive (with flags poisoned toward negative, confirming no
+; minus sign gets added incorrectly).
+; ------------------------------------------------------------
+TSTSIGN: LDD  CODEHERE
+         STD  TSTCSAV
+
+         LDD  #TSTCBUF
+         STD  CODEHERE
+
+         STU  TSTU0
+
+         LDD  #TSTGUARD
+         PSHU D
+         STU  TSTUB4
+
+         JSR  LTNUM
+
+         LDD  #-5
+         LDX  #1
+         CMPX #0
+         PSHU D
+         JSR  SIGN
+
+         LDX  HLD
+         LDA  ,X
+         CMPA #'-'
+         BNE  SGFAIL
+
+         JSR  LTNUM
+
+         LDD  #5
+         LDX  #-1
+         CMPX #0
+         PSHU D
+         JSR  SIGN
+
+         STU  TSTUAF
+
+         LDD  HLD
+         CMPD #TSTCBUF+PADOFFSET
+         BNE  SGFAIL
+
+         PULU D
+         CMPD #TSTGUARD
+         BNE  SGFAIL
+
+         LDD  TSTUB4
+         SUBD TSTUAF
+         CMPD #0
+         BNE  SGFAIL
+
+         LDD  #TRUEV
+         BRA  SGDONE
+SGFAIL:  LDD  #FALSEV
+SGDONE:  LDX  #TSTSGNAME
+         PSHU X
+         PSHU D
+         JSR  TSTREPORT
+
+         LDD  TSTCSAV
+         STD  CODEHERE
+
+         LDU  TSTU0
+         RTS
+
+TSTSGNAME: FCB  7
+           FCC  "TSTSIGN"
+
+; ------------------------------------------------------------
+; TSTNUMSIGN - unit test for #. Converts one digit of 25 (base
+; 10, ud1 = (25, 0)) - verifies the held character is '5' (the
+; least-significant digit, processed first per the standard
+; pictured-output convention) and the returned ud2 is the
+; quotient (2, 0).
+; ------------------------------------------------------------
+TSTNUMSIGN: LDD  CODEHERE
+            STD  TSTCSAV
+            LDD  BASE
+            STD  TSTBASAV
+
+            LDD  #TSTCBUF
+            STD  CODEHERE
+            LDD  #10
+            STD  BASE
+
+            STU  TSTU0
+
+            LDD  #TSTGUARD
+            PSHU D
+            STU  TSTUB4
+
+            JSR  LTNUM
+
+            LDD  #25
+            PSHU D
+            LDD  #0
+            PSHU D
+            JSR  NUMSIGN
+
+            STU  TSTUAF
+
+            LDD  TSTBASAV
+            STD  BASE
+
+            PULU D
+            CMPD #0
+            BNE  NZFAIL
+            PULU D
+            CMPD #2
+            BNE  NZFAIL
+
+            LDX  HLD
+            LDA  ,X
+            CMPA #'5'
+            BNE  NZFAIL
+
+            PULU D
+            CMPD #TSTGUARD
+            BNE  NZFAIL
+
+            LDD  TSTUB4
+            SUBD TSTUAF
+            CMPD #4  ; BUG FIX: was 0 - mistakenly copied the net-
+                     ; zero reasoning from TSTNUMSIGNSGT (which calls
+                     ; #> to consume ud2 before capturing TSTUAF).
+                     ; This test captures TSTUAF right after NUMSIGN
+                     ; returns, with ud2 (the quotient) still sitting
+                     ; on the stack - confirmed via MAME: the user's
+                     ; own register dump showed D=$0004 at this exact
+                     ; comparison, precisely matching the 2 extra
+                     ; cells (quotient low+high) genuinely present at
+                     ; TSTUAF's own capture point that aren't present
+                     ; at TSTUB4's (captured before NUMSIGN even ran).
+                     ; NUMSIGN itself was never broken; only this
+                     ; test's own expected depth value was wrong.
+            BNE  NZFAIL
+
+            LDD  #TRUEV
+            BRA  NZDONE
+NZFAIL:     LDD  #FALSEV
+NZDONE:     LDX  #TSTNSNAME
+            PSHU X
+            PSHU D
+            JSR  TSTREPORT
+
+            LDD  TSTCSAV
+            STD  CODEHERE
+
+            LDU  TSTU0
+            RTS
+
+TSTNSNAME: FCB  10
+           FCC  "TSTNUMSIGN"
+
+; ------------------------------------------------------------
+; TSTNUMSIGNSGT - combined unit test for #S and #> (naturally
+; used together as the tail of the standard pictured-output
+; idiom "<# ... #S #>"). Converts ud1=(12345,0) fully via #S,
+; then #> to get (addr len) - verifies both the string content
+; ("12345", all 5 digits in correct order) and the length.
+; ------------------------------------------------------------
+TSTNUMSIGNSGT: LDD  CODEHERE
+               STD  TSTCSAV
+               LDD  BASE
+               STD  TSTBASAV
+
+               LDD  #TSTCBUF
+               STD  CODEHERE
+               LDD  #10
+               STD  BASE
+
+               STU  TSTU0
+
+               LDD  #TSTGUARD
+               PSHU D
+               STU  TSTUB4
+
+               JSR  LTNUM
+
+               LDD  #12345
+               PSHU D
+               LDD  #0
+               PSHU D
+               JSR  NUMSIGNS
+               JSR  NUMGT
+
+               STU  TSTUAF
+
+               LDD  TSTBASAV
+               STD  BASE
+
+               PULU D
+               CMPD #5
+               BNE  NXFAIL
+
+               PULU D
+               TFR  D,X
+               LDA  ,X
+               CMPA #'1'
+               BNE  NXFAIL
+               LDA  1,X
+               CMPA #'2'
+               BNE  NXFAIL
+               LDA  2,X
+               CMPA #'3'
+               BNE  NXFAIL
+               LDA  3,X
+               CMPA #'4'
+               BNE  NXFAIL
+               LDA  4,X
+               CMPA #'5'
+               BNE  NXFAIL
+
+               PULU D
+               CMPD #TSTGUARD
+               BNE  NXFAIL
+
+               LDD  TSTUB4
+               SUBD TSTUAF
+               CMPD #4
+               BNE  NXFAIL
+
+               LDD  #TRUEV
+               BRA  NXDONE
+NXFAIL:        LDD  #FALSEV
+NXDONE:        LDX  #TSTNGNAME
+               PSHU X
+               PSHU D
+               JSR  TSTREPORT
+
+               LDD  TSTCSAV
+               STD  CODEHERE
+
+               LDU  TSTU0
+               RTS
+
+TSTNGNAME: FCB  13
+           FCC  "TSTNUMSIGNSGT"
+
+; ------------------------------------------------------------
+; TSTDOT - unit test for . (DOT). Prints -42, expecting "-42 "
+; (4 chars: minus, two digits, trailing space). Under SERIALPOLL=0
+; verifies all 4 queued bytes directly; under SERIALPOLL=1 (the
+; polling variant, confirmed the active build), verifies only the
+; last-emitted character via EMITCH - a fixed trailing space in
+; this word's case, a known, accepted, less-discriminating check
+; consistent with the same trade-off already established for
+; TSTCR/TSTSPACES/TSTTYPE/TSTDOTQUOTE.
+; ------------------------------------------------------------
+TSTDOT: LDD  CODEHERE
+        STD  TSTCSAV
+        LDD  BASE
+        STD  TSTBASAV
+
+        LDD  #TSTCBUF
+        STD  CODEHERE
+        LDD  #10
+        STD  BASE
+
+        IFEQ SERIALPOLL  ; >>>>
+        LDA  OUTHEAD
+        STA  TSTOHSAV
+        ENDC ; <<<<
+
+        STU  TSTU0
+
+        LDD  #TSTGUARD
+        PSHU D
+        LDD  #-42
+        PSHU D
+        STU  TSTUB4
+
+        JSR  DOT
+
+        STU  TSTUAF
+
+        LDD  TSTCSAV
+        STD  CODEHERE
+        LDD  TSTBASAV
+        STD  BASE
+
+        IFEQ SERIALPOLL  ; >>>>
+        LDA  TSTOHSAV
+        ADDA #4
+        ANDA #OUTBUFSZ-1
+        CMPA OUTHEAD
+        BNE  DTFAIL3
+
+        LDX  #OUTBUF
+        LDB  TSTOHSAV
+        LDA  B,X
+        CMPA #'-'
+        BNE  DTFAIL3
+        INCB
+        ANDB #OUTBUFSZ-1
+        LDA  B,X
+        CMPA #'4'
+        BNE  DTFAIL3
+        INCB
+        ANDB #OUTBUFSZ-1
+        LDA  B,X
+        CMPA #'2'
+        BNE  DTFAIL3
+        INCB
+        ANDB #OUTBUFSZ-1
+        LDA  B,X
+        CMPA #32
+        BNE  DTFAIL3
+        ELSE  ; <<<<>>>>
+        LDA  EMITCH
+        CMPA #32
+        BNE  DTFAIL3
+        ENDC  ; <<<<<<<<<<
+
+        PULU D
+        CMPD #TSTGUARD
+        BNE  DTFAIL3
+
+        LDD  TSTUB4
+        SUBD TSTUAF
+        CMPD #-2
+        BNE  DTFAIL3
+
+        LDD  #TRUEV
+        BRA  DTDONE3
+DTFAIL3: LDD  #FALSEV
+DTDONE3: LDX  #TSTDTNAME2
+         PSHU X
+         PSHU D
+         JSR  TSTREPORT
+
+         LDU  TSTU0
+         RTS
+
+TSTDTNAME2: FCB  6
+            FCC  "TSTDOT"
+
+; ------------------------------------------------------------
+; TSTUDOT - unit test for U. Prints 42, expecting "42 " (3
+; chars: two digits, trailing space).
+; ------------------------------------------------------------
+TSTUDOT: LDD  CODEHERE
+         STD  TSTCSAV
+         LDD  BASE
+         STD  TSTBASAV
+
+         LDD  #TSTCBUF
+         STD  CODEHERE
+         LDD  #10
+         STD  BASE
+
+         IFEQ SERIALPOLL  ; >>>>
+         LDA  OUTHEAD
+         STA  TSTOHSAV
+         ENDC ; <<<<
+
+         STU  TSTU0
+
+         LDD  #TSTGUARD
+         PSHU D
+         LDD  #42
+         PSHU D
+         STU  TSTUB4
+
+         JSR  UDOT
+
+         STU  TSTUAF
+
+         LDD  TSTCSAV
+         STD  CODEHERE
+         LDD  TSTBASAV
+         STD  BASE
+
+         IFEQ SERIALPOLL  ; >>>>
+         LDA  TSTOHSAV
+         ADDA #3
+         ANDA #OUTBUFSZ-1
+         CMPA OUTHEAD
+         BNE  UFFAIL
+
+         LDX  #OUTBUF
+         LDB  TSTOHSAV
+         LDA  B,X
+         CMPA #'4'
+         BNE  UFFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'2'
+         BNE  UFFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #32
+         BNE  UFFAIL
+         ELSE  ; <<<<>>>>
+         LDA  EMITCH
+         CMPA #32
+         BNE  UFFAIL
+         ENDC  ; <<<<<<<<<<
+
+         PULU D
+         CMPD #TSTGUARD
+         BNE  UFFAIL
+
+         LDD  TSTUB4
+         SUBD TSTUAF
+         CMPD #-2
+         BNE  UFFAIL
+
+         LDD  #TRUEV
+         BRA  UFDONE
+UFFAIL:  LDD  #FALSEV
+UFDONE:  LDX  #TSTUDNAME
+         PSHU X
+         PSHU D
+         JSR  TSTREPORT
+
+         LDU  TSTU0
+         RTS
+
+TSTUDNAME: FCB  7
+           FCC  "TSTUDOT"
+
+; ------------------------------------------------------------
+; TSTDOTR - unit test for .R. Prints 42 with width 5, expecting
+; "   42" (3 leading spaces + 2 digits = 5 chars total, no
+; trailing space) - specifically exercising the padding path,
+; not just a no-padding sanity case.
+; ------------------------------------------------------------
+TSTDOTR: LDD  CODEHERE
+         STD  TSTCSAV
+         LDD  BASE
+         STD  TSTBASAV
+
+         LDD  #TSTCBUF
+         STD  CODEHERE
+         LDD  #10
+         STD  BASE
+
+         IFEQ SERIALPOLL  ; >>>>
+         LDA  OUTHEAD
+         STA  TSTOHSAV
+         ENDC ; <<<<
+
+         STU  TSTU0
+
+         LDD  #TSTGUARD
+         PSHU D
+         LDD  #42
+         PSHU D
+         LDD  #5
+         PSHU D
+         STU  TSTUB4
+
+         JSR  DOTR
+
+         STU  TSTUAF
+
+         LDD  TSTCSAV
+         STD  CODEHERE
+         LDD  TSTBASAV
+         STD  BASE
+
+         IFEQ SERIALPOLL  ; >>>>
+         LDA  TSTOHSAV
+         ADDA #5
+         ANDA #OUTBUFSZ-1
+         CMPA OUTHEAD
+         BNE  DRFAIL
+
+         LDX  #OUTBUF
+         LDB  TSTOHSAV
+         LDA  B,X
+         CMPA #32
+         BNE  DRFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #32
+         BNE  DRFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #32
+         BNE  DRFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'4'
+         BNE  DRFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'2'
+         BNE  DRFAIL
+         ELSE  ; <<<<>>>>
+         LDA  EMITCH
+         CMPA #'2'
+         BNE  DRFAIL
+         ENDC  ; <<<<<<<<<<
+
+         PULU D
+         CMPD #TSTGUARD
+         BNE  DRFAIL
+
+         LDD  TSTUB4
+         SUBD TSTUAF
+         CMPD #-4
+         BNE  DRFAIL
+
+         LDD  #TRUEV
+         BRA  DRDONE
+DRFAIL:  LDD  #FALSEV
+DRDONE:  LDX  #TSTDRNAME
+         PSHU X
+         PSHU D
+         JSR  TSTREPORT
+
+         LDU  TSTU0
+         RTS
+
+TSTDRNAME: FCB  7
+           FCC  "TSTDOTR"
+
+; ------------------------------------------------------------
+; TSTUDOTR - unit test for U.R. Prints 42 with width 5,
+; expecting "   42" - same padding-path reasoning as TSTDOTR.
+; ------------------------------------------------------------
+TSTUDOTR: LDD  CODEHERE
+          STD  TSTCSAV
+          LDD  BASE
+          STD  TSTBASAV
+
+          LDD  #TSTCBUF
+          STD  CODEHERE
+          LDD  #10
+          STD  BASE
+
+          IFEQ SERIALPOLL  ; >>>>
+          LDA  OUTHEAD
+          STA  TSTOHSAV
+          ENDC ; <<<<
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          LDD  #42
+          PSHU D
+          LDD  #5
+          PSHU D
+          STU  TSTUB4
+
+          JSR  UDOTR
+
+          STU  TSTUAF
+
+          LDD  TSTCSAV
+          STD  CODEHERE
+          LDD  TSTBASAV
+          STD  BASE
+
+          IFEQ SERIALPOLL  ; >>>>
+          LDA  TSTOHSAV
+          ADDA #5
+          ANDA #OUTBUFSZ-1
+          CMPA OUTHEAD
+          BNE  URFAIL
+
+          LDX  #OUTBUF
+          LDB  TSTOHSAV
+          LDA  B,X
+          CMPA #32
+          BNE  URFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #32
+          BNE  URFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #32
+          BNE  URFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #'4'
+          BNE  URFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #'2'
+          BNE  URFAIL
+          ELSE  ; <<<<>>>>
+          LDA  EMITCH
+          CMPA #'2'
+          BNE  URFAIL
+          ENDC  ; <<<<<<<<<<
+
+          PULU D
+          CMPD #TSTGUARD
+          BNE  URFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #-4
+          BNE  URFAIL
+
+          LDD  #TRUEV
+          BRA  URDONE
+URFAIL:   LDD  #FALSEV
+URDONE:   LDX  #TSTURNAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTURNAME: FCB  8
+           FCC  "TSTUDOTR"
+
+; ------------------------------------------------------------
+; TSTQMARK - unit test for ?. Stores -7 at a scratch cell
+; (separate from the CODEHERE-redirected pictured-output
+; region, to avoid conflict), calls ? with its address, expects
+; "-7 " (fetches and prints signed, via DOT internally).
+; ------------------------------------------------------------
+TSTQMARK: LDD  CODEHERE
+          STD  TSTCSAV
+          LDD  BASE
+          STD  TSTBASAV
+
+          LDD  #TSTCBUF
+          STD  CODEHERE
+          LDD  #10
+          STD  BASE
+
+          LDD  #-7
+          STD  TSTCBUF+50
+
+          IFEQ SERIALPOLL  ; >>>>
+          LDA  OUTHEAD
+          STA  TSTOHSAV
+          ENDC ; <<<<
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          LDD  #TSTCBUF+50
+          PSHU D
+          STU  TSTUB4
+
+          JSR  QMARK
+
+          STU  TSTUAF
+
+          LDD  TSTCSAV
+          STD  CODEHERE
+          LDD  TSTBASAV
+          STD  BASE
+
+          IFEQ SERIALPOLL  ; >>>>
+          LDA  TSTOHSAV
+          ADDA #3
+          ANDA #OUTBUFSZ-1
+          CMPA OUTHEAD
+          BNE  QMFAIL
+
+          LDX  #OUTBUF
+          LDB  TSTOHSAV
+          LDA  B,X
+          CMPA #'-'
+          BNE  QMFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #'7'
+          BNE  QMFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #32
+          BNE  QMFAIL
+          ELSE  ; <<<<>>>>
+          LDA  EMITCH
+          CMPA #32
+          BNE  QMFAIL
+          ENDC  ; <<<<<<<<<<
+
+          PULU D
+          CMPD #TSTGUARD
+          BNE  QMFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #-2
+          BNE  QMFAIL
+
+          LDD  #TRUEV
+          BRA  QMDONE
+QMFAIL:   LDD  #FALSEV
+QMDONE:   LDX  #TSTQMNAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTQMNAME: FCB  8
+           FCC  "TSTQMARK"
+
+; ------------------------------------------------------------
+; TSTDDOT - unit test for D. Prints d = -100000 (a genuine
+; double-cell value: high cell $FFFE, low cell $7960, computed
+; and verified independently in Python before writing this
+; test - specifically exercising the 32-bit negation path
+; (MNEG32), not just a value that happens to fit in one cell).
+; Expects "-100000 " (8 chars).
+; ------------------------------------------------------------
+TSTDDOT: LDD  CODEHERE
+         STD  TSTCSAV
+         LDD  BASE
+         STD  TSTBASAV
+
+         LDD  #TSTCBUF
+         STD  CODEHERE
+         LDD  #10
+         STD  BASE
+
+         IFEQ SERIALPOLL  ; >>>>
+         LDA  OUTHEAD
+         STA  TSTOHSAV
+         ENDC ; <<<<
+
+         STU  TSTU0
+
+         LDD  #TSTGUARD
+         PSHU D
+         LDD  #$7960
+         PSHU D
+         LDD  #$FFFE
+         PSHU D
+         STU  TSTUB4
+
+         JSR  DDOT
+
+         STU  TSTUAF
+
+         LDD  TSTCSAV
+         STD  CODEHERE
+         LDD  TSTBASAV
+         STD  BASE
+
+         IFEQ SERIALPOLL  ; >>>>
+         LDA  TSTOHSAV
+         ADDA #8
+         ANDA #OUTBUFSZ-1
+         CMPA OUTHEAD
+         BNE  DDFAIL
+
+         LDX  #OUTBUF
+         LDB  TSTOHSAV
+         LDA  B,X
+         CMPA #'-'
+         BNE  DDFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'1'
+         BNE  DDFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'0'
+         BNE  DDFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'0'
+         BNE  DDFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'0'
+         BNE  DDFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'0'
+         BNE  DDFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #'0'
+         BNE  DDFAIL
+         INCB
+         ANDB #OUTBUFSZ-1
+         LDA  B,X
+         CMPA #32
+         BNE  DDFAIL
+         ELSE  ; <<<<>>>>
+         LDA  EMITCH
+         CMPA #32
+         BNE  DDFAIL
+         ENDC  ; <<<<<<<<<<
+
+         PULU D
+         CMPD #TSTGUARD
+         BNE  DDFAIL
+
+         LDD  TSTUB4
+         SUBD TSTUAF
+         CMPD #-4
+         BNE  DDFAIL
+
+         LDD  #TRUEV
+         BRA  DDDONE
+DDFAIL:  LDD  #FALSEV
+DDDONE:  LDX  #TSTDDNAME
+         PSHU X
+         PSHU D
+         JSR  TSTREPORT
+
+         LDU  TSTU0
+         RTS
+
+TSTDDNAME: FCB  7
+           FCC  "TSTDDOT"
+
+; ------------------------------------------------------------
+; TSTDDOTR - unit test for D.R. Same d = -100000 as TSTDDOT,
+; width 10 - "-100000" is 7 chars, so padding = 3 spaces,
+; expecting "   -100000" (10 chars total, no trailing space).
+; ------------------------------------------------------------
+TSTDDOTR: LDD  CODEHERE
+          STD  TSTCSAV
+          LDD  BASE
+          STD  TSTBASAV
+
+          LDD  #TSTCBUF
+          STD  CODEHERE
+          LDD  #10
+          STD  BASE
+
+          IFEQ SERIALPOLL  ; >>>>
+          LDA  OUTHEAD
+          STA  TSTOHSAV
+          ENDC ; <<<<
+
+          STU  TSTU0
+
+          LDD  #TSTGUARD
+          PSHU D
+          LDD  #$7960
+          PSHU D
+          LDD  #$FFFE
+          PSHU D
+          LDD  #10
+          PSHU D
+          STU  TSTUB4
+
+          JSR  DDOTR
+
+          STU  TSTUAF
+
+          LDD  TSTCSAV
+          STD  CODEHERE
+          LDD  TSTBASAV
+          STD  BASE
+
+          IFEQ SERIALPOLL  ; >>>>
+          LDA  TSTOHSAV
+          ADDA #10
+          ANDA #OUTBUFSZ-1
+          CMPA OUTHEAD
+          BNE  DRRFAIL
+
+          LDX  #OUTBUF
+          LDB  TSTOHSAV
+          LDA  B,X
+          CMPA #32
+          BNE  DRRFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #32
+          BNE  DRRFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #32
+          BNE  DRRFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #'-'
+          BNE  DRRFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #'1'
+          BNE  DRRFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #'0'
+          BNE  DRRFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #'0'
+          BNE  DRRFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #'0'
+          BNE  DRRFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #'0'
+          BNE  DRRFAIL
+          INCB
+          ANDB #OUTBUFSZ-1
+          LDA  B,X
+          CMPA #'0'
+          BNE  DRRFAIL
+          ELSE  ; <<<<>>>>
+          LDA  EMITCH
+          CMPA #'0'
+          BNE  DRRFAIL
+          ENDC  ; <<<<<<<<<<
+
+          PULU D
+          CMPD #TSTGUARD
+          BNE  DRRFAIL
+
+          LDD  TSTUB4
+          SUBD TSTUAF
+          CMPD #-6
+          BNE  DRRFAIL
+
+          LDD  #TRUEV
+          BRA  DRRDONE
+DRRFAIL:  LDD  #FALSEV
+DRRDONE:  LDX  #TSTDRRNAME
+          PSHU X
+          PSHU D
+          JSR  TSTREPORT
+
+          LDU  TSTU0
+          RTS
+
+TSTDRRNAME: FCB  8
+            FCC  "TSTDDOTR"
 
            ENDC ; <<<<
 
