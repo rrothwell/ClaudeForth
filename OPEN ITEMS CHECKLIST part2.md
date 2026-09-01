@@ -3554,7 +3554,7 @@ this work.
       itself confirmed returning a genuinely live address, on real
       hardware.
 
-- [ ] **`TSTEXCEPTION` added - exception handling tests (glossary
+- [x] **`TSTEXCEPTION` added - exception handling tests (glossary
       section 3.15, 2 words: `CATCH`/`THROW`, 4 tests since the two
       can only be meaningfully tested together - `THROW`'s own effect
       is only observable through a `CATCH` that traps it), wired into
@@ -3633,7 +3633,72 @@ this work.
       `TSTSELECTOR`'s fifteenth value included (32 scenarios total) -
       all pass; explicitly confirmed `TSTSELECTOR=14` includes only
       this group's own bodies. Byte-exact split-file reassembly
-      confirmed. Not yet confirmed via MAME.
+      confirmed. **MAME-CONFIRMED**: the user reports all 4 tests
+      pass, including `TSTHANDLERSAVE` after its own pre-insertion
+      depth-check correction - both `CATCH`'s success and exception
+      paths, `THROW(0)`'s no-op behavior, and `HANDLER`'s correct
+      restoration across both paths all confirmed correct on real
+      hardware.
+
+- [ ] **`TSTCOMMENTS` added - comments tests (glossary section 3.16,
+      2 words: `(` and `\`), wired into `TSTRUNNER` and inserted last
+      in the source (after `TSTEXCEPTION`), matching glossary order,
+      gated as `TSTSELECTOR`'s sixteenth value (`-15`). Both words
+      parse from source, so both redirect `SRCADDR`/`SRCLEN`/`TOIN`,
+      matching the established pattern from sections 3.8-3.12.
+
+      **`(` confirmed to carry real bug-fix history worth verifying
+      directly, not just noting** - its own code comment documents a
+      prior version that omitted consuming `WORD`'s own returned
+      c-addr, leaving a stray value on the data stack after every
+      `"(...)"` comment, confirmed and fixed via MAME in an earlier
+      session (symptomatic both as a visible stray value in interpret
+      mode and as a `-22` CSP mismatch for any colon definition
+      containing one). This section's own test specifically confirms
+      the data stack is genuinely unchanged (net 0) after the call,
+      not just that parsing itself advanced to the right place -
+      directly re-verifying the fix holds, not merely trusting the
+      comment.
+
+      `\` specifically redirects `SRCLEN` (not just `TOIN`) to a
+      value distinct from the real terminal input buffer's own
+      length, confirming it genuinely reads `SRCLEN` directly rather
+      than some fixed buffer size - the actual mechanism behind its
+      own documented "follows `SOURCE`... operates correctly inside
+      `EVALUATE`", not just trusting the description.
+
+      **Caught and fixed a real bug in this section's own first
+      `TSTLPAREN` draft before it was ever inserted**: referenced an
+      undefined scratch constant (`TSTSASAV2`) to re-read `SRCADDR`
+      after the call, when `(` in fact never touches `SRCADDR` itself
+      (only `TOIN`) - simplified to check the fake source's own
+      already-known address directly, removing the unnecessary and
+      broken re-read entirely rather than defining a new constant to
+      paper over it.
+
+      Checked the group wrapper name (`TSTCOMMENTS`) against the
+      whole file before use, per the practice established after the
+      `TSTCOMPARE` collision in an earlier section - safe. Checked
+      every column-1 mnemonic occurrence immediately after insertion,
+      per the practice established after the indentation mistake
+      found via a failed lwasm run in section 3.13 - zero found. Zero
+      internal-label collisions this time.
+
+      Verified: `IFEQ`/`ENDC` balance immediately after insertion -
+      balanced (61/61) and correctly nested end to end on the first
+      attempt; both tests' own depth-check values independently re-
+      derived from real arity and confirmed correct against the
+      final, fully-assembled file state; every real word reference
+      confirmed to resolve, with `LPAREN` itself initially hidden from
+      the automated check by this session's own recurring local-
+      prefix-exclusion artifact, confirmed directly via a literal
+      call-site count rather than trusted blindly; both tests
+      confirmed wired into `TSTCOMMENTS`, and `TSTCOMMENTS` itself
+      confirmed wired into `TSTRUNNER`. Full scenario matrix re-run
+      with `TSTSELECTOR`'s sixteenth value included (34 scenarios
+      total) - all pass; explicitly confirmed `TSTSELECTOR=15`
+      includes only this group's own bodies. Byte-exact split-file
+      reassembly confirmed. Not yet confirmed via MAME.
 
 ## Structural duplication (identified, some resolved, some not)
 

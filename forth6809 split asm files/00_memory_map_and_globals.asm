@@ -885,6 +885,7 @@ TSTRUNNER: JSR   TSTSYSIO
            JSR   TSTNUMOUT
            JSR   TSTBASERADIX
            JSR   TSTEXCEPTION
+           JSR   TSTCOMMENTS
            RTS
 
 ; ------------------------------------------------------------
@@ -15385,6 +15386,200 @@ HNDONE:         LDX  #TSTHNNAME
 
 TSTHNNAME: FCB  14
            FCC  "TSTHANDLERSAVE"
+
+           ENDC ; <<<<
+
+; ------------------------------------------------------------
+; TSTCOMMENTS - comments tests (glossary section 3.16, 2 words).
+; Both immediate and parse from source, so both redirect
+; SRCADDR/SRCLEN/TOIN, matching the established pattern from
+; sections 3.8-3.12. ( specifically carries real bug-fix history
+; (a stray value left on the data stack, confirmed and fixed via
+; MAME in a prior session) that this section's own test verifies
+; directly - the data stack is genuinely unchanged after a
+; comment, not just that parsing advanced correctly.
+; ------------------------------------------------------------
+TSTCOMMENTS: JSR CRW
+           LDX   #TSTCOMMSG
+           PSHU  X
+           LDD   #8
+           PSHU  D
+           JSR   TYPE
+           JSR   CRW
+
+           IFEQ TSTSELECTOR-15  ; >>>>
+
+           JSR   TSTLPAREN
+           JSR   TSTBACKSLASH
+
+           ENDC ; <<<<
+
+           RTS
+
+TSTCOMMSG: FCC "Comments"
+
+           IFEQ TSTSELECTOR-15  ; >>>>
+
+; ------------------------------------------------------------
+; Comments test harness (glossary section 3.16). Both words
+; parse from source, so both redirect SRCADDR/SRCLEN/TOIN,
+; matching the established pattern from sections 3.8-3.12.
+;
+; ( specifically carries real bug-fix history worth verifying
+; directly, not just noting: a prior version omitted consuming
+; WORD's own returned c-addr, leaving a stray value on the data
+; stack after every "(...)" comment - confirmed via MAME at the
+; time, symptomatic both as a visible stray value in interpret
+; mode and as a -22 CSP mismatch for any colon definition
+; containing one. This section's own test specifically confirms
+; the data stack is genuinely unchanged (net 0), not just that
+; parsing advanced correctly.
+; ------------------------------------------------------------
+
+; ------------------------------------------------------------
+; TSTLPAREN - unit test for (. Fake source "hi)m" with TOIN
+; starting at 0 - verifies TOIN lands exactly past the closing
+; paren (at 3, immediately before "m", not consuming it), and
+; that the data stack is genuinely unchanged - the specific
+; behavior the bug-fix comment describes as previously broken.
+; Since ( only ever advances TOIN, never SRCADDR itself, the
+; fake source's own known address (TSTNAMEB) is used directly to
+; verify the character just past the paren, with no need to
+; re-read SRCADDR after the call.
+; ------------------------------------------------------------
+TSTLPAREN: LDD  SRCADDR
+           STD  TSTSASAV
+           LDD  SRCLEN
+           STD  TSTSLSAV
+           LDD  TOIN
+           STD  TSTTISAV
+
+           LDA  #'h'
+           STA  TSTNAMEB
+           LDA  #'i'
+           STA  TSTNAMEB+1
+           LDA  #')'
+           STA  TSTNAMEB+2
+           LDA  #'m'
+           STA  TSTNAMEB+3
+
+           LDD  #TSTNAMEB
+           STD  SRCADDR
+           LDD  #4
+           STD  SRCLEN
+           LDD  #0
+           STD  TOIN
+
+           STU  TSTU0
+
+           LDD  #TSTGUARD
+           PSHU D
+           STU  TSTUB4
+
+           JSR  LPAREN
+
+           STU  TSTUAF
+
+           LDD  TOIN
+           CMPD #3
+           BNE  LPFAIL
+
+           LDA  TSTNAMEB+3
+           CMPA #'m'
+           BNE  LPFAIL
+
+           LDD  TSTSASAV
+           STD  SRCADDR
+           LDD  TSTSLSAV
+           STD  SRCLEN
+           LDD  TSTTISAV
+           STD  TOIN
+
+           PULU D
+           CMPD #TSTGUARD
+           BNE  LPFAIL
+
+           LDD  TSTUB4
+           SUBD TSTUAF
+           CMPD #0
+           BNE  LPFAIL
+
+           LDD  #TRUEV
+           BRA  LPDONE
+LPFAIL:    LDD  #FALSEV
+LPDONE:    LDX  #TSTLPNAME
+           PSHU X
+           PSHU D
+           JSR  TSTREPORT
+
+           LDU  TSTU0
+           RTS
+
+TSTLPNAME: FCB  9
+           FCC  "TSTLPAREN"
+
+; ------------------------------------------------------------
+; TSTBACKSLASH - unit test for \. Fake source with SRCLEN=10,
+; TOIN starting partway through at 3 (simulating being midway
+; through a line) - verifies TOIN lands exactly at SRCLEN,
+; consuming the rest of the line. Confirmed via its own code
+; that it reads SRCLEN directly (not a fixed buffer length),
+; matching its own documented "follows SOURCE... operates
+; correctly inside EVALUATE" - this test's own redirect of
+; SRCLEN specifically, rather than relying on the real terminal
+; input buffer's own length, is what actually exercises that.
+; ------------------------------------------------------------
+TSTBACKSLASH: LDD  SRCLEN
+              STD  TSTSLSAV
+              LDD  TOIN
+              STD  TSTTISAV
+
+              LDD  #10
+              STD  SRCLEN
+              LDD  #3
+              STD  TOIN
+
+              STU  TSTU0
+
+              LDD  #TSTGUARD
+              PSHU D
+              STU  TSTUB4
+
+              JSR  BACKSLASH
+
+              STU  TSTUAF
+
+              LDD  TOIN
+              CMPD #10
+              BNE  BLFAIL
+
+              LDD  TSTSLSAV
+              STD  SRCLEN
+              LDD  TSTTISAV
+              STD  TOIN
+
+              PULU D
+              CMPD #TSTGUARD
+              BNE  BLFAIL
+
+              LDD  TSTUB4
+              SUBD TSTUAF
+              CMPD #0
+              BNE  BLFAIL
+
+              LDD  #TRUEV
+              BRA  BLDONE
+BLFAIL:       LDD  #FALSEV
+BLDONE:       LDX  #TSTBLNAME
+              PSHU X
+              PSHU D
+              JSR  TSTREPORT
+
+              LDU  TSTU0
+              RTS
+
+TSTBLNAME: FCB  12
+           FCC  "TSTBACKSLASH"
 
            ENDC ; <<<<
 
