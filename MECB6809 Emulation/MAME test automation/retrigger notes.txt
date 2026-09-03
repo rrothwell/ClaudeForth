@@ -1,0 +1,31 @@
+retrigger.cmd - notes
+======================
+
+retrigger.cmd itself must stay comment-free: MAME's debugger command
+language is a separate thing from 6809 assembly, and it doesn't
+understand a leading ";" (or any other) comment syntax. Passing a
+commented file via -debugscript makes MAME try to interpret each
+comment line as a command in its own right, and it reports an error
+for every single one - harmless (the actual "go" command still runs
+correctly), but noisy. Hence this file lives here instead.
+
+Why the file is just "go":
+
+With -debug, MAME starts paused at the reset vector before any code
+runs at all - confirmed directly from MAME's own docs ("MAME also
+breaks into the debugger after the initial soft reset on startup if
+the debugger is active"). The serial connection is already
+established by this point too: mame_listener.py binds and starts
+listening before MAME is even launched, and "-bitb socket.HOST:PORT"
+makes MAME connect straight into it as part of its own startup. So
+there's nothing to wait for - "go" just resumes execution from the
+reset vector, which runs the normal cold-boot path (COLDSTRT -> ... ->
+JSR TSTRUNNER, since UNITTESTS=1 was baked into this specific ROM
+build) and all test output goes straight down the already-open socket.
+
+If a future need arises to retrigger INITCODE specifically (rather
+than a full reset-vector boot - e.g. re-running tests without
+relaunching MAME), that's a different command: "do pc=$FFA6", per
+Section 6 of the ClaudeForth documentation. That's a manual debugger-
+window command for interactive use, not something this script currently
+automates.

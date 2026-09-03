@@ -3857,7 +3857,7 @@ this work.
       complete root cause rather than assuming the first, real but
       partial fix was sufficient.
 
-- [ ] **`TSTTOOLS` added - tools word set tests (glossary section
+- [x] **`TSTTOOLS` added - tools word set tests (glossary section
       3.18, 3 words: `.S`/`WORDS`/`DUMP`), wired into `TSTRUNNER` and
       inserted last in the source (after `TSTENVSYS`), matching
       glossary order, gated as `TSTSELECTOR`'s eighteenth value
@@ -3939,8 +3939,17 @@ this work.
       explicitly confirmed `TSTSELECTOR=17` includes only this
       group's own bodies, and explicitly confirmed via simulation
       that `TSTDUMP`'s own `SERIALPOLL` branches genuinely diverge as
-      intended. Byte-exact split-file reassembly confirmed. Not yet
-      confirmed via MAME.
+      intended. Byte-exact split-file reassembly confirmed.
+      **MAME-CONFIRMED**: the user reports all 3 tests pass, including
+      `TSTDOTS` after its own `BASE=0` fix (logged separately above) -
+      the terminal output itself visibly confirming each test's own
+      design: `.S` printing `7` then `TSTVAL1`'s own decimal value
+      (this test's own top-of-stack pushes) ahead of the rest of the
+      real stack beneath them; `WORDS` printing `CD AB` in the
+      correct, most-recent-first chain order; and `DUMP` showing the
+      correct hex bytes for "ABCDE" with the ASCII column's own
+      blanking beyond the 5 real bytes, confirming the `DUVALID`
+      partial-line fix holds on real hardware.
 
 - [x] **RESOLVED - real bug found by the user's actual MAME run:
       `TSTDOTS` entered an infinite loop when `.S` internally called
@@ -3980,6 +3989,112 @@ this work.
       0-17 (38 scenarios total) - all pass. Byte-exact split-file
       reassembly confirmed. This specific fix awaits its own MAME
       confirmation.
+
+- [x] **Unit test framework extracted into a separate file
+      (`unit_tests.asm`), replacing its previous location inline
+      within `forth6809.asm` with a conditional `INCLUDE`.** The
+      framework's own explanatory comment block (previously
+      immediately after `ORG USROMSTRT`) and its entire body (every
+      test group, `TSTRUNNER`, all scratch-constant `EQU`s specific to
+      testing) both moved into `unit_tests.asm` verbatim - confirmed
+      via a full line-multiset comparison against the pre-extraction
+      source (every original line accounted for, zero lost, only 2
+      cosmetic blank lines added for readability at the new
+      transition point).
+
+      `forth6809.asm` itself keeps the `IFNDEF UNITTESTS`/`IFNDEF
+      TSTSELECTOR` default-value blocks in place (unchanged in
+      substance - still the only place either symbol's fallback is
+      set when no `-D` is passed), immediately followed by the
+      existing, already-proven `IFNE UNITTESTS` wrapper - unchanged
+      in kind, just narrowed to gate a single `INCLUDE
+      unit_tests.asm` line instead of the framework's full body
+      directly. Deliberately kept this session's own established
+      `IFNE` convention (matching the existing, tested call site in
+      `COLDSTRT` that decides whether to `JSR TSTRUNNER`) rather than
+      introducing a new, untested `IFEQ`-based convention, even
+      though an earlier illustrative example used `IFEQ` - the person
+      who requested this explicitly allowed for "whatever the correct
+      syntax is."
+
+      `unit_tests.asm` itself does **not** carry its own outer
+      `IFNE UNITTESTS`/`ENDC` pair - that wrapping now lives once, at
+      the include site in `forth6809.asm`, rather than being
+      duplicated in both files. Confirmed via `lwasm`'s own manual
+      that `INCLUDE` is the correct directive name (there is no
+      alternate spelling or pseudo-op required), and that `-D
+      SYM[=VAL]` predefines a symbol exactly as though set via `SET`
+      in-source - matching this file's own existing `-D UNITTESTS=1`
+      command-line convention precisely, unaffected by this change.
+
+      Verified: `IFEQ`/`ENDC` balance checked three ways - the
+      combined, simulated source (as `lwasm` would see it after
+      processing the `INCLUDE`) balances at 71/71; `unit_tests.asm`
+      considered entirely on its own also self-balances (64/64,
+      confirming no test group's own conditional block was left
+      dangling by the extraction); and 7 (`forth6809.asm`'s own
+      remaining conditionals) + 64 = 71 confirms the split accounts
+      for every block precisely. Full 38-scenario matrix (both real
+      `SERIALPOLL` settings crossed with every `TSTSELECTOR` value,
+      plus the two production-default scenarios) re-run against the
+      combined, simulated source - all pass, dictionary chain and
+      label-collision checks included. Split reference files
+      regenerated from the new, shorter `forth6809.asm` and confirmed
+      to byte-exact-reassemble back to it. **`lwasm`-CONFIRMED**: the
+      user reports the `INCLUDE unit_tests.asm` extraction has been
+      tested as working on a real `lwasm` run - the file split, the
+      narrowed `IFNE UNITTESTS` wrapper, and the removal of
+      `unit_tests.asm`'s own duplicate outer conditional all assemble
+      correctly in practice, not just in this session's own
+      simulation.
+
+- [x] **RESOLVED - real bug found by the person's own automated test
+      runner (the very first run of the new `run_all_tests.sh`
+      script): `TSTSNAME1` (section 3.12, `SNAME`'s own found-case
+      test) failed.** Root cause: the same `LATEST=0` pre-`COLD`
+      dependency already found and fixed once in section 3.17's own
+      `TSTEVALUATE` - confirmed directly by re-reading `SNAMEW`'s own
+      code, which starts its dictionary-chain walk from `LATEST`
+      (`LDD LATEST`/`STD SNXT`) exactly the way `FIND` does. With
+      `LATEST=0` (only ever set by `COLD`, which hasn't run yet at
+      this whole test framework's own pre-`COLD` execution point),
+      `SNLOOP`'s own `BEQ SNNOTFOUND` fires immediately, before ever
+      comparing against `DUP`'s own CFA - `TSTSNAME1` was written in
+      section 3.12, before the `LATEST=0` finding existed at all, so
+      it never received the fix section 3.17 later established for
+      exactly this dependency.
+
+      **Also caught and fixed `TSTSNAME2` (the not-found case) for the
+      same root cause, even though it was reported passing** - its own
+      passing result was masked, not genuine: with `LATEST=0`, the
+      chain is trivially empty, so `SNAME` reports not-found
+      immediately regardless of the target address, meaning this test
+      was only ever exercising the degenerate "empty chain" case, not
+      the real one it claims to (walking a genuine, populated chain
+      and finding no match for an address that isn't in it). Fixing
+      `TSTSNAME1` alone would have left this one quietly untested in
+      substance while still showing green.
+
+      Fixed both the same way section 3.17 fixed `TSTEVALUATE`: added
+      an explicit save/set/restore of `LATEST` (save the real value,
+      set it to `BASELATEST`, restore afterward) to each test,
+      reusing the existing `TSTLSAV` scratch constant already
+      established for this exact purpose, rather than adding a new
+      one.
+
+      Verified: `IFEQ`/`ENDC` balance unaffected (64/64 within
+      `unit_tests.asm` on its own, unchanged - this fix only added
+      `LDD`/`STD` memory operations, no new conditional blocks); both
+      tests' own depth-check values unchanged (the fix touches only
+      `LATEST`, never `U`); zero column-1 mnemonic issues. Full
+      38-scenario matrix re-run against the combined, simulated
+      source (`forth6809.asm` with `unit_tests.asm` substituted in for
+      its own `INCLUDE`) - all pass. **AUTOMATION-CONFIRMED**: the
+      person's own full `run_all_tests.sh` run across all 18 glossary
+      sections reports every section passing, `3.12_StrParse`
+      included - the first time this whole test suite has been
+      confirmed end-to-end via the automated runner rather than
+      individual manual MAME sessions.
 
 ## Structural duplication (identified, some resolved, some not)
 
