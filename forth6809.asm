@@ -98,7 +98,7 @@ USROMEND EQU  VECTORS-1 ; Usable ROM end. Corrected: 1 before VECTORS'
                          ; comparisons or as a memory operand, unlike
                          ; the previous $10000 definition
 VECTORS  EQU  $FFF0
-INITCODE EQU  $FFA6     ; was $FFA9 - shifted down 3 bytes, per
+INITCODE EQU  $FFA4     ; was $FFA9 - shifted down 3 bytes, per
                          ; explicit request, to make room for the
                          ; UNITTESTS call site's own fix (below):
                          ; that site now always emits exactly 3 bytes
@@ -144,26 +144,50 @@ INITCODE EQU  $FFA6     ; was $FFA9 - shifted down 3 bytes, per
                          ; nominal budget) is separate and unaffected
                          ; by this correction; not resolved. See the
                          ; open-items checklist.
-BASECODE EQU  $DEEA     ; was $DF6A ($DF8A, $DFCA, $DFDA, $DFEA, $E02A
-                         ; before that) - shifted down $80 (128 bytes)
-                         ; this time, a larger jump than the prior
-                         ; $40 and $20 shifts, since both of those
-                         ; still proved insufficient (confirmed by
-                         ; trial and error against the real
-                         ; assembler). The exact gap against BASEDICT
-                         ; below and the exact overlap against
-                         ; INITCODE above depend on each section's
-                         ; real, current assembled size - not
-                         ; recomputed here without a real assembler
-                         ; run; confirm on assembly/MAME rather than
-                         ; trust a static estimate. See the open-items
-                         ; checklist.
-BASEDICT EQU  $D6FF     ; was $D77F ($D79F, $D7DF, $D7EF, $D7FF, $D83F
-                         ; before that) - shifted down $80 (128 bytes)
-                         ; this time, same reason as BASECODE above.
-                         ; Not recomputed against real, current
-                         ; assembled sizes here - confirm on
-                         ; assembly/MAME. See the open-items checklist.
+                         ;
+                         ; UPDATE: shifted down a further 2 bytes,
+                         ; $FFA6 -> $FFA4, confirmed working by the
+                         ; user against a real assembler run. Reason:
+                         ; COLDSTRT's own interrupt-mask bug fix
+                         ; (ANDCC #$AF, added right after JSR
+                         ; INITSERIAL - see COLDSTRT's own comment)
+                         ; is a 2-byte instruction, growing COLDSTRT's
+                         ; total size by exactly that much; INITCODE's
+                         ; own fixed budget against VECTORS needed the
+                         ; same 2 bytes back to stay within it.
+BASECODE EQU  $DE7A     ; was $DEEA ($DF6A, $DF8A, $DFCA, $DFDA, $DFEA,
+                         ; $E02A before that) - shifted down a further
+                         ; $70 (112 bytes) this time. Unlike every
+                         ; earlier shift in this chain (each resolving
+                         ; a memory-map overlap from reorganizing
+                         ; other regions), this one is for a different
+                         ; reason: SERIALPOLL=0 (interrupt-driven ACIA
+                         ; I/O, IRQH servicing INBUF/OUTBUF ring
+                         ; buffers with RTS/CTS flow control) is
+                         ; genuinely larger code than the SERIALPOLL=1
+                         ; polling path it replaces, and the two are
+                         ; mutually exclusive (IFEQ/ELSE/ENDC on the
+                         ; same flag, never both assembled at once) -
+                         ; but BASECODE's own budget was only ever
+                         ; sized against the polling path's smaller
+                         ; footprint, so selecting SERIALPOLL=0
+                         ; collided against BASEDICT below. Value
+                         ; provided by the user directly to resolve
+                         ; that collision; not independently re-
+                         ; derived or re-verified here. Confirm on
+                         ; assembly/MAME rather than trust a static
+                         ; estimate. See the open-items checklist.
+BASEDICT EQU  $D68F     ; was $D6FF ($D77F, $D79F, $D7DF, $D7EF,
+                         ; $D7FF, $D83F before that) - shifted down
+                         ; the same $70 (112 bytes) as BASECODE above,
+                         ; for the same reason (making room for
+                         ; SERIALPOLL=0's larger, interrupt-driven
+                         ; code path - see BASECODE's own comment for
+                         ; the full explanation). Value provided by
+                         ; the user directly; not independently re-
+                         ; derived or re-verified here. Confirm on
+                         ; assembly/MAME rather than trust a static
+                         ; estimate. See the open-items checklist.
 INOUT    EQU  $C000     ; was $DF00 - moved so INOUT (256 B) sits
                          ; directly below USROMSTRT ($C100), contiguous,
                          ; no gap. This also resolves the INOUT portion
@@ -334,8 +358,23 @@ RP0      EQU  RSTACK+1
 ; control via INFILL/RTSCHECKHI/RTSCHECKLO. Uses LWASM's IFEQ/
 ; ELSE/ENDC (a numeric-expression test, not IFDEF/IFNDEF, since
 ; this is a value to compare, not a symbol's mere presence).
+;
+; Was a fixed EQU, meaning it could only ever be changed by
+; editing this file directly - unlike UNITTESTS/TSTSELECTOR
+; below, a plain EQU cannot be overridden via lwasm's own -D
+; command-line option (EQU is a one-time, permanent binding;
+; -D's own documented behavior is to predefine a symbol "as
+; though...defined using the SET directive," which a later EQU
+; for the same symbol does not honor). Switched to the same
+; IFNDEF/SET/ENDC pattern as UNITTESTS/TSTSELECTOR immediately
+; below for exactly that reason: SERIALPOLL can now be selected
+; at build time with -DSERIALPOLL=0 (interrupt-driven) or
+; -DSERIALPOLL=1 (polling, same as omitting -D entirely, since 1
+; remains the fallback default here).
 ; ------------------------------------------------------------
-SERIALPOLL EQU 1
+           IFNDEF SERIALPOLL
+SERIALPOLL SET 1   ; Fallback default value if -D wasn't passed.
+           ENDC
 
 ; ------------------------------------------------------------
 ; ACIA (6850) constants - the chip sits at INOUT+8, not at the
@@ -7086,6 +7125,43 @@ CLRGLOB: CLR   ,X+
          CLR   ,X
 
          JSR   INITSERIAL
+
+         ANDCC #$AF      ; BUG FIX: confirmed via MAME - COLDSTRT's own
+                         ; ORCC #$50 above (masking IRQ+FIRQ during the
+                         ; critical early setup: stack pointers, DP,
+                         ; GLOBALS, SERBUF) was never paired with a
+                         ; matching unmask anywhere on this path - only
+                         ; WARM (below) had one, on its own, separate
+                         ; entry point. Under SERIALPOLL=1 (the
+                         ; longstanding default) this never mattered,
+                         ; since IRQH is just an RTI stub and nothing
+                         ; on that path ever depends on interrupts
+                         ; actually firing. It surfaced only once
+                         ; SERIALPOLL=0 (interrupt-driven ACIA I/O) was
+                         ; actually selected and tested: with IRQ left
+                         ; permanently masked, the ACIA's own interrupt
+                         ; (now correctly wired to the CPU - see the
+                         ; MAME driver's own irq_handler fix) could
+                         ; never actually be serviced, regardless of
+                         ; how correctly it reached the CPU pin -
+                         ; keystrokes were silently dropped and the
+                         ; warm-boot message never got typed out.
+                         ; Confirmed directly: manually clearing the I
+                         ; bit via the MAME debugger (cc=EF) mid-
+                         ; session immediately unblocked both. Placed
+                         ; here, right after INITSERIAL returns (the
+                         ; ACIA is configured and every piece of ring-
+                         ; buffer state IRQH depends on is already
+                         ; zeroed by CLRGLOB above), and before
+                         ; TSTRUNNER runs, so the unit test framework's
+                         ; own interrupt-driven output works correctly
+                         ; too, not just the eventual interactive
+                         ; session. Matches WARM's own, already-correct
+                         ; ANDCC #$AF exactly, for consistency - FIRQ
+                         ; is harmless to unmask alongside IRQ, since
+                         ; nothing on this system ever drives it
+                         ; (FIRQH is an RTI stub, same as the other
+                         ; unused vectors).
 
          IFNE  UNITTESTS  ; >>>>>>>>>>
          JSR   TSTRUNNER
