@@ -62,8 +62,8 @@ void mecb6809_state::mecb6809(machine_config &config)
 	// Configure UART (via m_acia)
 	ACIA6850(config, m_acia, 0);
 	m_acia->txd_handler().set("rs232", FUNC(rs232_port_device::write_txd));
-	// should this be reverse polarity?
-	m_acia->irq_handler().set("rs232", FUNC(rs232_port_device::write_rts));
+	m_acia->irq_handler().set_inputline("maincpu", M6809_IRQ_LINE);
+	m_acia->rts_handler().set("rs232", FUNC(rs232_port_device::write_rts));
 
 	clock_device &acia_clock(CLOCK(config, "acia_clock", 7'372'800/4)); // E Clock from M6809
 	acia_clock.signal_handler().set("acia", FUNC(acia6850_device::write_txc));
@@ -72,7 +72,10 @@ void mecb6809_state::mecb6809(machine_config &config)
 	// Configure a "default terminal" to connect to the 6850, so we have a console
 	rs232_port_device &rs232(RS232_PORT(config, "rs232", default_rs232_devices, "terminal"));
 	rs232.rxd_handler().set(m_acia, FUNC(acia6850_device::write_rxd));
+	rs232.dcd_handler().set(m_acia, FUNC(acia6850_device::write_dcd));
+	rs232.cts_handler().set(m_acia, FUNC(acia6850_device::write_cts));
 	rs232.set_option_device_input_defaults("terminal", DEVICE_INPUT_DEFAULTS_NAME(terminal)); // must be below the DEVICE_INPUT_DEFAULTS_START block
+
 
 	PTM6840(config, m_ptm, 16_MHz_XTAL / 4);
 	m_ptm->set_external_clocks(4000000.0/14.0, 4000000.0/14.0, (4000000.0/14.0)/8.0);
