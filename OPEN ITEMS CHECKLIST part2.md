@@ -4096,6 +4096,244 @@ this work.
       confirmed end-to-end via the automated runner rather than
       individual manual MAME sessions.
 
+- [ ] **`BASECODE`/`BASEDICT` shifted a further $70 (112 bytes) each
+      (`BASECODE` $DEEA -> $DE7A, `BASEDICT` $D6FF -> $D68F), values
+      provided by the user directly.** Different reason from every
+      earlier shift in this same history chain: those all resolved
+      overlaps from reorganizing other memory regions, but this one
+      is to make room for `SERIALPOLL=0` (interrupt-driven ACIA I/O)
+      specifically - genuinely larger code than the `SERIALPOLL=1`
+      polling path it's mutually exclusive with, and `BASECODE`'s own
+      budget was only ever sized against the smaller, polling-path
+      footprint. Selecting `SERIALPOLL=0` without this shift collided
+      against `BASEDICT`. Applied by extending each constant's own
+      existing "was X (Y, Z... before that)" history-chain comment
+      with the new value and this new reason, rather than leaving a
+      redundant commented-out duplicate line the way the user's own
+      draft had it - matching this file's own established convention
+      for these two constants specifically. Not independently re-
+      derived or re-verified here; these are the user's own values,
+      not something I calculated or confirmed against a real
+      assembler run. Confirm on assembly/MAME rather than trust a
+      static estimate, same as every earlier entry in this chain.
+
+- [ ] **`SERIALPOLL` converted from a fixed `EQU` to the same
+      `IFNDEF`/`SET`/`ENDC` pattern already used for `UNITTESTS`/
+      `TSTSELECTOR`, making it genuinely overridable via `lwasm`'s own
+      `-D` command-line option for the first time.** Root cause of why
+      this was needed at all: `EQU` is a one-time, permanent binding,
+      and `-D`'s own documented behavior only predefines a symbol "as
+      though...defined using the `SET` directive" - a later plain
+      `EQU` for the same symbol does not honor that, so `-DSERIALPOLL=0`
+      against the old `SERIALPOLL EQU 1` would not have taken effect
+      the way `-DUNITTESTS=1` genuinely does against its own, already-
+      converted `SET`. Default remains `1` (polling) when `-D` is
+      omitted, matching prior behavior exactly - `-DSERIALPOLL=0`
+      newly selects the interrupt-driven path, `-DSERIALPOLL=1`
+      explicitly selects the same polling path omitting `-D` already
+      gave.
+
+      Verified: `IFEQ`/`ENDC` balance in `forth6809.asm` on its own
+      moved from 7 to 8, exactly matching the one new `IFNDEF`/`ENDC`
+      pair added, nothing else; full 38-scenario matrix re-run against
+      the combined, simulated source (`forth6809.asm` with
+      `unit_tests.asm` substituted in for its own `INCLUDE`) - all
+      pass; specifically confirmed via simulation that an externally-
+      supplied `SERIALPOLL=0` (as `-D` would provide) genuinely
+      selects the interrupt-driven `IRQH` body rather than the `RTI`
+      stub, not just that the flag parses. Split reference files
+      regenerated and confirmed to byte-exact-reassemble. Neither this
+      nor the `BASECODE`/`BASEDICT` shift above has been confirmed via
+      a real `lwasm`/MAME run yet - both await that.
+
+- [x] **RESOLVED - real, significant bug found by the person's own direct
+      MAME debugger investigation: under `SERIALPOLL=0` (interrupt-
+      driven ACIA I/O), the CPU's own IRQ mask was left permanently
+      set after a cold boot, so the ACIA's interrupt could never
+      actually be serviced - keystrokes were silently dropped and the
+      warm-boot message never printed, regardless of how correctly
+      the MAME driver's own `irq_handler` reached the CPU (see the
+      separate, already-fixed driver-level entry above).**
+
+      Root cause traced directly in `forth6809.asm`: `COLDSTRT` begins
+      with `ORCC #$50` (masking both IRQ and FIRQ, correctly, to
+      protect the critical early setup window - stack pointers, `DP`,
+      `GLOBALS`, `SERBUF`) but was never paired with a matching
+      unmask anywhere on the cold-boot path before falling through to
+      `JMP COLD`. The only `ANDCC #$AF` (the correct unmask) in the
+      entire file lived on `WARM`'s own, separate entry point - a
+      genuine warm reboot would have worked fine; a fresh cold boot
+      never would have.
+
+      This had gone uncaught through every earlier MAME run in this
+      whole project because `SERIALPOLL`'s longstanding default is
+      `1` (polling), under which `IRQH` is just a harmless `RTI` stub
+      and nothing on that path ever depends on interrupts actually
+      firing - the bug is entirely inert under the default
+      configuration. It surfaced only once `SERIALPOLL=0` was
+      actually selected and tested for the first time, per the
+      person's own explicit request to make it independently settable
+      via `-D`.
+
+      **Confirmed directly, not just inferred**: the person used
+      MAME's own debugger to set `cc=EF` mid-session - clearing just
+      the I (IRQ mask) bit of the 6809's condition code register -
+      and both symptoms (dropped keystrokes, the stuck warm-boot
+      message) resolved immediately, pinpointing the CPU's own
+      interrupt mask as the exact, precise mechanism, not merely a
+      plausible guess.
+
+      Fixed by adding `ANDCC #$AF` immediately after `JSR INITSERIAL`
+      returns - the earliest point in `COLDSTRT` where it's genuinely
+      safe: the ACIA is configured by then, and every piece of ring-
+      buffer state `IRQH` depends on (`INHEAD`/`INTAIL`/`RTSSTATE`,
+      all part of `GLOBALS`) is already zeroed by `CLRGLOB`, which
+      runs earlier in the same routine. Placed before the `IFNE
+      UNITTESTS`/`JSR TSTRUNNER` block specifically, not only before
+      `JMP COLD` - `TSTRUNNER`'s own `SERIALPOLL=0` output path would
+      otherwise have been silently broken by this exact same bug
+      during every future automated test run too, not just
+      interactive sessions. Matches `WARM`'s own, already-correct
+      `ANDCC #$AF` exactly, for consistency; unmasking FIRQ alongside
+      IRQ is harmless here since nothing on this system ever drives
+      it (`FIRQH` is an `RTI` stub, same as the other unused vectors).
+
+      Verified: `IFEQ`/`ENDC` balance unaffected (8/8, unchanged -
+      this fix is a single new instruction, no new conditional
+      blocks); zero column-1 mnemonic issues; confirmed the fix's own
+      position falls strictly between `INITSERIAL` and the
+      `TSTRUNNER` block, not after it. Full 38-scenario matrix re-run
+      against the combined, simulated source - all pass. Byte-exact
+      split-file reassembly confirmed. **MAME-CONFIRMED**: the person
+      reports this now works properly on real hardware - the ACIA's
+      interrupt is serviced correctly, keystrokes are accepted, and
+      the warm-boot message prints without further intervention. The
+      static size concern noted here was real: `INITCODE` needed its
+      own further 2-byte shift to absorb this fix's own growth - see
+      the separate, dedicated entry immediately below for that.
+
+- [x] **`INITCODE` shifted a further 2 bytes, $FFA6 -> $FFA4, extending
+      the same history-chain comment already established for this
+      constant.** Direct consequence of the `COLDSTRT` interrupt-mask
+      fix immediately above: `ANDCC #$AF` is a 2-byte instruction,
+      growing `COLDSTRT`'s own total size by exactly that much;
+      `INITCODE`'s fixed position needed to move 2 bytes earlier to
+      keep the whole block within its budget against `VECTORS`.
+      Value and confirmation both came directly from the person,
+      against a real assembler run - not independently re-derived
+      here.
+
+      Applied by updating the existing `INITCODE EQU` line's value in
+      place and appending a new, clearly-delineated "UPDATE:" note at
+      the end of its own, already long-established history-chain
+      comment (which already documents several earlier shifts of this
+      same constant, each for its own, different reason) - matching
+      this file's own established convention for extending these
+      history comments rather than replacing them. Caught and
+      corrected a real mistake made while applying this specific
+      edit before it ever reached delivery: an initial `str_replace`
+      attempt accidentally created a second, duplicate `INITCODE EQU`
+      line and deleted the adjacent `BASECODE EQU` line entirely in
+      the process (a copy-paste boundary error, not a logic error) -
+      caught immediately by diffing against the pre-edit file rather
+      than assuming the edit succeeded as intended, and corrected
+      before any verification or delivery step ran against it.
+
+      Verified: `IFEQ`/`ENDC` balance unaffected (8/8, unchanged);
+      exactly one `INITCODE` line and exactly one `BASECODE` line
+      confirmed present (directly checking for the duplication
+      mistake above, not just trusting the correction); zero
+      column-1 mnemonic issues. Full 38-scenario matrix re-run
+      against the combined, simulated source - all pass. Byte-exact
+      split-file reassembly confirmed. **MAME-CONFIRMED**: the
+      person reports the system now works properly with this change
+      applied alongside the `COLDSTRT` fix above.
+
+- [x] **Real, upstream MAME bug found and traced precisely while
+      debugging why interrupt-driven serial input (`SERIALPOLL=0`)
+      was corrupting pasted text: `acia6850_device::data_r()`'s own
+      overrun-handling path never clears `SR_RDRF` once an overrun
+      occurs, permanently freezing the receiver.** Confirmed directly
+      against the device's own real MAME source, not inferred: `data_r()`
+      only clears `SR_RDRF` in its `else` branch (taken when
+      `m_overrun_pending` was already false); the first read after a
+      genuine overrun instead reports `SR_OVRN` and clears
+      `m_overrun_pending`, but leaves `SR_RDRF` set. Since
+      `write_rxc()`'s own reception logic only decodes a newly-arrived
+      byte into `m_rdr` when `SR_RDRF` is clear, the very next
+      character to arrive while it's still stuck re-triggers the same
+      overrun path again before the firmware ever gets a clean read -
+      `SR_RDRF` never successfully clears, and `data_r()` returns the
+      same, frozen byte forever. Matches the person's own precise,
+      debugger-traced symptom exactly (pasted text past the second
+      character repeating a single, stale character indefinitely), and
+      explains every other observation too: added character delays
+      work around it by giving the firmware time for a clean read
+      before the next character lands; larger/faster pastes make it
+      worse since they're more likely to trigger the initial overrun
+      at all; it's independent of `pty` vs `null_modem`+`socat` since
+      the bug lives entirely inside the shared ACIA device model,
+      upstream of either transport. Not fixable from this project's own
+      source at all - it's a MAME core bug, not a firmware or driver
+      issue. A full bug report, including a suggested one-line fix
+      (hoisting the `SR_RDRF` clear out of the `else` branch so it
+      runs unconditionally on every read), was drafted for submission
+      to mamedev/mame - see `mame_acia6850_bug_report.md`, delivered
+      separately, not yet actually submitted upstream.
+
+- [x] **`SERBUFCLR` added - a new, shared routine zeroing all four ring-
+      buffer pointers (`INHEAD`/`INTAIL`/`OUTHEAD`/`OUTTAIL`, the four
+      bytes of `SERBUF`) plus `RTSSTATE`, called from `INITSERIAL`
+      itself so both `COLDSTRT`'s existing call and a new call from
+      `WARM` share one, complete reset point.** Prompted by the
+      person's own suggestion (more robust fault recovery on warm
+      reboot), but investigating it surfaced a real, separate,
+      pre-existing bug in the process: the code this replaced (inline
+      in `COLDSTRT`, `LDX #SERBUF`/`CLR ,X+`/`CLR ,X`) only ever
+      cleared 2 of `SERBUF`'s own 4 bytes (`INHEAD`/`INTAIL`) -
+      `OUTHEAD`/`OUTTAIL` were never zeroed at all, even on a genuine
+      cold boot. Since MAME does not guarantee zeroed RAM on start,
+      this was a real, independent, latent risk of the TX ring buffer
+      starting in a corrupted, inconsistent state on the very first
+      boot - directly the kind of "transmit buffer appears full
+      immediately, spin-wait lockup" symptom separately observed and
+      reported, not merely a warm-reboot robustness nicety as
+      originally framed. `WARM` now also calls `INITSERIAL` in full
+      (not just the new `SERBUFCLR` alone), matching `COLDSTRT`'s own
+      established ordering exactly (while IRQ is still masked, before
+      the later `ANDCC #$AF` unmask) - this re-issues the ACIA's own
+      master-reset sequence too, which should also help recover from
+      the separate MAME-level `SR_RDRF` bug above if it's ever been
+      triggered, not just reset the firmware's own side of the state.
+
+- [x] **`IRQH` given an explicit `SR_TDRE` test at `TXCHK`, replacing
+      the previous implicit "must be TX because RDRF was clear"
+      assumption, per the person's own suggestion.** Confirmed via the
+      real ACIA device source that this assumption could genuinely be
+      wrong: `calculate_rxirq()` can trigger the RX-side interrupt
+      condition from a pending DCD change alone, independent of
+      `SR_RDRF` - without this explicit check, that case would have
+      incorrectly fallen into the TX-handling code instead of being
+      safely ignored (this firmware doesn't handle DCD at all, and the
+      MAME driver doesn't wire `dcd_handler` either, so `m_dcd_irq_pending`
+      should stay inert in practice - but the firmware's own logic no
+      longer silently depends on that being true). No extra register
+      read needed: `A` still holds the original `ACIASR` value from
+      `IRQH`'s own opening read, since `BITA` never modifies it.
+
+      Verified (all three entries together): `IFEQ`/`ENDC` balance
+      unaffected (8/8, unchanged); zero column-1 mnemonic issues;
+      `SERBUFCLR` confirmed called exactly once, `INITSERIAL` confirmed
+      called exactly twice (`COLDSTRT` and `WARM`); confirmed via
+      simulation that `SERBUFCLR` is present regardless of `SERIALPOLL`
+      (correct - it's not itself gated by that flag) and that `WARM`
+      genuinely calls `INITSERIAL` in the assembled output. Full
+      38-scenario matrix re-run against the combined, simulated source
+      - all pass. Byte-exact split-file reassembly confirmed. None of
+      this has been confirmed via a real `lwasm`/MAME run yet - all
+      three await that, and the `SR_RDRF` bug itself obviously awaits
+      any response from upstream MAME too.
+
 ## Structural duplication (identified, some resolved, some not)
 
 - [x] `:`/`CREATE`/`VARIABLE`'s header-building — resolved via `HEADER`

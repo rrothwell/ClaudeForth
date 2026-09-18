@@ -155,7 +155,7 @@ INITCODE EQU  $FFA4     ; was $FFA9 - shifted down 3 bytes, per
                          ; total size by exactly that much; INITCODE's
                          ; own fixed budget against VECTORS needed the
                          ; same 2 bytes back to stay within it.
-BASECODE EQU  $DE7A     ; was $DEEA ($DF6A, $DF8A, $DFCA, $DFDA, $DFEA,
+BASECODE EQU  $DE5E     ; was $DEEA ($DF6A, $DF8A, $DFCA, $DFDA, $DFEA,
                          ; $E02A before that) - shifted down a further
                          ; $70 (112 bytes) this time. Unlike every
                          ; earlier shift in this chain (each resolving
@@ -177,7 +177,7 @@ BASECODE EQU  $DE7A     ; was $DEEA ($DF6A, $DF8A, $DFCA, $DFDA, $DFEA,
                          ; derived or re-verified here. Confirm on
                          ; assembly/MAME rather than trust a static
                          ; estimate. See the open-items checklist.
-BASEDICT EQU  $D68F     ; was $D6FF ($D77F, $D79F, $D7DF, $D7EF,
+BASEDICT EQU  $D673     ; was $D6FF ($D77F, $D79F, $D7DF, $D7EF,
                          ; $D7FF, $D83F before that) - shifted down
                          ; the same $70 (112 bytes) as BASECODE above,
                          ; for the same reason (making room for
@@ -1891,7 +1891,32 @@ BASEDICTSIZE EQU   BASEDICTEND-BASEDICT
 ; this section so the ACIA's own init code sits next to the rest
 ; of its interrupt/polling logic rather than inline in COLDSTRT.
 ; ------------------------------------------------------------
-INITSERIAL: LDA   #$03
+; ------------------------------------------------------------
+; SERBUFCLR - zeros all four ring-buffer pointers (INHEAD/
+; INTAIL/OUTHEAD/OUTTAIL, the four bytes of SERBUF) plus
+; RTSSTATE. BUG FIX: the code this replaced (formerly inline in
+; COLDSTRT) only ever cleared INHEAD/INTAIL (2 of SERBUF's own 4
+; bytes) - OUTHEAD/OUTTAIL were never zeroed at all, even on a
+; cold boot, meaning the TX ring buffer could start from
+; whatever arbitrary contents MAME's own RAM happened to hold
+; (MAME does not guarantee zeroed RAM on start), a real,
+; independent, latent risk of exactly the kind of "transmit
+; buffer appears full immediately" spin-wait lockup separately
+; observed and reported. Called from INITSERIAL itself (below),
+; so both COLDSTRT's own existing call and WARM's new one (see
+; WARM's own comment) share this single, complete reset point -
+; not duplicated logic in either place.
+; ------------------------------------------------------------
+SERBUFCLR: LDX  #SERBUF
+           CLR  ,X+
+           CLR  ,X+
+           CLR  ,X+
+           CLR  ,X
+           CLR  RTSSTATE
+           RTS
+
+INITSERIAL: JSR  SERBUFCLR
+         LDA   #$03
          STA   ACIACR         ; was "STA ACIA" - only correct by
                                ; coincidence while ACIA and ACIACR were
                                ; the same address; now genuinely distinct
@@ -1983,7 +2008,19 @@ IRQH:    LDA   ACIASR
          JSR   RTSCHECKHI
          BRA   IRQDONE
 
-TXCHK:   LDB   OUTTAIL
+TXCHK:   BITA  #SR_TDRE         ; BUG FIX: previously assumed TX by
+                                ; elimination alone (reached here only
+                                ; because RDRF was clear) - explicit now,
+                                ; both for clarity of intent and because
+                                ; the ACIA's own RX-interrupt condition
+                                ; can also fire from a pending DCD change
+                                ; alone, independent of RDRF; without this
+                                ; check, that case would incorrectly fall
+                                ; into the TX-handling code below instead
+                                ; of being safely ignored (this firmware
+                                ; does not otherwise handle DCD at all).
+         BEQ   IRQDONE
+         LDB   OUTTAIL
          CMPB  OUTHEAD
          BEQ   TXOFF
          LDX   #OUTBUF
@@ -7120,10 +7157,6 @@ CLRGLOB: CLR   ,X+
          DECB
          BNE   CLRGLOB
 
-         LDX   #SERBUF
-         CLR   ,X+
-         CLR   ,X
-
          JSR   INITSERIAL
 
          ANDCC #$AF      ; BUG FIX: confirmed via MAME - COLDSTRT's own
@@ -7190,6 +7223,25 @@ WARM:    ORCC  #$50
          TFR   A,DP
          LDU   #SP0
          LDS   #RP0
+
+         JSR   INITSERIAL       ; BUG FIX: previously WARM never re-ran
+                                ; this at all, meaning a warm reboot never
+                                ; reset the ring buffer pointers (only
+                                ; COLDSTRT's own, separate path did, and
+                                ; only partially - see SERBUFCLR's own
+                                ; comment) nor re-issued the ACIA's own
+                                ; master-reset sequence. If a lockup or
+                                ; stuck-overrun condition (observed and
+                                ; reported separately) left either side
+                                ; in a corrupted state, a warm reboot
+                                ; would previously have inherited it
+                                ; unchanged rather than genuinely
+                                ; recovering. Placed here, matching
+                                ; COLDSTRT's own established ordering
+                                ; exactly: while IRQ is still masked,
+                                ; with the later ANDCC #$AF unmasking
+                                ; only once setup is complete.
+
          LDX   #WARMMSG
          PSHU  X
          LDD   #WARMMSGL
@@ -7203,6 +7255,11 @@ WARMMSGL EQU   *-WARMMSG
 
 INITEND  EQU   *          ; Verify no collision with vectors, value should match vector ORG
 INITSIZE EQU   INITEND-INITCODE
+
+; Prevent the assembler from extinguishing the gap between the
+; INITCODE block and the VECTORS block when it generates the
+; .bin file.
+         FILL $FF,VECTORS-INITEND
 
 ; ============================================================
 ; SECTION 1: HARDWARE VECTOR TABLE
