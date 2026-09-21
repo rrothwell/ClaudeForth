@@ -98,7 +98,7 @@ USROMEND EQU  VECTORS-1 ; Usable ROM end. Corrected: 1 before VECTORS'
                          ; comparisons or as a memory operand, unlike
                          ; the previous $10000 definition
 VECTORS  EQU  $FFF0
-INITCODE EQU  $FFA6     ; was $FFA9 - shifted down 3 bytes, per
+INITCODE EQU  $FFA4     ; was $FFA9 - shifted down 3 bytes, per
                          ; explicit request, to make room for the
                          ; UNITTESTS call site's own fix (below):
                          ; that site now always emits exactly 3 bytes
@@ -144,26 +144,69 @@ INITCODE EQU  $FFA6     ; was $FFA9 - shifted down 3 bytes, per
                          ; nominal budget) is separate and unaffected
                          ; by this correction; not resolved. See the
                          ; open-items checklist.
-BASECODE EQU  $DEEA     ; was $DF6A ($DF8A, $DFCA, $DFDA, $DFEA, $E02A
-                         ; before that) - shifted down $80 (128 bytes)
-                         ; this time, a larger jump than the prior
-                         ; $40 and $20 shifts, since both of those
-                         ; still proved insufficient (confirmed by
-                         ; trial and error against the real
-                         ; assembler). The exact gap against BASEDICT
-                         ; below and the exact overlap against
-                         ; INITCODE above depend on each section's
-                         ; real, current assembled size - not
-                         ; recomputed here without a real assembler
-                         ; run; confirm on assembly/MAME rather than
-                         ; trust a static estimate. See the open-items
-                         ; checklist.
-BASEDICT EQU  $D6FF     ; was $D77F ($D79F, $D7DF, $D7EF, $D7FF, $D83F
-                         ; before that) - shifted down $80 (128 bytes)
-                         ; this time, same reason as BASECODE above.
-                         ; Not recomputed against real, current
-                         ; assembled sizes here - confirm on
-                         ; assembly/MAME. See the open-items checklist.
+                         ;
+                         ; UPDATE: shifted down a further 2 bytes,
+                         ; $FFA6 -> $FFA4, confirmed working by the
+                         ; user against a real assembler run. Reason:
+                         ; COLDSTRT's own interrupt-mask bug fix
+                         ; (ANDCC #$AF, added right after JSR
+                         ; INITSERIAL - see COLDSTRT's own comment)
+                         ; is a 2-byte instruction, growing COLDSTRT's
+                         ; total size by exactly that much; INITCODE's
+                         ; own fixed budget against VECTORS needed the
+                         ; same 2 bytes back to stay within it.
+BASECODE EQU  $DE5E     ; was $DE7A ($DEEA, $DF6A, $DF8A, $DFCA, $DFDA,
+                         ; $DFEA, $E02A before that) - shifted down a
+                         ; further $70 (112 bytes) this time. Unlike every
+                         ; earlier shift in this chain (each resolving
+                         ; a memory-map overlap from reorganizing
+                         ; other regions), this one is for a different
+                         ; reason: SERIALPOLL=0 (interrupt-driven ACIA
+                         ; I/O, IRQH servicing INBUF/OUTBUF ring
+                         ; buffers with RTS/CTS flow control) is
+                         ; genuinely larger code than the SERIALPOLL=1
+                         ; polling path it replaces, and the two are
+                         ; mutually exclusive (IFEQ/ELSE/ENDC on the
+                         ; same flag, never both assembled at once) -
+                         ; but BASECODE's own budget was only ever
+                         ; sized against the polling path's smaller
+                         ; footprint, so selecting SERIALPOLL=0
+                         ; collided against BASEDICT below. Value
+                         ; provided by the user directly to resolve
+                         ; that collision; not independently re-
+                         ; derived or re-verified here. Confirm on
+                         ; assembly/MAME rather than trust a static
+                         ; estimate. See the open-items checklist.
+                         ;
+                         ; UPDATE: shifted down a further $1C (28
+                         ; bytes), $DE7A -> $DE5E, confirmed working
+                         ; by the user against a real assembler run.
+                         ; Reason: the ECHOEMIT non-blocking-echo fix
+                         ; (see ACCEPT's own comment) added a new
+                         ; routine to the interrupt-driven code path,
+                         ; growing its total size by that much; also
+                         ; added, in the same change: a FILL directive
+                         ; right before SECTION 1 (VECTORS), to stop
+                         ; the assembler from omitting the gap between
+                         ; INITCODE and VECTORS when generating the
+                         ; raw .bin file.
+BASEDICT EQU  $D673     ; was $D68F ($D6FF, $D77F, $D79F, $D7DF, $D7EF,
+                         ; $D7FF, $D83F before that) - shifted down
+                         ; the same $70 (112 bytes) as BASECODE above,
+                         ; for the same reason (making room for
+                         ; SERIALPOLL=0's larger, interrupt-driven
+                         ; code path - see BASECODE's own comment for
+                         ; the full explanation). Value provided by
+                         ; the user directly; not independently re-
+                         ; derived or re-verified here. Confirm on
+                         ; assembly/MAME rather than trust a static
+                         ; estimate. See the open-items checklist.
+                         ;
+                         ; UPDATE: shifted down the same further $1C
+                         ; (28 bytes) as BASECODE above, $D68F -> $D673,
+                         ; same reason and same confirmation - see
+                         ; BASECODE's own comment for the full
+                         ; explanation.
 INOUT    EQU  $C000     ; was $DF00 - moved so INOUT (256 B) sits
                          ; directly below USROMSTRT ($C100), contiguous,
                          ; no gap. This also resolves the INOUT portion
@@ -334,8 +377,23 @@ RP0      EQU  RSTACK+1
 ; control via INFILL/RTSCHECKHI/RTSCHECKLO. Uses LWASM's IFEQ/
 ; ELSE/ENDC (a numeric-expression test, not IFDEF/IFNDEF, since
 ; this is a value to compare, not a symbol's mere presence).
+;
+; Was a fixed EQU, meaning it could only ever be changed by
+; editing this file directly - unlike UNITTESTS/TSTSELECTOR
+; below, a plain EQU cannot be overridden via lwasm's own -D
+; command-line option (EQU is a one-time, permanent binding;
+; -D's own documented behavior is to predefine a symbol "as
+; though...defined using the SET directive," which a later EQU
+; for the same symbol does not honor). Switched to the same
+; IFNDEF/SET/ENDC pattern as UNITTESTS/TSTSELECTOR immediately
+; below for exactly that reason: SERIALPOLL can now be selected
+; at build time with -DSERIALPOLL=0 (interrupt-driven) or
+; -DSERIALPOLL=1 (polling, same as omitting -D entirely, since 1
+; remains the fallback default here).
 ; ------------------------------------------------------------
-SERIALPOLL EQU 1
+           IFNDEF SERIALPOLL
+SERIALPOLL SET 1   ; Fallback default value if -D wasn't passed.
+           ENDC
 
 ; ------------------------------------------------------------
 ; ACIA (6850) constants - the chip sits at INOUT+8, not at the

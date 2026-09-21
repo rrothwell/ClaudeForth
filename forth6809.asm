@@ -155,9 +155,29 @@ INITCODE EQU  $FFA4     ; was $FFA9 - shifted down 3 bytes, per
                          ; total size by exactly that much; INITCODE's
                          ; own fixed budget against VECTORS needed the
                          ; same 2 bytes back to stay within it.
-BASECODE EQU  $DE5E     ; was $DEEA ($DF6A, $DF8A, $DFCA, $DFDA, $DFEA,
-                         ; $E02A before that) - shifted down a further
-                         ; $70 (112 bytes) this time. Unlike every
+BASECODE EQU  $DE0E     ; was $DE5E ($DE7A, $DEEA, $DF6A, $DF8A, $DFCA,
+                         ; $DFDA, $DFEA, $E02A before that) - shifted
+                         ; down a further $30 (48 bytes) this time.
+                         ; Reason: IRQH was rewritten for symmetry
+                         ; between its RX/TX halves and single-point-
+                         ; of-exit (all paths RTI through IRQDONE),
+                         ; and gained new FE/OVRN/PE receiver-error
+                         ; counting (SR_FE/SR_OVRN/SR_PE, tested from
+                         ; the same ACIASR read, before ACIADR is
+                         ; read, incrementing FECOUNT/OVRNCOUNT/
+                         ; PECOUNT and discarding the byte rather than
+                         ; storing it in INBUF when any is flagged) -
+                         ; both add code, and the single-exit style
+                         ; costs extra bytes/branches versus falling
+                         ; through. Value provided by the user
+                         ; directly; not independently re-derived or
+                         ; re-verified here. Confirm on assembly/MAME
+                         ; rather than trust a static estimate.
+                         ;
+                         ; Earlier history, preserved below in order:
+                         ;
+                         ; UPDATE: was $DE7A - shifted down a
+                         ; further $70 (112 bytes) at that point. Unlike every
                          ; earlier shift in this chain (each resolving
                          ; a memory-map overlap from reorganizing
                          ; other regions), this one is for a different
@@ -177,17 +197,49 @@ BASECODE EQU  $DE5E     ; was $DEEA ($DF6A, $DF8A, $DFCA, $DFDA, $DFEA,
                          ; derived or re-verified here. Confirm on
                          ; assembly/MAME rather than trust a static
                          ; estimate. See the open-items checklist.
-BASEDICT EQU  $D673     ; was $D6FF ($D77F, $D79F, $D7DF, $D7EF,
-                         ; $D7FF, $D83F before that) - shifted down
-                         ; the same $70 (112 bytes) as BASECODE above,
-                         ; for the same reason (making room for
-                         ; SERIALPOLL=0's larger, interrupt-driven
-                         ; code path - see BASECODE's own comment for
-                         ; the full explanation). Value provided by
-                         ; the user directly; not independently re-
-                         ; derived or re-verified here. Confirm on
-                         ; assembly/MAME rather than trust a static
-                         ; estimate. See the open-items checklist.
+                         ;
+                         ; UPDATE: shifted down a further $1C (28
+                         ; bytes), $DE7A -> $DE5E, confirmed working
+                         ; by the user against a real assembler run.
+                         ; Reason: the ECHOEMIT non-blocking-echo fix
+                         ; (see ACCEPT's own comment) added a new
+                         ; routine to the interrupt-driven code path,
+                         ; growing its total size by that much; also
+                         ; added, in the same change: a FILL directive
+                         ; right before SECTION 1 (VECTORS), to stop
+                         ; the assembler from omitting the gap between
+                         ; INITCODE and VECTORS when generating the
+                         ; raw .bin file.
+BASEDICT EQU  $D623     ; was $D673 ($D68F, $D6FF, $D77F, $D79F, $D7DF,
+                         ; $D7EF, $D7FF, $D83F before that) - shifted
+                         ; down the same further $30 (48 bytes) as
+                         ; BASECODE above, for the same reason (the
+                         ; rewritten, symmetric/single-exit IRQH plus
+                         ; the new FE/OVRN/PE receiver-error counting -
+                         ; see BASECODE's own comment for the full
+                         ; explanation). Value provided by the user
+                         ; directly; not independently re-derived or
+                         ; re-verified here. Confirm on assembly/MAME
+                         ; rather than trust a static estimate.
+                         ;
+                         ; Earlier history, preserved below in order:
+                         ;
+                         ; UPDATE: shifted down the same $70 (112 bytes)
+                         ; as BASECODE above, at that point, for the
+                         ; same reason (making room for SERIALPOLL=0's
+                         ; larger, interrupt-driven code path - see
+                         ; BASECODE's own comment for the full
+                         ; explanation). Value provided by the user
+                         ; directly; not independently re-derived or
+                         ; re-verified here. Confirm on assembly/MAME
+                         ; rather than trust a static estimate. See the
+                         ; open-items checklist.
+                         ;
+                         ; UPDATE: shifted down the same further $1C
+                         ; (28 bytes) as BASECODE above, $D68F -> $D673,
+                         ; same reason and same confirmation - see
+                         ; BASECODE's own comment for the full
+                         ; explanation.
 INOUT    EQU  $C000     ; was $DF00 - moved so INOUT (256 B) sits
                          ; directly below USROMSTRT ($C100), contiguous,
                          ; no gap. This also resolves the INOUT portion
@@ -322,7 +374,13 @@ APPVARSEND EQU APPDICT-1 ; was APPVARS+8000 ($215B) - now derives
 ; Header/Compiling section, and WORDMAXCHARS above) rather than a
 ; fixed, separately-allocated buffer capped at 31 characters. The
 ; $01DA-$01FA range it used to occupy is left unclaimed, same
-; reasoning as SIBUF's retirement above.
+; reasoning as SIBUF's retirement above - EXCEPT for its first 3
+; bytes, now claimed below for FECOUNT/OVRNCOUNT/PECOUNT (IRQH's
+; receiver-error counters); $01DD-$01FA (30 bytes) is still
+; unclaimed, and SIBUF's own $01FB-$021A range is untouched.
+FECOUNT   EQU  $01DA   ; framing-error count, incremented by IRQH
+OVRNCOUNT EQU  $01DB   ; overrun count, incremented by IRQH
+PECOUNT   EQU  $01DC   ; parity-error count, incremented by IRQH
 TIBBUF   EQU  $018A     ; was $0284
 TIBBUFL  EQU  80
 SERBUF   EQU  $0106     ; was $0200 - USER0/USER1 removed entirely (see
@@ -387,11 +445,18 @@ ACIASR   EQU  ACIA
 ACIADR   EQU  ACIA+1
 SR_RDRF  EQU  $01
 SR_TDRE  EQU  $02
+SR_FE    EQU  $10     ; framing error - only meaningful together with RDRF
+SR_OVRN  EQU  $20     ; receiver overrun - ditto
+SR_PE    EQU  $40     ; parity error - ditto
 SR_IRQ   EQU  $80
+; ACIA Reset
 CR_RESET EQU  $03
-CR_RXON  EQU  $95
+; 8 bits, 1 stop bit, no parity.
+; Baudrate clock divisor 16, Tx interrupts, /RTS active.
+CR_RXON  EQU  $95     ; %10010101 
+;CR_RXON  EQU  %10010110 ; Vary baudrate clock divisor to 64. 
 CR_RXTX  EQU  $B5
-CR_POLL  EQU  $15     ; bit7=0 (RX interrupt disabled), bits6-5=00 (RTS
+CR_POLL  EQU  $15      ; bit7=0 (RX interrupt disabled), bits6-5=00 (RTS
                        ; low, TX interrupt disabled) - CR_RXON ($95) with
                        ; only the RX-interrupt-enable bit cleared. Used
                        ; only when SERIALPOLL=1; RTS stays permanently
@@ -402,7 +467,7 @@ CR_RTSHI EQU  $D5     ; bits6-5=10: RTS high, TX int disabled, RX int enabled -
                        ; 00 to 10; the ACIA has no combination offering RTS
                        ; high AND TX interrupt enabled simultaneously (bits6-5
                        ; only has 00/01/10/11, and only 01 enables TX interrupt,
-                       ; which always ties RTS low) - EMIT/IRQH's TXCHK must
+                       ; which always ties RTS low) - EMIT/IRQH's OUTCHAR must
                        ; respect this and defer transmission while RTS is high
 
 INHIWATER EQU 48       ; input ring fill level (of 64) at/above which RTS is
@@ -1894,7 +1959,12 @@ BASEDICTSIZE EQU   BASEDICTEND-BASEDICT
 ; ------------------------------------------------------------
 ; SERBUFCLR - zeros all four ring-buffer pointers (INHEAD/
 ; INTAIL/OUTHEAD/OUTTAIL, the four bytes of SERBUF) plus
-; RTSSTATE. BUG FIX: the code this replaced (formerly inline in
+; RTSSTATE, plus (added alongside IRQH's new receiver-error
+; counting) FECOUNT/OVRNCOUNT/PECOUNT, so a cold or warm boot
+; always starts those three counts at zero rather than whatever
+; MAME's/real RAM's arbitrary startup contents happened to hold -
+; same reasoning as the OUTHEAD/OUTTAIL bug fix described below.
+; BUG FIX: the code this replaced (formerly inline in
 ; COLDSTRT) only ever cleared INHEAD/INTAIL (2 of SERBUF's own 4
 ; bytes) - OUTHEAD/OUTTAIL were never zeroed at all, even on a
 ; cold boot, meaning the TX ring buffer could start from
@@ -1913,6 +1983,9 @@ SERBUFCLR: LDX  #SERBUF
            CLR  ,X+
            CLR  ,X
            CLR  RTSSTATE
+           CLR  FECOUNT
+           CLR  OVRNCOUNT
+           CLR  PECOUNT
            RTS
 
 INITSERIAL: JSR  SERBUFCLR
@@ -1989,55 +2062,92 @@ RTSCLONOTX: LDA  #CR_RXON
 RTSCLOUNMASK: ANDCC #$EF
 RTSCLODONE: RTS
 
-IRQH:    LDA   ACIASR
-         BITA  #SR_IRQ
+; ------------------------------------------------------------
+; IRQH - interrupt-driven ACIA (6850) servicing (SERIALPOLL=0).
+; Rewritten by the user for two things at once: (1) the RX and TX
+; halves are now laid out symmetrically (each is: check the
+; relevant status bit, dispatch, single self-contained handler
+; block), and (2) single point of exit - every path, success or
+; not, falls through to IRQDONE/RTI rather than RTI-ing from
+; several different places. Deliberately less byte/cycle-
+; efficient than the previous version in exchange for being
+; easier to review by eye; the user accepted that trade knowingly.
+;
+; Interrupts are automatically masked during an interrupt handler
+; (6809 hardware behavior on IRQ entry), so the composite
+; operations here (ring-buffer head/tail updates, RTSSTATE,
+; ACIACR, the new error counters below) are all safe without any
+; explicit ORCC/ANDCC masking of their own - unlike RTSCHECKLO,
+; which runs from mainline code and does mask explicitly.
+;
+; Receiver-error counting: SR_FE/SR_OVRN/SR_PE (bits 4/5/6 of
+; ACIASR - framing error, overrun, parity error) are only
+; meaningful together with RDRF, and are tested from the SAME
+; ACIASR byte already read into A above, BEFORE ACIADR is read -
+; reading ACIADR clears RDRF and, per the 6850 datasheet, the
+; latched error bits along with it, so they must be inspected
+; first or the information is gone. More than one bit can be set
+; at once, so each is tested and tallied independently into its
+; own counter (FECOUNT/OVRNCOUNT/PECOUNT - see the memory-map
+; comment where they're declared). ACIADR is still read when an
+; error is flagged, to clear the condition and let the next
+; character arrive, but that byte is assumed corrupted and is
+; discarded rather than stored into INBUF.
+; ------------------------------------------------------------
+IRQH:    LDA   ACIASR          ; Get the status.
+
+         BITA  #SR_IRQ         ; Is the ACIA the interrupt source?
          BEQ   IRQDONE
+         BITA  #SR_RDRF        ; Is an incoming character available?
+         BNE   INCHAR
+         BITA  #SR_TDRE        ; Is the slot for an outgoing character available?
+         BNE   OUTCHAR
+                               ; Ignore all other interrupts such as DCD change.
+IRQDONE: RTI                   ; Single point of exit - re-enables interrupts
+                                ; & restores state.
 
-         BITA  #SR_RDRF
-         BEQ   TXCHK
+INCHAR:  BITA  #SR_FE+SR_OVRN+SR_PE  ; Any receiver error flagged?
+         BEQ   INOK                  ; None - character is good, keep it.
+         BITA  #SR_FE                ; Tally each flagged error independently -
+         BEQ   INXFE                 ; more than one bit can be set at once.
+         INC   FECOUNT
+INXFE:   BITA  #SR_OVRN
+         BEQ   INXOVRN
+         INC   OVRNCOUNT
+INXOVRN: BITA  #SR_PE
+         BEQ   INXPE
+         INC   PECOUNT
+INXPE:   LDA   ACIADR          ; Clear RDRF/the error latch; discard the byte -
+         BRA   IRQDONE         ; assumed corrupted, so never stored in INBUF.
 
-         LDB   INHEAD
-         LDA   ACIADR
+INOK:    LDA   ACIADR          ; Get the character from the receiver.
+         LDB   INHEAD          ; Store it in the empty in buffer slot.
          LDX   #INBUF
          STA   B,X
-         INCB
-         ANDB  #INBUFSZ-1
-         CMPB  INTAIL
-         BEQ   IRQDONE
-         STB   INHEAD
-         JSR   RTSCHECKHI
+         INCB                  ; Figure out the new head,
+         ANDB  #INBUFSZ-1      ; pointing to the next the empty in buffer slot.
+         CMPB  INTAIL          ; Would the new head slot meet the tail?
+         BEQ   IRQDONE         ; Don't allow it - buffer full, drop the character.
+         STB   INHEAD          ; New head pointer is OK so store it.
+         JSR   RTSCHECKHI      ; Protect the in buffer from overflow.
          BRA   IRQDONE
 
-TXCHK:   BITA  #SR_TDRE         ; BUG FIX: previously assumed TX by
-                                ; elimination alone (reached here only
-                                ; because RDRF was clear) - explicit now,
-                                ; both for clarity of intent and because
-                                ; the ACIA's own RX-interrupt condition
-                                ; can also fire from a pending DCD change
-                                ; alone, independent of RDRF; without this
-                                ; check, that case would incorrectly fall
-                                ; into the TX-handling code below instead
-                                ; of being safely ignored (this firmware
-                                ; does not otherwise handle DCD at all).
-         BEQ   IRQDONE
-         LDB   OUTTAIL
+OUTCHAR: LDB   OUTTAIL         ; Is the out buffer empty or occupied?
          CMPB  OUTHEAD
          BEQ   TXOFF
-         LDX   #OUTBUF
-         LDA   B,X
-         STA   ACIADR
-         INCB
+         LDX   #OUTBUF         ; The out buffer is occupied.
+         LDA   B,X             ; Get the character from the out buffer.
+         STA   ACIADR          ; Store it in the transmitter.
+         INCB                  ; The tail pointer updated to point to the next character.
          ANDB  #OUTBUFSZ-1
          STB   OUTTAIL
          BRA   IRQDONE
-
-TXOFF:   TST   RTSSTATE
+TXOFF:   TST   RTSSTATE        ; The buffer is empty.
          BNE   IRQDONE         ; RTS is asserted high - leave ACIACR alone,
-                                ; or this would incorrectly drop it back low
+                               ; or this would incorrectly drop it back low
          LDA   #CR_RXON
          STA   ACIACR
-
-IRQDONE: RTI
+         BRA   IRQDONE
 
          ELSE  ; <<<<<>>>>>
 IRQH:    RTI                 ; polling mode (SERIALPOLL=1) - ACIA
@@ -3269,6 +3379,63 @@ EMITWT:  LDB   OUTHEAD
          STA   ACIACR
 EMITNORTS: RTS
 
+; ------------------------------------------------------------
+; ECHOEMIT - non-blocking echo variant of EMIT, used only by
+; ACCEPT's own echo path (below, shared/unconditional code).
+; BUG FIX: ACCEPT previously used the real EMIT to echo received
+; characters back out - EMIT's own spin-wait (EMITWT, above) can
+; block forever if OUTBUF is full while RTS is asserted high,
+; since only IRQH's own TX path ever advances OUTTAIL, and that
+; path requires TX-interrupt to be enabled - which CR_RTSHI
+; (RTSCHECKHI, above) unconditionally disables. Traced precisely:
+; ACCEPT's own ALOOP only calls KEY again after EMIT returns, and
+; RTSCHECKLO (the only thing that ever clears RTSSTATE and
+; restores TX-interrupt-enable) is only ever called from within
+; KEY - so a blocked echo call permanently prevents the one thing
+; that could unblock it, a genuine deadlock, not just a slow
+; path. ECHOEMIT is identical to EMIT except it silently drops
+; the character instead of spinning when OUTBUF is full - the
+; character itself was already correctly received and stored in
+; the input buffer; only its own visual echo is skipped, and only
+; under the kind of sustained overload where this would otherwise
+; deadlock the whole system. A fixed-retry-count compromise was
+; considered and deliberately deferred - not worth the added
+; complexity unless a real problem with dropped echoes actually
+; shows up in practice.
+;
+; Deliberately defined here, inside the SERIALPOLL=0 branch only
+; (with a separate, trivial pass-through defined in the
+; SERIALPOLL=1 branch below) - not as a single, unconditional
+; definition. This code directly manipulates OUTHEAD/OUTTAIL/
+; RTSSTATE and writes CR_RXTX to ACIACR; under SERIALPOLL=1,
+; where IRQH is just an RTI stub, writing CR_RXTX (RX+TX
+; interrupt enabled) would start the ACIA generating real
+; interrupts that nothing ever services or clears - an interrupt
+; storm, not merely a wasted write. ACCEPT's own call site stays
+; simple, unconditional code either way, since both branches
+; provide a same-named, same-signature routine.
+; ------------------------------------------------------------
+ECHOEMIT: PULU  D
+          STB   EMITCH
+          LDB   OUTHEAD
+          INCB
+          ANDB  #OUTBUFSZ-1
+          CMPB  OUTTAIL
+          BEQ   ECHOSKIP        ; OUTBUF full - drop this echo
+                                ; character rather than spin
+          LDX   #OUTBUF
+          LDB   OUTHEAD
+          LDA   EMITCH
+          STA   B,X
+          INCB
+          ANDB  #OUTBUFSZ-1
+          STB   OUTHEAD
+          TST   RTSSTATE
+          BNE   ECHOSKIP
+          LDA   #CR_RXTX
+          STA   ACIACR
+ECHOSKIP: RTS
+
          ELSE  ; <<<<<>>>>>
 ; ------------------------------------------------------------
 ; Polling versions of KEY/KEYQ/EMIT (SERIALPOLL=1) - no ring
@@ -3302,6 +3469,20 @@ EMITWT:  LDA   ACIASR
          LDA   EMITCH
          STA   ACIADR
          RTS
+
+; ------------------------------------------------------------
+; ECHOEMIT - trivial pass-through to EMIT under polling mode.
+; The deadlock ECHOEMIT (above, SERIALPOLL=0 branch) guards
+; against is specific to interrupt-driven RTS/CTS handshaking,
+; which does not exist under SERIALPOLL=1 at all (per this
+; flag's own header comment: "no interrupts, no ring buffers, no
+; RTS/CTS handshaking") - polling-mode EMIT already cannot
+; deadlock this way, so ACCEPT's own call to ECHOEMIT can safely
+; just be the real EMIT here.
+; ------------------------------------------------------------
+ECHOEMIT: JSR   EMIT
+          RTS
+
          ENDC  ; <<<<<<<<<<
 
 ACCEPT:  PULU  D
@@ -3339,7 +3520,7 @@ ALOOP:   JSR   KEY
          CLRA
          LDB   ACH
          PSHU  D
-         JSR   EMIT
+         JSR   ECHOEMIT
          BRA   ALOOP
 
 ABKSP:   LDD   ACNT
@@ -3348,13 +3529,13 @@ ABKSP:   LDD   ACNT
          STD   ACNT
          LDD   #8
          PSHU  D
-         JSR   EMIT
+         JSR   ECHOEMIT
          LDD   #32
          PSHU  D
-         JSR   EMIT
+         JSR   ECHOEMIT
          LDD   #8
          PSHU  D
-         JSR   EMIT
+         JSR   ECHOEMIT
          BRA   ALOOP
 
 ADONE:   LDD   ACNT

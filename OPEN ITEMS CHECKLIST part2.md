@@ -4334,6 +4334,105 @@ this work.
       three await that, and the `SR_RDRF` bug itself obviously awaits
       any response from upstream MAME too.
 
+- [x] **`ECHOEMIT` added - a non-blocking echo variant of `EMIT`, used
+      only by `ACCEPT`'s own character-echo path, fixing the genuine
+      RTS/`KEY` deadlock traced in the prior turn.** `ACCEPT`'s
+      `ALOOP` only ever calls `KEY` again after its own echo call
+      (via `EMIT`) returns, and `RTSCHECKLO` - the only thing that
+      ever clears `RTSSTATE` and restores TX-interrupt-enable once
+      `RTSCHECKHI` has asserted RTS high - is only ever called from
+      within `KEY`. Since `CR_RTSHI` unconditionally disables TX-
+      interrupt (confirmed both by its own comment and by decoding
+      the 6850's own transmitter-control bit field: there is no
+      control-byte combination offering RTS-high with TX-interrupt-
+      enabled simultaneously, a genuine hardware limitation, not an
+      arbitrary choice), a blocked echo call under sustained overload
+      permanently prevented the one thing that could unblock it -
+      dropped characters and a stuck `EMIT` spin-wait were two
+      symptoms of the same single deadlock, not separate problems.
+      `ECHOEMIT` is identical to `EMIT` except it silently drops the
+      character instead of spinning when `OUTBUF` is full - the
+      character itself was already correctly received and stored;
+      only its own echo is skipped, and only under exactly the
+      overload condition that would otherwise deadlock the whole
+      system. A fixed-retry-count compromise was raised and
+      deliberately deferred, per direct instruction - not worth the
+      added complexity unless dropped echoes become a real, observed
+      problem in practice. All 4 of `ACCEPT`'s own echo-purpose
+      `EMIT` calls (the main character echo, plus all three of
+      `ABKSP`'s own backspace/space/backspace visual-erase calls)
+      switched to `ECHOEMIT`; `EMIT` itself is untouched, keeping its
+      real, blocking semantics for ordinary Forth use elsewhere.
+
+      **Caught and fixed a real, self-introduced bug before delivery**:
+      the first draft defined `ECHOEMIT` unconditionally, outside the
+      `SERIALPOLL` gate entirely. Under `SERIALPOLL=1`, where `IRQH`
+      is just an `RTI` stub, that version would still have written
+      `CR_RXTX` (RX+TX interrupt enabled) to `ACIACR` - starting the
+      ACIA generating real interrupts that nothing would ever service
+      or clear, an interrupt storm, not merely a wasted write. Caught
+      by re-checking which symbols the new code actually referenced
+      against which `SERIALPOLL` branch defines them meaningfully,
+      not by trusting the first draft compiled cleanly. Fixed by
+      properly gating two separate definitions: the real, non-
+      blocking version inside the `SERIALPOLL=0` branch, and a
+      trivial pass-through (`JSR EMIT`) inside the `SERIALPOLL=1`
+      branch, where this deadlock cannot occur at all (per
+      `SERIALPOLL`'s own header comment: no RTS/CTS handshaking
+      exists under polling mode in the first place).
+
+- [x] **`BASECODE`/`BASEDICT` shifted a further $1C (28 bytes) each
+      ($DE7A -> $DE5E, $D68F -> $D673), and a `FILL $FF,VECTORS-INITEND`
+      directive added immediately before Section 1 (`VECTORS`) - both
+      the person's own changes, made to allow the `ECHOEMIT` fix's own
+      code-size growth to assemble correctly.** `ECHOEMIT` (above)
+      added a new routine to the interrupt-driven code path, growing
+      its total size enough to need this further shift, on top of the
+      earlier shift from the `COLDSTRT` interrupt-mask fix. The `FILL`
+      directive stops the assembler from omitting the gap between
+      `INITCODE` and `VECTORS` when generating the raw `.bin` file -
+      matching the same, already-established technique used elsewhere
+      in this file (e.g. `FILL $FF,BASEDICT-ROM`) for exactly this
+      kind of boundary. The person's own message expressed hope this
+      specific shift amount would be sufficient, not confirmation that
+      it already assembled cleanly - not claimed as confirmed here for
+      that reason.
+      Both `EQU` value changes applied using the same two-step method
+      established for the earlier `INITCODE` shift (value changed on
+      the existing line first, a new "UPDATE:" note appended
+      separately at the true end of each constant's own, already-long
+      history-chain comment) - specifically to avoid repeating the
+      real duplicate-line/deleted-line mistake made during that
+      earlier edit. Caught and fixed a smaller mistake of the same
+      general kind while applying it this time too: an in-progress
+      edit to `BASECODE`'s own comment briefly dropped one value
+      ($DFEA) from its history list and broke the surrounding
+      sentence's own grammar - caught immediately by re-reading the
+      full, current comment text after each partial edit rather than
+      assuming a single-line change couldn't have wider effects, and
+      corrected before moving on to `BASEDICT`.
+
+      Verified (all three entries together): exactly one `BASECODE`
+      line and exactly one `BASEDICT` line confirmed present (directly
+      checking for the duplication mistake from the earlier `INITCODE`
+      edit, not just assuming the same care this time was sufficient
+      on its own); `IFEQ`/`ENDC` balance unaffected (8/8, unchanged);
+      zero column-1 mnemonic issues; `ECHOEMIT` confirmed to resolve
+      to exactly one definition under each `SERIALPOLL` build, with
+      the `SERIALPOLL=1` version directly confirmed to be the trivial
+      pass-through and to reference neither `OUTHEAD` nor `CR_RXTX` at
+      all (closing off the exact cross-contamination risk the caught
+      mistake above would have caused). Full 38-scenario matrix re-run
+      against the combined, simulated source - all pass. Byte-exact
+      split-file reassembly confirmed. Not yet confirmed via a real
+      `lwasm`/MAME run on this specific combination - the person's
+      own message expressed hope the new shift amount would prove
+      sufficient, which this session cannot itself verify. `ECHOEMIT`'s
+      own *behavioral* correctness (that it actually breaks the
+      deadlock in practice, under real sustained paste-burst load) is
+      a further, separate thing still awaiting confirmation beyond
+      assembly succeeding at all.
+
 ## Structural duplication (identified, some resolved, some not)
 
 - [x] `:`/`CREATE`/`VARIABLE`'s header-building — resolved via `HEADER`
