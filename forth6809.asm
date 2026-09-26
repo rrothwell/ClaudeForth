@@ -385,43 +385,6 @@ APPVARSEND EQU APPDICT-1 ; was APPVARS+8000 ($215B) - now derives
 TIBBUF   EQU  $0106      ; was $018A
 TIBBUFL  EQU  80         ; $50, next free address is 
 
-;FECOUNT   EQU  $01DA   ; framing-error count, incremented by IRQH
-;OVRNCOUNT EQU  $01DB   ; overrun count, incremented by IRQH
-;PECOUNT   EQU  $01DC   ; parity-error count, incremented by IRQH
-
-
-SERBUFCTL  EQU  $0176
-SERBUF     EQU  $0180     ; was $0200 - USER0/USER1 removed entirely (see
-                         ; below); the 4 buffers (SERBUF's 4-byte index
-                         ; block, INBUF, OUTBUF, TIBBUF) still sit
-                         ; contiguously right after MVSCRATCH, with no
-                         ; gap - WORDBUF and SIBUF, which used to sit
-                         ; right after TIBBUF and WORDBUF respectively
-                         ; (closing what was once an 11-byte gap,
-                         ; $02F5-$02FF, in an earlier address scheme),
-                         ; are now both retired (see above) rather than
-                         ; part of this contiguous run
-; INHEAD      EQU  SERBUF-1
-; INTAIL      EQU  SERBUF-2
-; ISRTS       EQU  SERBUF-3   ; $00 = RTS Low (Clear), $FF = RTS High (Throttle)
-INACCEPT      EQU $00
-INREJECT      EQU $FF
-
-; OUTHEAD     EQU  SERBUF-4
-; OUTTAIL     EQU  SERBUF-5
-; OUTACTIVITY EQU  SERBUF-6  ; $00 = Idle, $FF = Active
-OUTIDLE       EQU $00
-OUTBUSY       EQU $FF
-
-; FECOUNT   EQU  SERBUF-5  ; framing-error count, incremented by IRQH
-; OVRNCOUNT EQU  SERBUF-6  ; overrun count, incremented by IRQH
-; PECOUNT   EQU  SERBUF-7  ; parity-error count, incremented by IRQH
-
-INBUFSZ  EQU  64
-OUTBUFSZ EQU  64
-;INBUF    EQU  SERBUF+4
-;OUTBUF   EQU  SERBUF+4+INBUFSZ
-
 GLOBALS  EQU  $0000
 
 SP0      EQU  DSTACK+1
@@ -482,7 +445,7 @@ SR_PE    EQU %01000000  ; ($40) (Parity Error)
 CR_RESET  EQU %00000011 ; ($03) (Master Reset mode)
 CR_BASE   EQU %10010101 ; ($95) (Rx Int Enabled, 8-N-1, /16 Clock)
 CR_RXON   EQU %10010101 ; ($95) (Rx Int Enabled, 8-N-1, /16 Clock)
-CR_RXTX   EQU %10110101 | ; ($B5) (Rx Int Enabled, Tx Int/RTS Control, 8-N-1, /16 Clock)
+CR_RXTX   EQU %10110101 ; ($B5) (Rx Int Enabled, Tx Int/RTS Control, 8-N-1, /16 Clock) -
 CR_POLL   EQU %00010101 ; ($15) (All Ints Disabled, Polling mode, 8-N-1, /16 Clock)
 CR_RTSHI  EQU %11010101 ; ($D5) (RTS High, Transmit Interrupt Disabled, 8-N-1, /16 Clock)                    
 
@@ -505,11 +468,35 @@ CR_RTSHI  EQU %11010101 ; ($D5) (RTS High, Transmit Interrupt Disabled, 8-N-1, /
 ; which always ties RTS low) - EMIT/IRQH's OUTCHAR must
 ; respect this and defer transmission while RTS is high
 
+; Ring buffer control
+SERBUFCTL  EQU  $0176
+SERBUF     EQU  $0180     ; was $0200 - USER0/USER1 removed entirely (see
+                         ; below); the 4 buffers (SERBUF's 4-byte index
+                         ; block, INBUF, OUTBUF, TIBBUF) still sit
+                         ; contiguously right after MVSCRATCH, with no
+                         ; gap - WORDBUF and SIBUF, which used to sit
+                         ; right after TIBBUF and WORDBUF respectively
+                         ; (closing what was once an 11-byte gap,
+                         ; $02F5-$02FF, in an earlier address scheme),
+                         ; are now both retired (see above) rather than
+                         ; part of this contiguous run
+INBUFSZ  EQU  64
+OUTBUFSZ EQU  64
 INHIWATER EQU 48         ; input ring fill level (of 64) at/above which RTS is
                          ; asserted high, telling the remote device to pause
 INLOWATER EQU 16         ; fill level at/below which RTS is reasserted low;
                          ; deliberately well below INHIWATER (hysteresis) so
                          ; RTS doesn't chatter right at a single threshold
+
+; Input control
+; /RTS flag states
+INACCEPT      EQU $00
+INREJECT      EQU $FF
+
+; Output control
+; Transmit buffer interrupt active flag states.
+OUTIDLE       EQU $00
+OUTBUSY       EQU $FF
 
 ; ------------------------------------------------------------
 ; Flag / opcode constants
@@ -736,7 +723,8 @@ FILLCHR  EQU  MVSRC
 
 INHEAD      RMB  1
 INTAIL      RMB  1
-INREQUEST   RMB  1  ; $00 = RTS Low (Clear), $FF = RTS High (Throttle) 
+; RTSSTATE -> INREQUEST ?
+RTSSTATE   RMB  1  ; $00 = RTS Low (Clear), $FF = RTS High (Throttle) 
 
 OUTHEAD     RMB  1
 OUTTAIL     RMB  1
@@ -745,9 +733,6 @@ OUTACTIVITY RMB  1  ; $00 = Idle, $FF = Busy (tx_active)
 FECOUNT     RMB  1  ; framing-error count, incremented by IRQH
 OVRNCOUNT   RMB  1  ; overrun count, incremented by IRQH
 PECOUNT     RMB  1  ; parity-error count, incremented by IRQH
-
-RTSSTATE   RMB   1  ; offset $FF - 0 = RTS low (normal), nonzero = RTS
-                    ; high (paused) - see CR_RTSHI.
                       
             ORG   SERBUF    ; $180, a 64 byte boundary.
 
@@ -2047,12 +2032,11 @@ BASEDICTSIZE EQU   BASEDICTEND-BASEDICT
 
 SERBUFCLR:  CLR  INHEAD
             CLR  INTAIL
-            CLR  INREQUEST    ; $00 = RTS Low (Clear)
+            CLR  RTSSTATE    ; $00 = RTS Low (Clear)
             CLR  OUTHEAD
             CLR  OUTTAIL
             CLR  OUTACTIVITY  ; $00 = Idle
 
-            CLR  RTSSTATE
 
             CLR  FECOUNT
             CLR  OVRNCOUNT
@@ -2108,17 +2092,18 @@ UPDATE_RTS:
             TST   RTSSTATE
             BNE   SET_RTS_HI_TX_OFF      
 
-            TST   OUTACTIVITY
-            BEQ   SET_RTS_LO_TX_OFF    
+            TST   OUTACTIVITY		; Is active?
+            BEQ   SET_RTS_LO_TX_OFF ; No! Disable Transmit interrupt.
 
-            LDA   #CR_RXTX        ; RTS = Low, Tx Interrupt = Enabled
-            BRA   WRITE_CR
+                                  ; $B5/%1011_0101
+            LDA   #CR_RXTX        ; Yes! Accept input & transmit output
+            BRA   WRITE_CR        ; RTS = Low, Tx Interrupt = Enabled
 
-SET_RTS_LO_TX_OFF:
+SET_RTS_LO_TX_OFF:                ; $95/%10010101
             LDA   #CR_RXON        ; RTS = Low, Tx Interrupt = Disabled
-            BRA   WRITE_CR
+            BRA   WRITE_CR        ; Why is OUTACTIVITY not updated here?
 
-SET_RTS_HI_TX_OFF:
+SET_RTS_HI_TX_OFF:                ; $D5/%1101_0101
             LDA   #CR_RTSHI       ; RTS = High, Tx Interrupt = Disabled
             CLR   OUTACTIVITY     ; Interrupts are hardware-disabled; clear state
 WRITE_CR:
@@ -2182,8 +2167,8 @@ FLUSHED:
 ;        none 
 ; ------------------------------------------------------------
 PUTCHAR:
-            PSHS  CC,U              
-            ORCC  #$50              ; Enter Critical Section
+            PSHS  CC,X              
+            ORCC  #$50              ; Enter Critical Section. Disable IRQ & FIRQ
 
             LDB   OUTHEAD           ; Is buffer full?
             INCB
@@ -2199,34 +2184,51 @@ PUTCHAR:
             ANDB  #OUTBUFSZ-1
             STB   OUTHEAD
 
-            TST   INREQUEST
-            BEQ   CHK_INT_PATH
-            JSR   FLUSHOUTBUFFER    ; Fallback & transmit by polling.
+            TST   RTSSTATE          ; Is RTS currently low (chars still being accepted)?
+            BEQ   CHK_INT_PATH      ; Yes! Interrupt-driven TX is still available.
+
+            ; RTS is high (REJECT): CR_RTSHI hardware-disables the TX
+            ; interrupt, so nothing will ever drain OUTBUF except this
+            ; polling fallback. BUG FIX: FLUSHOUTBUFFER can take until
+            ; the whole OUTBUF drains (up to ~64 chars, ~5.5ms at 115200
+            ; baud) - running that under PUTCHAR's own ORCC #$50 masked
+            ; IRQ+FIRQ for the entire span, which is exactly why RTS
+            ; went high in the first place: the receiver was under
+            ; pressure, and masking IRQ here stops PUTCHAR's own INCHAR
+            ; path from servicing it, guaranteeing overruns. Unmask
+            ; around the call - FLUSHOUTBUFFER only touches OUTHEAD/
+            ; OUTTAIL/ACIACR, none of which IRQH's RX path (INHEAD/
+            ; INTAIL) touches, so there is no correctness reason to
+            ; keep the receiver blind while this runs.
+            ANDCC #$AF              ; unmask IRQ+FIRQ for the flush only
+            JSR   FLUSHOUTBUFFER    ; Fallback to transmit by polling.
+            ORCC  #$50              ; re-mask - PUT_EXIT below still
+                                     ; expects the critical section active
 
             BRA   PUT_EXIT
 
 ; Re-start the interrupt driven character pump,
 ; priming the pump by transmitting a character.
 CHK_INT_PATH:
-            TST   OUTACTIVITY       ; Should the interrupt handler be transmitting?
-            BNE   PUT_EXIT          ; No! Exit.
+            TST   OUTACTIVITY       ; Is the interrupt handler transmitting?
+            BNE   PUT_EXIT          ; Yes! Exit, no action required.
 
-            LDA   #OUTBUSY          ; Restart interrupt handler transmission
-            STA   OUTACTIVITY
-
+                                    ; No! Restart.
             LDX   #OUTBUF           ; Pull character from the out buffer.
             LDB   OUTTAIL
             LDA   B,X 
-            STA   ACIADR            ; Transmit the character.
+            STA   ACIADR            ; Load the char for transmission.
 
             INCB                    ; Update the tail pointer 
             ANDB  #OUTBUFSZ-1       ; to point to the next character.
             STB   OUTTAIL
 
+            LDA   #OUTBUSY          ; Flag restart of transmit interrupt handler.
+            STA   OUTACTIVITY
             JSR   UPDATE_RTS        ; Turn on the Tx interrupt.       
 
 PUT_EXIT:
-            PULS  CC,U,PC           ; Leaving the critical section, 
+            PULS  CC,X,PC           ; Leaving the critical section, 
                                     ; by restoring the CC.
 ; ------------------------------------------------------------
 ; GETCHAR
@@ -2244,11 +2246,26 @@ GETCHAR:
             LDX   #INBUF           ; Pull character from the out buffer.
 			LDA   B,X 
 
-            INCB                    ; Update the tail pointer 
+            INCB                    ; Update the tail pointer
             ANDB  #INBUFSZ-1       ; to point to the next character.
             STB   INTAIL
-        
-            JSR   CHKWATERLEVEL 
+
+            ; BUG FIX: CHKWATERLEVEL reads-then-writes RTSSTATE/
+            ; OUTACTIVITY and can write ACIACR (via UPDATE_RTS) - state
+            ; IRQH's own INCHAR path also reads and writes, by calling
+            ; CHKWATERLEVEL too (safely, from ISR context, where
+            ; interrupts are already hardware-masked). GETCHAR is only
+            ; ever called from mainline code (KEY), unmasked, so without
+            ; masking here an interrupt landing mid-call could race this
+            ; call against IRQH's own concurrent one, leaving RTSSTATE
+            ; corrupted or ACIACR written twice with conflicting values.
+            ; Masked here (IRQ only, matching RTSCHECKLO's own existing
+            ; discipline below) rather than inside CHKWATERLEVEL itself,
+            ; since CHKWATERLEVEL's ISR-context caller must NOT unmask
+            ; IRQ before its own RTI.
+            ORCC  #$10
+            JSR   CHKWATERLEVEL
+            ANDCC #$EF
 
             ANDCC #$FE               ; Carry flag %0 = valid character
             RTS
@@ -2267,22 +2284,31 @@ GET_NO_CHAR:
 ; byte combination offering RTS-high with TX-interrupt-enabled
 ; simultaneously (see CR_RTSHI's comment).
 ; ------------------------------------------------------------
-RTSCHECKLO: JSR  INFILL
+RTSCHECKLO: 
+            ORCC #$10              ; mask IRQ for the critical section
+
+			JSR  INFILL
             CMPA #INLOWATER
             BHI  RTSCLODONE
             TST  RTSSTATE
             BEQ  RTSCLODONE       ; already low - nothing to do
-            ORCC #$10              ; mask IRQ for the critical section
-            CLR  RTSSTATE
-            LDB  OUTTAIL
+
+
+            CLR  RTSSTATE          ; Set flag asserting acceptance of chars
+
+            LDB  OUTTAIL           ; Check if chars are available.  
             CMPB OUTHEAD
-            BEQ  RTSCLONOTX
-            LDA  #CR_RXTX
-            STA  ACIACR
+            BEQ  RTSCLONOTX        ; No! Just configure the ACIA to accept chars.
+
+            LDA  #CR_RXTX          ; Yes! Configure the ACIA to accept chars.
+            STA  ACIACR            ; & to generate transmit slot available interrupts.
             BRA  RTSCLOUNMASK
-RTSCLONOTX: LDA  #CR_RXON
+
+RTSCLONOTX: LDA  #CR_RXON          ; Configure the ACIA to accept chars.
             STA  ACIACR
+
 RTSCLOUNMASK: ANDCC #$EF
+
 RTSCLODONE: RTS
 
 ; ------------------------------------------------------------
@@ -2317,52 +2343,52 @@ RTSCLODONE: RTS
 ; character arrive, but that byte is assumed corrupted and is
 ; discarded rather than stored into INBUF.
 ; ------------------------------------------------------------
-IRQH:    LDA   ACIASR          ; Get the status.
+IRQH:       LDA   ACIASR            ; Get the status.
 
-         BITA  #SR_IRQ         ; Is the ACIA the interrupt source?
-         BEQ   IRQDONE
-         BITA  #SR_RDRF        ; Is an incoming character available?
-         BNE   INCHAR
-         BITA  #SR_TDRE        ; Is the slot for an outgoing character available?
-         BNE   OUTCHAR
-                               ; Ignore all other interrupts such as DCD change.
-IRQDONE: RTI                   ; Single point of exit - re-enables interrupts
-                                ; & restores state.
+            BITA  #SR_IRQ           ; Is the ACIA the interrupt source?
+            BEQ   IRQDONE0          ; No! Just exit.
+            BITA  #SR_RDRF          ; Is an incoming character available?
+            BNE   INCHAR
+            BITA  #SR_TDRE          ; Is the slot for an outgoing character available?
+            BNE   OUTCHAR
+                                    ; Ignore all other interrupts such as DCD change.
+IRQDONE0:  RTI                      ; Single point of exit - re-enables interrupts
+                                    ; & restores state.
 
 INCHAR:
-         LDB   ACIADR                ; Clear RDRF with any error flag.
-         BITA  #SR_FE+SR_OVRN+SR_PE  ; Any receiver error flagged?
-         BEQ   INOK                  ; No! - character is good, keep it.
+            LDB   ACIADR               ; Get the char & clear RDRF & error flags.
+            BITA  #SR_FE+SR_OVRN+SR_PE ; Any receiver error flagged?
+            BEQ   INOK                 ; No! - character is good, keep it.
                                      
-         BITA  #SR_FE                ; Yes! char is corrupted, discard it.
-         BEQ   INXFE                 ; Tally each flagged error independently -
-         INC   FECOUNT               ; more than one bit can be set at once.
-INXFE:   BITA  #SR_OVRN
-         BEQ   INXOVRN
-         INC   OVRNCOUNT
-INXOVRN: BITA  #SR_PE
-         BEQ   INXPE
-         INC   PECOUNT 
-INXPE:   BRA   IRQDONE         
+            BITA  #SR_FE               ; Yes! char is corrupted, discard it.
+            BEQ   INXFE                ; Tally each flagged error independently -
+            INC   FECOUNT              ; more than one bit can be set at once.
+INXFE:      BITA  #SR_OVRN
+            BEQ   INXOVRN
+            INC   OVRNCOUNT
+INXOVRN:    BITA  #SR_PE
+            BEQ   INXPE
+            INC   PECOUNT 
+INXPE:      RTI         
 
-INOK:    TFR   B,A             ; Transfer good character from the receiver.
-         LDX   #INBUF          ; Store it in the empty in buffer slot.
+INOK:    TFR   B,A                  ; Transfer good character from the receiver.
+         LDX   #INBUF               ; Store it in the empty in buffer slot.
          LDB   INHEAD
          STA   B,X
          INCB                  ; Figure out the new head,
          ANDB  #INBUFSZ-1      ; pointing to the next the empty in buffer slot.
          CMPB  INTAIL          ; Would the new head slot meet the tail?
-         BEQ   IRQDONE         ; Don't allow it - buffer full, drop the character.
+         BEQ   IRQDONE1        ; Don't allow it - buffer full, drop the character.
          STB   INHEAD          ; New head pointer is OK so store it.
          ;JSR   RTSCHECKHI     ; Protect the in buffer from overflow.
          JSR   CHKWATERLEVEL   ; Protect the in buffer from overflow.
-         BRA   IRQDONE
+IRQDONE1: RTI
 
-OUTCHAR:
-         ; LDA   ACIASR        ; TODO: Experiment with this later
-         ; BITA  #SR_TDRE
-         ; BEQ IRQDONE
-         LDB   OUTTAIL         ; Is the out buffer empty?
+         ; LDA   ACIASR          ; Recheck if the transmitter is ready.
+         ; BITA  #SR_TDRE        ; after handling the received character.
+         ; BEQ IRQDONE2          ; Yes! Process the char.
+
+OUTCHAR: LDB   OUTTAIL         ; Is the out buffer empty?
          CMPB  OUTHEAD
          BEQ   TXOFF           ; Yes! Stop transmitting.
 
@@ -2373,16 +2399,16 @@ OUTCHAR:
          INCB                  ; Update the tail pointer pointing to the next char.
          ANDB  #OUTBUFSZ-1
          STB   OUTTAIL
-         BRA   IRQDONE
+IRQDONE2  RTI
 
 TXOFF:   ; TST   RTSSTATE        ; The buffer is empty.
-         ; BNE   IRQDONE         ; RTS is asserted high - leave ACIACR alone,
+         ; BNE   IRQDONE3         ; RTS is asserted high - leave ACIACR alone,
                                ; or this would incorrectly drop it back low
          ; LDA   #CR_RXON
          ; STA   ACIACR
          CLR   OUTACTIVITY         
          JSR   UPDATE_RTS         
-         BRA   IRQDONE
+IRQDONE3 RTI
 
          ELSE  ; <<<<<>>>>>
 
@@ -3586,13 +3612,22 @@ X_KEY:     LDA   INHEAD
 ; KEY ( -- char )
 ; ------------------------------------------------------------
 KEY:
-            TST   INREQUEST         ; Is throttling?
+
+            TST   RTSSTATE         ; Is throttling?
             BEQ   TRY_READ          ; No! Retrieve character from input buffer.
 
-            ORCC  #$50              ; Yes! Enter critical section
-            JSR   FLUSHOUTBUFFER    ; Drain the output buffer, 
-                                    ; by transmitting chars.
-            ANDCC #$AF              ; Exit critical section
+            ; BUG FIX: this used to mask IRQ (ORCC #$10) around the
+            ; FLUSHOUTBUFFER call. FLUSHOUTBUFFER can spin until the
+            ; whole OUTBUF drains (up to ~5.5ms at 115200 baud), and
+            ; masking IRQ for that whole span blocks IRQH's own INCHAR
+            ; path from servicing the receiver - precisely while RTS
+            ; is high because the receiver is already under pressure,
+            ; which is what was causing the returned overrun errors.
+            ; FLUSHOUTBUFFER only touches OUTHEAD/OUTTAIL/ACIACR, not
+            ; INHEAD/INTAIL, so there's no correctness reason to mask
+            ; the receiver interrupt here at all.
+            JSR   FLUSHOUTBUFFER    ; Drain the output buffer,
+                                    ; by transmitting all chars.
 
 TRY_READ:
             JSR   GETCHAR           ; Is char available in input buffer.
@@ -3602,18 +3637,25 @@ TRY_READ:
             TFR   A,B               ; Move char result to Reg B (LSB of D)
             CLRA                    ; Clear MSB.
             PSHU  D					; Return result on data stack.
+
             RTS                     
 
 ; ------------------------------------------------------------
 ; KEY? ( -- flag )
 ; ------------------------------------------------------------
 KEYQ:  
+            ; ORCC  #$10              ; Yes! Enter critical section
+
             LDA   INHEAD            ; Characters received?
             CMPA  INTAIL
+
+            ; ANDCC #$EF              ; Exit critical section
+
             BNE   KQTRUE            ; Yes!
 
             LDD   #FALSEV           ; No! Return false result.
             PSHU  D
+
             RTS
 
 KQTRUE:     
@@ -7530,7 +7572,7 @@ BASEND:
 ; ============================================================
          ORG   INITCODE       ; INITCODE is $FFA9 (was $FFA2, before that $FFA0, before that literal $FFC0)
 COLDSTRT:
-         ORCC  #$50
+         ORCC  #$50        ; Disable IRQ & FIRQ
          LDS   #RSTACK+1
          LDU   #DSTACK+1
          CLRA
@@ -7544,7 +7586,9 @@ CLRGLOB: CLR   ,X+
 
          JSR   INITSERIAL
 
-         ANDCC #$AF      ; BUG FIX: confirmed via MAME - COLDSTRT's own
+         ANDCC #$AF       ; Enable IRQ & FIRQ   
+
+                         ; BUG FIX: confirmed via MAME - COLDSTRT's own
                          ; ORCC #$50 above (masking IRQ+FIRQ during the
                          ; critical early setup: stack pointers, DP,
                          ; GLOBALS, SERBUF) was never paired with a
@@ -7603,7 +7647,7 @@ CLRGLOB: CLR   ,X+
 
          JMP   COLD
 
-WARM:    ORCC  #$50
+WARM:    ORCC  #$50       ; Disable IRQ & FIRQ
          CLRA
          TFR   A,DP
          LDU   #SP0
@@ -7633,7 +7677,7 @@ WARM:    ORCC  #$50
          PSHU  D
          JSR   TYPE
          ANDCC #$AF
-         JMP   ABORT
+         JMP   ABORT      ; Enable IRQ & FIRQ
 
 WARMMSG: FCC   "  warm"
 WARMMSGL EQU   *-WARMMSG
