@@ -98,17 +98,45 @@ USROMEND EQU  VECTORS-1 ; Usable ROM end. Corrected: 1 before VECTORS'
                          ; comparisons or as a memory operand, unlike
                          ; the previous $10000 definition
 VECTORS  EQU  $FFF0
-INITCODE EQU  $FFA9     ; was $FFA2 - shifted up 7 bytes to reduce the
-                         ; overlap with BASECODE's nominal end ($FFB4)
-                         ; from 19 bytes to 12 - improved, not resolved.
-                         ; CORRECTED: INITCODE's real content is 71
-                         ; bytes ($47), confirmed by an actual assembler
-                         ; run - not the 78-byte manual estimate relied
-                         ; on for several turns, which was wrong by 7
-                         ; bytes. At $FFA9, real content now ends at
-                         ; $FFEF, exactly one byte below VECTORS - a
-                         ; genuine, assembler-confirmed exact fit, zero
-                         ; gap, zero overlap. A prior turn claimed this
+INITCODE EQU  $FFA4     ; was $FFA9 - shifted down 3 bytes, per
+                         ; explicit request, to make room for the
+                         ; UNITTESTS call site's own fix (below):
+                         ; that site now always emits exactly 3 bytes
+                         ; (either the real JSR TSTRUNNER, or 3 NOPs
+                         ; as a placeholder when the test framework is
+                         ; excluded), so COLDSTRT's total size no
+                         ; longer depends on UNITTESTS at all -
+                         ; previously it did (JSR TSTRUNNER only
+                         ; existed when included, with nothing emitted
+                         ; when excluded - using this file's original,
+                         ; since-reversed UNITTESTS convention at the
+                         ; time this fix was made), meaning INITCODE's
+                         ; fixed position here could be correct for
+                         ; one setting and wrong for the other, risking
+                         ; an overflow into VECTORS when tests were
+                         ; compiled in. Prior
+                         ; history: was $FFA2 - shifted up 7 bytes to
+                         ; reduce the overlap with BASECODE's nominal
+                         ; end ($FFB4) from 19 bytes to 12 - improved,
+                         ; not resolved. CORRECTED: INITCODE's real
+                         ; content is 71 bytes ($47), confirmed by an
+                         ; actual assembler run - not the 78-byte
+                         ; manual estimate relied on for several
+                         ; turns, which was wrong by 7 bytes. That
+                         ; 71-byte figure was measured with the old
+                         ; structure (test framework excluded emitting
+                         ; 0 bytes for
+                         ; the TSTRUNNER call site) - with the fix
+                         ; above, that site now always emits 3 bytes
+                         ; either way, so real content is reasoned to
+                         ; be 74 bytes now (71+3), not yet re-measured
+                         ; by a real assembler run. At $FFA6, that
+                         ; reasoned end is $FFEF - unchanged, since
+                         ; the 3-byte shift in INITCODE's own start
+                         ; and the 3-byte growth in content offset
+                         ; exactly - still one byte below VECTORS, if
+                         ; the reasoning above holds; confirm on
+                         ; assembly. A prior turn claimed this general
                          ; shift created a new 7-byte VECTORS overlap;
                          ; that was based on the incorrect 78-byte
                          ; estimate and was wrong - retracted here. The
@@ -116,26 +144,69 @@ INITCODE EQU  $FFA9     ; was $FFA2 - shifted up 7 bytes to reduce the
                          ; nominal budget) is separate and unaffected
                          ; by this correction; not resolved. See the
                          ; open-items checklist.
-BASECODE EQU  $DEEA     ; was $DF6A ($DF8A, $DFCA, $DFDA, $DFEA, $E02A
-                         ; before that) - shifted down $80 (128 bytes)
-                         ; this time, a larger jump than the prior
-                         ; $40 and $20 shifts, since both of those
-                         ; still proved insufficient (confirmed by
-                         ; trial and error against the real
-                         ; assembler). The exact gap against BASEDICT
-                         ; below and the exact overlap against
-                         ; INITCODE above depend on each section's
-                         ; real, current assembled size - not
-                         ; recomputed here without a real assembler
-                         ; run; confirm on assembly/MAME rather than
-                         ; trust a static estimate. See the open-items
-                         ; checklist.
-BASEDICT EQU  $D6FF     ; was $D77F ($D79F, $D7DF, $D7EF, $D7FF, $D83F
-                         ; before that) - shifted down $80 (128 bytes)
-                         ; this time, same reason as BASECODE above.
-                         ; Not recomputed against real, current
-                         ; assembled sizes here - confirm on
-                         ; assembly/MAME. See the open-items checklist.
+                         ;
+                         ; UPDATE: shifted down a further 2 bytes,
+                         ; $FFA6 -> $FFA4, confirmed working by the
+                         ; user against a real assembler run. Reason:
+                         ; COLDSTRT's own interrupt-mask bug fix
+                         ; (ANDCC #$AF, added right after JSR
+                         ; INITSERIAL - see COLDSTRT's own comment)
+                         ; is a 2-byte instruction, growing COLDSTRT's
+                         ; total size by exactly that much; INITCODE's
+                         ; own fixed budget against VECTORS needed the
+                         ; same 2 bytes back to stay within it.
+BASECODE EQU  $DE5E     ; was $DE7A ($DEEA, $DF6A, $DF8A, $DFCA, $DFDA,
+                         ; $DFEA, $E02A before that) - shifted down a
+                         ; further $70 (112 bytes) this time. Unlike every
+                         ; earlier shift in this chain (each resolving
+                         ; a memory-map overlap from reorganizing
+                         ; other regions), this one is for a different
+                         ; reason: SERIALPOLL=0 (interrupt-driven ACIA
+                         ; I/O, IRQH servicing INBUF/OUTBUF ring
+                         ; buffers with RTS/CTS flow control) is
+                         ; genuinely larger code than the SERIALPOLL=1
+                         ; polling path it replaces, and the two are
+                         ; mutually exclusive (IFEQ/ELSE/ENDC on the
+                         ; same flag, never both assembled at once) -
+                         ; but BASECODE's own budget was only ever
+                         ; sized against the polling path's smaller
+                         ; footprint, so selecting SERIALPOLL=0
+                         ; collided against BASEDICT below. Value
+                         ; provided by the user directly to resolve
+                         ; that collision; not independently re-
+                         ; derived or re-verified here. Confirm on
+                         ; assembly/MAME rather than trust a static
+                         ; estimate. See the open-items checklist.
+                         ;
+                         ; UPDATE: shifted down a further $1C (28
+                         ; bytes), $DE7A -> $DE5E, confirmed working
+                         ; by the user against a real assembler run.
+                         ; Reason: the ECHOEMIT non-blocking-echo fix
+                         ; (see ACCEPT's own comment) added a new
+                         ; routine to the interrupt-driven code path,
+                         ; growing its total size by that much; also
+                         ; added, in the same change: a FILL directive
+                         ; right before SECTION 1 (VECTORS), to stop
+                         ; the assembler from omitting the gap between
+                         ; INITCODE and VECTORS when generating the
+                         ; raw .bin file.
+BASEDICT EQU  $D673     ; was $D68F ($D6FF, $D77F, $D79F, $D7DF, $D7EF,
+                         ; $D7FF, $D83F before that) - shifted down
+                         ; the same $70 (112 bytes) as BASECODE above,
+                         ; for the same reason (making room for
+                         ; SERIALPOLL=0's larger, interrupt-driven
+                         ; code path - see BASECODE's own comment for
+                         ; the full explanation). Value provided by
+                         ; the user directly; not independently re-
+                         ; derived or re-verified here. Confirm on
+                         ; assembly/MAME rather than trust a static
+                         ; estimate. See the open-items checklist.
+                         ;
+                         ; UPDATE: shifted down the same further $1C
+                         ; (28 bytes) as BASECODE above, $D68F -> $D673,
+                         ; same reason and same confirmation - see
+                         ; BASECODE's own comment for the full
+                         ; explanation.
 INOUT    EQU  $C000     ; was $DF00 - moved so INOUT (256 B) sits
                          ; directly below USROMSTRT ($C100), contiguous,
                          ; no gap. This also resolves the INOUT portion
@@ -306,8 +377,23 @@ RP0      EQU  RSTACK+1
 ; control via INFILL/RTSCHECKHI/RTSCHECKLO. Uses LWASM's IFEQ/
 ; ELSE/ENDC (a numeric-expression test, not IFDEF/IFNDEF, since
 ; this is a value to compare, not a symbol's mere presence).
+;
+; Was a fixed EQU, meaning it could only ever be changed by
+; editing this file directly - unlike UNITTESTS/TSTSELECTOR
+; below, a plain EQU cannot be overridden via lwasm's own -D
+; command-line option (EQU is a one-time, permanent binding;
+; -D's own documented behavior is to predefine a symbol "as
+; though...defined using the SET directive," which a later EQU
+; for the same symbol does not honor). Switched to the same
+; IFNDEF/SET/ENDC pattern as UNITTESTS/TSTSELECTOR immediately
+; below for exactly that reason: SERIALPOLL can now be selected
+; at build time with -DSERIALPOLL=0 (interrupt-driven) or
+; -DSERIALPOLL=1 (polling, same as omitting -D entirely, since 1
+; remains the fallback default here).
 ; ------------------------------------------------------------
-SERIALPOLL EQU 1
+           IFNDEF SERIALPOLL
+SERIALPOLL SET 1   ; Fallback default value if -D wasn't passed.
+           ENDC
 
 ; ------------------------------------------------------------
 ; ACIA (6850) constants - the chip sits at INOUT+8, not at the
@@ -350,6 +436,9 @@ INLOWATER EQU 16        ; fill level at/below which RTS is reasserted low;
 TRUEV    EQU  $FFFF
 FALSEV   EQU  $0000
 OPJSR    EQU  $BD
+OPRTS    EQU  $39      ; used by section 3.8's control-flow test
+                         ; harness to terminate each compiled test
+                         ; snippet, compiled via CCOMMA
 RTSOPC   EQU  $39
 
 ; ------------------------------------------------------------
@@ -561,151 +650,35 @@ FILLCHR  EQU  MVSRC
 ; opcode offsets) for the MAME emulation and flash memory burn.
          ORG USROMSTRT
 
-; ============================================================
-; UNIT TEST FRAMEWORK
-;
-; Self-checking assembly-level tests for this ROM's own
-; primitives, gated by UNITTESTS below and run once at cold
-; boot, right after INITSERIAL and before COLD (so U/S are
-; already valid - COLDSTRT sets them at its very start - but
-; nothing else has been initialized yet: APPVARS/DPHERE/
-; CODEHERE/LATEST/BASE all still hold whatever COLD is about to
-; set them to). Lives here, in previously-unused ROM space right
-; after INOUT's shadow, since this was pure FILL padding before
-; this existed - UNITTESTS=1 removes it entirely and this block
-; reverts to exactly that padding, computed automatically below
-; via the ROM label rather than a fixed byte count, so it's
-; correct either way without needing to be hand-adjusted.
-;
-; Each test is independent by construction: it saves the data
-; stack pointer (U) before touching anything, and unconditionally
-; restores it at the end regardless of pass or fail - so one
-; test's assertions failing can never leave stack residue for the
-; next test to inherit. Test scratch variables live in the very
-; start of APPVARS - safe only because tests run strictly before
-; COLD initializes VARHERE to that same address; COLD immediately
-; and correctly re-purposes that space afterward.
-;
-; Reporting: each test's name (a counted string, matching how
-; BADWORD itself prints a failing word) is printed via COUNT+TYPE,
-; followed by " OK" or " FAIL", followed by a CR - all via
-; TSTREPORT, shared by every test rather than duplicated in each.
-; ============================================================
-UNITTESTS EQU 1   ; was 0 (included) - set to 1 (excluded) per explicit
-                  ; request: unit tests don't work yet and resolution
-                  ; has been postponed. 0 = included (matches this
-                  ; file's established IFEQ convention, e.g.
-                  ; SERIALPOLL); 1 = excluded entirely, reverting to
-                  ; plain FILL padding.
+           IFNDEF UNITTESTS
+UNITTESTS SET 0   ; Fallback default value if -D wasn't passed.
+                  ; Flag meaning reversed from this file's original
+                  ; UNITTESTS convention (0=included,1=excluded under
+                  ; IFEQ) to support overriding via lwasm's -D command
+                  ; line option: default (0, no -D given) now means
+                  ; EXCLUDED - production builds get plain FILL
+                  ; padding here with no test-framework code, by
+                  ; default. Pass -DUNITTESTS=1 (or any nonzero value)
+                  ; to INCLUDE the test framework - tested and
+                  ; confirmed working on real MAME hardware under the
+                  ; old convention; this reversal only changes how the
+                  ; choice is made, not what including it does.
+           ENDC
 
-         IFEQ  UNITTESTS  ; >>>>>>>>>>
+           IFNDEF TSTSELECTOR
+TSTSELECTOR SET 2   ; Fallback default value if -D wasn't passed.
+           ENDC
 
-TSTU0    EQU   APPVARS       ; saved U, before a test touches it
-TSTUB4   EQU   APPVARS+2     ; U immediately before the op under test
-TSTUAF   EQU   APPVARS+4     ; U immediately after the op under test
-TSTFLAG  EQU   APPVARS+6     ; scratch for TSTREPORT's pass/fail arg
-
-TSTGUARD EQU   $3C7A         ; sentinel value, pushed below the value
-                              ; under test, to prove an operation
-                              ; doesn't disturb what's beneath it
-TSTVAL1  EQU   $59E1         ; the value under test itself - neither
-                              ; constant is 0, 1, or -1, so a test
-                              ; that only appears to pass due to a
-                              ; trivial/special-cased value would be
-                              ; caught rather than masked
+         IFNE  UNITTESTS  ; >>>>>>>>>>
 
 ; ------------------------------------------------------------
-; TSTREPORT - ( testname-caddr passflag -- ) shared by every
-; test. Prints the test's name (via COUNT+TYPE), then " OK" or
-; " FAIL" depending on passflag (TRUEV = pass, FALSEV = fail),
-; then a CR, readying the terminal for the next test's line.
+; The unit test framework itself (explanatory comment plus all
+; test code) lives in unit_tests.asm, a separate file included
+; here only when UNITTESTS is nonzero - see unit_tests.asm for
+; the full framework description, or OPEN_ITEMS_CHECKLIST_
+; part1.md/part2.md for its own development history.
 ; ------------------------------------------------------------
-TSTREPORT: PULU  D
-           STD   TSTFLAG
-           JSR   COUNT
-           JSR   TYPE
-           LDD   TSTFLAG
-           BEQ   TSTFAILR
-           LDD   #TSTOKMSG
-           PSHU  D
-           LDD   #TSTOKMSGL
-           PSHU  D
-           BRA   TSTPRINT
-TSTFAILR:  LDD   #TSTFAILMSG
-           PSHU  D
-           LDD   #TSTFAILMSGL
-           PSHU  D
-TSTPRINT:  JSR   TYPE
-           JSR   CRW
-           RTS
-
-TSTOKMSG:    FCC " OK"
-TSTOKMSGL    EQU  *-TSTOKMSG
-TSTFAILMSG:  FCC " FAIL"
-TSTFAILMSGL  EQU  *-TSTFAILMSG
-
-; ------------------------------------------------------------
-; TSTRUNNER - calls each test group in turn. Add new groups
-; here as they're written.
-; ------------------------------------------------------------
-TSTRUNNER: JSR   TSTSTACK
-           RTS
-
-; ------------------------------------------------------------
-; TSTSTACK - data stack operation tests. Add new tests here as
-; they're written.
-; ------------------------------------------------------------
-TSTSTACK:  JSR   TSTDUP
-           RTS
-
-; ------------------------------------------------------------
-; TSTDUP - unit test for DUP ( x -- x x ). Verifies both the
-; stack's contents (the duplicate and the original both equal
-; the pushed test value, and the guard beneath is undisturbed)
-; and the data stack pointer's movement (exactly one cell, 2
-; bytes - DUP's own net effect, not conflated with the two
-; pushes that set the test up).
-; ------------------------------------------------------------
-TSTDUP:    STU   TSTU0
-
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
-
-           JSR   DUP
-
-           STU   TSTUAF
-
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   TDFAIL
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   TDFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   TDFAIL
-
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #2
-           BNE   TDFAIL
-
-           LDD   #TRUEV
-           BRA   TDDONE
-TDFAIL:    LDD   #FALSEV
-TDDONE:    LDX   #TSTDUPNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
-
-           LDU   TSTU0
-           RTS
-
-TSTDUPNAME: FCB  6
-            FCC  "TSTDUP"
+         INCLUDE unit_tests.asm
 
          ENDC  ; <<<<<<<<<<
 

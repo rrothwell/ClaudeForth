@@ -18,7 +18,32 @@
 ; this section so the ACIA's own init code sits next to the rest
 ; of its interrupt/polling logic rather than inline in COLDSTRT.
 ; ------------------------------------------------------------
-INITSERIAL: LDA   #$03
+; ------------------------------------------------------------
+; SERBUFCLR - zeros all four ring-buffer pointers (INHEAD/
+; INTAIL/OUTHEAD/OUTTAIL, the four bytes of SERBUF) plus
+; RTSSTATE. BUG FIX: the code this replaced (formerly inline in
+; COLDSTRT) only ever cleared INHEAD/INTAIL (2 of SERBUF's own 4
+; bytes) - OUTHEAD/OUTTAIL were never zeroed at all, even on a
+; cold boot, meaning the TX ring buffer could start from
+; whatever arbitrary contents MAME's own RAM happened to hold
+; (MAME does not guarantee zeroed RAM on start), a real,
+; independent, latent risk of exactly the kind of "transmit
+; buffer appears full immediately" spin-wait lockup separately
+; observed and reported. Called from INITSERIAL itself (below),
+; so both COLDSTRT's own existing call and WARM's new one (see
+; WARM's own comment) share this single, complete reset point -
+; not duplicated logic in either place.
+; ------------------------------------------------------------
+SERBUFCLR: LDX  #SERBUF
+           CLR  ,X+
+           CLR  ,X+
+           CLR  ,X+
+           CLR  ,X
+           CLR  RTSSTATE
+           RTS
+
+INITSERIAL: JSR  SERBUFCLR
+         LDA   #$03
          STA   ACIACR         ; was "STA ACIA" - only correct by
                                ; coincidence while ACIA and ACIACR were
                                ; the same address; now genuinely distinct
@@ -110,7 +135,19 @@ IRQH:    LDA   ACIASR
          JSR   RTSCHECKHI
          BRA   IRQDONE
 
-TXCHK:   LDB   OUTTAIL
+TXCHK:   BITA  #SR_TDRE         ; BUG FIX: previously assumed TX by
+                                ; elimination alone (reached here only
+                                ; because RDRF was clear) - explicit now,
+                                ; both for clarity of intent and because
+                                ; the ACIA's own RX-interrupt condition
+                                ; can also fire from a pending DCD change
+                                ; alone, independent of RDRF; without this
+                                ; check, that case would incorrectly fall
+                                ; into the TX-handling code below instead
+                                ; of being safely ignored (this firmware
+                                ; does not otherwise handle DCD at all).
+         BEQ   IRQDONE
+         LDB   OUTTAIL
          CMPB  OUTHEAD
          BEQ   TXOFF
          LDX   #OUTBUF

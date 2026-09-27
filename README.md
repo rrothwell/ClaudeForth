@@ -60,9 +60,11 @@ brew install binutils
 |Manual tests and identified/fixed numerous bugs. |:white_check_mark:|
 |Update documentation|:white_check_mark:|
 |Automated unit tests and identified bug fixes.  | |
+|Improve MAME connection with emulated hardware handshaking.  | |
 |Tests against ANS test suite and identified bug fixes.  | |
 |Optimisation for space, compiler performance & application performance| |
 |Update documentation| |
+|Burn ROM and install onto real MECB 6809 hardware. | |
 |Develop a simple forth application| |
 |Refine the documentation| |
 
@@ -94,11 +96,11 @@ brew install binutils
 
 #### Portable Document format
 
-[ClaudeForth Document](https://github.com/rrothwell/ClaudeForth/blob/master/ClaudeForth%20preview.pdf)
+[ClaudeForth Document](Documentation/ClaudeForth%20preview.pdf)
 
 #### Memory Map
 
-![alt Memory Map](forth6809%20memory%20map.svg)
+![alt Memory Map](Documentation/forth6809%20memory%20map.svg)
 
 #### MAME Test Harness
 1. Chapter 1: [MAME installation notes](https://github.com/rrothwell/ClaudeForth/blob/master/MAME%20installation%20notes.md)

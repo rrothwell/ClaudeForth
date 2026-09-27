@@ -98,17 +98,45 @@ USROMEND EQU  VECTORS-1 ; Usable ROM end. Corrected: 1 before VECTORS'
                          ; comparisons or as a memory operand, unlike
                          ; the previous $10000 definition
 VECTORS  EQU  $FFF0
-INITCODE EQU  $FFA9     ; was $FFA2 - shifted up 7 bytes to reduce the
-                         ; overlap with BASECODE's nominal end ($FFB4)
-                         ; from 19 bytes to 12 - improved, not resolved.
-                         ; CORRECTED: INITCODE's real content is 71
-                         ; bytes ($47), confirmed by an actual assembler
-                         ; run - not the 78-byte manual estimate relied
-                         ; on for several turns, which was wrong by 7
-                         ; bytes. At $FFA9, real content now ends at
-                         ; $FFEF, exactly one byte below VECTORS - a
-                         ; genuine, assembler-confirmed exact fit, zero
-                         ; gap, zero overlap. A prior turn claimed this
+INITCODE EQU  $FFA4     ; was $FFA9 - shifted down 3 bytes, per
+                         ; explicit request, to make room for the
+                         ; UNITTESTS call site's own fix (below):
+                         ; that site now always emits exactly 3 bytes
+                         ; (either the real JSR TSTRUNNER, or 3 NOPs
+                         ; as a placeholder when the test framework is
+                         ; excluded), so COLDSTRT's total size no
+                         ; longer depends on UNITTESTS at all -
+                         ; previously it did (JSR TSTRUNNER only
+                         ; existed when included, with nothing emitted
+                         ; when excluded - using this file's original,
+                         ; since-reversed UNITTESTS convention at the
+                         ; time this fix was made), meaning INITCODE's
+                         ; fixed position here could be correct for
+                         ; one setting and wrong for the other, risking
+                         ; an overflow into VECTORS when tests were
+                         ; compiled in. Prior
+                         ; history: was $FFA2 - shifted up 7 bytes to
+                         ; reduce the overlap with BASECODE's nominal
+                         ; end ($FFB4) from 19 bytes to 12 - improved,
+                         ; not resolved. CORRECTED: INITCODE's real
+                         ; content is 71 bytes ($47), confirmed by an
+                         ; actual assembler run - not the 78-byte
+                         ; manual estimate relied on for several
+                         ; turns, which was wrong by 7 bytes. That
+                         ; 71-byte figure was measured with the old
+                         ; structure (test framework excluded emitting
+                         ; 0 bytes for
+                         ; the TSTRUNNER call site) - with the fix
+                         ; above, that site now always emits 3 bytes
+                         ; either way, so real content is reasoned to
+                         ; be 74 bytes now (71+3), not yet re-measured
+                         ; by a real assembler run. At $FFA6, that
+                         ; reasoned end is $FFEF - unchanged, since
+                         ; the 3-byte shift in INITCODE's own start
+                         ; and the 3-byte growth in content offset
+                         ; exactly - still one byte below VECTORS, if
+                         ; the reasoning above holds; confirm on
+                         ; assembly. A prior turn claimed this general
                          ; shift created a new 7-byte VECTORS overlap;
                          ; that was based on the incorrect 78-byte
                          ; estimate and was wrong - retracted here. The
@@ -116,26 +144,104 @@ INITCODE EQU  $FFA9     ; was $FFA2 - shifted up 7 bytes to reduce the
                          ; nominal budget) is separate and unaffected
                          ; by this correction; not resolved. See the
                          ; open-items checklist.
-BASECODE EQU  $DEEA     ; was $DF6A ($DF8A, $DFCA, $DFDA, $DFEA, $E02A
-                         ; before that) - shifted down $80 (128 bytes)
-                         ; this time, a larger jump than the prior
-                         ; $40 and $20 shifts, since both of those
-                         ; still proved insufficient (confirmed by
-                         ; trial and error against the real
-                         ; assembler). The exact gap against BASEDICT
-                         ; below and the exact overlap against
-                         ; INITCODE above depend on each section's
-                         ; real, current assembled size - not
-                         ; recomputed here without a real assembler
-                         ; run; confirm on assembly/MAME rather than
-                         ; trust a static estimate. See the open-items
-                         ; checklist.
-BASEDICT EQU  $D6FF     ; was $D77F ($D79F, $D7DF, $D7EF, $D7FF, $D83F
-                         ; before that) - shifted down $80 (128 bytes)
-                         ; this time, same reason as BASECODE above.
-                         ; Not recomputed against real, current
-                         ; assembled sizes here - confirm on
-                         ; assembly/MAME. See the open-items checklist.
+                         ;
+                         ; UPDATE: shifted down a further 2 bytes,
+                         ; $FFA6 -> $FFA4, confirmed working by the
+                         ; user against a real assembler run. Reason:
+                         ; COLDSTRT's own interrupt-mask bug fix
+                         ; (ANDCC #$AF, added right after JSR
+                         ; INITSERIAL - see COLDSTRT's own comment)
+                         ; is a 2-byte instruction, growing COLDSTRT's
+                         ; total size by exactly that much; INITCODE's
+                         ; own fixed budget against VECTORS needed the
+                         ; same 2 bytes back to stay within it.
+;BASECODE EQU  $DE2E     ; was $DE5E ($DE7A, $DEEA, $DF6A, $DF8A, $DFCA,
+BASECODE EQU  $DD2E     ; was $DE5E ($DE7A, $DEEA, $DF6A, $DF8A, $DFCA,
+                         ; $DFDA, $DFEA, $E02A before that) - shifted
+                         ; down a further $30 (48 bytes) this time.
+                         ; Reason: IRQH was rewritten for symmetry
+                         ; between its RX/TX halves and single-point-
+                         ; of-exit (all paths RTI through IRQDONE),
+                         ; and gained new FE/OVRN/PE receiver-error
+                         ; counting (SR_FE/SR_OVRN/SR_PE, tested from
+                         ; the same ACIASR read, before ACIADR is
+                         ; read, incrementing FECOUNT/OVRNCOUNT/
+                         ; PECOUNT and discarding the byte rather than
+                         ; storing it in INBUF when any is flagged) -
+                         ; both add code, and the single-exit style
+                         ; costs extra bytes/branches versus falling
+                         ; through. Value provided by the user
+                         ; directly; not independently re-derived or
+                         ; re-verified here. Confirm on assembly/MAME
+                         ; rather than trust a static estimate.
+                         ;
+                         ; Earlier history, preserved below in order:
+                         ;
+                         ; UPDATE: was $DE7A - shifted down a
+                         ; further $70 (112 bytes) at that point. Unlike every
+                         ; earlier shift in this chain (each resolving
+                         ; a memory-map overlap from reorganizing
+                         ; other regions), this one is for a different
+                         ; reason: SERIALPOLL=0 (interrupt-driven ACIA
+                         ; I/O, IRQH servicing INBUF/OUTBUF ring
+                         ; buffers with RTS/CTS flow control) is
+                         ; genuinely larger code than the SERIALPOLL=1
+                         ; polling path it replaces, and the two are
+                         ; mutually exclusive (IFEQ/ELSE/ENDC on the
+                         ; same flag, never both assembled at once) -
+                         ; but BASECODE's own budget was only ever
+                         ; sized against the polling path's smaller
+                         ; footprint, so selecting SERIALPOLL=0
+                         ; collided against BASEDICT below. Value
+                         ; provided by the user directly to resolve
+                         ; that collision; not independently re-
+                         ; derived or re-verified here. Confirm on
+                         ; assembly/MAME rather than trust a static
+                         ; estimate. See the open-items checklist.
+                         ;
+                         ; UPDATE: shifted down a further $1C (28
+                         ; bytes), $DE7A -> $DE5E, confirmed working
+                         ; by the user against a real assembler run.
+                         ; Reason: the ECHOEMIT non-blocking-echo fix
+                         ; (see ACCEPT's own comment) added a new
+                         ; routine to the interrupt-driven code path,
+                         ; growing its total size by that much; also
+                         ; added, in the same change: a FILL directive
+                         ; right before SECTION 1 (VECTORS), to stop
+                         ; the assembler from omitting the gap between
+                         ; INITCODE and VECTORS when generating the
+                         ; raw .bin file.
+;BASEDICT EQU  $D643     ; was $D673 ($D68F, $D6FF, $D77F, $D79F, $D7DF,
+BASEDICT EQU  $D543     ; was $D673 ($D68F, $D6FF, $D77F, $D79F, $D7DF,
+                         ; $D7EF, $D7FF, $D83F before that) - shifted
+                         ; down the same further $30 (48 bytes) as
+                         ; BASECODE above, for the same reason (the
+                         ; rewritten, symmetric/single-exit IRQH plus
+                         ; the new FE/OVRN/PE receiver-error counting -
+                         ; see BASECODE's own comment for the full
+                         ; explanation). Value provided by the user
+                         ; directly; not independently re-derived or
+                         ; re-verified here. Confirm on assembly/MAME
+                         ; rather than trust a static estimate.
+                         ;
+                         ; Earlier history, preserved below in order:
+                         ;
+                         ; UPDATE: shifted down the same $70 (112 bytes)
+                         ; as BASECODE above, at that point, for the
+                         ; same reason (making room for SERIALPOLL=0's
+                         ; larger, interrupt-driven code path - see
+                         ; BASECODE's own comment for the full
+                         ; explanation). Value provided by the user
+                         ; directly; not independently re-derived or
+                         ; re-verified here. Confirm on assembly/MAME
+                         ; rather than trust a static estimate. See the
+                         ; open-items checklist.
+                         ;
+                         ; UPDATE: shifted down the same further $1C
+                         ; (28 bytes) as BASECODE above, $D68F -> $D673,
+                         ; same reason and same confirmation - see
+                         ; BASECODE's own comment for the full
+                         ; explanation.
 INOUT    EQU  $C000     ; was $DF00 - moved so INOUT (256 B) sits
                          ; directly below USROMSTRT ($C100), contiguous,
                          ; no gap. This also resolves the INOUT portion
@@ -270,27 +376,15 @@ APPVARSEND EQU APPDICT-1 ; was APPVARS+8000 ($215B) - now derives
 ; Header/Compiling section, and WORDMAXCHARS above) rather than a
 ; fixed, separately-allocated buffer capped at 31 characters. The
 ; $01DA-$01FA range it used to occupy is left unclaimed, same
-; reasoning as SIBUF's retirement above.
-TIBBUF   EQU  $018A     ; was $0284
-TIBBUFL  EQU  80
-SERBUF   EQU  $0106     ; was $0200 - USER0/USER1 removed entirely (see
-                         ; below); the 4 buffers (SERBUF's 4-byte index
-                         ; block, INBUF, OUTBUF, TIBBUF) still sit
-                         ; contiguously right after MVSCRATCH, with no
-                         ; gap - WORDBUF and SIBUF, which used to sit
-                         ; right after TIBBUF and WORDBUF respectively
-                         ; (closing what was once an 11-byte gap,
-                         ; $02F5-$02FF, in an earlier address scheme),
-                         ; are now both retired (see above) rather than
-                         ; part of this contiguous run
-INHEAD   EQU  SERBUF
-INTAIL   EQU  SERBUF+1
-OUTHEAD  EQU  SERBUF+2
-OUTTAIL  EQU  SERBUF+3
-INBUFSZ  EQU  64
-OUTBUFSZ EQU  64
-INBUF    EQU  SERBUF+4
-OUTBUF   EQU  SERBUF+4+INBUFSZ
+; reasoning as SIBUF's retirement above - EXCEPT for its first 3
+; bytes, now claimed below for FECOUNT/OVRNCOUNT/PECOUNT (IRQH's
+; receiver-error counters); $01DD-$01FA (30 bytes) is still
+; unclaimed, and SIBUF's own $01FB-$021A range is untouched.
+
+;TIBBUF   EQU  $018A     ; was $0284
+TIBBUF   EQU  $0106      ; was $018A
+TIBBUFL  EQU  80         ; $50, next free address is 
+
 GLOBALS  EQU  $0000
 
 SP0      EQU  DSTACK+1
@@ -306,8 +400,23 @@ RP0      EQU  RSTACK+1
 ; control via INFILL/RTSCHECKHI/RTSCHECKLO. Uses LWASM's IFEQ/
 ; ELSE/ENDC (a numeric-expression test, not IFDEF/IFNDEF, since
 ; this is a value to compare, not a symbol's mere presence).
+;
+; Was a fixed EQU, meaning it could only ever be changed by
+; editing this file directly - unlike UNITTESTS/TSTSELECTOR
+; below, a plain EQU cannot be overridden via lwasm's own -D
+; command-line option (EQU is a one-time, permanent binding;
+; -D's own documented behavior is to predefine a symbol "as
+; though...defined using the SET directive," which a later EQU
+; for the same symbol does not honor). Switched to the same
+; IFNDEF/SET/ENDC pattern as UNITTESTS/TSTSELECTOR immediately
+; below for exactly that reason: SERIALPOLL can now be selected
+; at build time with -DSERIALPOLL=0 (interrupt-driven) or
+; -DSERIALPOLL=1 (polling, same as omitting -D entirely, since 1
+; remains the fallback default here).
 ; ------------------------------------------------------------
-SERIALPOLL EQU 1
+           IFNDEF SERIALPOLL
+SERIALPOLL SET 1   ; Fallback default value if -D wasn't passed.
+           ENDC
 
 ; ------------------------------------------------------------
 ; ACIA (6850) constants - the chip sits at INOUT+8, not at the
@@ -318,31 +427,76 @@ ACIA     EQU  INOUT+8
 ACIACR   EQU  ACIA
 ACIASR   EQU  ACIA
 ACIADR   EQU  ACIA+1
-SR_RDRF  EQU  $01
-SR_TDRE  EQU  $02
-SR_IRQ   EQU  $80
-CR_RESET EQU  $03
-CR_RXON  EQU  $95
-CR_RXTX  EQU  $B5
-CR_POLL  EQU  $15     ; bit7=0 (RX interrupt disabled), bits6-5=00 (RTS
-                       ; low, TX interrupt disabled) - CR_RXON ($95) with
-                       ; only the RX-interrupt-enable bit cleared. Used
-                       ; only when SERIALPOLL=1; RTS stays permanently
-                       ; low (asserted), since polling mode has no ring
-                       ; buffer to overflow and so needs no flow control
-CR_RTSHI EQU  $D5     ; bits6-5=10: RTS high, TX int disabled, RX int enabled -
-                       ; derived from CR_RXON ($95) with bits6-5 changed from
-                       ; 00 to 10; the ACIA has no combination offering RTS
-                       ; high AND TX interrupt enabled simultaneously (bits6-5
-                       ; only has 00/01/10/11, and only 01 enables TX interrupt,
-                       ; which always ties RTS low) - EMIT/IRQH's TXCHK must
-                       ; respect this and defer transmission while RTS is high
 
-INHIWATER EQU 48       ; input ring fill level (of 64) at/above which RTS is
-                        ; asserted high, telling the remote device to pause
-INLOWATER EQU 16        ; fill level at/below which RTS is reasserted low;
+; ACIA Status Register Bits
+
+SR_IRQ   EQU %10000000  ; ($80) (Interrupt Request)
+SR_RDRF  EQU %00000001  ; ($01) (Receive Data Register Full)
+SR_TDRE  EQU %00000010  ; ($02) (Transmit Data Register Empty)
+SR_CTS   EQU %00001000  ; ($08) (Clear to send is blocking transmit.)
+
+; Errors only meaningful together with RDRF
+SR_FE    EQU %00010000  ; ($10) (Framing Error)
+SR_OVRN  EQU %00100000  ; ($20) (Overrun Error)
+SR_PE    EQU %01000000  ; ($40) (Parity Error)
+
+; ACIA Control Register Bits
+
+CR_RESET  EQU %00000011 ; ($03) (Master Reset mode)
+CR_BASE   EQU %10010101 ; ($95) (Rx Int Enabled, 8-N-1, /16 Clock)
+CR_RXON   EQU %10010101 ; ($95) (Rx Int Enabled, 8-N-1, /16 Clock)
+CR_RXTX   EQU %10110101 ; ($B5) (Rx Int Enabled, Tx Int/RTS Control, 8-N-1, /16 Clock) -
+CR_POLL   EQU %00010101 ; ($15) (All Ints Disabled, Polling mode, 8-N-1, /16 Clock)
+CR_RTSHI  EQU %11010101 ; ($D5) (RTS High, Transmit Interrupt Disabled, 8-N-1, /16 Clock)                    
+
+; CR_POLL
+
+; bit7=0 (RX interrupt disabled), bits6-5=00 (RTS
+; low, TX interrupt disabled) - CR_RXON ($95) with
+; only the RX-interrupt-enable bit cleared. Used
+; only when SERIALPOLL=1; RTS stays permanently
+; low (asserted), since polling mode has no ring
+; buffer to overflow and so needs no flow control
+
+; CR_RTSHI
+
+; bits6-5=10: RTS high, TX int disabled, RX int enabled -
+; derived from CR_RXON ($95) with bits6-5 changed from
+; 00 to 10; the ACIA has no combination offering RTS
+; high AND TX interrupt enabled simultaneously (bits6-5
+; only has 00/01/10/11, and only 01 enables TX interrupt,
+; which always ties RTS low) - EMIT/IRQH's OUTCHAR must
+; respect this and defer transmission while RTS is high
+
+; Ring buffer control
+SERBUFCTL  EQU  $0176
+SERBUF     EQU  $0180     ; was $0200 - USER0/USER1 removed entirely (see
+                         ; below); the 4 buffers (SERBUF's 4-byte index
+                         ; block, INBUF, OUTBUF, TIBBUF) still sit
+                         ; contiguously right after MVSCRATCH, with no
+                         ; gap - WORDBUF and SIBUF, which used to sit
+                         ; right after TIBBUF and WORDBUF respectively
+                         ; (closing what was once an 11-byte gap,
+                         ; $02F5-$02FF, in an earlier address scheme),
+                         ; are now both retired (see above) rather than
+                         ; part of this contiguous run
+INBUFSZ  EQU  64
+OUTBUFSZ EQU  64
+INHIWATER EQU 48         ; input ring fill level (of 64) at/above which RTS is
+                         ; asserted high, telling the remote device to pause
+INLOWATER EQU 16         ; fill level at/below which RTS is reasserted low;
                          ; deliberately well below INHIWATER (hysteresis) so
                          ; RTS doesn't chatter right at a single threshold
+
+; Input control
+; /RTS flag states
+INACCEPT      EQU $00
+INREJECT      EQU $FF
+
+; Output control
+; Transmit buffer interrupt active flag states.
+OUTIDLE       EQU $00
+OUTBUSY       EQU $FF
 
 ; ------------------------------------------------------------
 ; Flag / opcode constants
@@ -350,6 +504,9 @@ INLOWATER EQU 16        ; fill level at/below which RTS is reasserted low;
 TRUEV    EQU  $FFFF
 FALSEV   EQU  $0000
 OPJSR    EQU  $BD
+OPRTS    EQU  $39        ; used by section 3.8's control-flow test
+                         ; harness to terminate each compiled test
+                         ; snippet, compiled via CCOMMA
 RTSOPC   EQU  $39
 
 ; ------------------------------------------------------------
@@ -520,11 +677,10 @@ QSAVEVAR   RMB   2   ; offset $F7
 QSAVELATEST RMB  2   ; offset $F9
 QTHROWCODE RMB   2   ; offset $FB
 DOESBEH    RMB   2   ; offset $FD - SETDOES scratch
-RTSSTATE   RMB   1   ; offset $FF - 0 = RTS low (normal), nonzero = RTS
-                      ; high (paused) - see CR_RTSHI. GLOBALS page is now
-                      ; fully packed: 256 of 256 bytes used, 0 free.
+                     ; GLOBALS page is now
+                     ; fully packed bar 1: 255 of 256 bytes used, 1 free.
 
-GLOBALS_USED EQU 256  ; total bytes used, of 256 available - fully packed
+GLOBALS_USED EQU 255  ; total bytes used, of 256 available - nearly fully packed
 
 ; ------------------------------------------------------------
 ; MVSCRATCH - three cells shared, one at a time, by routine
@@ -549,163 +705,78 @@ GLOBALS_USED EQU 256  ; total bytes used, of 256 available - fully packed
 ; in Y/X rather than round-tripping through memory each iteration.
 ; ------------------------------------------------------------
          ORG   $0100
-MVCNT      RMB   2
-MVDST      RMB   2
-MVSRC      RMB   2
+MVCNT    RMB   2
+MVDST    RMB   2
+MVSRC    RMB   2
 HSLEN    EQU  MVCNT
 HSADDR   EQU  MVDST
 MRESULT  EQU  MVSRC
 FILLCHR  EQU  MVSRC
 
+; ------------------------------------------------------------
+; Ring buffers for serial communications.
+; One for input, one for output.
+; The 64 byte alignment is supposed to allow some speed tricks.
+; The tricks are not used.
+; ------------------------------------------------------------
+            ORG   SERBUFCTL    ; $176.
+
+INHEAD      RMB  1
+INTAIL      RMB  1
+; RTSSTATE -> INREQUEST ?
+RTSSTATE   RMB  1  ; $00 = RTS Low (Clear), $FF = RTS High (Throttle) 
+
+OUTHEAD     RMB  1
+OUTTAIL     RMB  1
+OUTACTIVITY RMB  1  ; $00 = Idle, $FF = Busy (tx_active)
+
+FECOUNT     RMB  1  ; framing-error count, incremented by IRQH
+OVRNCOUNT   RMB  1  ; overrun count, incremented by IRQH
+PECOUNT     RMB  1  ; parity-error count, incremented by IRQH
+                      
+            ORG   SERBUF    ; $180, a 64 byte boundary.
+
+            ALIGN 64       ; Force 64-byte boundary alignment
+INBUF       RMB INBUFSZ     ; Receive circular queue buffer
+
+            ALIGN 64       ; Force 64-byte boundary alignment
+OUTBUF      RMB OUTBUFSZ    ; Transmit circular queue buffer
+
+; ------------------------------------------------------------
 ; Provide padding, to ensure the correct ROM & .bin file size (and
 ; opcode offsets) for the MAME emulation and flash memory burn.
+; ------------------------------------------------------------
          ORG USROMSTRT
 
-; ============================================================
-; UNIT TEST FRAMEWORK
-;
-; Self-checking assembly-level tests for this ROM's own
-; primitives, gated by UNITTESTS below and run once at cold
-; boot, right after INITSERIAL and before COLD (so U/S are
-; already valid - COLDSTRT sets them at its very start - but
-; nothing else has been initialized yet: APPVARS/DPHERE/
-; CODEHERE/LATEST/BASE all still hold whatever COLD is about to
-; set them to). Lives here, in previously-unused ROM space right
-; after INOUT's shadow, since this was pure FILL padding before
-; this existed - UNITTESTS=1 removes it entirely and this block
-; reverts to exactly that padding, computed automatically below
-; via the ROM label rather than a fixed byte count, so it's
-; correct either way without needing to be hand-adjusted.
-;
-; Each test is independent by construction: it saves the data
-; stack pointer (U) before touching anything, and unconditionally
-; restores it at the end regardless of pass or fail - so one
-; test's assertions failing can never leave stack residue for the
-; next test to inherit. Test scratch variables live in the very
-; start of APPVARS - safe only because tests run strictly before
-; COLD initializes VARHERE to that same address; COLD immediately
-; and correctly re-purposes that space afterward.
-;
-; Reporting: each test's name (a counted string, matching how
-; BADWORD itself prints a failing word) is printed via COUNT+TYPE,
-; followed by " OK" or " FAIL", followed by a CR - all via
-; TSTREPORT, shared by every test rather than duplicated in each.
-; ============================================================
-UNITTESTS EQU 1   ; was 0 (included) - set to 1 (excluded) per explicit
-                  ; request: unit tests don't work yet and resolution
-                  ; has been postponed. 0 = included (matches this
-                  ; file's established IFEQ convention, e.g.
-                  ; SERIALPOLL); 1 = excluded entirely, reverting to
-                  ; plain FILL padding.
+           IFNDEF UNITTESTS
+UNITTESTS SET 0   ; Fallback default value if -D wasn't passed.
+                  ; Flag meaning reversed from this file's original
+                  ; UNITTESTS convention (0=included,1=excluded under
+                  ; IFEQ) to support overriding via lwasm's -D command
+                  ; line option: default (0, no -D given) now means
+                  ; EXCLUDED - production builds get plain FILL
+                  ; padding here with no test-framework code, by
+                  ; default. Pass -DUNITTESTS=1 (or any nonzero value)
+                  ; to INCLUDE the test framework - tested and
+                  ; confirmed working on real MAME hardware under the
+                  ; old convention; this reversal only changes how the
+                  ; choice is made, not what including it does.
+           ENDC
 
-         IFEQ  UNITTESTS  ; >>>>>>>>>>
+           IFNDEF TSTSELECTOR
+TSTSELECTOR SET 2   ; Fallback default value if -D wasn't passed.
+           ENDC
 
-TSTU0    EQU   APPVARS       ; saved U, before a test touches it
-TSTUB4   EQU   APPVARS+2     ; U immediately before the op under test
-TSTUAF   EQU   APPVARS+4     ; U immediately after the op under test
-TSTFLAG  EQU   APPVARS+6     ; scratch for TSTREPORT's pass/fail arg
-
-TSTGUARD EQU   $3C7A         ; sentinel value, pushed below the value
-                              ; under test, to prove an operation
-                              ; doesn't disturb what's beneath it
-TSTVAL1  EQU   $59E1         ; the value under test itself - neither
-                              ; constant is 0, 1, or -1, so a test
-                              ; that only appears to pass due to a
-                              ; trivial/special-cased value would be
-                              ; caught rather than masked
+         IFNE  UNITTESTS  ; >>>>>>>>>>
 
 ; ------------------------------------------------------------
-; TSTREPORT - ( testname-caddr passflag -- ) shared by every
-; test. Prints the test's name (via COUNT+TYPE), then " OK" or
-; " FAIL" depending on passflag (TRUEV = pass, FALSEV = fail),
-; then a CR, readying the terminal for the next test's line.
+; The unit test framework itself (explanatory comment plus all
+; test code) lives in unit_tests.asm, a separate file included
+; here only when UNITTESTS is nonzero - see unit_tests.asm for
+; the full framework description, or OPEN_ITEMS_CHECKLIST_
+; part1.md/part2.md for its own development history.
 ; ------------------------------------------------------------
-TSTREPORT: PULU  D
-           STD   TSTFLAG
-           JSR   COUNT
-           JSR   TYPE
-           LDD   TSTFLAG
-           BEQ   TSTFAILR
-           LDD   #TSTOKMSG
-           PSHU  D
-           LDD   #TSTOKMSGL
-           PSHU  D
-           BRA   TSTPRINT
-TSTFAILR:  LDD   #TSTFAILMSG
-           PSHU  D
-           LDD   #TSTFAILMSGL
-           PSHU  D
-TSTPRINT:  JSR   TYPE
-           JSR   CRW
-           RTS
-
-TSTOKMSG:    FCC " OK"
-TSTOKMSGL    EQU  *-TSTOKMSG
-TSTFAILMSG:  FCC " FAIL"
-TSTFAILMSGL  EQU  *-TSTFAILMSG
-
-; ------------------------------------------------------------
-; TSTRUNNER - calls each test group in turn. Add new groups
-; here as they're written.
-; ------------------------------------------------------------
-TSTRUNNER: JSR   TSTSTACK
-           RTS
-
-; ------------------------------------------------------------
-; TSTSTACK - data stack operation tests. Add new tests here as
-; they're written.
-; ------------------------------------------------------------
-TSTSTACK:  JSR   TSTDUP
-           RTS
-
-; ------------------------------------------------------------
-; TSTDUP - unit test for DUP ( x -- x x ). Verifies both the
-; stack's contents (the duplicate and the original both equal
-; the pushed test value, and the guard beneath is undisturbed)
-; and the data stack pointer's movement (exactly one cell, 2
-; bytes - DUP's own net effect, not conflated with the two
-; pushes that set the test up).
-; ------------------------------------------------------------
-TSTDUP:    STU   TSTU0
-
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
-
-           JSR   DUP
-
-           STU   TSTUAF
-
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   TDFAIL
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   TDFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   TDFAIL
-
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #2
-           BNE   TDFAIL
-
-           LDD   #TRUEV
-           BRA   TDDONE
-TDFAIL:    LDD   #FALSEV
-TDDONE:    LDX   #TSTDUPNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
-
-           LDU   TSTU0
-           RTS
-
-TSTDUPNAME: FCB  6
-            FCC  "TSTDUP"
+         INCLUDE unit_tests.asm
 
          ENDC  ; <<<<<<<<<<
 
@@ -1920,15 +1991,15 @@ BASEDICTSIZE EQU   BASEDICTEND-BASEDICT
 ; ============================================================
 ; SECTION 3: ACIA INTERRUPT HANDLER
 ; ============================================================
-         ORG   BASECODE       ; BASECODE is $E02A. This ORG was missing
-                               ; entirely - every routine from here through
-                               ; SECTION 26 (IRQH, COLD/ABORT/QUIT, and
-                               ; every primitive) would otherwise have
-                               ; continued growing from wherever SECTION 2's
-                               ; WARM message left the location counter,
-                               ; inside INIT's 48-byte $FFC0-$FFEF budget,
-                               ; overflowing directly into VECTORS ($FFF0)
-                               ; instead of landing in BASECODE at all
+            ORG   BASECODE  ; BASECODE is $E02A. This ORG was missing
+                            ; entirely - every routine from here through
+                            ; SECTION 26 (IRQH, COLD/ABORT/QUIT, and
+                            ; every primitive) would otherwise have
+                            ; continued growing from wherever SECTION 2's
+                            ; WARM message left the location counter,
+                            ; inside INIT's 48-byte $FFC0-$FFEF budget,
+                            ; overflowing directly into VECTORS ($FFF0)
+                            ; instead of landing in BASECODE at all
 
 ; ------------------------------------------------------------
 ; INITSERIAL - initializes the ACIA: master reset, then selects
@@ -1937,30 +2008,66 @@ BASEDICTSIZE EQU   BASEDICTEND-BASEDICT
 ; this section so the ACIA's own init code sits next to the rest
 ; of its interrupt/polling logic rather than inline in COLDSTRT.
 ; ------------------------------------------------------------
-INITSERIAL: LDA   #$03
-         STA   ACIACR         ; was "STA ACIA" - only correct by
-                               ; coincidence while ACIA and ACIACR were
-                               ; the same address; now genuinely distinct
-         IFEQ SERIALPOLL  ; >>>>>>>>>>
-         LDA   #CR_RXON        ; interrupt-driven mode: RX interrupt on
-         ELSE  ; <<<<<>>>>>
-         LDA   #CR_POLL        ; polling mode: no interrupts, RTS held low
-         ENDC  ; <<<<<<<<<<
-         STA   ACIACR         ; was "STA ACIA" - same fix
-         RTS
+; ------------------------------------------------------------
+; SERBUFCLR - zeros all four ring-buffer pointers (INHEAD/
+; INTAIL/OUTHEAD/OUTTAIL, the four bytes of SERBUF) plus
+; RTSSTATE, plus (added alongside IRQH's new receiver-error
+; counting) FECOUNT/OVRNCOUNT/PECOUNT, so a cold or warm boot
+; always starts those three counts at zero rather than whatever
+; MAME's/real RAM's arbitrary startup contents happened to hold -
+; same reasoning as the OUTHEAD/OUTTAIL bug fix described below.
+; BUG FIX: the code this replaced (formerly inline in
+; COLDSTRT) only ever cleared INHEAD/INTAIL (2 of SERBUF's own 4
+; bytes) - OUTHEAD/OUTTAIL were never zeroed at all, even on a
+; cold boot, meaning the TX ring buffer could start from
+; whatever arbitrary contents MAME's own RAM happened to hold
+; (MAME does not guarantee zeroed RAM on start), a real,
+; independent, latent risk of exactly the kind of "transmit
+; buffer appears full immediately" spin-wait lockup separately
+; observed and reported. Called from INITSERIAL itself (below),
+; so both COLDSTRT's own existing call and WARM's new one (see
+; WARM's own comment) share this single, complete reset point -
+; not duplicated logic in either place.
+; ------------------------------------------------------------
 
-         IFEQ SERIALPOLL  ; >>>>>>>>>>
+SERBUFCLR:  CLR  INHEAD
+            CLR  INTAIL
+            CLR  RTSSTATE    ; $00 = RTS Low (Clear)
+            CLR  OUTHEAD
+            CLR  OUTTAIL
+            CLR  OUTACTIVITY  ; $00 = Idle
+
+
+            CLR  FECOUNT
+            CLR  OVRNCOUNT
+            CLR  PECOUNT
+            RTS
+
+INITSERIAL: JSR  SERBUFCLR
+            LDA   CR_RESET    ; Master Software Reset command to 6850
+            STA   ACIACR 
+            NOP               ; Settling Delay
+            NOP
+            
+            IFEQ SERIALPOLL  ; >>>>>>>>>>
+            LDA   #CR_RXON        ; interrupt-driven mode: RX interrupt on
+            ELSE  ; <<<<<>>>>>
+            LDA   #CR_POLL        ; polling mode: no interrupts, RTS held low
+            ENDC  ; <<<<<<<<<<
+            STA   ACIACR         ; was "STA ACIA" - same fix
+            RTS
+
+            IFEQ SERIALPOLL  ; >>>>>>>>>>
 ; ------------------------------------------------------------
 ; INFILL - ( -- A=fill level, 0-63 ) input ring's current fill
 ; level. INBUFSZ is a power of two, and both indices are always
 ; kept in 0..INBUFSZ-1, so a plain masked subtraction gives the
 ; true mod-64 distance even across the wrap point.
 ; ------------------------------------------------------------
-INFILL:  LDA   INHEAD
-         SUBA  INTAIL
-         ANDA  #INBUFSZ-1
-         RTS
-
+INFILL:     LDA   INHEAD
+            SUBA  INTAIL
+            ANDA  #INBUFSZ-1
+            RTS
 ; ------------------------------------------------------------
 ; RTSCHECKHI - called from IRQH's own RX path (interrupts
 ; already masked by hardware during ISR execution, so no
@@ -1980,7 +2087,192 @@ RTSCHECKHI: JSR  INFILL
             LDA  #1
             STA  RTSSTATE
 RTSCHIDONE: RTS
+; ------------------------------------------------------------
+UPDATE_RTS:
+            TST   RTSSTATE
+            BNE   SET_RTS_HI_TX_OFF      
 
+            TST   OUTACTIVITY		; Is active?
+            BEQ   SET_RTS_LO_TX_OFF ; No! Disable Transmit interrupt.
+
+                                  ; $B5/%1011_0101
+            LDA   #CR_RXTX        ; Yes! Accept input & transmit output
+            BRA   WRITE_CR        ; RTS = Low, Tx Interrupt = Enabled
+
+SET_RTS_LO_TX_OFF:                ; $95/%10010101
+            LDA   #CR_RXON        ; RTS = Low, Tx Interrupt = Disabled
+            BRA   WRITE_CR        ; Why is OUTACTIVITY not updated here?
+
+SET_RTS_HI_TX_OFF:                ; $D5/%1101_0101
+            LDA   #CR_RTSHI       ; RTS = High, Tx Interrupt = Disabled
+            CLR   OUTACTIVITY     ; Interrupts are hardware-disabled; clear state
+WRITE_CR:
+            STA   ACIACR
+            RTS
+; ------------------------------------------------------------
+CHKWATERLEVEL:
+            LDB   INHEAD          ; Calculate water level.
+            SUBB  INTAIL
+            ANDB  #INBUFSZ-1
+        
+            TST   RTSSTATE        ; Is request for chars asserted?
+            BNE   CHK_LO          ; No! We might need a top up.
+
+CHK_HI:
+            CMPB  #INHIWATER      ; Is the buffer near full?
+            BLO   EXITWATER       ; No! Do nothing.
+            LDA   #INREJECT       ; Yes! De-assert RTS.
+            STA   RTSSTATE
+            JSR   UPDATE_RTS
+            BRA   EXITWATER
+
+CHK_LO:
+            CMPB  #INLOWATER       ; Is the buffer near empty?
+            BHS   EXITWATER        ; No! Do nothing.
+            LDA   #INACCEPT        ; Yes! Assert RTS.
+            STA   RTSSTATE
+            JSR   UPDATE_RTS
+
+EXITWATER:
+            RTS
+; ------------------------------------------------------------
+FLUSHOUTBUFFER:
+            LDB   OUTTAIL
+            CMPB  OUTHEAD          ; Is transmit buffer empty?
+            BEQ   FLUSHED          ; Yes! Exit.
+
+            LDA   ACIASR           ; Is transmission blocked by remote receiver?
+            BITA  #SR_CTS          
+            BNE   FLUSHED          ; Yes! Exit.
+
+            BITA  #SR_TDRE          ; Is transmit register empty?
+            BEQ   FLUSHOUTBUFFER    ; No! Try again.
+
+            LDX   #OUTBUF         ; The out buffer is occupied.
+            LDA   B,X             ; Get the character from the out buffer.
+            STA   ACIADR          ; Transmit character.
+
+            INCB                  ; Update tail pointer to next character slot.
+            ANDB  #OUTBUFSZ-1
+            STB   OUTTAIL
+
+            BRA   FLUSHOUTBUFFER  
+FLUSHED:
+        RTS
+; ------------------------------------------------------------
+; PUTCHAR
+;    Inputs:
+;        RegA = character to insert into transmit buffer.
+;    Outputs:
+;        none 
+; ------------------------------------------------------------
+PUTCHAR:
+            PSHS  CC,X              
+            ORCC  #$50              ; Enter Critical Section. Disable IRQ & FIRQ
+
+            LDB   OUTHEAD           ; Is buffer full?
+            INCB
+            ANDB  #OUTBUFSZ-1
+            CMPB  OUTTAIL
+            BEQ   PUT_EXIT          ; Yes! Exit discarding character.
+
+            LDX   #OUTBUF           ; Put character into character slot.
+            LDB   OUTHEAD
+            STA   B,X
+
+            INCB                    ; Update tail pointer to next character slot.
+            ANDB  #OUTBUFSZ-1
+            STB   OUTHEAD
+
+            TST   RTSSTATE          ; Is RTS currently low (chars still being accepted)?
+            BEQ   CHK_INT_PATH      ; Yes! Interrupt-driven TX is still available.
+
+            ; RTS is high (REJECT): CR_RTSHI hardware-disables the TX
+            ; interrupt, so nothing will ever drain OUTBUF except this
+            ; polling fallback. BUG FIX: FLUSHOUTBUFFER can take until
+            ; the whole OUTBUF drains (up to ~64 chars, ~5.5ms at 115200
+            ; baud) - running that under PUTCHAR's own ORCC #$50 masked
+            ; IRQ+FIRQ for the entire span, which is exactly why RTS
+            ; went high in the first place: the receiver was under
+            ; pressure, and masking IRQ here stops PUTCHAR's own INCHAR
+            ; path from servicing it, guaranteeing overruns. Unmask
+            ; around the call - FLUSHOUTBUFFER only touches OUTHEAD/
+            ; OUTTAIL/ACIACR, none of which IRQH's RX path (INHEAD/
+            ; INTAIL) touches, so there is no correctness reason to
+            ; keep the receiver blind while this runs.
+            ANDCC #$AF              ; unmask IRQ+FIRQ for the flush only
+            JSR   FLUSHOUTBUFFER    ; Fallback to transmit by polling.
+            ORCC  #$50              ; re-mask - PUT_EXIT below still
+                                     ; expects the critical section active
+
+            BRA   PUT_EXIT
+
+; Re-start the interrupt driven character pump,
+; priming the pump by transmitting a character.
+CHK_INT_PATH:
+            TST   OUTACTIVITY       ; Is the interrupt handler transmitting?
+            BNE   PUT_EXIT          ; Yes! Exit, no action required.
+
+                                    ; No! Restart.
+            LDX   #OUTBUF           ; Pull character from the out buffer.
+            LDB   OUTTAIL
+            LDA   B,X 
+            STA   ACIADR            ; Load the char for transmission.
+
+            INCB                    ; Update the tail pointer 
+            ANDB  #OUTBUFSZ-1       ; to point to the next character.
+            STB   OUTTAIL
+
+            LDA   #OUTBUSY          ; Flag restart of transmit interrupt handler.
+            STA   OUTACTIVITY
+            JSR   UPDATE_RTS        ; Turn on the Tx interrupt.       
+
+PUT_EXIT:
+            PULS  CC,X,PC           ; Leaving the critical section, 
+                                    ; by restoring the CC.
+; ------------------------------------------------------------
+; GETCHAR
+;    Inputs: 
+;        none
+;    Outputs: 
+;         RegA  = next character retrieved from receive buffer.
+;         RegCC(carry) = valid?.
+; ------------------------------------------------------------
+GETCHAR:
+            LDB   INTAIL           ; Is the out buffer populated?
+            CMPB  INHEAD           
+            BEQ   GET_NO_CHAR       ; No! Exit.       
+
+            LDX   #INBUF           ; Pull character from the out buffer.
+			LDA   B,X 
+
+            INCB                    ; Update the tail pointer
+            ANDB  #INBUFSZ-1       ; to point to the next character.
+            STB   INTAIL
+
+            ; BUG FIX: CHKWATERLEVEL reads-then-writes RTSSTATE/
+            ; OUTACTIVITY and can write ACIACR (via UPDATE_RTS) - state
+            ; IRQH's own INCHAR path also reads and writes, by calling
+            ; CHKWATERLEVEL too (safely, from ISR context, where
+            ; interrupts are already hardware-masked). GETCHAR is only
+            ; ever called from mainline code (KEY), unmasked, so without
+            ; masking here an interrupt landing mid-call could race this
+            ; call against IRQH's own concurrent one, leaving RTSSTATE
+            ; corrupted or ACIACR written twice with conflicting values.
+            ; Masked here (IRQ only, matching RTSCHECKLO's own existing
+            ; discipline below) rather than inside CHKWATERLEVEL itself,
+            ; since CHKWATERLEVEL's ISR-context caller must NOT unmask
+            ; IRQ before its own RTI.
+            ORCC  #$10
+            JSR   CHKWATERLEVEL
+            ANDCC #$EF
+
+            ANDCC #$FE               ; Carry flag %0 = valid character
+            RTS
+
+GET_NO_CHAR:
+            ORCC  #$01               ; Carry flag %1 = no valid character.
+            RTS
 ; ------------------------------------------------------------
 ; RTSCHECKLO - called from mainline code (KEY), NOT from the
 ; ISR, so it must mask IRQ around its critical section: IRQH's
@@ -1992,63 +2284,134 @@ RTSCHIDONE: RTS
 ; byte combination offering RTS-high with TX-interrupt-enabled
 ; simultaneously (see CR_RTSHI's comment).
 ; ------------------------------------------------------------
-RTSCHECKLO: JSR  INFILL
+RTSCHECKLO: 
+            ORCC #$10              ; mask IRQ for the critical section
+
+			JSR  INFILL
             CMPA #INLOWATER
             BHI  RTSCLODONE
             TST  RTSSTATE
             BEQ  RTSCLODONE       ; already low - nothing to do
-            ORCC #$10              ; mask IRQ for the critical section
-            CLR  RTSSTATE
-            LDB  OUTTAIL
+
+
+            CLR  RTSSTATE          ; Set flag asserting acceptance of chars
+
+            LDB  OUTTAIL           ; Check if chars are available.  
             CMPB OUTHEAD
-            BEQ  RTSCLONOTX
-            LDA  #CR_RXTX
-            STA  ACIACR
+            BEQ  RTSCLONOTX        ; No! Just configure the ACIA to accept chars.
+
+            LDA  #CR_RXTX          ; Yes! Configure the ACIA to accept chars.
+            STA  ACIACR            ; & to generate transmit slot available interrupts.
             BRA  RTSCLOUNMASK
-RTSCLONOTX: LDA  #CR_RXON
+
+RTSCLONOTX: LDA  #CR_RXON          ; Configure the ACIA to accept chars.
             STA  ACIACR
+
 RTSCLOUNMASK: ANDCC #$EF
+
 RTSCLODONE: RTS
 
-IRQH:    LDA   ACIASR
-         BITA  #SR_IRQ
-         BEQ   IRQDONE
+; ------------------------------------------------------------
+; IRQH - interrupt-driven ACIA (6850) servicing (SERIALPOLL=0).
+; Rewritten by the user for two things at once: (1) the RX and TX
+; halves are now laid out symmetrically (each is: check the
+; relevant status bit, dispatch, single self-contained handler
+; block), and (2) single point of exit - every path, success or
+; not, falls through to IRQDONE/RTI rather than RTI-ing from
+; several different places. Deliberately less byte/cycle-
+; efficient than the previous version in exchange for being
+; easier to review by eye; the user accepted that trade knowingly.
+;
+; Interrupts are automatically masked during an interrupt handler
+; (6809 hardware behavior on IRQ entry), so the composite
+; operations here (ring-buffer head/tail updates, RTSSTATE,
+; ACIACR, the new error counters below) are all safe without any
+; explicit ORCC/ANDCC masking of their own - unlike RTSCHECKLO,
+; which runs from mainline code and does mask explicitly.
+;
+; Receiver-error counting: SR_FE/SR_OVRN/SR_PE (bits 4/5/6 of
+; ACIASR - framing error, overrun, parity error) are only
+; meaningful together with RDRF, and are tested from the SAME
+; ACIASR byte already read into A above, BEFORE ACIADR is read -
+; reading ACIADR clears RDRF and, per the 6850 datasheet, the
+; latched error bits along with it, so they must be inspected
+; first or the information is gone. More than one bit can be set
+; at once, so each is tested and tallied independently into its
+; own counter (FECOUNT/OVRNCOUNT/PECOUNT - see the memory-map
+; comment where they're declared). ACIADR is still read when an
+; error is flagged, to clear the condition and let the next
+; character arrive, but that byte is assumed corrupted and is
+; discarded rather than stored into INBUF.
+; ------------------------------------------------------------
+IRQH:       LDA   ACIASR            ; Get the status.
 
-         BITA  #SR_RDRF
-         BEQ   TXCHK
+            BITA  #SR_IRQ           ; Is the ACIA the interrupt source?
+            BEQ   IRQDONE0          ; No! Just exit.
+            BITA  #SR_RDRF          ; Is an incoming character available?
+            BNE   INCHAR
+            BITA  #SR_TDRE          ; Is the slot for an outgoing character available?
+            BNE   OUTCHAR
+                                    ; Ignore all other interrupts such as DCD change.
+IRQDONE0:  RTI                      ; Single point of exit - re-enables interrupts
+                                    ; & restores state.
 
+INCHAR:
+            LDB   ACIADR               ; Get the char & clear RDRF & error flags.
+            BITA  #SR_FE+SR_OVRN+SR_PE ; Any receiver error flagged?
+            BEQ   INOK                 ; No! - character is good, keep it.
+                                     
+            BITA  #SR_FE               ; Yes! char is corrupted, discard it.
+            BEQ   INXFE                ; Tally each flagged error independently -
+            INC   FECOUNT              ; more than one bit can be set at once.
+INXFE:      BITA  #SR_OVRN
+            BEQ   INXOVRN
+            INC   OVRNCOUNT
+INXOVRN:    BITA  #SR_PE
+            BEQ   INXPE
+            INC   PECOUNT 
+INXPE:      RTI         
+
+INOK:    TFR   B,A                  ; Transfer good character from the receiver.
+         LDX   #INBUF               ; Store it in the empty in buffer slot.
          LDB   INHEAD
-         LDA   ACIADR
-         LDX   #INBUF
          STA   B,X
-         INCB
-         ANDB  #INBUFSZ-1
-         CMPB  INTAIL
-         BEQ   IRQDONE
-         STB   INHEAD
-         JSR   RTSCHECKHI
-         BRA   IRQDONE
+         INCB                  ; Figure out the new head,
+         ANDB  #INBUFSZ-1      ; pointing to the next the empty in buffer slot.
+         CMPB  INTAIL          ; Would the new head slot meet the tail?
+         BEQ   IRQDONE1        ; Don't allow it - buffer full, drop the character.
+         STB   INHEAD          ; New head pointer is OK so store it.
+         ;JSR   RTSCHECKHI     ; Protect the in buffer from overflow.
+         JSR   CHKWATERLEVEL   ; Protect the in buffer from overflow.
+IRQDONE1: RTI
 
-TXCHK:   LDB   OUTTAIL
+         ; LDA   ACIASR          ; Recheck if the transmitter is ready.
+         ; BITA  #SR_TDRE        ; after handling the received character.
+         ; BEQ IRQDONE2          ; Yes! Process the char.
+
+OUTCHAR: LDB   OUTTAIL         ; Is the out buffer empty?
          CMPB  OUTHEAD
-         BEQ   TXOFF
-         LDX   #OUTBUF
-         LDA   B,X
-         STA   ACIADR
-         INCB
+         BEQ   TXOFF           ; Yes! Stop transmitting.
+
+         LDX   #OUTBUF         ; No! The out buffer is occupied.
+         LDA   B,X             ; Get the character from the out buffer.
+         STA   ACIADR          ; Transmit the char.
+
+         INCB                  ; Update the tail pointer pointing to the next char.
          ANDB  #OUTBUFSZ-1
          STB   OUTTAIL
-         BRA   IRQDONE
+IRQDONE2  RTI
 
-TXOFF:   TST   RTSSTATE
-         BNE   IRQDONE         ; RTS is asserted high - leave ACIACR alone,
-                                ; or this would incorrectly drop it back low
-         LDA   #CR_RXON
-         STA   ACIACR
-
-IRQDONE: RTI
+TXOFF:   ; TST   RTSSTATE        ; The buffer is empty.
+         ; BNE   IRQDONE3         ; RTS is asserted high - leave ACIACR alone,
+                               ; or this would incorrectly drop it back low
+         ; LDA   #CR_RXON
+         ; STA   ACIACR
+         CLR   OUTACTIVITY         
+         JSR   UPDATE_RTS         
+IRQDONE3 RTI
 
          ELSE  ; <<<<<>>>>>
+
 IRQH:    RTI                 ; polling mode (SERIALPOLL=1) - ACIA
                               ; interrupts are never enabled (see
                               ; COLDSTRT's CR_POLL init), so this should
@@ -3226,7 +3589,7 @@ NQBAD:    LDX   CADDR
 ; SECTION 10: QUERY / ACCEPT / EXPECT / KEY / KEY? / EMIT
 ; ============================================================
          IFEQ SERIALPOLL  ; >>>>>>>>>>
-KEY:     LDA   INHEAD
+X_KEY:     LDA   INHEAD
          CMPA  INTAIL
          BEQ   KEY
          LDX   #INBUF
@@ -3245,17 +3608,65 @@ KEY:     LDA   INHEAD
          PSHU  D
          RTS
 
-KEYQ:    LDA   INHEAD
-         CMPA  INTAIL
-         BNE   KQTRUE
-         LDD   #FALSEV
-         PSHU  D
-         RTS
-KQTRUE:  LDD   #TRUEV
-         PSHU  D
-         RTS
+; ------------------------------------------------------------
+; KEY ( -- char )
+; ------------------------------------------------------------
+KEY:
 
-EMIT:    PULU  D
+            TST   RTSSTATE         ; Is throttling?
+            BEQ   TRY_READ          ; No! Retrieve character from input buffer.
+
+            ; BUG FIX: this used to mask IRQ (ORCC #$10) around the
+            ; FLUSHOUTBUFFER call. FLUSHOUTBUFFER can spin until the
+            ; whole OUTBUF drains (up to ~5.5ms at 115200 baud), and
+            ; masking IRQ for that whole span blocks IRQH's own INCHAR
+            ; path from servicing the receiver - precisely while RTS
+            ; is high because the receiver is already under pressure,
+            ; which is what was causing the returned overrun errors.
+            ; FLUSHOUTBUFFER only touches OUTHEAD/OUTTAIL/ACIACR, not
+            ; INHEAD/INTAIL, so there's no correctness reason to mask
+            ; the receiver interrupt here at all.
+            JSR   FLUSHOUTBUFFER    ; Drain the output buffer,
+                                    ; by transmitting all chars.
+
+TRY_READ:
+            JSR   GETCHAR           ; Is char available in input buffer.
+            BCS   KEY               ; No? Try again to receive a char,
+                                    ; while still transmitting!
+        
+            TFR   A,B               ; Move char result to Reg B (LSB of D)
+            CLRA                    ; Clear MSB.
+            PSHU  D					; Return result on data stack.
+
+            RTS                     
+
+; ------------------------------------------------------------
+; KEY? ( -- flag )
+; ------------------------------------------------------------
+KEYQ:  
+            ; ORCC  #$10              ; Yes! Enter critical section
+
+            LDA   INHEAD            ; Characters received?
+            CMPA  INTAIL
+
+            ; ANDCC #$EF              ; Exit critical section
+
+            BNE   KQTRUE            ; Yes!
+
+            LDD   #FALSEV           ; No! Return false result.
+            PSHU  D
+
+            RTS
+
+KQTRUE:     
+            LDD   #TRUEV            ; Yes! Return true result.
+            PSHU  D                 ; Push 16-bit cell to Stack (U)
+            RTS
+; ------------------------------------------------------------
+; EMIT  ( char -- )
+; ------------------------------------------------------------
+
+X_EMIT:    PULU  D
          STB   EMITCH
 EMITWT:  LDB   OUTHEAD
          INCB
@@ -3277,6 +3688,12 @@ EMITWT:  LDB   OUTHEAD
          LDA   #CR_RXTX
          STA   ACIACR
 EMITNORTS: RTS
+
+EMIT:
+            PULU  D                 ; Copy char from 2 byte stack cell to RegA.
+            TFR   B,A               
+            JSR   PUTCHAR           ; Transmit char.
+            RTS                     
 
          ELSE  ; <<<<<>>>>>
 ; ------------------------------------------------------------
@@ -3311,6 +3728,7 @@ EMITWT:  LDA   ACIASR
          LDA   EMITCH
          STA   ACIADR
          RTS
+
          ENDC  ; <<<<<<<<<<
 
 ACCEPT:  PULU  D
@@ -4782,6 +5200,22 @@ MSTAR:   PULU  D
          STD   MSCR
          PULU  D
          CLR   MSIGN
+         TSTA            ; BUG FIX: CLR MSIGN unconditionally sets N=0
+                         ; (CLR always clears to 0), overwriting D's
+                         ; own flags from the PULU above - and PULU
+                         ; doesn't set flags on genuine 6809 anyway
+                         ; (same class as TRYNUM/STOD/SIGN's own fixes
+                         ; elsewhere in this file), so BPL was always
+                         ; testing CLR's result, not n1's actual sign.
+                         ; BPL always branched, meaning n1 was NEVER
+                         ; negated even when genuinely negative - found
+                         ; via MAME: TSTMSTAR's two returned values
+                         ; came back wrong, which turned out to be
+                         ; this, not a push-order swap in the test
+                         ; itself. FMSLASHMOD/SMSLASHREM already do
+                         ; this correctly (explicit TST PRODHI between
+                         ; their own CLR calls and the branch) - MSTAR
+                         ; was simply missing the equivalent re-test.
          BPL   MSN1POS
          COM   MSIGN
          COMA
@@ -7138,7 +7572,7 @@ BASEND:
 ; ============================================================
          ORG   INITCODE       ; INITCODE is $FFA9 (was $FFA2, before that $FFA0, before that literal $FFC0)
 COLDSTRT:
-         ORCC  #$50
+         ORCC  #$50        ; Disable IRQ & FIRQ
          LDS   #RSTACK+1
          LDU   #DSTACK+1
          CLRA
@@ -7150,36 +7584,111 @@ CLRGLOB: CLR   ,X+
          DECB
          BNE   CLRGLOB
 
-         LDX   #SERBUF
-         CLR   ,X+
-         CLR   ,X
-
          JSR   INITSERIAL
 
-         IFEQ  UNITTESTS  ; >>>>>>>>>>
+         ANDCC #$AF       ; Enable IRQ & FIRQ   
+
+                         ; BUG FIX: confirmed via MAME - COLDSTRT's own
+                         ; ORCC #$50 above (masking IRQ+FIRQ during the
+                         ; critical early setup: stack pointers, DP,
+                         ; GLOBALS, SERBUF) was never paired with a
+                         ; matching unmask anywhere on this path - only
+                         ; WARM (below) had one, on its own, separate
+                         ; entry point. Under SERIALPOLL=1 (the
+                         ; longstanding default) this never mattered,
+                         ; since IRQH is just an RTI stub and nothing
+                         ; on that path ever depends on interrupts
+                         ; actually firing. It surfaced only once
+                         ; SERIALPOLL=0 (interrupt-driven ACIA I/O) was
+                         ; actually selected and tested: with IRQ left
+                         ; permanently masked, the ACIA's own interrupt
+                         ; (now correctly wired to the CPU - see the
+                         ; MAME driver's own irq_handler fix) could
+                         ; never actually be serviced, regardless of
+                         ; how correctly it reached the CPU pin -
+                         ; keystrokes were silently dropped and the
+                         ; warm-boot message never got typed out.
+                         ; Confirmed directly: manually clearing the I
+                         ; bit via the MAME debugger (cc=EF) mid-
+                         ; session immediately unblocked both. Placed
+                         ; here, right after INITSERIAL returns (the
+                         ; ACIA is configured and every piece of ring-
+                         ; buffer state IRQH depends on is already
+                         ; zeroed by CLRGLOB above), and before
+                         ; TSTRUNNER runs, so the unit test framework's
+                         ; own interrupt-driven output works correctly
+                         ; too, not just the eventual interactive
+                         ; session. Matches WARM's own, already-correct
+                         ; ANDCC #$AF exactly, for consistency - FIRQ
+                         ; is harmless to unmask alongside IRQ, since
+                         ; nothing on this system ever drives it
+                         ; (FIRQH is an RTI stub, same as the other
+                         ; unused vectors).
+
+         IFNE  UNITTESTS  ; >>>>>>>>>>
          JSR   TSTRUNNER
+         ELSE  ; <<<<<>>>>>
+         NOP             ; BUG FIX (see the historical note above this
+         NOP             ; call site's own comment, describing the
+         NOP             ; original bug): this call site used to emit
+                         ; 0 bytes when UNITTESTS' flag meaning
+                         ; excluded the test framework, meaning
+                         ; COLDSTRT's own size varied by 3 bytes
+                         ; depending on UNITTESTS - with INITCODE's
+                         ; own position fixed regardless, that risked
+                         ; the code overflowing into VECTORS whenever
+                         ; UNITTESTS was toggled on. Three NOPs here
+                         ; are byte-for-byte the same size as the
+                         ; JSR TSTRUNNER they replace, so this block
+                         ; now always contributes exactly 3 bytes to
+                         ; COLDSTRT either way - COLDSTRT's total size
+                         ; no longer depends on UNITTESTS at all.
          ENDC  ; <<<<<<<<<<
 
          JMP   COLD
 
-WARM:    ORCC  #$50
+WARM:    ORCC  #$50       ; Disable IRQ & FIRQ
          CLRA
          TFR   A,DP
          LDU   #SP0
          LDS   #RP0
+
+         JSR   INITSERIAL       ; BUG FIX: previously WARM never re-ran
+                                ; this at all, meaning a warm reboot never
+                                ; reset the ring buffer pointers (only
+                                ; COLDSTRT's own, separate path did, and
+                                ; only partially - see SERBUFCLR's own
+                                ; comment) nor re-issued the ACIA's own
+                                ; master-reset sequence. If a lockup or
+                                ; stuck-overrun condition (observed and
+                                ; reported separately) left either side
+                                ; in a corrupted state, a warm reboot
+                                ; would previously have inherited it
+                                ; unchanged rather than genuinely
+                                ; recovering. Placed here, matching
+                                ; COLDSTRT's own established ordering
+                                ; exactly: while IRQ is still masked,
+                                ; with the later ANDCC #$AF unmasking
+                                ; only once setup is complete.
+
          LDX   #WARMMSG
          PSHU  X
          LDD   #WARMMSGL
          PSHU  D
          JSR   TYPE
          ANDCC #$AF
-         JMP   ABORT
+         JMP   ABORT      ; Enable IRQ & FIRQ
 
 WARMMSG: FCC   "  warm"
 WARMMSGL EQU   *-WARMMSG
 
 INITEND  EQU   *          ; Verify no collision with vectors, value should match vector ORG
 INITSIZE EQU   INITEND-INITCODE
+
+; Prevent the assembler from extinguishing the gap between the
+; INITCODE block and the VECTORS block when it generates the
+; .bin file.
+         FILL $FF,VECTORS-INITEND
 
 ; ============================================================
 ; SECTION 1: HARDWARE VECTOR TABLE

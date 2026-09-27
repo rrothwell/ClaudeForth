@@ -381,6 +381,22 @@ MSTAR:   PULU  D
          STD   MSCR
          PULU  D
          CLR   MSIGN
+         TSTA            ; BUG FIX: CLR MSIGN unconditionally sets N=0
+                         ; (CLR always clears to 0), overwriting D's
+                         ; own flags from the PULU above - and PULU
+                         ; doesn't set flags on genuine 6809 anyway
+                         ; (same class as TRYNUM/STOD/SIGN's own fixes
+                         ; elsewhere in this file), so BPL was always
+                         ; testing CLR's result, not n1's actual sign.
+                         ; BPL always branched, meaning n1 was NEVER
+                         ; negated even when genuinely negative - found
+                         ; via MAME: TSTMSTAR's two returned values
+                         ; came back wrong, which turned out to be
+                         ; this, not a push-order swap in the test
+                         ; itself. FMSLASHMOD/SMSLASHREM already do
+                         ; this correctly (explicit TST PRODHI between
+                         ; their own CLR calls and the branch) - MSTAR
+                         ; was simply missing the equivalent re-test.
          BPL   MSN1POS
          COM   MSIGN
          COMA
