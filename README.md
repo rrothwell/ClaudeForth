@@ -46,7 +46,8 @@ brew install binutils
 ## Progress
 
 * ~~Warning: not functional at this time.~~*
-* Warning: all words tested as functional, but with limited test coverage of edge cases. Tagged as version 1.00. *
+* ~~Warning: all words tested as functional, but with limited test coverage of edge cases. Tagged as version 1.00. ~~*
+* Warning: all words tested as functional, with extensive automated tests. Tagged as version 1.10. *
 
 | Item             | Completed   |
 |:-----------------|------------:|
