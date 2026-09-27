@@ -56,7 +56,7 @@ DEVICE_INPUT_DEFAULTS_END
 void mecb6809_state::mecb6809(machine_config &config)
 {
 	/* basic machine hardware */
-	MC6809(config, m_maincpu, XTAL(4'000'000));
+	MC6809(config, m_maincpu, XTAL(8'000'000));
 	m_maincpu->set_addrmap(AS_PROGRAM, &mecb6809_state::mecb6809_mem);
 
 	// Configure UART (via m_acia)
@@ -65,7 +65,7 @@ void mecb6809_state::mecb6809(machine_config &config)
 	m_acia->irq_handler().set_inputline("maincpu", M6809_IRQ_LINE);
 	m_acia->rts_handler().set("rs232", FUNC(rs232_port_device::write_rts));
 
-	clock_device &acia_clock(CLOCK(config, "acia_clock", 7'372'800/4)); // E Clock from M6809
+	clock_device &acia_clock(CLOCK(config, "acia_clock", 7'372'800/4)); // E Clock from M6809 7372800/4
 	acia_clock.signal_handler().set("acia", FUNC(acia6850_device::write_txc));
 	acia_clock.signal_handler().append("acia", FUNC(acia6850_device::write_rxc));
 
