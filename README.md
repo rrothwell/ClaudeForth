@@ -59,8 +59,9 @@ brew install binutils
 |Load forth6809.bin ROM file and verify memory layout and operation. |:white_check_mark:|
 |Manual tests and identified/fixed numerous bugs. |:white_check_mark:|
 |Update documentation|:white_check_mark:|
-|Automated unit tests and identified bug fixes.  | |
-|Improve MAME connection with emulated hardware handshaking.  | |
+|Automated assembler unit tests and identified bug fixes.  |:white_check_mark:|
+|Adapted the MAME mecb6809 driver for interrupt driven hardware handshaking.  |:white_check_mark:|
+|Optimised 6850 ACIA serial communications with interrupt driven hardware handshaking |:white_check_mark:|
 |Tests against ANS test suite and identified bug fixes.  | |
 |Optimisation for space, compiler performance & application performance| |
 |Update documentation| |
@@ -71,18 +72,23 @@ brew install binutils
 ## Assets
 ### Manifest
 + Documentation
++ Recording of Claude chats
++ A Claude generated file listing remaining issues.
 + A unified assembler file.
 + A collection of assembler files
   obtained by splitting the above file.
++ A conditional assembler unit testing file with automation scripts.
++ An updated MAME mecb6809.cpp driver file.
++ An update MAME 6850acia.cpp ACIA emulation file with bugfix.
 + A memory map graphic.
 + An interpreter graphic in UML.
-+ A file listing remaining issues.
 + The ANS test suit.
 
 ### File types
 | File extension             | Description of contents   |
 |-----------------:|:------------|
 |.asm| 6809 assembly language [lwasm syntax](https://www.lwtools.ca)|
+|.cpp| C++ source code file compiled via make|
 |.lst| 6809 assembly listing  |
 |.bin| 6809 raw binary opcodes as ROM content |
 |.svg| Scalable Vector Graphics text XML format |
