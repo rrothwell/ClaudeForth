@@ -103,23 +103,18 @@ DEFAULT_SECTIONS = [
 # Line re-wrapping: split long lines only on whitespace outside
 # S"/."-delimited strings, and never touch a "\" comment line.
 # ------------------------------------------------------------------
-def rewrap_line(line, width=SAFE_LINE_WIDTH):
-    stripped = line.strip("\r\n")
-    if len(stripped) <= width:
-        return [stripped] if stripped != "" or True else []
-
+def is_line_comment(stripped):
     leading = stripped.lstrip(" \t")
-    if leading.startswith("\\") and (len(leading) == 1 or leading[1] in " \t"):
-        # A "\" line comment: never split (its tail would become live
-        # code on a continuation line). Just send it long - the target
-        # discards it as a comment before hitting any length limit
-        # inside its own text-parsing (parses one BL-delimited "word"
-        # per token normally, but the whole rest of the line is inside
-        # a comment, so nothing is ever an over-length token here).
-        return [stripped]
+    return leading.startswith("\\") and (len(leading) == 1 or leading[1] in " \t")
 
-    # Tokenize preserving S"/."-prefixed string literals as atomic
-    # units so a rewrap point never lands inside one.
+
+def tokenize_preserving_strings(stripped):
+    """Split on whitespace, but keep an S"/./C"/ABORT"-introduced string
+    literal as one atomic token so a caller never mistakes a character
+    inside it (a stray ':' or ';' in test text, say) for a real word.
+    Shared by rewrap_line (so a rewrap point never lands inside a
+    string) and colon_delta (so a ':' or ';' inside a string is never
+    mistaken for a real colon-definition boundary)."""
     tokens = []
     i = 0
     n = len(stripped)
@@ -143,6 +138,42 @@ def rewrap_line(line, width=SAFE_LINE_WIDTH):
                 continue
         tokens.append(stripped[start:word_end])
         i = word_end
+    return tokens
+
+
+def colon_delta(line):
+    """Net change in open-colon-definition depth this line causes,
+    scanning tokens outside string literals via tokenize_preserving_strings
+    so a ':' or ';' inside test text is never mistaken for a real one.
+    ':' opens one level, ';' closes one - matched as exact tokens, not
+    substrings, so words like ':' inside a larger token don't count."""
+    stripped = line.strip("\r\n").strip()
+    if stripped == "" or is_line_comment(stripped):
+        return 0
+    delta = 0
+    for tok in tokenize_preserving_strings(stripped):
+        if tok == ":":
+            delta += 1
+        elif tok == ";":
+            delta -= 1
+    return delta
+
+
+def rewrap_line(line, width=SAFE_LINE_WIDTH):
+    stripped = line.strip("\r\n")
+    if len(stripped) <= width:
+        return [stripped] if stripped != "" or True else []
+
+    if is_line_comment(stripped.lstrip(" \t")):
+        # A "\" line comment: never split (its tail would become live
+        # code on a continuation line). Just send it long - the target
+        # discards it as a comment before hitting any length limit
+        # inside its own text-parsing (parses one BL-delimited "word"
+        # per token normally, but the whole rest of the line is inside
+        # a comment, so nothing is ever an over-length token here).
+        return [stripped]
+
+    tokens = tokenize_preserving_strings(stripped)
 
     lines = []
     cur = ""
@@ -313,20 +344,74 @@ def send_line_and_wait(transport, line, char_delay, reply_timeout, log):
     return LineResult(payload, buf, saw_ok, saw_error, timed_out), buf
 
 
-def send_file(transport, path, char_delay, reply_timeout, retries, log, transcript):
+def send_file(transport, path, char_delay, reply_timeout, retries, log, transcript,
+              soft_timeout=False, grace_timeout=1.0):
+    """Two distinct, known cases produce fewer "ok" replies than lines
+    sent, and both are correct target behavior, not data loss or a
+    transport bug - so neither should cost a full reply_timeout stall
+    per line, and neither should be reported as a [FAIL]:
+
+    1. Mid colon-definition (tracked here via colon_delta, purely from
+       the source text - no target state needed). QOK only prints "ok"
+       once STATE is back to 0, i.e. once the definition's ":" has been
+       matched by a ";" - every interior line of a multi-line ": ... ;"
+       gets no "ok" at all, in any file, not just the harness ones. A
+       real compile-time error still prints immediately regardless of
+       STATE, so a short grace_timeout (rather than 0) still catches
+       that quickly without paying the full reply_timeout on every
+       interior line of every multi-line definition.
+    2. soft_timeout=True, for harness files with multi-line [IF]/[ELSE]
+       blocks (ttester.fs's own HAS-FLOATING/HAS-FLOATING-STACK checks).
+       [ELSE] (00a_tool_ext_conditionals.fs, the ANS standard's own
+       reference implementation) skips a false branch by calling REFILL
+       directly from inside its own BL WORD loop whenever it runs out
+       of the current line - entirely inside the single INTERPRET call
+       QLOOP is already waiting on. Every line [ELSE] skips past is read
+       by REFILL, not a fresh QUERY/ACCEPT cycle, and QOK doesn't reply
+       until the whole multi-line skip finally returns - one reply for
+       the entire span, not one per physical line. This can't be
+       predicted from the source alone (it depends on ENVIRONMENT?'s
+       runtime answer), so it still costs a wait, but grace_timeout
+       keeps that wait short instead of the full reply_timeout.
+
+    In both cases attempt=1 is final - retrying is unsafe here regardless
+    (see the mid-definition retry note in the module docstring history:
+    resending would re-feed the same text into a still-open definition,
+    or into REFILL's own skip, a second time)."""
     text = Path(path).read_text()
     lines = rewrap_source(text)
     fail_hit = False
+    depth = 0
     for line in lines:
         if line.strip() == "":
             continue
+        depth = max(0, depth + colon_delta(line))
+        expect_ok = (depth == 0)
+        line_timeout = reply_timeout if expect_ok else min(reply_timeout, grace_timeout)
+
         attempt = 0
         while True:
             attempt += 1
-            result, buf = send_line_and_wait(transport, line, char_delay, reply_timeout, log)
+            result, buf = send_line_and_wait(transport, line, char_delay, line_timeout, log)
             transcript.extend(buf.split(b"\n"))
+
+            if not expect_ok:
+                if result.error:
+                    # A real compile-time error mid-definition - report
+                    # it, but don't retry (unsafe mid-definition) and
+                    # don't wait further; classify()'s transcript-wide
+                    # scan for "  ERROR " still catches it either way.
+                    print(f"    [ERROR mid-definition] {line[:60]!r}", file=sys.stderr)
+                    fail_hit = True
+                break
+
+            if result.timed_out and soft_timeout:
+                print(f"    [note] no immediate reply for: {line[:60]!r} "
+                      f"(expected while inside a multi-line [IF]/[ELSE] skip)",
+                      file=sys.stderr)
+                break
             if result.timed_out and attempt <= retries:
-                print(f"    [retry {attempt}] no ok/ERROR within {reply_timeout}s for: {line[:60]!r}",
+                print(f"    [retry {attempt}] no ok/ERROR within {line_timeout}s for: {line[:60]!r}",
                       file=sys.stderr)
                 continue
             if result.timed_out:
@@ -343,7 +428,7 @@ def classify(transcript_bytes):
     return True
 
 
-def run_section(transport, ans_dir, section, char_delay, reply_timeout, retries, log_dir):
+def run_section(transport, ans_dir, section, char_delay, reply_timeout, retries, log_dir, grace_timeout=1.0):
     matches = sorted(Path(ans_dir).glob(f"{section}_*.tests.fs"))
     if not matches:
         print(f"[skip] no test file found for section {section}", file=sys.stderr)
@@ -353,7 +438,8 @@ def run_section(transport, ans_dir, section, char_delay, reply_timeout, retries,
     log_path = Path(log_dir) / f"{section}.raw.log"
     transcript = []
     with open(log_path, "wb") as log:
-        timed_out_any = send_file(transport, path, char_delay, reply_timeout, retries, log, transcript)
+        timed_out_any = send_file(transport, path, char_delay, reply_timeout, retries, log, transcript,
+                                   grace_timeout=grace_timeout)
     transcript_bytes = b"\n".join(transcript)
     passed = classify(transcript_bytes) and not timed_out_any
     print(f"    -> {'PASS' if passed else 'FAIL'} (log: {log_path})")
@@ -372,6 +458,10 @@ def main():
                     help="seconds to wait for 'ok'/'ERROR' after a line before treating it as lost (default: 10)")
     p.add_argument("--retries", type=int, default=2,
                     help="retries per line before giving up (default: 2)")
+    p.add_argument("--grace-timeout", type=float, default=1.0,
+                    help="seconds to wait for a reply on a line that is known in advance not to get one "
+                         "(interior lines of a multi-line colon-definition; default: 1.0). Kept short "
+                         "since it only needs to catch a genuine compile-time error, not an 'ok'.")
     p.add_argument("--log-dir", default="ans_test_results")
 
     # mame-target options (mirror run_all_tests.sh's flags/defaults)
@@ -429,13 +519,15 @@ def main():
             for fname in ("00a_tool_ext_conditionals.fs", "ttester.fs", "00_test_prelude.fs"):
                 fpath = Path(args.ans_dir) / fname
                 print(f"=== loading {fname} ===")
-                send_file(transport, fpath, args.char_delay, args.reply_timeout, args.retries, log, transcript)
+                send_file(transport, fpath, args.char_delay, args.reply_timeout, args.retries, log, transcript,
+                          soft_timeout=True, grace_timeout=args.grace_timeout)
 
         results = {}
         for section in args.sections:
             results[section] = run_section(
                 transport, args.ans_dir, section,
                 args.char_delay, args.reply_timeout, args.retries, args.log_dir,
+                grace_timeout=args.grace_timeout,
             )
 
         print("\n=== summary ===")
