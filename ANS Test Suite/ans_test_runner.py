@@ -98,6 +98,11 @@ DEFAULT_SECTIONS = [
     "17", "18", "19", "20", "21", "23", "24", "26",
 ]
 
+# dpANS/Forth-2012 chapter numbering: 18 = FLOATING-POINT, 19 = FLOATING-POINT
+# EXTENSIONS. This system has HAS-FLOATING FALSE, so these two files exercise
+# a word set that isn't implemented at all - excluded by --no-float.
+FLOATING_SECTIONS = {"18", "19"}
+
 
 # ------------------------------------------------------------------
 # Line re-wrapping: split long lines only on whitespace outside
@@ -291,6 +296,68 @@ def assemble_rom(args):
 
 
 # ------------------------------------------------------------------
+# Software (XON/XOFF) flow control - the counterpart to forth6809.asm's
+# polling-build PUTXON/PUTXOFF. The target sends XOFF ($13) the instant
+# a line is complete (ACCEPT's ADONE), before INTERPRET/compilation
+# runs with KEY never polled at all, and XON ($11) once it's back in
+# ACCEPT for the next line. An interrupt-driven-build target (real
+# RTS/CTS hardware flow control) or real hardware never sends these
+# bytes at all, so this is a harmless no-op there - flow.paused simply
+# never becomes True.
+# ------------------------------------------------------------------
+XON_BYTE = 0x11
+XOFF_BYTE = 0x13
+
+
+class FlowControl:
+    """Shared across the whole run (one instance threaded through every
+    send_line_and_wait call) since it reflects the single target
+    device's actual state, not anything scoped to one line or file."""
+    def __init__(self):
+        self.paused = False
+
+
+def scan_for_flow(chunk, flow):
+    """Strip XON/XOFF bytes out of a just-read chunk, updating flow's
+    paused state as a side effect. Callers must use the returned bytes
+    for marker-matching/transcript logging, not the original chunk - a
+    stray XOFF/XON byte left in could otherwise land inside what looks
+    like an "ok"/"ERROR" marker or corrupt the logged transcript."""
+    if XON_BYTE not in chunk and XOFF_BYTE not in chunk:
+        return chunk
+    out = bytearray()
+    for b in chunk:
+        if b == XOFF_BYTE:
+            flow.paused = True
+        elif b == XON_BYTE:
+            flow.paused = False
+        else:
+            out.append(b)
+    return bytes(out)
+
+
+def wait_for_resume(transport, flow, log, poll_timeout=5.0):
+    """Block until flow.paused is False, reading (and feeding through
+    scan_for_flow) whatever the target sends meanwhile so a still-busy
+    target - mid INTERPRET/compile, not polling KEY at all - never gets
+    new bytes it has nowhere to put. poll_timeout is a safety net only,
+    in case an XON is ever lost on the wire: it gives up waiting and
+    lets the caller proceed rather than hang forever."""
+    if not flow.paused:
+        return
+    deadline = time.monotonic() + poll_timeout
+    while flow.paused and time.monotonic() < deadline:
+        chunk = transport.read_some()
+        if chunk:
+            clean = scan_for_flow(chunk, flow)
+            if clean:
+                log.write(clean)
+                log.flush()
+        else:
+            time.sleep(0.01)
+
+
+# ------------------------------------------------------------------
 # The line-at-a-time send/wait protocol
 # ------------------------------------------------------------------
 class LineResult:
@@ -302,15 +369,18 @@ class LineResult:
         self.timed_out = timed_out
 
 
-def send_line_and_wait(transport, line, char_delay, reply_timeout, log):
+def send_line_and_wait(transport, line, char_delay, reply_timeout, log, flow):
     """Send one line, terminated by CR (forth6809's ACCEPT/QUIT treat CR
     ($0D) as end-of-line and silently ignore LF - see ACCEPT's ALOOP:
     CMPB #13 -> ADONE, CMPB #10 -> BRA ALOOP - so CR alone is correct and
     sending CRLF would just cost one ignored byte per line for no
     benefit)."""
     payload = line.encode("ascii", errors="replace") + b"\r"
+
+    wait_for_resume(transport, flow, log)
     if char_delay > 0:
         for b in payload:
+            wait_for_resume(transport, flow, log)
             transport.write(bytes([b]))
             time.sleep(char_delay)
     else:
@@ -323,6 +393,9 @@ def send_line_and_wait(transport, line, char_delay, reply_timeout, log):
     while time.monotonic() < deadline:
         chunk = transport.read_some()
         if chunk:
+            chunk = scan_for_flow(chunk, flow)
+            if not chunk:
+                continue
             buf += chunk
             log.write(chunk)
             log.flush()
@@ -336,8 +409,10 @@ def send_line_and_wait(transport, line, char_delay, reply_timeout, log):
                 while time.monotonic() < drain_deadline:
                     extra = transport.read_some()
                     if extra:
-                        buf += extra
-                        log.write(extra)
+                        extra = scan_for_flow(extra, flow)
+                        if extra:
+                            buf += extra
+                            log.write(extra)
                         drain_deadline = time.monotonic() + 0.5
                 break
     timed_out = not (saw_ok or saw_error)
@@ -345,7 +420,7 @@ def send_line_and_wait(transport, line, char_delay, reply_timeout, log):
 
 
 def send_file(transport, path, char_delay, reply_timeout, retries, log, transcript,
-              soft_timeout=False, grace_timeout=1.0):
+              flow, soft_timeout=False, grace_timeout=1.0):
     """Two distinct, known cases produce fewer "ok" replies than lines
     sent, and both are correct target behavior, not data loss or a
     transport bug - so neither should cost a full reply_timeout stall
@@ -392,7 +467,7 @@ def send_file(transport, path, char_delay, reply_timeout, retries, log, transcri
         attempt = 0
         while True:
             attempt += 1
-            result, buf = send_line_and_wait(transport, line, char_delay, line_timeout, log)
+            result, buf = send_line_and_wait(transport, line, char_delay, line_timeout, log, flow)
             transcript.extend(buf.split(b"\n"))
 
             if not expect_ok:
@@ -401,8 +476,23 @@ def send_file(transport, path, char_delay, reply_timeout, retries, log, transcri
                     # it, but don't retry (unsafe mid-definition) and
                     # don't wait further; classify()'s transcript-wide
                     # scan for "  ERROR " still catches it either way.
+                    #
+                    # Critically: QUIT's CATCH/ABORT forces STATE back to
+                    # 0 (interpret) the instant any error fires, no matter
+                    # how deep colon_delta's static count thinks we are -
+                    # a definition that was aborted mid-body never reaches
+                    # its own ';', so without this resync the depth count
+                    # is left permanently offset. Every following line
+                    # would then be (wrongly) treated as "interior, no
+                    # reply expected" for the rest of the file: the
+                    # runner would stop waiting for real "ok" replies
+                    # entirely and fire the remaining lines at full speed
+                    # with only a grace_timeout pause each, flooding the
+                    # input buffer - this is what a full lockup after a
+                    # cascade of errors usually means, not a second bug.
                     print(f"    [ERROR mid-definition] {line[:60]!r}", file=sys.stderr)
                     fail_hit = True
+                    depth = 0
                 break
 
             if result.timed_out and soft_timeout:
@@ -417,6 +507,8 @@ def send_file(transport, path, char_delay, reply_timeout, retries, log, transcri
             if result.timed_out:
                 print(f"    [FAIL] gave up after {retries} retries on: {line[:60]!r}", file=sys.stderr)
                 fail_hit = True
+            # A real reply came back (ok or ERROR) for a line we expected
+            # one from - nothing to resync, depth is already trustworthy.
             break
     return fail_hit
 
@@ -428,7 +520,7 @@ def classify(transcript_bytes):
     return True
 
 
-def run_section(transport, ans_dir, section, char_delay, reply_timeout, retries, log_dir, grace_timeout=1.0):
+def run_section(transport, ans_dir, section, char_delay, reply_timeout, retries, log_dir, flow, grace_timeout=1.0):
     matches = sorted(Path(ans_dir).glob(f"{section}_*.tests.fs"))
     if not matches:
         print(f"[skip] no test file found for section {section}", file=sys.stderr)
@@ -439,7 +531,7 @@ def run_section(transport, ans_dir, section, char_delay, reply_timeout, retries,
     transcript = []
     with open(log_path, "wb") as log:
         timed_out_any = send_file(transport, path, char_delay, reply_timeout, retries, log, transcript,
-                                   grace_timeout=grace_timeout)
+                                   flow, grace_timeout=grace_timeout)
     transcript_bytes = b"\n".join(transcript)
     passed = classify(transcript_bytes) and not timed_out_any
     print(f"    -> {'PASS' if passed else 'FAIL'} (log: {log_path})")
@@ -452,6 +544,10 @@ def main():
     p.add_argument("--ans-dir", default="ans_tests", help="directory containing ans_tests/ files")
     p.add_argument("--sections", nargs="+", default=DEFAULT_SECTIONS,
                     help="section number prefixes to run, e.g. 08 09 10 (default: all known sections)")
+    p.add_argument("--no-float", action="store_true",
+                    help=f"drop the floating-point section(s) ({', '.join(sorted(FLOATING_SECTIONS))}) from "
+                         f"--sections before running - this system has no FLOATING-POINT word set, so those "
+                         f"files exercise undefined words rather than being harmlessly skipped")
     p.add_argument("--char-delay", type=float, default=0.0,
                     help="extra seconds between individual characters within a line (default: 0, rely on ok-sync alone)")
     p.add_argument("--reply-timeout", type=float, default=10.0,
@@ -491,6 +587,12 @@ def main():
 
     args = p.parse_args()
 
+    if args.no_float:
+        dropped = [s for s in args.sections if s in FLOATING_SECTIONS]
+        args.sections = [s for s in args.sections if s not in FLOATING_SECTIONS]
+        if dropped:
+            print(f"[--no-float] excluding section(s): {' '.join(dropped)}", file=sys.stderr)
+
     Path(args.log_dir).mkdir(parents=True, exist_ok=True)
 
     mame_proc = None
@@ -511,6 +613,13 @@ def main():
             p.error("--serial-port is required for --target serial")
         transport = SerialTransport(args.serial_port, args.baud, args.rtscts)
 
+    flow = FlowControl()  # shared for the whole run - see FlowControl's
+                          # own docstring. A non-polling target (real
+                          # hardware, or an interrupt-driven build with
+                          # its own RTS/CTS) never sends XON/XOFF at all,
+                          # so flow.paused simply never becomes True and
+                          # this is a no-op there.
+
     try:
         # Harness + preamble, loaded once, ahead of every section.
         harness_log = Path(args.log_dir) / "00_harness.raw.log"
@@ -520,14 +629,14 @@ def main():
                 fpath = Path(args.ans_dir) / fname
                 print(f"=== loading {fname} ===")
                 send_file(transport, fpath, args.char_delay, args.reply_timeout, args.retries, log, transcript,
-                          soft_timeout=True, grace_timeout=args.grace_timeout)
+                          flow, soft_timeout=True, grace_timeout=args.grace_timeout)
 
         results = {}
         for section in args.sections:
             results[section] = run_section(
                 transport, args.ans_dir, section,
                 args.char_delay, args.reply_timeout, args.retries, args.log_dir,
-                grace_timeout=args.grace_timeout,
+                flow, grace_timeout=args.grace_timeout,
             )
 
         print("\n=== summary ===")
