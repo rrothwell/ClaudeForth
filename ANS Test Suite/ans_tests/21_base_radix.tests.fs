@@ -19,6 +19,8 @@
 \ order, without cross-file dictionary pollution.
 MARKER M21
 
+HEX
+
 \ F.6.1.0750  BASE
 : GN2 ( -- 16 10 )
 BASE @ >R HEX BASE @ DECIMAL BASE @ R> BASE ! ;   T{ GN2 -> 10 A }T
@@ -28,6 +30,8 @@ BASE @ >R HEX BASE @ DECIMAL BASE @ R> BASE ! ;   T{ GN2 -> 10 A }T
 
 \ F.6.2.1660  HEX
 \ See F.6.1.0750 BASE.
+
+DECIMAL
 
 \ ---- section-marker: undo everything above ----
 M21
