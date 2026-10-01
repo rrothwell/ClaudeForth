@@ -23,9 +23,14 @@ T{ 1 BITSSET? -> 0 0 }T
 T{ -1 BITSSET? -> 0 0 }T
 
 \ ---- F.3.2 Booleans (needs AND, INVERT tested first - section 16) ----
-\ 0S and 1S are actually defined via CONSTANT in F.3.5 below, but the
-\ narrative places their first use here; both groups are included in
-\ this shared prelude since nearly every later section depends on them.
+\ 0S and 1S themselves are NOT defined anywhere else in this harness -
+\ every later section (including F.3.5 below, which builds <FALSE>/
+\ <TRUE> from them) depends on them existing first. Standard meaning:
+\ 0S is the single-cell all-zero-bits value, 1S is single-cell
+\ all-one-bits (i.e. -1) - matches their use at F.3.3 below, where
+\ "1S 1 RSHIFT INVERT" must yield the sign bit (MSB) alone.
+0 CONSTANT 0S
+0 INVERT CONSTANT 1S
 
 \ ---- F.3.3 Shifts ----
 1S 1 RSHIFT INVERT CONSTANT MSB
