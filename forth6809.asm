@@ -156,7 +156,8 @@ INITCODE EQU  $FFA4     ; was $FFA9 - shifted down 3 bytes, per
                          ; own fixed budget against VECTORS needed the
                          ; same 2 bytes back to stay within it.
 ;BASECODE EQU  $DE2E     ; was $DE5E ($DE7A, $DEEA, $DF6A, $DF8A, $DFCA,
-BASECODE EQU  $DD2E     ; was $DE5E ($DE7A, $DEEA, $DF6A, $DF8A, $DFCA,
+;BASECODE EQU  $DD2E     ; was $DE5E ($DE7A, $DEEA, $DF6A, $DF8A, $DFCA,
+BASECODE EQU  $DD3A     ; was $DE5E ($DE7A, $DEEA, $DF6A, $DF8A, $DFCA,
                          ; $DFDA, $DFEA, $E02A before that) - shifted
                          ; down a further $30 (48 bytes) this time.
                          ; Reason: IRQH was rewritten for symmetry
@@ -1446,10 +1447,16 @@ H_SEMI:
          FCC   ";"
          FDB   H_COLON
          FDB   SEMI
+H_NONAME:
+         FCB   $07          ; not IMMEDIATE - ordinary word, same as
+                             ; COLON (only ever runs during INTERPRET)
+         FCC   ":NONAME"
+         FDB   H_SEMI
+         FDB   NONAME
 H_CREATE:
          FCB   $06
          FCC   "CREATE"
-         FDB   H_SEMI
+         FDB   H_NONAME
          FDB   CREATE
 H_DOESGT:
          FCB   $85          ; $80 IMMEDIATE | 5 (length of "DOES>")
@@ -2884,6 +2891,35 @@ SEMIOK:  LDX   LATEST
          ANDA  #$BF
          STA   ,X
          LDD   #0
+         STD   STATE
+         RTS
+
+; NONAME (":NONAME", CORE EXT): like COLON, but deliberately skips
+; HEADER entirely - no WORD call (consumes no name from the input),
+; no new header written at DPHERE, and LATEST is left completely
+; untouched. That's the ANS-required "no-name" definition: never
+; findable by FIND, never linked into the dictionary chain at all.
+; In this subroutine-threaded system the execution token IS the code
+; address (no separate CFA indirection, unlike CREATE's DODOES
+; trampoline), so the xt ANS requires :NONAME to leave on the stack
+; is simply CODEHERE at this instant - identical to what HEREW
+; returns - pushed BEFORE compilation of the body begins, matching
+; where ANS says :NONAME produces it. CSP is snapshotted AFTER that
+; push (mirroring COLON's own CSP snapshot, taken after HEADER's
+; transient pushes/pops have already netted back to baseline) so
+; SEMI's control-flow consistency check at ";" only catches a
+; genuinely unbalanced IF/DO etc. left over from the body, not the
+; xt itself, which is meant to still be there when ";" returns.
+; SEMI itself needs no changes: its unsmudge-the-word-at-LATEST step
+; still targets whatever LATEST already was (the previous NAMED
+; word, untouched by this routine) - a harmless no-op there, since a
+; normal definition is already unsmudged by the time any later
+; definition's SEMI runs.
+NONAME:  LDD   CODEHERE
+         PSHU  D
+         TFR   U,D
+         STD   CSP
+         LDD   #-1
          STD   STATE
          RTS
 
