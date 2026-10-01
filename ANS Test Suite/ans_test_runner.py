@@ -116,11 +116,27 @@ def is_line_comment(stripped):
 def tokenize_preserving_strings(stripped):
     """Split on whitespace, but keep an S"/./C"/ABORT"-introduced string
     literal as one atomic token so a caller never mistakes a character
-    inside it (a stray ':' or ';' in test text, say) for a real word.
-    Shared by rewrap_line (so a rewrap point never lands inside a
-    string) and colon_delta (so a ':' or ';' inside a string is never
-    mistaken for a real colon-definition boundary)."""
-    tokens = []
+    inside it (a stray ':' or ';' in test text, say) for a real word,
+    and ALSO fuse a whole "T{ ... }T" assertion into one atomic token
+    (second pass, below). Shared by rewrap_line (so a rewrap point
+    never lands inside a string or a T{}T block) and colon_delta (so a
+    ':'/';' inside either is never mistaken for a real colon-definition
+    boundary).
+
+    The T{}T fusing matters because forth6809's ACCEPT/INTERPRET treat
+    every physically-sent line as a hard parse boundary - there's no
+    carry-over into "the next line" the way a file INCLUDE's REFILL
+    provides one. T{ and }T aren't special to the Forth parser itself
+    (ordinary space-delimited words), but a defining word and the name
+    it parses from the word AFTER it (CREATE CR1, : DOES1, VARIABLE V,
+    ...) must never land on two different rewrapped lines, or the
+    second line's name token gets interpreted as a bare, undefined
+    word while the defining word on the first line gets no name at
+    all. Every T{...}T in this test corpus is already written as one
+    self-contained unit by convention, so treating each one as atomic
+    is always safe and directly prevents that failure mode for every
+    defining word used inside one."""
+    raw_tokens = []
     i = 0
     n = len(stripped)
     while i < n:
@@ -138,11 +154,29 @@ def tokenize_preserving_strings(stripped):
         if word in ('S"', '."', 'C"', 'ABORT"') and word_end < n and stripped[word_end] == " ":
             close = stripped.find('"', word_end + 1)
             if close != -1:
-                tokens.append(stripped[start:close + 1])
+                raw_tokens.append(stripped[start:close + 1])
                 i = close + 1
                 continue
-        tokens.append(stripped[start:word_end])
+        raw_tokens.append(stripped[start:word_end])
         i = word_end
+
+    tokens = []
+    j = 0
+    m = len(raw_tokens)
+    while j < m:
+        if raw_tokens[j] == "T{":
+            span = [raw_tokens[j]]
+            j += 1
+            while j < m:
+                span.append(raw_tokens[j])
+                closed = raw_tokens[j] == "}T"
+                j += 1
+                if closed:
+                    break
+            tokens.append(" ".join(span))
+        else:
+            tokens.append(raw_tokens[j])
+            j += 1
     return tokens
 
 
@@ -312,9 +346,23 @@ XOFF_BYTE = 0x13
 class FlowControl:
     """Shared across the whole run (one instance threaded through every
     send_line_and_wait call) since it reflects the single target
-    device's actual state, not anything scoped to one line or file."""
+    device's actual state, not anything scoped to one line or file.
+
+    Starts paused=True, not False: nothing else tells this script when
+    the target is actually ready to receive. Without this, the very
+    first send races the target's own COLD/SIGNON-banner startup - the
+    socket accepts long before the 6809 reaches ACCEPT's first PUTXON,
+    and with no ring buffer in polling mode, bytes sent into that
+    window just sit in (or overrun) the ACIA's single receive latch,
+    corrupting whatever the target sees as its first line. Starting
+    paused means the first wait_for_resume() call (at the top of the
+    first send_line_and_wait) genuinely blocks - draining and logging
+    the SIGNON banner - until the real startup XON arrives, or until
+    wait_for_resume's own poll_timeout gives up and clears it (see
+    there) for a target that never sends XON/XOFF at all (real
+    hardware, interrupt-driven build)."""
     def __init__(self):
-        self.paused = False
+        self.paused = True
 
 
 def scan_for_flow(chunk, flow):
@@ -355,6 +403,15 @@ def wait_for_resume(transport, flow, log, poll_timeout=5.0):
                 log.flush()
         else:
             time.sleep(0.01)
+    if flow.paused:
+        # Gave up, not resumed: either the initial startup wait (see
+        # FlowControl's docstring) found no XON because this target
+        # never sends one, or a genuine XON was lost mid-run. Either
+        # way, clear paused now rather than leaving it set - otherwise
+        # every remaining byte of the current line would re-enter this
+        # same poll_timeout wait one byte at a time, since this is
+        # called from inside send_line_and_wait's per-character loop.
+        flow.paused = False
 
 
 # ------------------------------------------------------------------
