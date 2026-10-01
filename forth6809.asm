@@ -297,11 +297,24 @@ CODETOP  EQU  $B900     ; was $B800 - code space ceiling (data stack
 ;                 by tracing LTNUM/HOLD. The gap must be at least
 ;                 HOLDMINSIZE wide for this to fit.
 ; PADOFFSET (below) satisfies both: it equals PADMINSIZE, which is
-; itself well above HOLDMINSIZE (84 vs 34, 50 bytes of margin) - kept
+; itself well above HOLDMINSIZE (128 vs 34, 94 bytes of margin) - kept
 ; as a single, larger-than-either-strict-minimum offset rather than
 ; two separately-tuned numbers, matching "larger than minimum is
 ; satisfactory" for a small system.
-PADMINSIZE  EQU 84
+;
+; PADMINSIZE was raised from the original 84 to 128 after the 84
+; value was found to cap WORDMAXCHARS (below) at 46 characters,
+; silently truncating any S" string longer than that (WORD would
+; stop scanning at the cap without having seen the closing '"',
+; leaving unconsumed text to be misparsed as a bogus next word).
+; The longest S" strings actually in use (ans_tests/ttester.fs) run
+; to 62 characters, so 128 leaves headroom well beyond that. PAD is
+; computed dynamically as CODEHERE+PADOFFSET (see PADW) rather than
+; living at a fixed address, so this change carries no collision
+; risk with anything else in memory - the only cost is a small,
+; negligible reduction in dictionary headroom before CODEHERE+
+; PADOFFSET could reach CODETOP.
+PADMINSIZE  EQU 128
 WORDMINSIZE EQU 33
 HOLDMINSIZE EQU 34
 PADOFFSET   EQU PADMINSIZE  ; CODEHERE-to-PAD gap; also governs how
@@ -330,7 +343,7 @@ WORDMAXCHARS EQU PADOFFSET-HOLDMINSIZE-1-3  ; max characters WORD can
                             ; different callers different effective
                             ; limits - simpler and safer than trying
                             ; to track which caller needs which cap.
-                            ; 84-34-1-3 = 46.
+                            ; 128-34-1-3 = 90.
 
 APPCODE  EQU  $7000     ; was $5000 - back to its original address.
                          ; RESOLVED: this once overlapped DSTACK's true
@@ -445,7 +458,14 @@ SR_PE    EQU %01000000  ; ($40) (Parity Error)
 CR_RESET  EQU %00000011 ; ($03) (Master Reset mode)
 CR_BASE   EQU %10010101 ; ($95) (Rx Int Enabled, 8-N-1, /16 Clock)
 CR_RXON   EQU %10010101 ; ($95) (Rx Int Enabled, 8-N-1, /16 Clock)
-CR_RXTX   EQU %10110101 ; ($B5) (Rx Int Enabled, Tx Int/RTS Control, 8-N-1, /16 Clock) -
+CR_RXTX   EQU %10110101   ; ($B5) (Rx Int Enabled, Tx Int/RTS Control, 8-N-1, /16 Clock) -
+                           ; stray trailing "|" before this comment removed: a dangling
+                           ; bitwise-OR operator with nothing on its right, presumably a
+                           ; typo left over from editing. Left alone, lwasm's expression
+                           ; parser evidently tolerated it (whitespace before ";" likely
+                           ; meant the "|" and comment were never actually joined into one
+                           ; malformed expression token) - but it was never intentional and
+                           ; is worth removing before it causes a real problem elsewhere.
 CR_POLL   EQU %00010101 ; ($15) (All Ints Disabled, Polling mode, 8-N-1, /16 Clock)
 CR_RTSHI  EQU %11010101 ; ($D5) (RTS High, Transmit Interrupt Disabled, 8-N-1, /16 Clock)                    
 
@@ -498,6 +518,14 @@ INREJECT      EQU $FF
 OUTIDLE       EQU $00
 OUTBUSY       EQU $FF
 
+; Software (in-band) flow control - polling build only. The
+; interrupt-driven build has real RTS/CTS hardware flow control
+; already (CHKHI/CHKLO/UPDATE_RTS); polling mode has no ring
+; buffer and no hardware handshaking at all, so it needs its own
+; substitute - see ACCEPT and PUTXON/PUTXOFF.
+XONCH         EQU $11
+XOFFCH        EQU $13
+
 ; ------------------------------------------------------------
 ; Flag / opcode constants
 ; ------------------------------------------------------------
@@ -518,6 +546,19 @@ TAGDO    EQU  3
 TAGCASE  EQU  4
 TAGOF    EQU  5
 TAGENDOF EQU  6
+TAGQDO   EQU  7   ; ?DO's own pending zero-trip forward-branch marker,
+                  ; distinct from TAGFWD - LOOP/PLUSLOOP peek past their
+                  ; TAGDO frame for exactly this tag to decide whether
+                  ; there's a ?DO patch waiting. Reusing TAGFWD for that
+                  ; peek was a real bug: DO ... LOOP nested inside an
+                  ; still-open IF/WHILE (which legitimately has its own
+                  ; TAGFWD sitting in that exact spot) got its frame
+                  ; mistaken for a ?DO patch and consumed by LOOP,
+                  ; leaving the enclosing THEN/REPEAT to find the wrong
+                  ; tag and throw -22. A plain DO never has anything
+                  ; genuine for LOOP to find here, so nothing needs to
+                  ; match TAGQDO in that case - the enclosing frame is
+                  ; now left alone as it should be.
 
 ; ============================================================
 ; GLOBALS - real layout, applied. Every scratch/state cell
@@ -730,10 +771,22 @@ OUTHEAD     RMB  1
 OUTTAIL     RMB  1
 OUTACTIVITY RMB  1  ; $00 = Idle, $FF = Busy (tx_active)
 
-FECOUNT     RMB  1  ; framing-error count, incremented by IRQH
-OVRNCOUNT   RMB  1  ; overrun count, incremented by IRQH
-PECOUNT     RMB  1  ; parity-error count, incremented by IRQH
-                      
+FECOUNT     RMB  1  ; framing-error count, incremented by IRQH (interrupt
+                    ; build) or by polling KEY (polling build - see below)
+OVRNCOUNT   RMB  1  ; overrun count, same as above
+PECOUNT     RMB  1  ; parity-error count, same as above
+POLLREADYCNT RMB 1  ; polling build only: counts every KEY call that found
+                    ; RDRF already set on its very first check, before
+                    ; spinning at all - i.e. a character was already
+                    ; sitting queued when we came back to poll for it.
+                    ; A high count relative to total characters received
+                    ; is evidence the host is running ahead of what the
+                    ; 6809 has actually consumed (a transport-buffered
+                    ; backlog), distinct from a genuine ACIA overrun
+                    ; (which OVRNCOUNT would show instead) - last free
+                    ; byte in this block, right before SERBUF's 64-byte
+                    ; alignment at $0180.
+
             ORG   SERBUF    ; $180, a 64 byte boundary.
 
             ALIGN 64       ; Force 64-byte boundary alignment
@@ -2041,6 +2094,7 @@ SERBUFCLR:  CLR  INHEAD
             CLR  FECOUNT
             CLR  OVRNCOUNT
             CLR  PECOUNT
+            CLR  POLLREADYCNT
             RTS
 
 INITSERIAL: JSR  SERBUFCLR
@@ -2110,43 +2164,74 @@ WRITE_CR:
             STA   ACIACR
             RTS
 ; ------------------------------------------------------------
-CHKWATERLEVEL:
-            LDB   INHEAD          ; Calculate water level.
-            SUBB  INTAIL
-            ANDB  #INBUFSZ-1
-        
-            TST   RTSSTATE        ; Is request for chars asserted?
-            BNE   CHK_LO          ; No! We might need a top up.
-
-CHK_HI:
+; CHKHI/CHKLO - replace the old combined CHKWATERLEVEL. That
+; routine always paid for a TST RTSSTATE/BNE to pick a
+; direction (hi vs lo) before checking either watermark - but
+; the direction picked never actually depended on which caller
+; was asking, only on the current RTSSTATE, and each caller
+; only ever moves fill one way: INCHAR (via CHKHI) only ever
+; adds to the ring, so only the hi threshold can ever usefully
+; fire from that side; GETCHAR (via CHKLO) only ever drains it,
+; so only the lo threshold can fire from that side. Whenever
+; the old routing sent a caller into the "wrong" branch for its
+; own direction (e.g. INCHAR landing in CHK_LO while RTSSTATE
+; was REJECT), the comparison was provably always a no-op from
+; that caller - the fill level only ever moves the way that
+; caller pushes it, so the other threshold's condition can't
+; newly become true there. Splitting into two direction-fixed
+; routines removes that dead branch+comparison from both
+; callers, and both take the current fill level pre-computed in
+; RegB rather than reloading INHEAD/INTAIL themselves, so a
+; caller that already has one of the two pointers in a register
+; (see INCHAR) doesn't pay for a redundant reload.
+; ------------------------------------------------------------
+CHKHI:
             CMPB  #INHIWATER      ; Is the buffer near full?
-            BLO   EXITWATER       ; No! Do nothing.
+            BLO   CHKHIDONE       ; No! Do nothing.
+            TST   RTSSTATE
+            BNE   CHKHIDONE       ; already high - nothing to do
             LDA   #INREJECT       ; Yes! De-assert RTS.
             STA   RTSSTATE
             JSR   UPDATE_RTS
-            BRA   EXITWATER
+CHKHIDONE:  RTS
 
-CHK_LO:
-            CMPB  #INLOWATER       ; Is the buffer near empty?
-            BHS   EXITWATER        ; No! Do nothing.
-            LDA   #INACCEPT        ; Yes! Assert RTS.
+CHKLO:
+            CMPB  #INLOWATER      ; Is the buffer near empty?
+            BHS   CHKLODONE       ; No! Do nothing.
+            TST   RTSSTATE
+            BEQ   CHKLODONE       ; already low - nothing to do
+            LDA   #INACCEPT       ; Yes! Assert RTS.
             STA   RTSSTATE
             JSR   UPDATE_RTS
-
-EXITWATER:
-            RTS
+CHKLODONE:  RTS
 ; ------------------------------------------------------------
+; BUG FIX: this used to loop internally (BRA back to the top)
+; until the whole OUTBUF drained or CTS blocked - an unbounded
+; spin of up to ~64 characters (~5.5ms at 115200 baud). In
+; practice only one character was ever observed to be processed
+; per call anyway (TDRE is rarely ready again this soon after
+; sending), so this now makes that explicit: sends at most ONE
+; character per call and returns unconditionally, whatever the
+; reason (buffer empty, CTS-blocked, TDRE not ready yet, or a
+; character actually sent - including the TDRE-not-ready case,
+; which used to spin-wait right here and now instead just
+; returns to try again on the next call). Every caller (KEY,
+; PUTCHAR) already calls this once per character it handles on
+; its own side, so the buffer still drains at essentially the
+; same rate - this removes the unbounded worst case and the
+; TDRE spin-wait, without changing normal-case throughput.
 FLUSHOUTBUFFER:
             LDB   OUTTAIL
             CMPB  OUTHEAD          ; Is transmit buffer empty?
             BEQ   FLUSHED          ; Yes! Exit.
 
             LDA   ACIASR           ; Is transmission blocked by remote receiver?
-            BITA  #SR_CTS          
+            BITA  #SR_CTS
             BNE   FLUSHED          ; Yes! Exit.
 
             BITA  #SR_TDRE          ; Is transmit register empty?
-            BEQ   FLUSHOUTBUFFER    ; No! Try again.
+            BEQ   FLUSHED           ; No! Exit - try again next call rather
+                                     ; than spin-wait here.
 
             LDX   #OUTBUF         ; The out buffer is occupied.
             LDA   B,X             ; Get the character from the out buffer.
@@ -2155,8 +2240,8 @@ FLUSHOUTBUFFER:
             INCB                  ; Update tail pointer to next character slot.
             ANDB  #OUTBUFSZ-1
             STB   OUTTAIL
-
-            BRA   FLUSHOUTBUFFER  
+                                  ; One character sent - return rather than
+                                  ; loop back for more (see header comment).
 FLUSHED:
         RTS
 ; ------------------------------------------------------------
@@ -2194,7 +2279,7 @@ PUTCHAR:
             ; baud) - running that under PUTCHAR's own ORCC #$50 masked
             ; IRQ+FIRQ for the entire span, which is exactly why RTS
             ; went high in the first place: the receiver was under
-            ; pressure, and masking IRQ here stops PUTCHAR's own INCHAR
+            ; pressure, and masking IRQ here stops IRQH's own INCHAR
             ; path from servicing it, guaranteeing overruns. Unmask
             ; around the call - FLUSHOUTBUFFER only touches OUTHEAD/
             ; OUTTAIL/ACIACR, none of which IRQH's RX path (INHEAD/
@@ -2250,21 +2335,27 @@ GETCHAR:
             ANDB  #INBUFSZ-1       ; to point to the next character.
             STB   INTAIL
 
-            ; BUG FIX: CHKWATERLEVEL reads-then-writes RTSSTATE/
-            ; OUTACTIVITY and can write ACIACR (via UPDATE_RTS) - state
-            ; IRQH's own INCHAR path also reads and writes, by calling
-            ; CHKWATERLEVEL too (safely, from ISR context, where
-            ; interrupts are already hardware-masked). GETCHAR is only
-            ; ever called from mainline code (KEY), unmasked, so without
-            ; masking here an interrupt landing mid-call could race this
-            ; call against IRQH's own concurrent one, leaving RTSSTATE
-            ; corrupted or ACIACR written twice with conflicting values.
-            ; Masked here (IRQ only, matching RTSCHECKLO's own existing
-            ; discipline below) rather than inside CHKWATERLEVEL itself,
-            ; since CHKWATERLEVEL's ISR-context caller must NOT unmask
-            ; IRQ before its own RTI.
+            ; BUG FIX: CHKLO reads-then-writes RTSSTATE/OUTACTIVITY and
+            ; can write ACIACR (via UPDATE_RTS) - state IRQH's own
+            ; INCHAR path also reads and writes, by calling CHKHI too
+            ; (safely, from ISR context, where interrupts are already
+            ; hardware-masked). GETCHAR is only ever called from
+            ; mainline code (KEY), unmasked, so without masking here an
+            ; interrupt landing mid-call could race this call against
+            ; IRQH's own concurrent one, leaving RTSSTATE corrupted or
+            ; ACIACR written twice with conflicting values. Masked here
+            ; (IRQ only, matching RTSCHECKLO's own existing discipline
+            ; below) rather than inside CHKLO itself, since CHKHI's
+            ; ISR-context caller must NOT unmask IRQ before its own RTI.
+            ; The fill-level read is inside the same masked span, for
+            ; the same reason: INHEAD could be mid-update by the ISR.
             ORCC  #$10
-            JSR   CHKWATERLEVEL
+            LDB   INHEAD           ; Calculate current fill level fresh -
+            SUBB  INTAIL           ; both pointers may have moved since
+            ANDB  #INBUFSZ-1       ; the ISR last ran, so (unlike INCHAR)
+                                    ; there's no already-loaded value here
+                                    ; worth reusing.
+            JSR   CHKLO
             ANDCC #$EF
 
             ANDCC #$FE               ; Carry flag %0 = valid character
@@ -2381,7 +2472,17 @@ INOK:    TFR   B,A                  ; Transfer good character from the receiver.
          BEQ   IRQDONE1        ; Don't allow it - buffer full, drop the character.
          STB   INHEAD          ; New head pointer is OK so store it.
          ;JSR   RTSCHECKHI     ; Protect the in buffer from overflow.
-         JSR   CHKWATERLEVEL   ; Protect the in buffer from overflow.
+                               ; OPTIMIZATION: RegB still holds the new head
+                               ; value STB just stored (STB doesn't clobber
+                               ; it) - reuse it directly to get the fill
+                               ; level, rather than have CHKHI reload INHEAD
+                               ; from memory. This is the single hottest
+                               ; per-character path in the system (it runs
+                               ; on every byte received), so a redundant
+                               ; 4-cycle load here is worth avoiding.
+         SUBB  INTAIL          ; RegB: new head - tail = current fill level.
+         ANDB  #INBUFSZ-1
+         JSR   CHKHI           ; Protect the in buffer from overflow.
 IRQDONE1: RTI
 
          ; LDA   ACIASR          ; Recheck if the transmitter is ready.
@@ -3698,16 +3799,76 @@ EMIT:
          ELSE  ; <<<<<>>>>>
 ; ------------------------------------------------------------
 ; Polling versions of KEY/KEYQ/EMIT (SERIALPOLL=1) - no ring
-; buffers, no interrupts, no RTS/CTS handshaking. Each blocks
-; (KEY, EMIT) or checks once (KEYQ) directly against ACIASR.
+; buffers, no interrupts, no hardware RTS/CTS handshaking (see
+; PUTXON/PUTXOFF below and ACCEPT for this build's software
+; substitute). Each blocks (KEY, EMIT) or checks once (KEYQ)
+; directly against ACIASR.
+;
+; KEY additionally: (1) counts framing/overrun/parity errors into
+; FECOUNT/OVRNCOUNT/PECOUNT - previously only the interrupt-driven
+; IRQH path checked these bits at all, so a real UART-level error
+; in a polling build went completely uncounted; (2) counts into
+; POLLREADYCNT every time RDRF is already set on the very first
+; check, before any spinning - a backlog signal distinct from a
+; genuine OVRN, see POLLREADYCNT's own comment at its RMB.
 ; ------------------------------------------------------------
-KEY:     LDA   ACIASR
+KEY:
+         LDA   ACIASR
          BITA  #SR_RDRF
-         BEQ   KEY
-         LDA   ACIADR
+         BEQ   KWAIT
+         INC   POLLREADYCNT   ; character was already queued when we
+         BRA   KGOTSTAT       ; came back to poll - didn't need to wait
+KWAIT:
+KSPIN:   LDA   ACIASR
+         BITA  #SR_RDRF
+         BEQ   KSPIN
+KGOTSTAT:                     ; A holds the status byte exactly as it was
+                               ; when RDRF first went true - check the
+                               ; error bits from THIS copy, not a fresh
+                               ; read, since reading ACIADR below clears
+                               ; RDRF and the latched error bits together
+         BITA  #SR_FE+SR_OVRN+SR_PE
+         BEQ   KGETCH
+         BITA  #SR_FE
+         BEQ   KXFE
+         INC   FECOUNT
+KXFE:    BITA  #SR_OVRN
+         BEQ   KXOVRN
+         INC   OVRNCOUNT
+KXOVRN:  BITA  #SR_PE
+         BEQ   KGETCH
+         INC   PECOUNT
+KGETCH:  LDA   ACIADR
          TFR   A,B
          CLRA
          PSHU  D
+         RTS
+
+; ------------------------------------------------------------
+; PUTXON / PUTXOFF - polling-mode software flow control. Sends
+; XON/XOFF as raw bytes straight to the ACIA, busy-waiting on
+; TDRE exactly like EMIT's own EMITWT, but bypassing the data
+; stack (U) and EMIT/EMITCH entirely - only A/B/S are touched, so
+; either is safe to call from ACCEPT at any point without
+; disturbing whatever's on U. See ACCEPT for where these are
+; called: XON at the start of every line (the host may stream
+; characters continuously while ACCEPT's own tight loop is
+; polling), XOFF the instant a line is complete (CR seen), before
+; handing off to INTERPRET/compilation - which does arbitrary,
+; variable-length work with KEY never polled at all, exactly the
+; window where a host that kept sending would build up a backlog
+; this polling build (with no ring buffer to hold it) has no way
+; to recover from correctly.
+; ------------------------------------------------------------
+PUTXOFF: LDA   #XOFFCH
+         BRA   PUTXCH
+PUTXON:  LDA   #XONCH
+PUTXCH:  PSHS  A
+PXWT:    LDB   ACIASR
+         BITB  #SR_TDRE
+         BEQ   PXWT
+         PULS  A
+         STA   ACIADR
          RTS
 
 KEYQ:    LDA   ACIASR
@@ -3737,6 +3898,14 @@ ACCEPT:  PULU  D
          STD   ABUFP
          LDD   #0
          STD   ACNT
+
+         IFEQ  SERIALPOLL  ; >>>>>>>>>>  interrupt-driven build: real
+                            ; RTS/CTS hardware flow control already
+                            ; covers this, nothing extra needed
+         ELSE  ; <<<<<>>>>>  polling build: tell the host it's safe to
+                              ; stream this line's characters
+         JSR   PUTXON
+         ENDC  ; <<<<<<<<<<
 
 ALOOP:   JSR   KEY
          PULU  D
@@ -3784,7 +3953,15 @@ ABKSP:   LDD   ACNT
          JSR   EMIT
          BRA   ALOOP
 
-ADONE:   LDD   ACNT
+ADONE:
+         IFEQ  SERIALPOLL  ; >>>>>>>>>>  interrupt-driven build: nothing
+                            ; extra needed, see ACCEPT's entry above
+         ELSE  ; <<<<<>>>>>  polling build: the line is complete - tell
+                              ; the host to pause before INTERPRET runs
+                              ; with KEY never polled at all
+         JSR   PUTXOFF
+         ENDC  ; <<<<<<<<<<
+         LDD   ACNT
          PSHU  D
          RTS
 
@@ -4138,7 +4315,10 @@ LOOPOK:  PULU  D          ; BUG FIX: was PULU X, then TFR X,D to retrieve
          JSR   PATCH
 
          LDD   ,U
-         CMPD  #TAGFWD
+         CMPD  #TAGQDO         ; BUG FIX: was TAGFWD - collided with an
+                                ; enclosing, still-open IF/WHILE's own
+                                ; TAGFWD frame (see TAGQDO's definition
+                                ; above). Only ?DO leaves TAGQDO here.
          BNE   LOOPDONE
          PULU  D
          PULU  X
@@ -4193,7 +4373,9 @@ PLOOPOK:  PULU D          ; BUG FIX: same class as LOOP above - was PULU X
           JSR  PATCH
 
           LDD  ,U
-          CMPD #TAGFWD
+          CMPD #TAGQDO          ; BUG FIX: was TAGFWD - same collision as
+                                 ; LOOP's identical peek; see TAGQDO's
+                                 ; definition above.
           BNE  PLOOPDONE
           PULU D
           PULU X
@@ -4245,7 +4427,10 @@ QDO:     LDD   #QDOSETUP
          LDD   CODEHERE
          SUBD  #2
          PSHU  D
-         LDD   #TAGFWD
+         LDD   #TAGQDO         ; BUG FIX: was TAGFWD - indistinguishable
+                                ; from an enclosing IF/WHILE's own pending
+                                ; TAGFWD frame from LOOP/PLUSLOOP's later
+                                ; peek. See TAGQDO's definition above.
          PSHU  D
          LDD   CODEHERE
          PSHU  D
@@ -5999,7 +6184,7 @@ SQINTERP: ; REDESIGN: was a fixed "LDX #SIBUF" here and at SQIEND -
                           ; on CODEHERE, per ANS's own transient-region
                           ; semantics) and writes there instead, giving
                           ; interpreted S" access to PAD's full
-                          ; PADMINSIZE-character region (84, comfortably
+                          ; PADMINSIZE-character region (128, comfortably
                           ; above the old 32-character SIBUF limit) -
                           ; SIBUF itself is now unused and retired (see
                           ; the GLOBALS layout notes above).
@@ -7230,7 +7415,7 @@ ENVTABLE:
                              ; out "/HOLD and /PAD... remain explicitly
                              ; incomplete/absent" was accurate at the
                              ; time). Answers HOLDMINSIZE (34), not the
-                             ; larger PADOFFSET (84) - HOLDMINSIZE is
+                             ; larger PADOFFSET (128) - HOLDMINSIZE is
                              ; specifically the portion of the
                              ; CODEHERE-to-PAD gap reserved for the
                              ; pictured numeric output buffer, the same
@@ -7246,7 +7431,7 @@ ENVTABLE:
          FDB   EN8,EN8L,PADMINSIZE  ; NEW: /PAD, the last of the two
                              ; entries the top-of-file note originally
                              ; flagged as absent - now both present.
-                             ; Answers PADMINSIZE (84) directly, per
+                             ; Answers PADMINSIZE (128) directly, per
                              ; ANS's own /PAD meaning (3.3.3.6, "the
                              ; size of the scratch area whose address
                              ; is returned by PAD") - PAD's own region,
