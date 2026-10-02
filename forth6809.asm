@@ -2655,6 +2655,29 @@ QLOOP:   JSR   QUERY
          STD   LATEST
          LDU   #SP0
 
+         ; BUG FIX: an error caught here can happen mid-colon-definition
+         ; (STATE=-1) - e.g. a bad REPEAT/control-flow mismatch thrown
+         ; while compiling GI5 in 12_control_flow's Annex F tests. The
+         ; dictionary/HERE pointers above get rolled back (the half-
+         ; built word is erased) but STATE itself was NOT among them,
+         ; so it stayed at -1 even though there was no longer any
+         ; in-progress definition to be compiling. Every word on every
+         ; line sent afterward was then fed to INTERPRET while
+         ; STATE=-1, which compiles (and for immediate words, executes)
+         ; instead of interpreting - explaining the observed cascade
+         ; where one failed definition (GI5) turned every subsequent,
+         ; otherwise-correct test on later lines into further -13/-22
+         ; errors. QUIT/ABORT already reset STATE correctly (see the
+         ; BUG FIX comment above at this routine's entry) for a cold
+         ; boot or a fully-unwound ABORT; this is the matching reset
+         ; for QLOOP's own, lighter-weight per-line catch, which is
+         ; the path every ordinary typed/sent-line error actually
+         ; takes and previously left STATE untouched. ANS QUIT's own
+         ; semantics call for returning to interpretation state after
+         ; any uncaught exception, which is exactly this case.
+         LDD   #0
+         STD   STATE
+
          JSR   CRW
          LDX   #ERRMSG
          PSHU  X
@@ -4233,14 +4256,88 @@ REPEAT:  PULU  D
          BEQ   RPOK1
          JSR   CFERR
 RPOK1:   PULU  X
-         STX   NEWFLD
-         PULU  D
+         STX   NEWFLD        ; this WHILE's own forward-branch patch loc
+
+         ; BUG FIX: this used to assume the matching BEGIN frame sits
+         ; immediately below this WHILE's frame on U (just pop 2 more
+         ; cells and expect TAGBACK) - true for a plain BEGIN...
+         ; WHILE...REPEAT, but false for the standard ANS idiom that
+         ; nests a SECOND WHILE between the same BEGIN and REPEAT
+         ; (Annex F's GI5: "BEGIN DUP 2 > WHILE DUP 5 < WHILE DUP 1+
+         ; REPEAT 123 ELSE 345 THEN" - the OUTER WHILE is deliberately
+         ; left open here, to be closed later by ELSE/THEN, not by
+         ; this REPEAT, since WHILE and IF push an identical TAGFWD
+         ; frame). Blindly popping the next 4 bytes landed on the
+         ; outer WHILE's TAGFWD where TAGBACK was expected, throwing
+         ; -22 via CFERR every time (confirmed on real hardware/MAME:
+         ; GI5 itself failed to compile, and left U corrupted enough
+         ; to cascade failures into every word compiled afterward in
+         ; the same session). Fixed by scanning past any intervening
+         ; still-open TAGFWD frames to find the real TAGBACK, then
+         ; closing the 4-byte gap left behind so those intervening
+         ; frames end up shallower by exactly one frame but otherwise
+         ; undisturbed - right where ELSE/THEN will later expect them.
+         LEAX  0,U
+         STX   MSCR2          ; MSCR2 = base: start of scan region,
+                               ; fixed for the whole routine
+         STX   MSCR4          ; MSCR4 = current scan pointer, moves
+                               ; forward each pass (borrowed scratch -
+                               ; direct page is only 1 byte short of
+                               ; full, see GLOBALS_USED, so reusing
+                               ; the generic MSCR2/3/4 cells rather
+                               ; than adding new globals; safe since
+                               ; nothing else compile-time-only runs
+                               ; concurrently) - matches EXIT's own
+                               ; CSP-bounded scan loop style above
+RPSCAN:  LDD   MSCR4
+         CMPD  CSP
+         BNE   RPSCANOK
+         JSR   CFERR          ; scanned past CSP with no TAGBACK -
+                               ; no matching BEGIN at all
+RPSCANOK: LDX  MSCR4
+         LDD   ,X
          CMPD  #TAGBACK
-         BEQ   RPOK2
-         JSR   CFERR
-RPOK2:   PULU  D          ; BUG FIX: same class as LOOP - was PULU X then
-         PSHU  D          ; TFR X,D after CCALL/CODECOMMA, both of which
-                          ; clobber X internally. Parked on U instead.
+         BEQ   RPFOUND
+         CMPD  #TAGFWD
+         BEQ   RPSKIP
+         JSR   CFERR          ; anything else is a genuine mismatch
+RPSKIP:  LDD   MSCR4
+         ADDD  #4
+         STD   MSCR4
+         BRA   RPSCAN
+RPFOUND: LDX   MSCR4          ; MSCR4 already holds the found TAGBACK
+                               ; frame's own address - no separate
+                               ; "found at" variable needed
+         LDD   2,X            ; BEGIN's own branch-target address
+         STD   PFIELD         ; (reused exactly as the old code did -
+                               ; PATCH's own first PULU overwrites
+                               ; this immediately on entry anyway)
+
+         ; close the gap: shift any intervening TAGFWD frames down by
+         ; 4 bytes (the size of the BEGIN frame being removed),
+         ; copying from the high end first since dest > src
+         LDD   MSCR4
+         SUBD  MSCR2
+         STD   MSCR3          ; MSCR3 = byte count to shift (0 when
+                               ; BEGIN was already adjacent - the
+                               ; common, non-nested case)
+         BEQ   RPSHIFTDONE
+RPSHIFT: LDD   MSCR3
+         SUBD  #2
+         STD   MSCR3
+         LDX   MSCR2
+         LEAX  D,X            ; X = MSCR2 + this pass's offset
+         LDD   ,X
+         LEAX  4,X
+         STD   ,X             ; copy one word 4 bytes higher
+         LDD   MSCR3
+         BNE   RPSHIFT
+RPSHIFTDONE:
+         LDX   MSCR2
+         LEAX  4,X
+         TFR   X,U            ; real U now reflects BEGIN's frame
+                               ; having been removed from the stack
+
          LDD   #BRANCH
          PSHU  D
          JSR   CCALL
@@ -4249,10 +4346,11 @@ RPOK2:   PULU  D          ; BUG FIX: same class as LOOP - was PULU X then
          JSR   CODECOMMA
          LDD   CODEHERE
          SUBD  #2
-         STD   PFIELD
-         PULU  D
+         STD   MSCR3          ; MSCR3 free again now - this backward
+                               ; branch's own operand address
+         LDD   PFIELD         ; target = BEGIN's address
          PSHU  D
-         LDD   PFIELD
+         LDD   MSCR3          ; location = the operand just compiled
          PSHU  D
          JSR   PATCH
          LDD   CODEHERE
@@ -4467,8 +4565,23 @@ DOPLUSTEST: LDD  6,S      ; BUG FIX: same class as DOTEST - PULS X used to
                                 ; operate through ,S+ - the standard 6809
                                 ; idiom for adding/combining two registers
             BMI  DPTEXIT
-            LDD  MSCR3
-            BEQ  DPTEXIT
+            ; BUG FIX: this used to also do "LDD MSCR3 / BEQ DPTEXIT" here -
+            ; exit immediately whenever the new index landed EXACTLY on
+            ; limit, even with no sign change. That's wrong for a
+            ; decreasing (or any non-+1) step: ANS +LOOP must still
+            ; execute the pass where index==limit (confirmed against
+            ; Annex F's GD2: "1 4 GD2" with "DO I -1 +LOOP" is supposed
+            ; to yield "4 3 2 1", i.e. I=1 (==limit) included) and only
+            ; terminate on the NEXT pass's actual boundary crossing (old
+            ; index==limit, new index on the other side, caught correctly
+            ; by the BMI sign test above). The extra check fired one pass
+            ; early on exactly that case, dropping the last iteration -
+            ; confirmed by hand-tracing both GD2's own "1 4" case and the
+            ; MID-UINT/MID-UINT+1 edge case against this code. Removed -
+            ; the sign-crossing test alone is both necessary and
+            ; sufficient (matches the standard reference algorithm; a
+            ; zero step is undefined behavior in ANS and isn't guarded
+            ; against here, same as before this fix).
             PULS X
             LDD  ,X
             LEAX D,X
