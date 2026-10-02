@@ -27,16 +27,18 @@ MARKER M11
 \ than a bare DECIMAL, which would otherwise leak the base change
 \ into whatever section file loads next (MARKER only resets the
 \ dictionary/HERE, never BASE).
-\ BUG FIX: was "BASE @ >R DECIMAL ... R> BASE !" - unsafe spanning
-\ separate top-level lines in this subroutine-threaded system (see
-\ 08_defining_words.tests.fs's matching comment for the full
-\ mechanism: >R tucks its value under its own return address, which
-\ only stays valid within one unbroken call frame - QLOOP returns
-\ from INTERPRET after every sent line, so R> many lines later pops
-\ garbage into a stale RTS and jumps into random memory). Plain
-\ data-stack save/restore instead - untouched by call/return,
-\ persists across lines safely.
-BASE @ DECIMAL
+\ BUG FIX (round 1): was "BASE @ >R DECIMAL ... R> BASE !" - unsafe
+\ spanning separate top-level lines (see 08_defining_words.tests.fs's
+\ matching comment for the full >R/R> mechanism).
+\ BUG FIX (round 2): a plain "BASE @ DECIMAL ... BASE !" save/restore
+\ is ALSO fragile specifically in this file - it's the one file in
+\ the corpus deliberately exercising uncaught-exception propagation
+\ (t7/t8/t9 via nested EVALUATE), and QLOOP's own top-level recovery
+\ resets the whole data stack on any uncaught error, wiping a parked
+\ save. Unconditional restore instead - no save needed, since
+\ ambient base here is always HEX by convention (see
+\ 08_defining_words.tests.fs for the full reasoning).
+DECIMAL
 : t1 9 ;
 : c1 1 2 3 ['] t1 CATCH ;   T{ c1 -> 1 2 3 9 0 }T
 : t2 8 0 THROW ;
@@ -66,7 +68,7 @@ DEPTH >R DROP 2DROP 2DROP R> ;   T{ c5 -> 5 }T
 \ verify what this custom test's author originally intended.
 : c6 CATCH ;
 T{ 6 7 ' t9 c6 3 -> 6 7 13 3 }T
-BASE !
+HEX
 
 \ ---- section-marker: undo everything above ----
 M11

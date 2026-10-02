@@ -56,23 +56,32 @@ T{ ' + IS defer1 -> }T   T{ 1 2 defer1 -> 3 }T   T{ ACTION-OF defer1 -> ' + }T  
 \ dictionary/HERE, never BASE) - save/restore locally instead, so
 \ this file keeps the "load in any order" promise its own header
 \ comment makes.
-\ BUG FIX: was "BASE @ >R DECIMAL ... R> BASE !" - >R/R> are unsafe
-\ spanning separate top-level lines in this subroutine-threaded
-\ system (the return stack IS the hardware call stack; >R tucks its
-\ value in underneath its own return address, which only stays
-\ correct while control never returns past that point - but QLOOP
-\ returns from INTERPRET after every single sent line, so by the
-\ time R> runs, many lines later, the stashed value is sitting where
-\ some long-since-returned call frame's return address used to be,
-\ and whichever RTS reaches it first jumps into garbage memory).
-\ The data stack isn't touched by call/return and isn't reset
-\ between successful lines, so it carries a value across lines
-\ safely - just BASE @ / BASE ! directly, no >R/R> needed.
-BASE @ DECIMAL
+\ BUG FIX (round 1): was "BASE @ >R DECIMAL ... R> BASE !" - >R/R>
+\ are unsafe spanning separate top-level lines in this subroutine-
+\ threaded system (the return stack IS the hardware call stack; >R
+\ tucks its value underneath its own return address, which only
+\ stays correct while control never returns past that point - but
+\ QLOOP returns from INTERPRET after every sent line, so by the time
+\ R> runs, many lines later, the stashed value sits where some long-
+\ since-returned call frame's return address used to be, and
+\ whichever RTS reaches it first jumps into garbage memory).
+\ BUG FIX (round 2): switched to "BASE @ DECIMAL ... BASE !" (plain
+\ data stack, no >R/R>) - safe from the above, but still fragile in
+\ a different way: an UNCAUGHT error anywhere in between resets the
+\ whole data stack to empty (QLOOP's own top-level recovery), wiping
+\ the parked value, so a later BASE ! would restore garbage. This
+\ file itself doesn't throw uncaught errors, but the save/restore
+\ pattern shouldn't rely on that file by file. Unconditional restore
+\ instead - no save needed, since ambient base entering this block
+\ is always HEX by this corpus's own convention (set once by
+\ 00_test_prelude.fs and kept correct by every file's own habit of
+\ restoring it) - so just set it back to HEX directly, immune to
+\ anything that happens to the stack in between.
+DECIMAL
 T{ 127 CHARS BUFFER: TBUF1 -> }T   T{ 127 CHARS BUFFER: TBUF2 -> }T
 \ Buffer is aligned   T{ TBUF1 ALIGNED -> TBUF1 }T
 \ Buffers do not overlap   T{ TBUF2 TBUF1 - ABS 127 CHARS < -> <FALSE> }T
-BASE !
+HEX
 \ Buffer can be written to
 1 CHARS CONSTANT /CHAR
 : TFULL? ( c-addr n char -- flag )

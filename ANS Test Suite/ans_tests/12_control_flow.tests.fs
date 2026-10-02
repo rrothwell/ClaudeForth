@@ -84,11 +84,16 @@ DUP IF DUP >R 1- RECURSE R> THEN ; -> }T   T{ 0 GI6 -> 0 }T   T{ 1 GI6 -> 0 1 }T
 \ into whatever section file loads next (e.g. 13_compiling_words's
 \ GC1/GC2 tests expect ambient HEX: "58"/"48" are the hex ASCII
 \ codes for 'X'/'H', not their decimal values).
-\ BUG FIX: was "BASE @ >R DECIMAL ... R> BASE !" - unsafe spanning
-\ separate top-level lines in this subroutine-threaded system (see
-\ 08_defining_words.tests.fs's matching comment for the full
-\ mechanism). Plain data-stack save/restore instead.
-BASE @ DECIMAL
+\ BUG FIX (round 1): was "BASE @ >R DECIMAL ... R> BASE !" - unsafe
+\ spanning separate top-level lines (see 08_defining_words.tests.fs's
+\ matching comment for the full >R/R> mechanism).
+\ BUG FIX (round 2): plain "BASE @ DECIMAL ... BASE !" is also
+\ fragile here - this file is full of control-flow/CASE/exception
+\ edge cases, exactly the kind of content most likely to throw an
+\ uncaught error and wipe a parked stack value via QLOOP's top-level
+\ recovery. Unconditional restore instead - see
+\ 08_defining_words.tests.fs for the full reasoning.
+DECIMAL
 T{ :NONAME ( n -- 0, 1, .., n )
 DUP IF DUP >R 1- RECURSE R> THEN
 ;
@@ -169,7 +174,7 @@ ENDOF
 >R 299 R>
 ENDCASE R> DROP ;
 T{ -1 1 cs2 -> 100 }T   T{ -1 2 cs2 -> 200 }T   T{ -1 3 cs2 -> -300 }T   T{ -2 1 cs2 -> -99 }T   T{ -2 2 cs2 -> -199 }T   T{ 0 2 cs2 -> 299 }T
-BASE !
+HEX
 
 \ F.6.2.1342  ENDCASE
 \ See F.6.2.0873 CASE.

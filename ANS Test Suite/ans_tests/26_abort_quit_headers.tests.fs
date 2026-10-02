@@ -27,11 +27,15 @@ MARKER M26
 \ the same reason as the other files this round (this one happens
 \ to be last in load order, so nothing downstream is affected
 \ today, but there's no guarantee it stays last).
-\ BUG FIX: was "BASE @ >R DECIMAL ... R> BASE !" - unsafe spanning
-\ separate top-level lines in this subroutine-threaded system (see
-\ 08_defining_words.tests.fs's matching comment for the full
-\ mechanism). Plain data-stack save/restore instead.
-BASE @ DECIMAL
+\ BUG FIX (round 1): was "BASE @ >R DECIMAL ... R> BASE !" - unsafe
+\ spanning separate top-level lines (see 08_defining_words.tests.fs's
+\ matching comment for the full >R/R> mechanism).
+\ BUG FIX (round 2): plain "BASE @ DECIMAL ... BASE !" is also
+\ fragile here - this file tests ABORT/ABORT"/CATCH directly, a
+\ plausible source of an uncaught error that would wipe a parked
+\ stack value via QLOOP's top-level recovery. Unconditional restore
+\ instead - see 08_defining_words.tests.fs for the full reasoning.
+DECIMAL
 -1 CONSTANT exc_abort
 -2 CONSTANT exc_abort"
 -13 CONSTANT exc_undef
@@ -46,7 +50,7 @@ ENDCASE
 T{ 1 2 ' t6 c6 -> 1 2 11 }T
 T{ 3 0 ' t10 c6 -> 3 77 }T
 T{ 4 5 ' t10 c6 -> 4 77 12 }T
-BASE !
+HEX
 
 
 \ F.6.2.1485  FALSE

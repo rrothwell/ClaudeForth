@@ -34,18 +34,21 @@ T{ 2 SCANS !
 \ called DECIMAL here and never switched back, which broke its own
 \ later >NUMBER tests (not just the next file in load order, as
 \ with 08/11/12 - this one broke itself). Save/restore locally.
-\ BUG FIX: was "BASE @ >R DECIMAL ... R> BASE !" - unsafe spanning
-\ separate top-level lines in this subroutine-threaded system (see
-\ 08_defining_words.tests.fs's matching comment for the full
-\ mechanism). Plain data-stack save/restore instead. (GN1 and
+\ BUG FIX (round 1): was "BASE @ >R DECIMAL ... R> BASE !" - unsafe
+\ spanning separate top-level lines (see 08_defining_words.tests.fs's
+\ matching comment for the full >R/R> mechanism). (GN1 and
 \ >NUMBER-BASED below use >R/R> too, but entirely inside their own
 \ single colon-definition, executed as one unbroken call - that's
 \ the safe, standard use and is left alone.)
-BASE @ DECIMAL
+\ BUG FIX (round 2): plain "BASE @ DECIMAL ... BASE !" is also
+\ fragile - an uncaught error anywhere in between wipes a parked
+\ stack value via QLOOP's top-level recovery. Unconditional restore
+\ instead - see 08_defining_words.tests.fs for the full reasoning.
+DECIMAL
 T{ 123456 DEPTH OVER 9 < 35 AND + 3 + >IN !
 -> 123456 23456 3456 456 56 6 }T
 T{ 14145 8115 ?DUP 0= 34 AND >IN +! TUCK MOD 14 >IN ! -> 15 }T
-BASE !
+HEX
 
 \ F.6.1.0570  >NUMBER
 CREATE GN-BUF 0 C,
