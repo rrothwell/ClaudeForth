@@ -23,7 +23,7 @@ MARKER M13
 T{ : GT1 123 ; -> }T   T{ ' GT1 EXECUTE -> 123 }T
 
 \ F.6.1.0190  ."
-T{ : pb1 CR ." You should see 2345: " 2345"; pb1 -> }T
+T{ : pb1 CR ." You should see 2345: " 2345 . ; pb1 -> }T
 \ See F.6.1.1320 EMIT.
 
 \ F.6.1.0550  >BODY
@@ -55,6 +55,13 @@ T{ : GC4 S" XY" ; -> }T   T{ GC4 SWAP DROP -> 2 }T   T{ GC4 DROP DUP C@ SWAP CHA
 T{ : GT8 STATE @ ; IMMEDIATE -> }T   T{ GT8 -> 0 }T   T{ : GT9 GT8 LITERAL ; -> }T   T{ GT9 0= -> <FALSE> }T
 
 \ F.6.1.2500  [
+\ GC1 belongs here in the authoritative Annex F source (right next to
+\ the CHAR/[CHAR] tests, in the unsplit original) - our section split
+\ moved its "real" definition into 19_string_words.tests.fs, which
+\ loads after this file, leaving GC3 below with a forward reference.
+\ Defining it locally here too (harmless redefinition when 19 runs
+\ later) restores the dependency this test needs.
+T{ : GC1 [CHAR] X ; -> }T
 T{ : GC3 [ GC1 ] LITERAL ; -> }T   T{ GC3 -> 58 }T
 
 \ F.6.1.2510  [']

@@ -22,15 +22,18 @@ MARKER M18
 \ F.6.1.0010  !
 \ See F.6.1.0150 ,.
 
-\ F.6.1.0130  +!
-T{ 0 1ST ! -> }T   T{ 1 1ST +! -> }T   T{ 1ST @ -> 1 }T   T{ -1 1ST +! 1ST @ -> 0 }T
-
-\ F.6.1.0150  ,
+\ F.6.1.0150  , - 1ST/2ND must exist before F.6.1.0130 +! below uses
+\ 1ST; this block was after +!'s test, a genuine forward reference
+\ (1ST used at the old line 26 before its own CONSTANT below defined
+\ it). Reordered to match the dependency.
 HERE 1 ,
 HERE 2 ,
 CONSTANT 2ND
 CONSTANT 1ST
 T{ 1ST 2ND U< -> <TRUE> }T \ HERE MUST GROW WITH ALLOT   T{ 1ST CELL+ -> 2ND }T \ ... BY ONE CELL   T{ 1ST 1 CELLS + -> 2ND }T   T{ 1ST @ 2ND @ -> 1 2 }T   T{ 5 1ST ! -> }T   T{ 1ST @ 2ND @ -> 5 2 }T   T{ 6 2ND ! -> }T   T{ 1ST @ 2ND @ -> 5 6 }T   T{ 1ST 2@ -> 6 5 }T   T{ 2 1 1ST 2! -> }T   T{ 1ST 2@ -> 2 1 }T   T{ 1S 1ST ! 1ST @ -> 1S }T \ CAN STORE CELL-WIDE VALUE
+
+\ F.6.1.0130  +!
+T{ 0 1ST ! -> }T   T{ 1 1ST +! -> }T   T{ 1ST @ -> 1 }T   T{ -1 1ST +! 1ST @ -> 0 }T
 
 \ F.6.1.0310  2!
 \ See F.6.1.0150 ,.

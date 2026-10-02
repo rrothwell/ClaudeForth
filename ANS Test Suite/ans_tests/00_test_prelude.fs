@@ -73,5 +73,9 @@ COUNT-BITS 2* CONSTANT #BITS-UD \ NUMBER OF BITS IN UD
 CREATE FBUF 00 C, 00 C, 00 C,
 CREATE SBUF 12 C, 34 C, 56 C,
 : SEEBUF FBUF C@ FBUF CHAR+ C@ FBUF CHAR+ CHAR+ C@ ;
-
-DECIMAL
+\ Deliberately NOT followed by DECIMAL - confirmed against the
+\ authoritative Annex F source, which stays in HEX for the rest of
+\ the file after this preliminary section. A trailing DECIMAL here
+\ previously broke ambient-HEX for every section file that assumes
+\ it (several use bare hex literals like F, 8000, 7F with no local
+\ HEX call of their own).

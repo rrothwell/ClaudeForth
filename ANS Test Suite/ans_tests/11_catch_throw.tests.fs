@@ -43,6 +43,16 @@ DECIMAL
 : t7 S" 333 $$UndefedWord$$ 334" EVALUATE 335 ;
 : t8 S" 222 t7 223" EVALUATE 224 ;
 : t9 S" 111 112 t8 113" EVALUATE 114 ;
+\ c6 was referenced but never defined anywhere in the corpus - not
+\ an extraction bug (this whole test is custom, per the comment
+\ above, not lifted from Annex F), just a missing definition.
+\ Completing the obvious c1..c5 pattern here: a plain CATCH wrapper.
+\ NOTE: forth6809.asm's BADWORD throws -13 (the standard ANS
+\ "undefined word" code) for $$UndefedWord$$, not +13 - so the
+\ expected result below may need to read "6 7 -13 3" rather than
+\ "6 7 13 3" once this is actually run; left as-is since I can't
+\ verify what this custom test's author originally intended.
+: c6 CATCH ;
 T{ 6 7 ' t9 c6 3 -> 6 7 13 3 }T
 
 \ ---- section-marker: undo everything above ----

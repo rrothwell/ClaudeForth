@@ -23,14 +23,17 @@ MARKER M15
 T{ 0 0 * -> 0 }T   T{ 0 1 * -> 0 }T   T{ 1 0 * -> 0 }T   T{ 1 2 * -> 2 }T   T{ 2 1 * -> 2 }T   T{ 3 3 * -> 9 }T   T{ -3 3 * -> -9 }T   T{ 3 -3 * -> -9 }T   T{ -3 -3 * -> 9 }T
 T{ MID-UINT+1 1 RSHIFT 2 * -> MID-UINT+1 }T   T{ MID-UINT+1 2 RSHIFT 4 * -> MID-UINT+1 }T   T{ MID-UINT+1 1 RSHIFT MID-UINT+1 OR 2 * -> MID-UINT+1 }T
 
-\ F.6.1.0100  */
+\ F.6.1.0100  */ and F.6.1.0110  */MOD - */MOD's helper must be defined
+\ before */'s (T*/ is defined in terms of T*/MOD), so */MOD's IFFLOORED/
+\ IFSYM lines come first here, matching the authoritative Annex F
+\ source order; this was previously reversed, a genuine forward-
+\ reference bug (T*/ compiled before T*/MOD existed).
+IFFLOORED : T*/MOD >R M* R> FM/MOD ;
+IFSYM : T*/MOD >R M* R> SM/REM ;
 IFFLOORED : T*/ T*/MOD SWAP DROP ;
 IFSYM : T*/ T*/MOD SWAP DROP ;
 T{ 0 2 1 */ -> 0 2 1 T*/ }T   T{ 1 2 1 */ -> 1 2 1 T*/ }T   T{ 2 2 1 */ -> 2 2 1 T*/ }T   T{ -1 2 1 */ -> -1 2 1 T*/ }T   T{ -2 2 1 */ -> -2 2 1 T*/ }T   T{ 0 2 -1 */ -> 0 2 -1 T*/ }T   T{ 1 2 -1 */ -> 1 2 -1 T*/ }T   T{ 2 2 -1 */ -> 2 2 -1 T*/ }T   T{ -1 2 -1 */ -> -1 2 -1 T*/ }T   T{ -2 2 -1 */ -> -2 2 -1 T*/ }T   T{ 2 2 2 */ -> 2 2 2 T*/ }T   T{ -1 2 -1 */ -> -1 2 -1 T*/ }T   T{ -2 2 -2 */ -> -2 2 -2 T*/ }T   T{ 7 2 3 */ -> 7 2 3 T*/ }T   T{ 7 2 -3 */ -> 7 2 -3 T*/ }T   T{ -7 2 3 */ -> -7 2 3 T*/ }T   T{ -7 2 -3 */ -> -7 2 -3 T*/ }T   T{ MAX-INT 2 MAX-INT */ -> MAX-INT 2 MAX-INT T*/ }T   T{ MIN-INT 2 MIN-INT */ -> MIN-INT 2 MIN-INT T*/ }T
 
-\ F.6.1.0110  */MOD
-IFFLOORED : T*/MOD >R M* R> FM/MOD ;
-IFSYM : T*/MOD >R M* R> SM/REM ;
 T{ 0 2 1 */MOD -> 0 2 1 T*/MOD }T   T{ 1 2 1 */MOD -> 1 2 1 T*/MOD }T   T{ 2 2 1 */MOD -> 2 2 1 T*/MOD }T   T{ -1 2 1 */MOD -> -1 2 1 T*/MOD }T   T{ -2 2 1 */MOD -> -2 2 1 T*/MOD }T   T{ 0 2 -1 */MOD -> 0 2 -1 T*/MOD }T   T{ 1 2 -1 */MOD -> 1 2 -1 T*/MOD }T   T{ 2 2 -1 */MOD -> 2 2 -1 T*/MOD }T   T{ -1 2 -1 */MOD -> -1 2 -1 T*/MOD }T   T{ -2 2 -1 */MOD -> -2 2 -1 T*/MOD }T   T{ 2 2 2 */MOD -> 2 2 2 T*/MOD }T   T{ -1 2 -1 */MOD -> -1 2 -1 T*/MOD }T   T{ -2 2 -2 */MOD -> -2 2 -2 T*/MOD }T   T{ 7 2 3 */MOD -> 7 2 3 T*/MOD }T   T{ 7 2 -3 */MOD -> 7 2 -3 T*/MOD }T   T{ -7 2 3 */MOD -> -7 2 3 T*/MOD }T   T{ -7 2 -3 */MOD -> -7 2 -3 T*/MOD }T   T{ MAX-INT 2 MAX-INT */MOD -> MAX-INT 2 MAX-INT T*/MOD }T   T{ MIN-INT 2 MIN-INT */MOD -> MIN-INT 2 MIN-INT T*/MOD }T
 
 \ F.6.1.0120  +
@@ -39,14 +42,15 @@ T{ 0 5 + -> 5 }T   T{ 5 0 + -> 5 }T   T{ 0 -5 + -> -5 }T   T{ -5 0 + -> -5 }T   
 \ F.6.1.0160  -
 T{ 0 5 - -> -5 }T   T{ 5 0 - -> 5 }T   T{ 0 -5 - -> 5 }T   T{ -5 0 - -> -5 }T   T{ 1 2 - -> -1 }T   T{ 1 -2 - -> 3 }T   T{ -1 2 - -> -3 }T   T{ -1 -2 - -> 1 }T   T{ 0 1 - -> -1 }T   T{ MID-UINT+1 1 - -> MID-UINT }T
 
-\ F.6.1.0230  /
+\ F.6.1.0230  / and F.6.1.0240  /MOD - same ordering fix as */ / */MOD
+\ above: /'s helper (T/) is defined in terms of T/MOD, so T/MOD's
+\ IFFLOORED/IFSYM lines must come first.
+IFFLOORED : T/MOD >R S>D R> FM/MOD ;
+IFSYM : T/MOD >R S>D R> SM/REM ;
 IFFLOORED : T/ T/MOD SWAP DROP ;
 IFSYM : T/ T/MOD SWAP DROP ;
 T{ 0 1 / -> 0 1 T/ }T   T{ 1 1 / -> 1 1 T/ }T   T{ 2 1 / -> 2 1 T/ }T   T{ -1 1 / -> -1 1 T/ }T   T{ -2 1 / -> -2 1 T/ }T   T{ 0 -1 / -> 0 -1 T/ }T   T{ 1 -1 / -> 1 -1 T/ }T   T{ 2 -1 / -> 2 -1 T/ }T   T{ -1 -1 / -> -1 -1 T/ }T   T{ -2 -1 / -> -2 -1 T/ }T   T{ 2 2 / -> 2 2 T/ }T   T{ -1 -1 / -> -1 -1 T/ }T   T{ -2 -2 / -> -2 -2 T/ }T   T{ 7 3 / -> 7 3 T/ }T   T{ 7 -3 / -> 7 -3 T/ }T   T{ -7 3 / -> -7 3 T/ }T   T{ -7 -3 / -> -7 -3 T/ }T   T{ MAX-INT 1 / -> MAX-INT 1 T/ }T   T{ MIN-INT 1 / -> MIN-INT 1 T/ }T   T{ MAX-INT MAX-INT / -> MAX-INT MAX-INT T/ }T   T{ MIN-INT MIN-INT / -> MIN-INT MIN-INT T/ }T
 
-\ F.6.1.0240  /MOD
-IFFLOORED : T/MOD >R S>D R> FM/MOD ;
-IFSYM : T/MOD >R S>D R> SM/REM ;
 T{ 0 1 /MOD -> 0 1 T/MOD }T   T{ 1 1 /MOD -> 1 1 T/MOD }T   T{ 2 1 /MOD -> 2 1 T/MOD }T   T{ -1 1 /MOD -> -1 1 T/MOD }T   T{ -2 1 /MOD -> -2 1 T/MOD }T   T{ 0 -1 /MOD -> 0 -1 T/MOD }T   T{ 1 -1 /MOD -> 1 -1 T/MOD }T   T{ 2 -1 /MOD -> 2 -1 T/MOD }T   T{ -1 -1 /MOD -> -1 -1 T/MOD }T   T{ -2 -1 /MOD -> -2 -1 T/MOD }T   T{ 2 2 /MOD -> 2 2 T/MOD }T   T{ -1 -1 /MOD -> -1 -1 T/MOD }T   T{ -2 -2 /MOD -> -2 -2 T/MOD }T   T{ 7 3 /MOD -> 7 3 T/MOD }T   T{ 7 -3 /MOD -> 7 -3 T/MOD }T   T{ -7 3 /MOD -> -7 3 T/MOD }T   T{ -7 -3 /MOD -> -7 -3 T/MOD }T   T{ MAX-INT 1 /MOD -> MAX-INT 1 T/MOD }T   T{ MIN-INT 1 /MOD -> MIN-INT 1 T/MOD }T   T{ MAX-INT MAX-INT /MOD -> MAX-INT MAX-INT T/MOD }T   T{ MIN-INT MIN-INT /MOD -> MIN-INT MIN-INT T/MOD }T
 
 \ F.6.1.0290  1+
