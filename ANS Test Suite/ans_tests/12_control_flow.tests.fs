@@ -77,7 +77,19 @@ T{ : GD1 DO I LOOP ; -> }T   T{ 4 1 GD1 -> 1 2 3 }T   T{ 2 -1 GD1 -> -1 0 1 }T  
 \ F.6.1.2120  RECURSE
 T{ : GI6 ( N -- 0,1,..N )
 DUP IF DUP >R 1- RECURSE R> THEN ; -> }T   T{ 0 GI6 -> 0 }T   T{ 1 GI6 -> 0 1 }T   T{ 2 GI6 -> 0 1 2 }T   T{ 3 GI6 -> 0 1 2 3 }T   T{ 4 GI6 -> 0 1 2 3 4 }T
-DECIMAL   T{ :NONAME ( n -- 0, 1, .., n )
+\ Everything from here through the end of the CASE tests below uses
+\ decimal multi-digit literals (25, 789, -9876, 100, -300, 999...)
+\ that need DECIMAL - saved/restored around the whole stretch rather
+\ than a bare DECIMAL, which would otherwise leak the base change
+\ into whatever section file loads next (e.g. 13_compiling_words's
+\ GC1/GC2 tests expect ambient HEX: "58"/"48" are the hex ASCII
+\ codes for 'X'/'H', not their decimal values).
+\ BUG FIX: was "BASE @ >R DECIMAL ... R> BASE !" - unsafe spanning
+\ separate top-level lines in this subroutine-threaded system (see
+\ 08_defining_words.tests.fs's matching comment for the full
+\ mechanism). Plain data-stack save/restore instead.
+BASE @ DECIMAL
+T{ :NONAME ( n -- 0, 1, .., n )
 DUP IF DUP >R 1- RECURSE R> THEN
 ;
 CONSTANT rn1 -> }T   T{ 0 rn1 EXECUTE -> 0 }T   T{ 4 rn1 EXECUTE -> 0 1 2 3 4 }T
@@ -115,8 +127,7 @@ T{ : GI5 BEGIN DUP 2 > WHILE
 DUP 5 < WHILE DUP 1+ REPEAT
 123 ELSE 345 THEN ; -> }T   T{ 1 GI5 -> 1 345 }T   T{ 2 GI5 -> 2 345 }T   T{ 3 GI5 -> 3 4 5 123 }T   T{ 4 GI5 -> 4 5 123 }T   T{ 5 GI5 -> 5 123 }T
 
-\ F.6.2.0620  ?DO
-DECIMAL
+\ F.6.2.0620  ?DO (still under the DECIMAL saved above)
 : qd ?DO I LOOP ;   T{ 789 789 qd -> }T   T{ -9876 -9876 qd -> }T   T{ 5 0 qd -> 0 1 2 3 4 }T
 : qd1 ?DO I 10 +LOOP ;   T{ 50 1 qd1 -> 1 11 21 31 41 }T   T{ 50 0 qd1 -> 0 10 20 30 40 }T
 : qd2 ?DO I 3 > IF LEAVE ELSE I THEN LOOP ;   T{ 5 -1 qd2 -> -1 0 1 2 3 }T
@@ -158,6 +169,7 @@ ENDOF
 >R 299 R>
 ENDCASE R> DROP ;
 T{ -1 1 cs2 -> 100 }T   T{ -1 2 cs2 -> 200 }T   T{ -1 3 cs2 -> -300 }T   T{ -2 1 cs2 -> -99 }T   T{ -2 2 cs2 -> -199 }T   T{ 0 2 cs2 -> 299 }T
+BASE !
 
 \ F.6.2.1342  ENDCASE
 \ See F.6.2.0873 CASE.

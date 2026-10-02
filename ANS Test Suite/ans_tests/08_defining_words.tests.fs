@@ -50,10 +50,29 @@ T{ DEFER defer1 -> }T   T{ : action-defer1 ACTION-OF defer1 ; -> }T
 T{ ' * ' defer1 DEFER! -> }T   T{ 2 3 defer1 -> 6 }T   T{ ACTION-OF defer1 -> ' * }T   T{ action-defer1 -> ' * }T
 T{ ' + IS defer1 -> }T   T{ 1 2 defer1 -> 3 }T   T{ ACTION-OF defer1 -> ' + }T   T{ action-defer1 -> ' + }T
 
-\ F.6.2.0825  BUFFER:
-DECIMAL   T{ 127 CHARS BUFFER: TBUF1 -> }T   T{ 127 CHARS BUFFER: TBUF2 -> }T
+\ F.6.2.0825  BUFFER: - the "127" literals below need DECIMAL, but a
+\ bare DECIMAL with no restore leaks the base change forward into
+\ whatever section file loads next (MARKER only resets the
+\ dictionary/HERE, never BASE) - save/restore locally instead, so
+\ this file keeps the "load in any order" promise its own header
+\ comment makes.
+\ BUG FIX: was "BASE @ >R DECIMAL ... R> BASE !" - >R/R> are unsafe
+\ spanning separate top-level lines in this subroutine-threaded
+\ system (the return stack IS the hardware call stack; >R tucks its
+\ value in underneath its own return address, which only stays
+\ correct while control never returns past that point - but QLOOP
+\ returns from INTERPRET after every single sent line, so by the
+\ time R> runs, many lines later, the stashed value is sitting where
+\ some long-since-returned call frame's return address used to be,
+\ and whichever RTS reaches it first jumps into garbage memory).
+\ The data stack isn't touched by call/return and isn't reset
+\ between successful lines, so it carries a value across lines
+\ safely - just BASE @ / BASE ! directly, no >R/R> needed.
+BASE @ DECIMAL
+T{ 127 CHARS BUFFER: TBUF1 -> }T   T{ 127 CHARS BUFFER: TBUF2 -> }T
 \ Buffer is aligned   T{ TBUF1 ALIGNED -> TBUF1 }T
 \ Buffers do not overlap   T{ TBUF2 TBUF1 - ABS 127 CHARS < -> <FALSE> }T
+BASE !
 \ Buffer can be written to
 1 CHARS CONSTANT /CHAR
 : TFULL? ( c-addr n char -- flag )

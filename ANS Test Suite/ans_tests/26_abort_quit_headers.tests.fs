@@ -22,8 +22,16 @@ MARKER M26
 \ F.9.6.2.0670  ABORT
 \ See F.9.6.2.0680 ABORT".
 
-\ F.9.6.2.0680  ABORT"
-DECIMAL
+\ F.9.6.2.0680  ABORT" - exc_undef (-13) and the OF branch values need
+\ DECIMAL; saved/restored locally rather than a bare DECIMAL, for
+\ the same reason as the other files this round (this one happens
+\ to be last in load order, so nothing downstream is affected
+\ today, but there's no guarantee it stays last).
+\ BUG FIX: was "BASE @ >R DECIMAL ... R> BASE !" - unsafe spanning
+\ separate top-level lines in this subroutine-threaded system (see
+\ 08_defining_words.tests.fs's matching comment for the full
+\ mechanism). Plain data-stack save/restore instead.
+BASE @ DECIMAL
 -1 CONSTANT exc_abort
 -2 CONSTANT exc_abort"
 -13 CONSTANT exc_undef
@@ -38,6 +46,7 @@ ENDCASE
 T{ 1 2 ' t6 c6 -> 1 2 11 }T
 T{ 3 0 ' t10 c6 -> 3 77 }T
 T{ 4 5 ' t10 c6 -> 4 77 12 }T
+BASE !
 
 
 \ F.6.2.1485  FALSE

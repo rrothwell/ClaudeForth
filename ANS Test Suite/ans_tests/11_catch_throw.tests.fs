@@ -22,8 +22,21 @@ MARKER M11
 \ F.9.6.1.0875  CATCH
 \ See F.9.6.1.2275 THROW.
 
-\ F.9.6.1.2275  THROW
-DECIMAL
+\ F.9.6.1.2275  THROW - this whole file's throw-codes (99, 9999, -222,
+\ etc) need DECIMAL; saved/restored around the whole file rather
+\ than a bare DECIMAL, which would otherwise leak the base change
+\ into whatever section file loads next (MARKER only resets the
+\ dictionary/HERE, never BASE).
+\ BUG FIX: was "BASE @ >R DECIMAL ... R> BASE !" - unsafe spanning
+\ separate top-level lines in this subroutine-threaded system (see
+\ 08_defining_words.tests.fs's matching comment for the full
+\ mechanism: >R tucks its value under its own return address, which
+\ only stays valid within one unbroken call frame - QLOOP returns
+\ from INTERPRET after every sent line, so R> many lines later pops
+\ garbage into a stale RTS and jumps into random memory). Plain
+\ data-stack save/restore instead - untouched by call/return,
+\ persists across lines safely.
+BASE @ DECIMAL
 : t1 9 ;
 : c1 1 2 3 ['] t1 CATCH ;   T{ c1 -> 1 2 3 9 0 }T
 : t2 8 0 THROW ;
@@ -39,7 +52,6 @@ DEPTH >R DROP 2DROP 2DROP R> ;   T{ c5 -> 5 }T
 \ F.9.3.6  Exception handling (general propagation test, not tied
 \ to a single word - included here since it exercises the same
 \ THROW/CATCH/EVALUATE machinery this section implements)
-DECIMAL
 : t7 S" 333 $$UndefedWord$$ 334" EVALUATE 335 ;
 : t8 S" 222 t7 223" EVALUATE 224 ;
 : t9 S" 111 112 t8 113" EVALUATE 114 ;
@@ -54,6 +66,7 @@ DECIMAL
 \ verify what this custom test's author originally intended.
 : c6 CATCH ;
 T{ 6 7 ' t9 c6 3 -> 6 7 13 3 }T
+BASE !
 
 \ ---- section-marker: undo everything above ----
 M11
