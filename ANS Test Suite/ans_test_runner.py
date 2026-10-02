@@ -35,6 +35,13 @@ task list:
      value-space and the search-chain all at once). That makes each
      section file independently runnable, in any order, any number of
      times, from a single shared harness+prelude load.
+  4. Statically strips ttester.fs's own dead FLOATING-POINT-only text
+     (see strip_known_false_conditionals) before sending anything -
+     HAS-FLOATING/HAS-FLOATING-STACK [IF] blocks the target's own
+     [ELSE] would otherwise have to skip itself, at the cost of a lost
+     reply_timeout per physical line skipped (colon_delta has no idea
+     a REFILL-driven bracket-skip is in progress - see send_file's
+     docstring). This accounted for most of a ~25-minute harness load.
 
 Long test-file lines are re-wrapped before sending: forth6809's TIB is
 80 bytes (TIBBUFL EQU 80 in forth6809.asm), but several *.tests.fs lines
@@ -226,6 +233,120 @@ def rewrap_line(line, width=SAFE_LINE_WIDTH):
     if cur:
         lines.append(cur)
     return lines
+
+
+FALSE_CONDITION_WORDS = ("HAS-FLOATING-STACK", "HAS-FLOATING")
+
+
+def strip_known_false_conditionals(text):
+    """ttester.fs's only use of [IF]/[ELSE]/[THEN] is gating its
+    FLOATING-POINT-specific definitions behind "HAS-FLOATING [IF]" /
+    "HAS-FLOATING-STACK [IF]" - always false for this target, which has
+    no FLOATING-POINT word set. Sent as-is, the target's own [ELSE]
+    (00a_tool_ext_conditionals.fs) skips that dead text itself via
+    REFILL - but every physical line inside the skip still costs this
+    runner a full reply_timeout (colon_delta has no visibility into
+    bracket-conditional skipping, see send_file's docstring), and
+    ttester.fs has ~170 lines gated this way: confirmed as the actual
+    majority of the reported 25-minute harness-load time. Resolving it
+    here instead - deleting the dead branch from the text before it's
+    ever sent - means there is no skip for the target to block on at
+    all, and costs nothing at runtime. Only HAS-FLOATING/-STACK
+    themselves are known false for every build this project targets
+    (no FLOATING-POINT word set, ever); other [IF]s (there are none
+    elsewhere in this corpus, see each file's own test for "[IF]" if
+    that changes) are left alone.
+
+    For "<COND> [IF] ... [THEN]" (no [ELSE]): delete the whole span,
+    including <COND> and both markers - nothing to keep.
+    For "<COND> [IF] ... [ELSE] ... [THEN]": delete <COND> through the
+    matching [ELSE] (inclusive - the false branch and both markers),
+    keep the [ELSE]..[THEN] body verbatim, then delete just the
+    [THEN] marker. Nesting is tracked so an inner [IF]/[ELSE]/[THEN]
+    (there is one, line 25/35's ENVIRONMENT?-result check) can't be
+    mistaken for the outer one's own [ELSE]/[THEN]."""
+    tokens = []  # (word, start, end), skipping over S"/./C"/ABORT" strings
+    i, n = 0, len(text)
+    while i < n:
+        while i < n and text[i] in " \t\r\n":
+            i += 1
+        if i >= n:
+            break
+        start = i
+        word_end = i
+        while word_end < n and text[word_end] not in " \t\r\n":
+            word_end += 1
+        word = text[start:word_end]
+        if word in ('S"', '."', 'C"', 'ABORT"') and word_end < n and text[word_end] == " ":
+            close = text.find('"', word_end + 1)
+            if close != -1:
+                tokens.append((text[start:close + 1], start, close + 1))
+                i = close + 1
+                continue
+        tokens.append((word, start, word_end))
+        i = word_end
+
+    delete_spans = []
+    idx = 0
+    while idx < len(tokens):
+        word, start, end = tokens[idx]
+        if word in FALSE_CONDITION_WORDS and idx + 1 < len(tokens) and tokens[idx + 1][0] == "[IF]":
+            depth = 1
+            j = idx + 2
+            else_span = None
+            then_span = None
+            while j < len(tokens):
+                w2, s2, e2 = tokens[j]
+                if w2 == "[IF]":
+                    depth += 1
+                elif w2 == "[ELSE]":
+                    if depth == 1 and else_span is None:
+                        else_span = (s2, e2)
+                elif w2 == "[THEN]":
+                    depth -= 1
+                    if depth == 0:
+                        then_span = (s2, e2)
+                        break
+                j += 1
+            if then_span is None:
+                raise ValueError(f"{word} [IF] at offset {start} has no matching [THEN]")
+            if else_span is not None:
+                delete_spans.append((start, else_span[1]))
+                delete_spans.append(then_span)
+            else:
+                delete_spans.append((start, then_span[1]))
+            # BUG FIX: this used to jump straight to j+1, past the
+            # WHOLE matched structure including any kept [ELSE]..[THEN]
+            # body - which skipped right over ttester.fs's own nested
+            # "HAS-FLOATING [IF]" (inside HAS-FLOATING-STACK's kept
+            # [ELSE] branch) without ever scanning it, so that inner
+            # block's dead FLOATING-POINT-only text never got deleted.
+            # Continue right after just the matched <COND> and its own
+            # [IF] instead, so the normal idx+=1 walk below naturally
+            # re-visits every token in between - including the kept
+            # body, where a nested match gets its own chance - and the
+            # [ELSE]/[THEN] markers it encounters again later are
+            # harmless (they only matter paired with a FALSE_CONDITION_
+            # WORDS token immediately before them, which this scan
+            # never re-triggers on a bare marker). Spans can nest/
+            # overlap now (an inner match wholly inside an outer
+            # kept-body span, or even inside an outer deleted span, if
+            # one is ever added), so they're merged before applying.
+            idx += 2
+            continue
+        idx += 1
+
+    merged = []
+    for s, e in sorted(delete_spans):
+        if merged and s <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+        else:
+            merged.append((s, e))
+
+    out = text
+    for s, e in sorted(merged, reverse=True):
+        out = out[:s] + out[e:]
+    return out
 
 
 def rewrap_source(text):
@@ -511,6 +632,7 @@ def send_file(transport, path, char_delay, reply_timeout, retries, log, transcri
     resending would re-feed the same text into a still-open definition,
     or into REFILL's own skip, a second time)."""
     text = Path(path).read_text()
+    text = strip_known_false_conditionals(text)
     lines = rewrap_source(text)
     fail_hit = False
     depth = 0
