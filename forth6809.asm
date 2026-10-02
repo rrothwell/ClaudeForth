@@ -157,9 +157,29 @@ INITCODE EQU  $FFA4     ; was $FFA9 - shifted down 3 bytes, per
                          ; same 2 bytes back to stay within it.
 ;BASECODE EQU  $DE2E     ; was $DE5E ($DE7A, $DEEA, $DF6A, $DF8A, $DFCA,
 ;BASECODE EQU  $DD2E     ; was $DE5E ($DE7A, $DEEA, $DF6A, $DF8A, $DFCA,
-BASECODE EQU  $DD3A     ; was $DE5E ($DE7A, $DEEA, $DF6A, $DF8A, $DFCA,
-                         ; $DFDA, $DFEA, $E02A before that) - shifted
-                         ; down a further $30 (48 bytes) this time.
+;BASECODE EQU  $DD3A     ; shifted up $0C (12 bytes) from $DD2E: BASEDICT
+                         ; grew by :NONAME's header entry (FCB + the
+                         ; 7-char name + two FDBs = 12 bytes), which a
+                         ; byte-count check mistakenly said still fit
+                         ; under the old BASECODE address (an error in
+                         ; that count, not in BASEDICT's real size) -
+                         ; actually assembling showed BASEDICT's real
+                         ; content overflowing $DD2E by 3 bytes. $DD3A
+                         ; left 9 bytes of margin.
+BASECODE EQU  $DD46     ; shifted up another $0C (12 bytes) from $DD3A:
+                         ; BASEDICT grew again by H_TONUMBER's header
+                         ; entry (same shape as :NONAME's - FCB + a
+                         ; 7-char name + two FDBs = 12 bytes), added to
+                         ; give >NUMBER a dictionary entry (it had working
+                         ; code but was unreachable by name). Using the
+                         ; corrected 5-bytes-per-entry-overhead formula
+                         ; this time (not the 4-byte one that caused the
+                         ; earlier $DD2E mistake): same 9-byte margin as
+                         ; before this entry was added.
+                         ; Prior history (pre-:NONAME): was $DE5E
+                         ; ($DE7A, $DEEA, $DF6A, $DF8A, $DFCA, $DFDA,
+                         ; $DFEA, $E02A before that) - shifted down a
+                         ; further $30 (48 bytes) that time.
                          ; Reason: IRQH was rewritten for symmetry
                          ; between its RX/TX halves and single-point-
                          ; of-exit (all paths RTI through IRQDONE),
@@ -1826,10 +1846,16 @@ H_SIGN:
          FCC   "SIGN"
          FDB   H_HOLDS
          FDB   SIGN
+H_TONUMBER:
+         FCB   $07          ; audit finding: TONUMBER (the code for
+         FCC   ">NUMBER"    ; >NUMBER) existed and worked, but had no
+         FDB   H_SIGN       ; dictionary header at all - unreachable by
+         FDB   TONUMBER     ; name. Spliced in here next to the other
+                          ; number/string-conversion words.
 H_DOT:
          FCB   $01
          FCC   "."
-         FDB   H_SIGN
+         FDB   H_TONUMBER
          FDB   DOT
 H_UDOT:
          FCB   $02
@@ -4556,18 +4582,31 @@ EULOOP:     CMPY #0
 EUDONE:     PULS Y
             JMP  ,Y
 
-CASEW:   LDD   #TAGCASE  ; BUG FIX: was LDD #0/PSHU D here first, pushing
-         PSHU  D         ; a value nothing downstream ever consumes -
-         RTS             ; OF/ENDOF never read this deep, and ENDCASE's
-                          ; scan loop stops the instant it sees TAGCASE,
-                          ; never popping past it. Left one cell
-                          ; permanently stranded below CSP's expected
-                          ; depth, so ";" always saw a mismatch and
-                          ; threw -22, even for the simplest CASE...
-                          ; ENDCASE with no OF clauses at all. Removed;
-                          ; confirmed by inspection that nothing reads
-                          ; or depends on it anywhere in OF/ENDOF/
-                          ; ENDCASE's logic.
+CASEW:   LDD   #0         ; BUG FIX HISTORY: this filler cell was removed
+         PSHU  D          ; once already (see below) because nothing in
+         LDD   #TAGCASE   ; OF/ENDOF read it and ENDCASE's ECDONE path
+         PSHU  D          ; didn't pop it either, stranding it below CSP
+         RTS              ; and throwing -22 on ";" for a plain CASE...
+                          ; ENDCASE with no OF clauses. That fix (just
+                          ; pushing TAGCASE alone, 2 bytes) solved that,
+                          ; but EXIT's compile-time control-flow-stack
+                          ; scan (see EXIT/EXSCAN below) steps from U to
+                          ; CSP in fixed 4-byte strides, same as every
+                          ; other structure's frame (DO leaves [CODEHERE]
+                          ; [TAGDO], OF leaves [patch-addr][TAGOF], both
+                          ; 4 bytes) - a lone 2-byte CASEW frame throws
+                          ; that stride off by 2 bytes, so an EXIT
+                          ; compiled inside a CASE's OF clause scans past
+                          ; CSP forever (confirmed: MAME hangs inside
+                          ; EXITUNLOOP's caller, looping until 16-bit
+                          ; rollover, on ": X 1- DUP CASE 0 OF EXIT
+                          ; ENDOF ... ENDCASE ;"). Restored the 2-cell/
+                          ; 4-byte frame here to match DO/OF, and fixed
+                          ; ENDCASE's ECDONE path (below) to pop the
+                          ; paired filler cell there instead of leaving
+                          ; it stranded - keeping both the CSP balance
+                          ; for the no-OF-clause case AND the 4-byte
+                          ; alignment EXIT's scan depends on.
 
 OF:      LDD   #OVER
          PSHU  D
@@ -4637,7 +4676,15 @@ ECPATCH: PULU  X
          PSHU  X
          JSR   PATCH
          BRA   ECLOOP
-ECDONE:  RTS
+ECDONE:  PULU  D          ; discard CASEW's paired filler cell - see the
+                          ; comment at CASEW above. Without this, that
+                          ; cell is left stranded below CSP the moment
+                          ; we hit TAGCASE and return, which is exactly
+                          ; the bug CASEW's frame was once shrunk to
+                          ; avoid; popping it here instead keeps CSP
+                          ; balanced without reintroducing the EXIT
+                          ; scan-alignment bug that shrinking it caused.
+         RTS
 
 ; ============================================================
 ; SECTION 13: COMPILING WORDS (IMMEDIATE/[/]/'/COMPILE,/
