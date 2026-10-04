@@ -240,7 +240,7 @@ F-> ;
 1 TESTCOUNT +!
 DEPTH ACTUAL-DEPTH @ = IF \ if depths match
 DEPTH START-DEPTH @ > IF \ if something on the stack
-." Actual:Expected "
+2 SPACES ." Actual:Expected "
 DEPTH START-DEPTH @ - 0 DO \ for each stack item
 ACTUAL-RESULTS I CELLS + @ \ compare actual with expected
 2DUP . ." =?= " .
