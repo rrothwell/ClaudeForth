@@ -42,6 +42,18 @@ task list:
      reply_timeout per physical line skipped (colon_delta has no idea
      a REFILL-driven bracket-skip is in progress - see send_file's
      docstring). This accounted for most of a ~25-minute harness load.
+  5. After each section file loads, sends one extra "TEST-REPORT" line
+     (see request_test_report) and parses its "TEST SUMMARY: N run, M
+     failed" reply - a count ttester.fs's own }T computes directly from
+     real T{...}T comparisons. That count, not a transcript-wide scan
+     for ttester's error-message text, is what decides PASS/FAIL now:
+     the old scan couldn't tell "a real ttester failure happened"
+     apart from "this runner gave up waiting for an 'ok' that was never
+     coming because it's the interior line of a multi-line colon-
+     definition" - both just produced text in the same transcript. The
+     old scan (classify(), FAILURE_PATTERNS) is kept only as a
+     secondary disagreement check, printed as a warning if it ever
+     differs from TEST-REPORT's own verdict.
 
 Long test-file lines are re-wrapped before sending: forth6809's TIB is
 80 bytes (TIBBUFL EQU 80 in forth6809.asm), but several *.tests.fs lines
@@ -99,6 +111,22 @@ FAILURE_PATTERNS = [
     b"WRONG NUMBER OF FP RESULTS:",
     ERROR_MARKER,
 ]
+
+# ttester.fs's own TEST-REPORT word (}T now tallies TESTCOUNT/FAILCOUNT as
+# it runs; TEST-REPORT prints this line and resets both counters). This is
+# now the single authoritative pass/fail signal for a section - computed
+# in Forth, from the real T{...}T comparisons, so it's immune to the
+# per-line "ok" echo-timing ambiguity that made the OLD approach (scanning
+# the transcript for FAILURE_PATTERNS, below) occasionally misfire: a
+# multi-line colon-definition only gets one "ok" for the whole definition,
+# not one per physical line, and FAILURE_PATTERNS/classify() had no way to
+# tell "the runner gave up waiting mid-definition" apart from "a real
+# ttester failure happened" - both just produced text in the transcript.
+# FAILURE_PATTERNS/classify() are kept below only as a secondary sanity
+# check: if they ever disagree with TEST-REPORT's own count, that's worth
+# a loud warning (it would mean either ttester.fs predates TEST-REPORT, or
+# something stranger), but they no longer decide pass/fail themselves.
+TEST_REPORT_RE = re.compile(rb"TEST SUMMARY:\s*(\d+)\s*run,\s*(\d+)\s*failed")
 
 DEFAULT_SECTIONS = [
     "08", "09", "10", "11", "12", "13", "14", "15", "16",
@@ -191,14 +219,30 @@ def colon_delta(line):
     """Net change in open-colon-definition depth this line causes,
     scanning tokens outside string literals via tokenize_preserving_strings
     so a ':' or ';' inside test text is never mistaken for a real one.
-    ':' opens one level, ';' closes one - matched as exact tokens, not
-    substrings, so words like ':' inside a larger token don't count."""
+    ':' and ':NONAME' both open one level, ';' closes one - matched as
+    exact tokens, not substrings, so words like ':' inside a larger
+    token don't count.
+
+    BUG FIX: this used to recognize only the bare ':' token as an
+    opener. ':NONAME' (used by 12_control_flow.tests.fs's rn2, to test
+    RECURSE inside an unnamed definition) compiles exactly like ':' -
+    STATE goes non-zero, QOK withholds "ok" until the matching ';' -
+    but was never counted here, so every interior line of a
+    ':NONAME ... ;' body computed depth as max(0, 0+0) = 0, i.e.
+    "top-level, a reply IS expected". send_file then waited a full
+    reply_timeout on each such line, retried, and printed the old-
+    style "[FAIL] gave up after N retries" for it - the exact
+    mid-definition misattribution TEST-REPORT was meant to make
+    moot, just not caught by colon_delta's static scan for this one
+    defining word. (DOES> introduces the same STATE-stays-compiling
+    shape but needs no fix here: it never appears outside a ':...;'
+    body that's already open.)"""
     stripped = line.strip("\r\n").strip()
     if stripped == "" or is_line_comment(stripped):
         return 0
     delta = 0
     for tok in tokenize_preserving_strings(stripped):
-        if tok == ":":
+        if tok in (":", ":NONAME"):
             delta += 1
         elif tok == ";":
             delta -= 1
@@ -699,6 +743,28 @@ def classify(transcript_bytes):
     return True
 
 
+def request_test_report(transport, char_delay, reply_timeout, log, flow):
+    """Send "TEST-REPORT" as its own line and parse the "TEST SUMMARY: N
+    run, M failed" line it prints (see ttester.fs's }T/TEST-REPORT). This
+    is a single, ordinary line as far as send_line_and_wait is concerned -
+    TEST-REPORT is defined in ttester.fs, loaded once ahead of every
+    section, so it's never wiped by a section's own MARKER reset, and it
+    always prints its summary and then the usual "  ok" before returning.
+
+    Returns (run_count, fail_count, timed_out). On a timeout or a reply
+    that doesn't match TEST_REPORT_RE at all (e.g. an older ttester.fs
+    with no TEST-REPORT word, which would answer with BADWORD's -13
+    instead), run_count/fail_count are both None - the caller must treat
+    that as its own failure, not silently report "0 failed"."""
+    result, buf = send_line_and_wait(transport, "TEST-REPORT", char_delay, reply_timeout, log, flow)
+    if result.timed_out:
+        return None, None, True
+    m = TEST_REPORT_RE.search(buf)
+    if not m:
+        return None, None, False
+    return int(m.group(1)), int(m.group(2)), False
+
+
 def run_section(transport, ans_dir, section, char_delay, reply_timeout, retries, log_dir, flow, grace_timeout=1.0):
     matches = sorted(Path(ans_dir).glob(f"{section}_*.tests.fs"))
     if not matches:
@@ -709,10 +775,32 @@ def run_section(transport, ans_dir, section, char_delay, reply_timeout, retries,
     log_path = Path(log_dir) / f"{section}.raw.log"
     transcript = []
     with open(log_path, "wb") as log:
-        timed_out_any = send_file(transport, path, char_delay, reply_timeout, retries, log, transcript,
-                                   flow, grace_timeout=grace_timeout)
+        fail_hit = send_file(transport, path, char_delay, reply_timeout, retries, log, transcript,
+                              flow, grace_timeout=grace_timeout)
+        run_count, fail_count, report_timed_out = request_test_report(
+            transport, char_delay, reply_timeout, log, flow)
+
     transcript_bytes = b"\n".join(transcript)
-    passed = classify(transcript_bytes) and not timed_out_any
+    legacy_clean = classify(transcript_bytes)
+
+    if fail_hit:
+        print(f"    [note] mid-definition compile error or line timeout during load - "
+              f"TEST-REPORT's count below may not be trustworthy", file=sys.stderr)
+    if report_timed_out:
+        print(f"    [FAIL] TEST-REPORT never replied", file=sys.stderr)
+        passed = False
+    elif run_count is None:
+        print(f"    [FAIL] couldn't parse TEST-REPORT's summary line - is ttester.fs up to date?",
+              file=sys.stderr)
+        passed = False
+    else:
+        passed = (fail_count == 0) and not fail_hit
+        print(f"    TEST-REPORT: {run_count} run, {fail_count} failed")
+        if passed != legacy_clean:
+            print(f"    [warn] legacy transcript scan ({'clean' if legacy_clean else 'flagged'}) "
+                  f"disagrees with TEST-REPORT ({'passed' if passed else 'failed'}) - worth a look",
+                  file=sys.stderr)
+
     print(f"    -> {'PASS' if passed else 'FAIL'} (log: {log_path})")
     return passed
 
@@ -809,6 +897,21 @@ def main():
                 print(f"=== loading {fname} ===")
                 send_file(transport, fpath, args.char_delay, args.reply_timeout, args.retries, log, transcript,
                           flow, soft_timeout=True, grace_timeout=args.grace_timeout)
+            # 00_test_prelude.fs runs some T{...}T tests of its own (per
+            # this module's own docstring) - reset TESTCOUNT/FAILCOUNT
+            # here so the first section's own TEST-REPORT count isn't
+            # inflated by the prelude's tally. Not a correctness issue
+            # either way (only "run" would be off, never "failed"), just
+            # keeps each section's printed count honestly its own.
+            prelude_run, prelude_fail, prelude_timed_out = request_test_report(
+                transport, args.char_delay, args.reply_timeout, log, flow)
+            if prelude_timed_out or prelude_run is None:
+                print("[warn] couldn't read TEST-REPORT after the harness/preamble load - "
+                      "is ttester.fs up to date on the target?", file=sys.stderr)
+            elif prelude_fail:
+                print(f"[warn] {prelude_fail} failure(s) in the harness/preamble itself "
+                      f"(ttester.fs/00_test_prelude.fs) - sections below start clean regardless",
+                      file=sys.stderr)
 
         results = {}
         for section in args.sections:
