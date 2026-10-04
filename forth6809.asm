@@ -19,8 +19,13 @@
 ; implemented - this system still neither transmits nor
 ; recognizes those bytes.
 ;
-; DICTIONARY: applied (SECTION 27), 219 entries (215 original +
-; DOES> + TRUE + FALSE, added in later passes - see below).
+; DICTIONARY: applied (SECTION 27), 220 entries (215 original +
+; DOES> + TRUE + FALSE + [COMPILE], added in later passes - see
+; below). [COMPILE] (XCOMPILE, section 13) is the obsolescent
+; predecessor to POSTPONE, added for ANS Annex F test coverage
+; (F.6.2.2530) - see XCOMPILE's own header/comment for how it
+; differs from POSTPONE, and BASECODE's EQU below for the
+; resulting header-table growth.
 ; Every primitive with a real code label now has a real ROM
 ; header, chained via LINK, CFA pointing directly at its code.
 ; Building this surfaced two real findings, not just mechanical
@@ -166,7 +171,18 @@ INITCODE EQU  $FFA4     ; was $FFA9 - shifted down 3 bytes, per
                          ; actually assembling showed BASEDICT's real
                          ; content overflowing $DD2E by 3 bytes. $DD3A
                          ; left 9 bytes of margin.
-BASECODE EQU  $DD46     ; shifted up another $0C (12 bytes) from $DD3A:
+BASECODE EQU  $DD54     ; shifted up another $0E (14 bytes) from $DD46:
+                         ; BASEDICT grew again by H_XCOMPILE's header
+                         ; entry (FCB + the 9-char name "[COMPILE]" +
+                         ; two FDBs = 14 bytes), added to give the new
+                         ; [COMPILE] word (see XCOMPILE, section 13) a
+                         ; dictionary entry. Same 9-byte margin as
+                         ; before this entry was added, assuming that
+                         ; margin was still accurate going in - not
+                         ; reverified by a real assembler run yet (no
+                         ; lwasm/lwtools available in this environment);
+                         ; confirm on assembly before relying on it.
+;BASECODE EQU  $DD46    ; shifted up another $0C (12 bytes) from $DD3A:
                          ; BASEDICT grew again by H_TONUMBER's header
                          ; entry (same shape as :NONAME's - FCB + a
                          ; 7-char name + two FDBs = 12 bytes), added to
@@ -1603,10 +1619,15 @@ H_POSTPONEW:
          FCC   "POSTPONE"
          FDB   H_BRACKTICK
          FDB   POSTPONEW
+H_XCOMPILE:
+         FCB   $89          ; $80 IMMEDIATE | 9 (length of "[COMPILE]")
+         FCC   "[COMPILE]"
+         FDB   H_POSTPONEW
+         FDB   XCOMPILE
 H_TOBODY:
          FCB   $05
          FCC   ">BODY"
-         FDB   H_POSTPONEW
+         FDB   H_XCOMPILE
          FDB   TOBODY
 H_EXECUTE:
          FCB   $07
@@ -4973,6 +4994,45 @@ PPFOUND:   CMPD #1
            RTS
 PPIMM:     JSR  COMPILECOMMA
            RTS
+
+; [COMPILE] ( "name" -- )  IMMEDIATE, compile-only. OBSOLESCENT per
+; the ANS standard - POSTPONE (above) is its modern, more general
+; replacement (see POSTPONEW's own header/comment and the GLOSSARY
+; doc). Unlike POSTPONE, [COMPILE] does NOT distinguish immediate
+; from non-immediate words: it always compiles a direct call to the
+; found word's xt, right now, at the point [COMPILE] itself runs -
+; identical to POSTPONE's own PPIMM branch, reused directly here.
+; That's exactly why [COMPILE] was superseded: for a "default-
+; compilation" word (one whose own compiling behavior is itself
+; CREATEd/DOES>-built rather than a fixed JSR, e.g. many words built
+; via : NAME CREATE , DOES> ... ; IMMEDIATE patterns), compiling a
+; direct call to it here is not always equivalent to appending its
+; real compilation semantics - POSTPONE's two-level LIT+COMPILE,
+; mechanism (see PPFOUND above) is needed for full generality.
+; [COMPILE] remains correct for the ordinary case (works on any
+; word whose compilation semantics really is "compile a call to me"
+; - true of every immediate word in this implementation, and of
+; every plain/non-immediate word by definition) - ANS Annex F's own
+; F.6.2.2530 test (13_compiling_words.tests.fs) exercises exactly
+; that ordinary case (DUP, a user-defined immediate word, and IF).
+XCOMPILE: LDD  STATE
+          BNE  XCSTOK
+          LDD  #-14
+          PSHU D
+          JSR  THROW
+XCSTOK:   LDD  #32
+          PSHU D
+          JSR  WORD
+          JSR  FIND
+          PULU D
+          CMPD #0
+          BNE  XCFOUND
+          PULU D
+          LDD  #-13
+          PSHU D
+          JSR  THROW
+XCFOUND:  JSR  COMPILECOMMA
+          RTS
 
 TOBODY:  PULU D
          ADDD #5
