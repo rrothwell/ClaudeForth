@@ -8880,11 +8880,12 @@ TSTMARKERNAME: FCB  9
 
 ; ------------------------------------------------------------
 ; TSTCOMPWORDS - compiling-words tests (glossary section 3.10,
-; 13 words, 17 tests since several get separate cases: TICK
+; 14 words, 19 tests since several get separate cases: TICK
 ; found/not-found, ['] compiling/interpreting state, POSTPONE
-; normal/immediate word, SLITERAL compiling/interpreting state,
-; ABORT" false/true flag). Reuses the scratch infrastructure
-; established for sections 3.8/3.9 throughout.
+; normal/immediate word, [COMPILE] normal/immediate word,
+; SLITERAL compiling/interpreting state, ABORT" false/true flag).
+; Reuses the scratch infrastructure established for sections
+; 3.8/3.9 throughout.
 ;
 ; POSTPONE is this section's hardest case: a genuine two-level
 ; compile-time mechanism. Traced its own code first - for a
@@ -8898,6 +8899,13 @@ TSTMARKERNAME: FCB  9
 ; against whatever's being compiled at that later point).
 ; Verified via the compiled byte sequence directly rather than
 ; fully executing a triple-nested compile chain.
+;
+; [COMPILE] is POSTPONE's obsolescent predecessor (added for ANS
+; Annex F test coverage, F.6.2.2530) - simpler to verify since it
+; makes no normal/immediate distinction at all: both its test
+; cases (TSTXCOMPILE1/2) check for the exact same direct-call
+; byte sequence POSTPONE only produces for the immediate case
+; (TSTPOSTPONE2) - see XCOMPILE's own header/comment for why.
 ;
 ; ABORT" is safely testable for both its flag cases - confirmed
 ; by reading its own runtime code that it uses THROW -2
@@ -8926,6 +8934,8 @@ TSTCOMPWORDS: JSR CRW
            JSR   TSTBRACKTICK2
            JSR   TSTPOSTPONE1
            JSR   TSTPOSTPONE2
+           JSR   TSTXCOMPILE1
+           JSR   TSTXCOMPILE2
            JSR   TSTTOBODY
            JSR   TSTEXECUTE
            JSR   TSTSLITERAL1
@@ -9853,6 +9863,234 @@ PP2DONE:      LDX  #TSTPP2NAME
 
 TSTPP2NAME: FCB  12
             FCC  "TSTPOSTPONE2"
+
+; ------------------------------------------------------------
+; TSTXCOMPILE1 - unit test for [COMPILE], normal (non-immediate)
+; word case. Unlike POSTPONE (TSTPOSTPONE1, above), [COMPILE]
+; makes no LIT/COMPILE, distinction by flag at all - traced
+; XCOMPILE's own code: it always compiles a direct call
+; ("[JSR xt]") to the found word, right now, regardless of
+; whether FIND reported it immediate or not. So this case (a
+; plain, non-immediate word, DUP) verifies the exact same simple
+; byte sequence as TSTPOSTPONE2's immediate-word case below -
+; that agreement, for an ordinary word, is itself the point:
+; [COMPILE] and POSTPONE only diverge on a default-compilation
+; word, which neither this nor TSTXCOMPILE2 constructs (seeing
+; that divergence would need a CREATE/DOES>-built compiling word,
+; not attempted here - the ANS Annex F test in
+; 13_compiling_words.tests.fs exercises [COMPILE] against DUP, a
+; user-defined IMMEDIATE word, and IF, which is the ordinary case
+; this implementation handles correctly either way).
+; ------------------------------------------------------------
+TSTXCOMPILE1: LDD  CODEHERE
+              STD  TSTCSAV
+              LDD  LATEST
+              STD  TSTLSAV
+              LDD  SRCADDR
+              STD  TSTSASAV
+              LDD  SRCLEN
+              STD  TSTSLSAV
+              LDD  TOIN
+              STD  TSTTISAV
+              LDD  STATE
+              STD  TSTSTSAV
+
+              LDA  #3
+              STA  TSTFHDR
+              LDA  #'F'
+              STA  TSTFHDR+1
+              LDA  #'O'
+              STA  TSTFHDR+2
+              LDA  #'O'
+              STA  TSTFHDR+3
+              LDD  #0
+              STD  TSTFHDR+4
+              LDD  #DUP
+              STD  TSTFHDR+6
+
+              LDA  #'F'
+              STA  TSTNAMEB
+              LDA  #'O'
+              STA  TSTNAMEB+1
+              LDA  #'O'
+              STA  TSTNAMEB+2
+
+              LDD  #TSTCBUF
+              STD  CODEHERE
+              LDD  #TSTFHDR
+              STD  LATEST
+              LDD  #TSTNAMEB
+              STD  SRCADDR
+              LDD  #3
+              STD  SRCLEN
+              LDD  #0
+              STD  TOIN
+              LDD  #-1
+              STD  STATE
+
+              STU  TSTU0
+
+              LDD  #TSTGUARD
+              PSHU D
+              STU  TSTUB4
+
+              JSR  XCOMPILE
+
+              STU  TSTUAF
+
+              LDD  TSTCSAV
+              STD  CODEHERE
+              LDD  TSTLSAV
+              STD  LATEST
+              LDD  TSTSASAV
+              STD  SRCADDR
+              LDD  TSTSLSAV
+              STD  SRCLEN
+              LDD  TSTTISAV
+              STD  TOIN
+              LDD  TSTSTSAV
+              STD  STATE
+
+              PULU D
+              CMPD #TSTGUARD
+              BNE  XC1FAIL
+
+              LDD  TSTUB4
+              SUBD TSTUAF
+              CMPD #0
+              BNE  XC1FAIL
+
+              LDX  #TSTCBUF
+
+              LDA  ,X
+              CMPA #OPJSR
+              BNE  XC1FAIL
+              LDD  1,X
+              CMPD #DUP
+              BNE  XC1FAIL
+
+              LDD  #TRUEV
+              BRA  XC1DONE
+XC1FAIL:      LDD  #FALSEV
+XC1DONE:      LDX  #TSTXC1NAME
+              PSHU X
+              PSHU D
+              JSR  TSTREPORT
+
+              LDU  TSTU0
+              RTS
+
+TSTXC1NAME: FCB  13
+            FCC  "TSTXCOMPILE1"
+
+; ------------------------------------------------------------
+; TSTXCOMPILE2 - unit test for [COMPILE], immediate word case.
+; Same fake header shape as TSTPOSTPONE2 (flags byte $83 - the
+; $80 IMMEDIATE bit set), to confirm XCOMPILE compiles the exact
+; same direct-call byte sequence here as it did for the plain
+; word above - i.e. that it genuinely ignores FIND's immediate
+; flag entirely, unlike POSTPONE.
+; ------------------------------------------------------------
+TSTXCOMPILE2: LDD  CODEHERE
+              STD  TSTCSAV
+              LDD  LATEST
+              STD  TSTLSAV
+              LDD  SRCADDR
+              STD  TSTSASAV
+              LDD  SRCLEN
+              STD  TSTSLSAV
+              LDD  TOIN
+              STD  TSTTISAV
+              LDD  STATE
+              STD  TSTSTSAV
+
+              LDA  #$83
+              STA  TSTFHDR
+              LDA  #'F'
+              STA  TSTFHDR+1
+              LDA  #'O'
+              STA  TSTFHDR+2
+              LDA  #'O'
+              STA  TSTFHDR+3
+              LDD  #0
+              STD  TSTFHDR+4
+              LDD  #SPACEW
+              STD  TSTFHDR+6
+
+              LDA  #'F'
+              STA  TSTNAMEB
+              LDA  #'O'
+              STA  TSTNAMEB+1
+              LDA  #'O'
+              STA  TSTNAMEB+2
+
+              LDD  #TSTCBUF
+              STD  CODEHERE
+              LDD  #TSTFHDR
+              STD  LATEST
+              LDD  #TSTNAMEB
+              STD  SRCADDR
+              LDD  #3
+              STD  SRCLEN
+              LDD  #0
+              STD  TOIN
+              LDD  #-1
+              STD  STATE
+
+              STU  TSTU0
+
+              LDD  #TSTGUARD
+              PSHU D
+              STU  TSTUB4
+
+              JSR  XCOMPILE
+
+              STU  TSTUAF
+
+              LDD  TSTCSAV
+              STD  CODEHERE
+              LDD  TSTLSAV
+              STD  LATEST
+              LDD  TSTSASAV
+              STD  SRCADDR
+              LDD  TSTSLSAV
+              STD  SRCLEN
+              LDD  TSTTISAV
+              STD  TOIN
+              LDD  TSTSTSAV
+              STD  STATE
+
+              PULU D
+              CMPD #TSTGUARD
+              BNE  XC2FAIL
+
+              LDD  TSTUB4
+              SUBD TSTUAF
+              CMPD #0
+              BNE  XC2FAIL
+
+              LDX  #TSTCBUF
+
+              LDA  ,X
+              CMPA #OPJSR
+              BNE  XC2FAIL
+              LDD  1,X
+              CMPD #SPACEW
+              BNE  XC2FAIL
+
+              LDD  #TRUEV
+              BRA  XC2DONE
+XC2FAIL:      LDD  #FALSEV
+XC2DONE:      LDX  #TSTXC2NAME
+              PSHU X
+              PSHU D
+              JSR  TSTREPORT
+
+              LDU  TSTU0
+              RTS
+
+TSTXC2NAME: FCB  13
+            FCC  "TSTXCOMPILE2"
 
 ; ------------------------------------------------------------
 ; TSTTOBODY - unit test for >BODY. Already used extensively as
