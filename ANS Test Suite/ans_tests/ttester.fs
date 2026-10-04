@@ -1,3 +1,4 @@
+\ ============================================================
 \ This is the source for the ANS test harness, it is based on the
 \ harness originally developed by John Hayes
 
@@ -16,6 +17,22 @@ CREATE ACTUAL-RESULTS 20 CELLS ALLOT
 VARIABLE START-DEPTH
 VARIABLE XCURSOR \ for ...}T
 VARIABLE ERROR-XT
+
+\ TESTCOUNT/FAILCOUNT: a Forth-computed, authoritative pass/fail
+\ tally, read by TEST-REPORT (defined alongside }T below). Added
+\ because the serial test runner's line-by-line "ok" wait can't
+\ tell a real failure from its own echo-timing: a multi-line
+\ colon-definition only gets ONE "ok" for the whole definition,
+\ not one per physical line, so the runner was reporting every
+\ continuation line inside one as a bogus "[FAIL] gave up after
+\ 0 retries" - even though every actual }T comparison in the
+\ file passed. TESTCOUNT/FAILCOUNT give the runner one reliable
+\ line to grep for at the end of each file instead of inferring
+\ pass/fail from per-line echo timing.
+VARIABLE TESTCOUNT
+VARIABLE FAILCOUNT
+0 TESTCOUNT !
+0 FAILCOUNT !
 
 : ERROR ERROR-XT @ EXECUTE ; \ for vectoring of error reporting
 
@@ -212,17 +229,53 @@ F-> ;
 
 : }T \ ( ... -- ) comapre stack (expected) contents with saved
 \ (actual) contents.
+\ BUG FIX / ENHANCEMENT: tallies TESTCOUNT (every call) and
+\ FAILCOUNT (only the two branches below that call ERROR) for
+\ TEST-REPORT, just below - see TESTCOUNT's own comment above.
+\ Also moved the "Actual:Expected " heading to print ONCE per
+\ }T, right before the per-item loop, instead of once per item -
+\ it was repeating those 16 characters before every single pair,
+\ which padded out already-long result lines (e.g. gd7's 7-item
+\ results) a lot for no extra information.
+1 TESTCOUNT +!
 DEPTH ACTUAL-DEPTH @ = IF \ if depths match
 DEPTH START-DEPTH @ > IF \ if something on the stack
+." Actual:Expected "
 DEPTH START-DEPTH @ - 0 DO \ for each stack item
 ACTUAL-RESULTS I CELLS + @ \ compare actual with expected
-<> IF S" INCORRECT RESULT: " ERROR LEAVE THEN
+2DUP . ." =?= " .
+<> IF 1 FAILCOUNT +! S" INCORRECT RESULT: " ERROR LEAVE THEN
 LOOP
 THEN
 ELSE \ depth mismatch
+1 FAILCOUNT +!
 S" WRONG NUMBER OF RESULTS: " ERROR
 THEN
 F} ;
+
+: TEST-REPORT \ ( -- ) print this file's tally and reset it, so
+\ the next file loaded (ttester.fs itself is loaded once per
+\ run, ahead of every section file, so TESTCOUNT/FAILCOUNT would
+\ otherwise keep accumulating across every file after this one)
+\ starts counting from zero again with no extra setup needed.
+\ BUG FIX: the counts used to print in whatever BASE happened to
+\ be active - HEX, almost always, since every section file
+\ restores HEX before its own closing marker (this corpus's own
+\ convention) - so "11 run, 2 failed" could actually mean 17 run,
+\ 2 failed. Save/restore BASE around the two "." prints so the
+\ totals are always legible in DECIMAL regardless of ambient
+\ base. Plain >R/R> is safe here (unlike the BASE @ >R DECIMAL
+\ ... R> BASE ! pattern fixed elsewhere in this corpus) because
+\ it's entirely inside this one word's own execution, never
+\ spanning separate top-level lines - the return stack hazard
+\ that ruled out >R/R> for a cross-line BASE save doesn't apply
+\ to a save/restore that starts and ends within one call.
+BASE @ >R DECIMAL
+CR ." TEST SUMMARY: " TESTCOUNT @ . ." run, " FAILCOUNT @ . ." failed" CR
+R> BASE !
+0 TESTCOUNT ! 0 FAILCOUNT ! ;
+
+' }T ." XT for }T" .
 
 : ...}T ( -- )
 XCURSOR @ START-DEPTH @ + ACTUAL-DEPTH @ <> IF
