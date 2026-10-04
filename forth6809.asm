@@ -634,6 +634,16 @@ ACNT       RMB   2   ; offset $39
 ACH        RMB   1   ; offset $3B
 EMITCH     RMB   1   ; offset $3C
 NEWHDR     RMB   2   ; offset $3D
+; CURXT is an EQU alias for this same cell, not a second RMB (direct
+; page is already full at 256/256 bytes - see the layout note above).
+; HEADER's own use of NEWHDR (the new header's address, needed only
+; to set LATEST at the end of HEADER, before HEADER's own RTS) is
+; always finished by the time COLON/NONAME run their next instruction
+; after calling HEADER - so it's safe for COLON and NONAME to then
+; reuse the same cell to record the xt of the word currently being
+; compiled, under this second name, for RECURSE to read back. See
+; RECURSE's own comment for why this was needed.
+CURXT      EQU   NEWHDR
 NAMEP      RMB   2   ; offset $3F
 NAMELEN    RMB   1   ; offset $41
 PTARGET    RMB   2   ; offset $42
@@ -2922,6 +2932,13 @@ HDNONM:  LDD   LATEST
 COLON:   LDD   #TRUEV
          PSHU  D
          JSR   HEADER
+         LDD   CODEHERE   ; BUG FIX: record this word's own xt in CURXT
+         STD   CURXT      ; (safe to reuse NEWHDR's cell here - HEADER
+                          ; is done with it) so RECURSE has a reliable
+                          ; place to find it. RECURSE used to walk
+                          ; LATEST's header instead, which broke inside
+                          ; a :NONAME body (LATEST deliberately isn't
+                          ; touched there) - see RECURSE and NONAME.
          TFR   U,D
          STD   CSP
          LDD   #-1
@@ -2966,6 +2983,27 @@ SEMIOK:  LDX   LATEST
 ; definition's SEMI runs.
 NONAME:  LDD   CODEHERE
          PSHU  D
+         STD   CURXT     ; BUG FIX: RECURSE needs this word's own xt
+                          ; (see RECURSE and COLON's matching fix) -
+                          ; :NONAME deliberately never touches LATEST
+                          ; (correctly, per ANS - a :NONAME word is
+                          ; never findable/linked), but RECURSE used to
+                          ; unconditionally walk LATEST's header to find
+                          ; the xt to recurse into. Inside a :NONAME
+                          ; body that meant RECURSE compiled a call to
+                          ; whatever NAMED word happened to be defined
+                          ; most recently - a completely unrelated word
+                          ; - rather than this one. Confirmed against
+                          ; Annex F's RECURSE test (":NONAME ... CASE
+                          ; ... RECURSE ... ENDCASE ; CONSTANT rn2"):
+                          ; every case that actually took the RECURSE
+                          ; path failed ttester's "WRONG NUMBER OF
+                          ; RESULTS" (recursing into a different word
+                          ; with a different stack effect), while
+                          ; ordinary named RECURSE tests (rn1, 12's own
+                          ; earlier definitions) were unaffected, since
+                          ; LATEST is correct for those. STD here costs
+                          ; nothing extra (D already holds CODEHERE).
          TFR   U,D
          STD   CSP
          LDD   #-1
@@ -4360,19 +4398,25 @@ RPSHIFTDONE:
          JSR   PATCH
          RTS
 
-RECURSE: LDX   LATEST
-         LDA   ,X
-         STA   HDRFLAGS
-         LEAX  1,X
-         LDB   HDRFLAGS
-         ANDB  #$1F
-         CLRA
-         LEAX  D,X
-         LEAX  2,X
-         LDD   ,X
-         PSHU  D
-         JSR   CCALL
-         RTS
+RECURSE: LDD   CURXT     ; BUG FIX: used to walk LATEST's header (skip
+         PSHU  D         ; the length/flags byte, then the name, then
+         JSR   CCALL     ; the link cell, to read the xt cell HEADER
+         RTS             ; stores right after it) to find the xt to
+                          ; recurse into. That only works when LATEST
+                          ; actually points at the word being compiled
+                          ; - true for an ordinary COLON definition,
+                          ; but :NONAME deliberately never updates
+                          ; LATEST (see its own comment), so RECURSE
+                          ; inside a :NONAME body found whatever NAMED
+                          ; word was defined most recently instead -
+                          ; confirmed against Annex F's RECURSE/CASE
+                          ; test (":NONAME ... RECURSE ... ENDCASE ;
+                          ; CONSTANT rn2"). Both COLON and NONAME now
+                          ; record their own xt in CURXT directly, so
+                          ; RECURSE just reads that back - correct for
+                          ; both named and anonymous definitions, and
+                          ; no more header-field-offset arithmetic to
+                          ; get wrong.
 
 DO:      LDD   #DOSETUP
          PSHU  D
@@ -4545,44 +4589,74 @@ PLOOPOK:  PULU D          ; BUG FIX: same class as LOOP above - was PULU X
           JSR  PATCH
 PLOOPDONE: RTS
 
-DOPLUSTEST: LDD  6,S      ; BUG FIX: same class as DOTEST - PULS X used to
-            BNE  DPTEXIT  ; run first, shifting S by 2 before every one of
-            PULU D        ; these offset reads (6,S/2,S/4,S), landing past
-            STD  MSCR     ; the 3 cells DOSETUP pushed. Deferred PULS X to
-            LDD  2,S      ; each path separately below, same fix as DOTEST.
-            SUBD 4,S
+DOPLUSTEST: PULU D        ; BUG FIX: this PULU D used to run AFTER the
+            STD  MSCR     ; LEAVE-flag check below (LDD 6,S/BNE DPTEXIT),
+                          ; so when LEAVE had set the flag, DPTEXIT was
+                          ; reached without ever popping the step value
+                          ; that "n +LOOP" always pushes onto U before
+                          ; calling here. That left the step value
+                          ; stranded on the data stack every time LEAVE
+                          ; fired before the natural boundary crossing -
+                          ; confirmed against Annex F's GD7 (a DO ... I
+                          ; ... LEAVE ... +LOOP word): every case where
+                          ; the internal counter hit LEAVE before +LOOP's
+                          ; own limit test would otherwise fire reported
+                          ; ttester's "WRONG NUMBER OF RESULTS" (one extra
+                          ; item), and the leftover item then threw off
+                          ; later tests' own stack baselines too. Moved
+                          ; PULU D/STD MSCR to the top, unconditionally,
+                          ; before the LEAVE check - it's needed on every
+                          ; path (LEAVE-exit, boundary-exit, and the
+                          ; continue-looping path alike), not just the
+                          ; two paths that used to reach it.
+            LDD  6,S      ; BUG FIX (earlier): PULS X used to run first,
+            BNE  DPTEXIT  ; shifting S by 2 before every one of these
+                          ; offset reads (6,S/2,S/4,S), landing past the
+                          ; 3 cells DOSETUP pushed. Deferred PULS X to
+                          ; each path separately below, same fix as DOTEST.
+            LDD  2,S      ; old index (the step value is already consumed
+            SUBD 4,S      ; old_u = old_index - limit, mod 65536
             STD  MSCR2
             LDD  2,S
-            ADDD MSCR
+            ADDD MSCR     ; new_index = old_index + step
             STD  2,S
-            SUBD 4,S
+            SUBD 4,S      ; new_u = new_index - limit, mod 65536
             STD  MSCR3
-            LDA  MSCR2
-            LDB  MSCR3
-            PSHS B
-            EORA ,S+          ; was "EORA B" - not valid 6809 syntax (no
-                                ; register-to-register EORA); push B, then
-                                ; operate through ,S+ - the standard 6809
-                                ; idiom for adding/combining two registers
-            BMI  DPTEXIT
-            ; BUG FIX: this used to also do "LDD MSCR3 / BEQ DPTEXIT" here -
-            ; exit immediately whenever the new index landed EXACTLY on
-            ; limit, even with no sign change. That's wrong for a
-            ; decreasing (or any non-+1) step: ANS +LOOP must still
-            ; execute the pass where index==limit (confirmed against
-            ; Annex F's GD2: "1 4 GD2" with "DO I -1 +LOOP" is supposed
-            ; to yield "4 3 2 1", i.e. I=1 (==limit) included) and only
-            ; terminate on the NEXT pass's actual boundary crossing (old
-            ; index==limit, new index on the other side, caught correctly
-            ; by the BMI sign test above). The extra check fired one pass
-            ; early on exactly that case, dropping the last iteration -
-            ; confirmed by hand-tracing both GD2's own "1 4" case and the
-            ; MID-UINT/MID-UINT+1 edge case against this code. Removed -
-            ; the sign-crossing test alone is both necessary and
-            ; sufficient (matches the standard reference algorithm; a
-            ; zero step is undefined behavior in ANS and isn't guarded
-            ; against here, same as before this fix).
-            PULS X
+            ; BUG FIX: the previous test here compared the SIGNS of
+            ; old_u/new_u as plain 16-bit two's complement values (EORA
+            ; of their high bytes, BMI on a sign flip). That's wrong in
+            ; general: a signed 16-bit difference's sign bit flips at
+            ; TWO points on the 65536-value ring, not one - at the true
+            ; limit (correct) AND at the antipodal point exactly halfway
+            ; around (spurious, nothing to do with limit at all). Any
+            ; small/ordinary loop range never reaches that second point,
+            ; so GD2 and friends still passed - but Annex F's GD8 (its
+            ; "ustep"/"step" constants are deliberately sized to march
+            ; the index across nearly the whole MAX-UINT/MAX-INT range)
+            ; hits the spurious antipodal flip first every time, exiting
+            ; at exactly half the correct iteration count (128 instead
+            ; of 256) - confirmed by simulating both the old algorithm
+            ; and the fix below against GD8's own 4 cases, and checking
+            ; the fix still agrees with the old algorithm (and with
+            ; hardware-confirmed behavior) on GD2, a limit=0 decreasing
+            ; loop, and an exact-landing case, where the two never
+            ; differed. Correct, general test: compare old_u and new_u
+            ; as UNSIGNED values and ask which direction they moved -
+            ; crossing limit means this unsigned "distance from limit"
+            ; measure wrapped around 0/65536, and it can only wrap in
+            ; the direction the step is actually heading. Which
+            ; comparison applies depends on the step's own sign, so
+            ; branch on that first.
+            LDD  MSCR     ; reload the step to test its sign
+            BMI  DPNEG
+DPPOS:      LDD  MSCR3    ; step positive: crossed iff new_u < old_u
+            CMPD MSCR2    ; (unsigned) - the "distance from limit"
+            BLO  DPTEXIT  ; measure wrapped back down through zero.
+            BRA  DPCONT
+DPNEG:      LDD  MSCR3    ; step negative: crossed iff new_u > old_u
+            CMPD MSCR2    ; (unsigned) - the measure wrapped up past
+            BHI  DPTEXIT  ; 65535 back toward zero from the other side.
+DPCONT:     PULS X
             LDD  ,X
             LEAX D,X
             PSHS X
