@@ -35,6 +35,7 @@ MARKER M26
 \ plausible source of an uncaught error that would wipe a parked
 \ stack value via QLOOP's top-level recovery. Unconditional restore
 \ instead - see 08_defining_words.tests.fs for the full reasoning.
+
 DECIMAL
 -1 CONSTANT exc_abort
 -2 CONSTANT exc_abort"
@@ -54,13 +55,17 @@ HEX
 
 
 \ F.6.2.1485  FALSE
+
 \ Added after these tests were first organized: TRUE/FALSE were
 \ not yet implemented as dictionary words at that point (see
 \ README and the open-items checklist). Now resolved.
-T{ FALSE -> 0 }T   T{ FALSE -> <FALSE> }T
+T{ FALSE -> 0 }T   
+T{ FALSE -> <FALSE> }T
 
 \ F.6.2.2298  TRUE
-T{ TRUE -> <TRUE> }T   T{ TRUE -> 0 INVERT }T
+
+T{ TRUE -> <TRUE> }T   
+T{ TRUE -> 0 INVERT }T
 
 \ ---- section-marker: undo everything above ----
 M26

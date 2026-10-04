@@ -20,8 +20,9 @@
 MARKER M21
 
 \ F.6.1.0750  BASE
-: GN2 ( -- 16 10 )
-BASE @ >R HEX BASE @ DECIMAL BASE @ R> BASE ! ;   T{ GN2 -> 10 A }T
+
+: GN2 ( -- 16 10 ) BASE @ >R HEX BASE @ DECIMAL BASE @ R> BASE ! ;   
+T{ GN2 -> 10 A }T
 
 \ F.6.1.1170  DECIMAL
 \ See F.6.1.0750 BASE.
