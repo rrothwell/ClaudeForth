@@ -131,10 +131,8 @@ T{ BL -> 20 }T
 \ ENVIRONMENT? page says the same, and also that a conforming system
 \ may answer false to every query. Replaced it with a valid check:
 \ whatever ENVIRONMENT? answers for X:deferred, the result must be
-\ exactly one well-formed flag (0 or -1, no extra cells - T{ }T
- checks
-\ the depth). The X:notfound test below is unchanged and valid.
-
+\ exactly one well-formed flag (0 or -1, no extra cells, which the
+\ harness depth check enforces). X:notfound below is unchanged.
 T{ S" X:deferred" ENVIRONMENT? DUP 0= OVER TRUE = OR NIP -> <TRUE> }T
 T{ S" X:notfound" ENVIRONMENT? DUP 0= XOR INVERT -> <FALSE> }T
 
