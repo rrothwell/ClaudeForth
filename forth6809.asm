@@ -3447,6 +3447,16 @@ WORD:    PULU  D
          LEAX  D,X
          LDD   SRCLEN
          SUBD  TOIN
+         LBLO  EMPTY          ; BUG FIX: >IN beyond the end of the input
+                              ; (SRCLEN < TOIN, unsigned borrow). The
+                              ; remaining-length count below is unsigned,
+                              ; and SKIPLP/SCANLP only stop at EXACTLY
+                              ; zero, so an overshoot wrapped to ~65000
+                              ; and WORD parsed stale memory far past the
+                              ; TIB. ANS Annex F's own >IN tests overshoot
+                              ; on purpose (e.g. ">IN +!" skipping text).
+                              ; Treat any overshoot as an exhausted
+                              ; parse area, same as exactly-at-end.
          TFR   D,Y
 
 SKIPLP:  CMPY  #0
@@ -6687,6 +6697,9 @@ PARSEW:  PULU  D
          STX   PSTART
          LDD   SRCLEN
          SUBD  TOIN
+         LBLO  PNEMPTY        ; BUG FIX: same >IN-overshoot guard as WORD
+                              ; - shares PNEMPTY (sets >IN to SRCLEN,
+                              ; returns end-of-input addr and length 0).
          TFR   D,Y
          LDD   #0
          STD   PLEN
@@ -6717,6 +6730,7 @@ PARSENAME: LDD  TOIN
            LEAX D,X
            LDD  SRCLEN
            SUBD TOIN
+           BLO  PNEMPTY       ; BUG FIX: same >IN-overshoot guard as WORD
            TFR  D,Y
 PNSKIP:    CMPY #0
            BEQ  PNEMPTY
