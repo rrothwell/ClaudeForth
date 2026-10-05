@@ -148,7 +148,7 @@ def is_line_comment(stripped):
     return leading.startswith("\\") and (len(leading) == 1 or leading[1] in " \t")
 
 
-def tokenize_preserving_strings(stripped):
+def tokenize_preserving_strings(stripped, fuse_tests=True):
     """Split on whitespace, but keep an S"/./C"/ABORT"-introduced string
     literal as one atomic token so a caller never mistakes a character
     inside it (a stray ':' or ';' in test text, say) for a real word,
@@ -195,6 +195,8 @@ def tokenize_preserving_strings(stripped):
         raw_tokens.append(stripped[start:word_end])
         i = word_end
 
+    if not fuse_tests:
+        return raw_tokens
     tokens = []
     j = 0
     m = len(raw_tokens)
@@ -240,8 +242,23 @@ def colon_delta(line):
     stripped = line.strip("\r\n").strip()
     if stripped == "" or is_line_comment(stripped):
         return 0
+    # BUG FIX: scan RAW tokens (no T{...}T fusion). Fusing hid the
+    # ':'/':NONAME' in "T{ : foo ... ; -> }T" openers, and an
+    # unterminated "T{" swallowed every later token on its line, so
+    # interior lines of multi-line definitions wrongly expected "ok".
+    # Also skip ( ... ) comments and a trailing backslash comment.
     delta = 0
-    for tok in tokenize_preserving_strings(stripped):
+    in_paren = False
+    for tok in tokenize_preserving_strings(stripped, fuse_tests=False):
+        if in_paren:
+            if tok.endswith(")"):
+                in_paren = False
+            continue
+        if tok == "\\":
+            break
+        if tok == "(":
+            in_paren = True
+            continue
         if tok in (":", ":NONAME"):
             delta += 1
         elif tok == ";":
@@ -685,6 +702,11 @@ def send_file(transport, path, char_delay, reply_timeout, retries, log, transcri
             continue
         depth = max(0, depth + colon_delta(line))
         expect_ok = (depth == 0)
+        # ACCEPT-TEST (10_query_accept_key_emit) calls ACCEPT, which
+        # consumes the NEXT line sent as its input, so this line gets no
+        # "ok" until that following line arrives. Don't wait for one.
+        if expect_ok and "ACCEPT-TEST" in line.split() and not line.lstrip().startswith(":"):
+            expect_ok = False
         line_timeout = reply_timeout if expect_ok else min(reply_timeout, grace_timeout)
 
         attempt = 0
@@ -779,6 +801,21 @@ def run_section(transport, ans_dir, section, char_delay, reply_timeout, retries,
                               flow, grace_timeout=grace_timeout)
         run_count, fail_count, report_timed_out = request_test_report(
             transport, char_delay, reply_timeout, log, flow)
+        # Diagnostic: report and clear any stray data-stack cells so one
+        # section's leftovers can't skew the next (14's and 24's DEPTH-
+        # absolute tests need an empty stack at their start).
+        depth = None
+        res, buf = send_line_and_wait(transport, "DEPTH BASE @ SWAP DECIMAL . BASE !",
+                                      char_delay, reply_timeout, log, flow)
+        m = re.search(rb"(\d+)\s", buf.replace(b"DEPTH BASE @ SWAP DECIMAL . BASE !", b""))
+        if m:
+            depth = int(m.group(1))
+        if depth:
+            print(f"    [warn] {depth} stray cell(s) left on the data stack after section {section}; clearing",
+                  file=sys.stderr)
+            send_line_and_wait(transport, ": CLRSTK BEGIN DEPTH WHILE DROP REPEAT ;",
+                               char_delay, reply_timeout, log, flow)
+            send_line_and_wait(transport, "CLRSTK", char_delay, reply_timeout, log, flow)
 
     transcript_bytes = b"\n".join(transcript)
     legacy_clean = classify(transcript_bytes)
