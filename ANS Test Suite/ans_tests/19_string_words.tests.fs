@@ -38,7 +38,10 @@ T{ GT1STRING COUNT -> GT1STRING CHAR+ 3 }T
 : GS3 WORD COUNT SWAP C@ ;
 T{ BL GS3 HELLO -> 5 CHAR H }T
 T{ CHAR " GS3 GOODBYE" -> 7 CHAR G }T
-T{ BL GS3 DROP -> 0 }T
+\ The next test MUST stay split over two lines: it needs an
+\ empty parse area, i.e. WORD finds the end of line.
+T{ BL GS3
+DROP -> 0 }T
 
 \ F.6.1.2520  [CHAR]
 
@@ -52,9 +55,11 @@ T{ GC2 -> 48 }T
 T{ PARSE-NAME abcd S" abcd" S= -> <TRUE> }T
 T{ PARSE-NAME abcde S" abcde" S= -> <TRUE> }T
 
-\ test empty parse area   
-T{ PARSE-NAME NIP -> 0 }T
-T{ PARSE-NAME NIP -> 0 }T
+\ test empty parse area - these two MUST stay split over two lines
+T{ PARSE-NAME
+NIP -> 0 }T
+T{ PARSE-NAME
+NIP -> 0 }T
 T{ : parse-name-test ( "name1" "name2" -- n ) PARSE-NAME PARSE-NAME S= ; -> }T
 T{ parse-name-test abcd abcd -> <TRUE> }T
 T{ parse-name-test abcde abcdf -> <FALSE> }T
