@@ -27,14 +27,14 @@ MARKER M09
 \ here (copied verbatim from that file) so this file has no
 \ cross-section load-order dependency and can run standalone.
 
-T{ : GT1 123 ; -> }T   
+T{ : GT1 123 ; -> }T
 T{ ' GT1 EXECUTE -> 123 }T
-T{ : GT2 ['] GT1 ; IMMEDIATE -> }T   
+T{ : GT2 ['] GT1 ; IMMEDIATE -> }T
 T{ GT2 EXECUTE -> 123 }T
 
 HERE 3 C, CHAR G C, CHAR T C, CHAR 1 C, CONSTANT GT1STRING
-HERE 3 C, CHAR G C, CHAR T C, CHAR 2 C, CONSTANT GT2STRING   
-T{ GT1STRING FIND -> ' GT1 -1 }T   
+HERE 3 C, CHAR G C, CHAR T C, CHAR 2 C, CONSTANT GT2STRING 
+T{ GT1STRING FIND -> ' GT1 -1 }T
 T{ GT2STRING FIND -> ' GT2 1 }T
 
 \ ---- section-marker: undo everything above ----

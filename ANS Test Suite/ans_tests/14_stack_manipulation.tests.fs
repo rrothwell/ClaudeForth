@@ -37,27 +37,27 @@ T{ 1 2 3 4 2SWAP -> 3 4 1 2 }T
 
 \ F.6.1.0580  >R
 
-T{ : GR1 >R R> ; -> }T   
-T{ : GR2 >R R@ R> DROP ; -> }T   
-T{ 123 GR1 -> 123 }T   
-T{ 123 GR2 -> 123 }T   
+T{ : GR1 >R R> ; -> }T
+T{ : GR2 >R R@ R> DROP ; -> }T
+T{ 123 GR1 -> 123 }T
+T{ 123 GR2 -> 123 }T
 T{ 1S GR1 -> 1S }T
 
 \ F.6.1.0630  ?DUP
 
-T{ -1 ?DUP -> -1 -1 }T   
-T{ 0 ?DUP -> 0 }T   
+T{ -1 ?DUP -> -1 -1 }T
+T{ 0 ?DUP -> 0 }T
 T{ 1 ?DUP -> 1 1 }T
 
 \ F.6.1.1200  DEPTH
 
-T{ 0 1 DEPTH -> 0 1 2 }T   
-T{ 0 DEPTH -> 0 1 }T   
+T{ 0 1 DEPTH -> 0 1 2 }T
+T{ 0 DEPTH -> 0 1 }T
 T{ DEPTH -> 0 }T
 
 \ F.6.1.1260  DROP
 
-T{ 1 2 DROP -> 1 }T   
+T{ 1 2 DROP -> 1 }T
 T{ 0 DROP -> }T
 
 \ F.6.1.1290  DUP
