@@ -1,5 +1,18 @@
 # Communications setup between MAME & minicom for hardware handshaking
 
+If the measures below don't improve MAME's character reception reliability. 
+check for competition from background processes such as zombie minicom instances,
+operating system updates and virus checker activity.
+
+This can be solved by increasing MAME's priority.
+For example, on MacOS:
+```bash
+sudo renice -n -10 -p 1462
+```
+Substitute your local MAME PID for 1462.
+
+
+
 Startup MAME, use the TAB key to open the configuration menu.
 Select the Machine Configuration menu and then set the baud rate and handshaking mode 
 to 57600 and RTS/CTS.
