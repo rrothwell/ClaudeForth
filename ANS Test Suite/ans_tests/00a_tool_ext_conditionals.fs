@@ -22,6 +22,8 @@
 \ compiler doesn't choke when it's reached normally.
 \ ============================================================
 
+MARKER MEXTCONDITIONALS
+
 : [ELSE] ( -- )
    1 BEGIN
       BEGIN  BL WORD COUNT DUP  WHILE          \ level adr len

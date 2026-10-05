@@ -9,6 +9,8 @@
 \ Revision history and possibly newer versions can be found at
 \ http://www.forth200x.org/tests/ttester.fs
 
+MARKER MTTESTER
+
 BASE @
 HEX
 
