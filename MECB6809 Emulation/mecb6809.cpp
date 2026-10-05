@@ -45,9 +45,13 @@ void mecb6809_state::mecb6809_mem(address_map &map)
 }
 
 // This is here only to configure our terminal for interactive use
+// Receive and transmit both use 57600 baud, matching the ACIA clock below
+// (7'372'800/8 = 921600 Hz, divided by 16 in the 6850 = 57600 baud)
 static DEVICE_INPUT_DEFAULTS_START( terminal )
-	DEVICE_INPUT_DEFAULTS( "RS232_RXBAUD", 0xff, RS232_BAUD_115200 )
-	DEVICE_INPUT_DEFAULTS( "RS232_TXBAUD", 0xff, RS232_BAUD_115200 )
+	DEVICE_INPUT_DEFAULTS( "RS232_RXBAUD", 0xff, RS232_BAUD_57600 )
+	// DEVICE_INPUT_DEFAULTS( "RS232_RXBAUD", 0xff, RS232_BAUD_115200 )
+	DEVICE_INPUT_DEFAULTS( "RS232_TXBAUD", 0xff, RS232_BAUD_57600 )
+	// DEVICE_INPUT_DEFAULTS( "RS232_TXBAUD", 0xff, RS232_BAUD_115200 )
 	DEVICE_INPUT_DEFAULTS( "RS232_DATABITS", 0xff, RS232_DATABITS_8 )
 	DEVICE_INPUT_DEFAULTS( "RS232_PARITY", 0xff, RS232_PARITY_NONE )
 	DEVICE_INPUT_DEFAULTS( "RS232_STOPBITS", 0xff, RS232_STOPBITS_1 )
@@ -59,13 +63,18 @@ void mecb6809_state::mecb6809(machine_config &config)
 	MC6809(config, m_maincpu, XTAL(8'000'000));
 	m_maincpu->set_addrmap(AS_PROGRAM, &mecb6809_state::mecb6809_mem);
 
+	/* Align CPU with serial timers to minimise overruns on Rx chars */
+	config.set_perfect_quantum("maincpu");
+	// config.set_perfect_quantum(attotime::from_usec(5));
+
 	// Configure UART (via m_acia)
 	ACIA6850(config, m_acia, 0);
 	m_acia->txd_handler().set("rs232", FUNC(rs232_port_device::write_txd));
 	m_acia->irq_handler().set_inputline("maincpu", M6809_IRQ_LINE);
 	m_acia->rts_handler().set("rs232", FUNC(rs232_port_device::write_rts));
 
-	clock_device &acia_clock(CLOCK(config, "acia_clock", 7'372'800/4)); // E Clock from M6809 7372800/4
+	// clock_device &acia_clock(CLOCK(config, "acia_clock", 7'372'800/4)); // 115200
+	clock_device &acia_clock(CLOCK(config, "acia_clock", 7'372'800/8)); // 57600
 	acia_clock.signal_handler().set("acia", FUNC(acia6850_device::write_txc));
 	acia_clock.signal_handler().append("acia", FUNC(acia6850_device::write_rxc));
 
