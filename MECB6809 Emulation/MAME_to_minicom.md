@@ -38,7 +38,7 @@ pu msg_nl_delay     100
 
 In another terminal:
 ```bash
-socat PTY,link=$HOME/mame-pty,raw,echo=0,crtscts=1 TCP-LISTEN:11185,reuseaddrxc
+socat PTY,link=$HOME/mame-pty,raw,echo=0,crtscts=1 TCP-LISTEN:11185,reuseaddr
 ```
 
 In another terminal:
