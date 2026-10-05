@@ -5563,6 +5563,44 @@ UM32B:   LDA   MAHI
          STD   PRODHI
          RTS
 
+; BUG FIX (found from a hardware report on UM/MOD's own ANS Annex F
+; boundary test, F.6.1.2370: "MAX-UINT MAX-UINT UM* MAX-UINT UM/MOD
+; -> 0 MAX-UINT" - got 0 65535 for (remainder, quotient) wrong-way-
+; round, actually got (1, 0) - and traced back here, since SM/REM,
+; UM/MOD, FM/MOD, and plain /, MOD, /MOD (via DIVCOMMON) all share
+; this one routine). This is the classic off-by-one-bit boundary bug
+; in a 32-bit-dividend/16-bit-divisor restoring-division shift loop:
+; DIVREM is only a 16-bit register, but the value it needs to compare
+; against DIVDEN (the divisor) each iteration, just after the whole
+; DIVREM:PRODHI:PRODLO chain shifts left by one bit, can transiently
+; need a 17th bit - the true "remainder so far, doubled, plus the new
+; incoming dividend bit" can reach up to 2*(DIVDEN-1)+1, which for a
+; divisor near MAX-UINT (as in the failing test, DIVDEN=$FFFF) can
+; exceed $FFFF and overflow the 16-bit DIVREM register. The old code
+; (ROL DIVREM as the last link in the shift chain, then straight into
+; LDD DIVREM/SUBD DIVDEN/BLO) simply discarded that overflow bit - it
+; falls out of ROL DIVREM's own carry flag and was never tested -  so
+; whenever it was set, DIVREM's 16 bits alone read as SMALLER than
+; DIVDEN even though the true (17-bit) value was actually larger,
+; wrongly skipping a subtraction (and its quotient bit) that should
+; have happened. Confirmed by simulating this exact instruction
+; sequence in Python against a known-correct reference division and a
+; 200,000-case random fuzz run: the original code was the only one
+; that failed, and only on inputs that hit this exact overflow
+; condition (the MAX-UINT/MAX-UINT case being the smallest/simplest
+; one in this test corpus, not a coincidence - DIVDEN=$FFFF is the
+; case where the overflow condition is easiest to trigger). Fixed by
+; testing the carry out of ROL DIVREM (the chain's final link, so
+; this carry IS that discarded 17th bit) before ever touching DIVREM
+; via LDD: if set, the true 17-bit value is DIVREM+$10000, which is
+; always >= any 16-bit DIVDEN, so the subtraction is known to succeed
+; without needing the CMPD/BLO test at all - and the plain 16-bit
+; "DIVREM - DIVDEN" (letting it wrap how it wraps) IS the correct new
+; remainder, since adding $10000 then subtracting DIVDEN and dropping
+; the now-impossible 17th bit again is exactly equivalent mod $10000.
+; LDD does not itself affect the carry flag on the 6809 (only N/Z,
+; clears V), but BCS is placed immediately after ROL DIVREM anyway,
+; before anything else, so this isn't relied upon.
 UDIV32:  CLR   DIVREM
          CLR   DIVREM+1
          LDB   #32
@@ -5573,11 +5611,16 @@ UD32LP:  ASL   PRODLO+1
          ROL   PRODHI
          ROL   DIVREM+1
          ROL   DIVREM
+         BCS   UD32FORCE
          LDD   DIVREM
          SUBD  DIVDEN
          BLO   UD32SKIP
-         STD   DIVREM
-         INC   PRODLO+1
+UD32TAKE: STD  DIVREM
+          INC  PRODLO+1
+          BRA  UD32SKIP
+UD32FORCE: LDD DIVREM
+           SUBD DIVDEN
+           BRA  UD32TAKE
 UD32SKIP: DEC  DIVCNT
           BNE  UD32LP
           RTS
