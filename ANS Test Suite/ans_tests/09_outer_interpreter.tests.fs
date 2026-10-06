@@ -18,6 +18,8 @@
 \ automation load/run/reset one section file at a time, in any
 \ order, without cross-file dictionary pollution.
 MARKER M09
+\ Reset the pass/fail counters, record the stack depth.
+TEST-BEGIN
 
 \ F.6.1.1550  FIND
 
@@ -37,5 +39,7 @@ HERE 3 C, CHAR G C, CHAR T C, CHAR 2 C, CONSTANT GT2STRING
 T{ GT1STRING FIND -> ' GT1 -1 }T
 T{ GT2STRING FIND -> ' GT2 1 }T
 
+\ Print this file's TEST SUMMARY and trim any stray stack cells.
+TEST-END
 \ ---- section-marker: undo everything above ----
 M09

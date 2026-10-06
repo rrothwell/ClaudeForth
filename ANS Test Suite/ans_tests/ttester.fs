@@ -21,7 +21,7 @@ VARIABLE XCURSOR \ for ...}T
 VARIABLE ERROR-XT
 
 \ TESTCOUNT/FAILCOUNT: a Forth-computed, authoritative pass/fail
-\ tally, read by TEST-REPORT (defined alongside }T below). Added
+\ tally, read by TEST-END (defined in 00_test_prelude.fs). Added
 \ because the serial test runner's line-by-line "ok" wait can't
 \ tell a real failure from its own echo-timing: a multi-line
 \ colon-definition only gets ONE "ok" for the whole definition,
@@ -233,7 +233,7 @@ F-> ;
 \ (actual) contents.
 \ BUG FIX / ENHANCEMENT: tallies TESTCOUNT (every call) and
 \ FAILCOUNT (only the two branches below that call ERROR) for
-\ TEST-REPORT, just below - see TESTCOUNT's own comment above.
+\ TEST-END (00_test_prelude.fs) - see TESTCOUNT's comment above.
 \ Also moved the "Actual:Expected " heading to print ONCE per
 \ }T, right before the per-item loop, instead of once per item -
 \ it was repeating those 16 characters before every single pair,
@@ -255,27 +255,8 @@ S" WRONG NUMBER OF RESULTS: " ERROR
 THEN
 F} ;
 
-: TEST-REPORT \ ( -- ) print this file's tally and reset it, so
-\ the next file loaded (ttester.fs itself is loaded once per
-\ run, ahead of every section file, so TESTCOUNT/FAILCOUNT would
-\ otherwise keep accumulating across every file after this one)
-\ starts counting from zero again with no extra setup needed.
-\ BUG FIX: the counts used to print in whatever BASE happened to
-\ be active - HEX, almost always, since every section file
-\ restores HEX before its own closing marker (this corpus's own
-\ convention) - so "11 run, 2 failed" could actually mean 17 run,
-\ 2 failed. Save/restore BASE around the two "." prints so the
-\ totals are always legible in DECIMAL regardless of ambient
-\ base. Plain >R/R> is safe here (unlike the BASE @ >R DECIMAL
-\ ... R> BASE ! pattern fixed elsewhere in this corpus) because
-\ it's entirely inside this one word's own execution, never
-\ spanning separate top-level lines - the return stack hazard
-\ that ruled out >R/R> for a cross-line BASE save doesn't apply
-\ to a save/restore that starts and ends within one call.
-BASE @ >R DECIMAL
-CR ." TEST SUMMARY: " TESTCOUNT @ . ." run, " FAILCOUNT @ . ." failed" CR
-R> BASE !
-0 TESTCOUNT ! 0 FAILCOUNT ! ;
+\ TEST-BEGIN / TEST-END (the per-file report that reads TESTCOUNT
+\ and FAILCOUNT) are defined in 00_test_prelude.fs.
 
 ' }T ." XT for }T" .
 

@@ -18,6 +18,8 @@
 \ automation load/run/reset one section file at a time, in any
 \ order, without cross-file dictionary pollution.
 MARKER M24
+\ Reset the pass/fail counters, record the stack depth.
+TEST-BEGIN
 
 \ F.6.1.0560  >IN
 
@@ -159,5 +161,7 @@ T{ GS1 -> <TRUE> <TRUE> }T
 : GS4 SOURCE >IN ! DROP ;   
 T{ GS4 123 456 -> }T
 
+\ Print this file's TEST SUMMARY and trim any stray stack cells.
+TEST-END
 \ ---- section-marker: undo everything above ----
 M24

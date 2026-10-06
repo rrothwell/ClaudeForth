@@ -18,6 +18,8 @@
 \ automation load/run/reset one section file at a time, in any
 \ order, without cross-file dictionary pollution.
 MARKER M17
+\ Reset the pass/fail counters, record the stack depth.
+TEST-BEGIN
 
 \ F.6.1.0250  0<
 
@@ -100,5 +102,7 @@ T{ MID-UINT 0 U< -> <FALSE> }T
 T{ MAX-UINT 0 U< -> <FALSE> }T
 T{ MAX-UINT MID-UINT U< -> <FALSE> }T
 
+\ Print this file's TEST SUMMARY and trim any stray stack cells.
+TEST-END
 \ ---- section-marker: undo everything above ----
 M17

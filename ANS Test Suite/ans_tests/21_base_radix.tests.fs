@@ -18,6 +18,8 @@
 \ automation load/run/reset one section file at a time, in any
 \ order, without cross-file dictionary pollution.
 MARKER M21
+\ Reset the pass/fail counters, record the stack depth.
+TEST-BEGIN
 
 \ F.6.1.0750  BASE
 
@@ -30,5 +32,7 @@ T{ GN2 -> 10 A }T
 \ F.6.2.1660  HEX
 \ See F.6.1.0750 BASE.
 
+\ Print this file's TEST SUMMARY and trim any stray stack cells.
+TEST-END
 \ ---- section-marker: undo everything above ----
 M21

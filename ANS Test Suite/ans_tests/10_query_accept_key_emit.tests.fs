@@ -18,6 +18,8 @@
 \ automation load/run/reset one section file at a time, in any
 \ order, without cross-file dictionary pollution.
 MARKER M10
+\ Reset the pass/fail counters, record the stack depth.
+TEST-BEGIN
 
 \ F.6.1.0695  ACCEPT
 
@@ -62,5 +64,7 @@ T{ OUTPUT-TEST -> }T
 \ F.6.1.2230  SPACES
 \ See F.6.1.1320 EMIT.
 
+\ Print this file's TEST SUMMARY and trim any stray stack cells.
+TEST-END
 \ ---- section-marker: undo everything above ----
 M10

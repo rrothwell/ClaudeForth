@@ -42,18 +42,22 @@ task list:
      reply_timeout per physical line skipped (colon_delta has no idea
      a REFILL-driven bracket-skip is in progress - see send_file's
      docstring). This accounted for most of a ~25-minute harness load.
-  5. After each section file loads, sends one extra "TEST-REPORT" line
-     (see request_test_report) and parses its "TEST SUMMARY: N run, M
-     failed" reply - a count ttester.fs's own }T computes directly from
-     real T{...}T comparisons. That count, not a transcript-wide scan
-     for ttester's error-message text, is what decides PASS/FAIL now:
-     the old scan couldn't tell "a real ttester failure happened"
-     apart from "this runner gave up waiting for an 'ok' that was never
-     coming because it's the interior line of a multi-line colon-
-     definition" - both just produced text in the same transcript. The
-     old scan (classify(), FAILURE_PATTERNS) is kept only as a
-     secondary disagreement check, printed as a warning if it ever
-     differs from TEST-REPORT's own verdict.
+  5. Each test file reports for itself: it calls TEST-BEGIN right after its
+     MARKER line and TEST-END just before its closing marker (both are
+     defined in 00_test_prelude.fs). TEST-END prints "TEST SUMMARY: N run,
+     M failed" - a count ttester.fs's own }T computes directly from real
+     T{...}T comparisons - and, if the file left stray cells on the data
+     stack, "STACK IMBALANCE: n extra cell(s) dropped". This runner just
+     reads those lines out of the transcript (parse_test_summary); it
+     sends no reporting commands of its own, so loading a test file by
+     hand in minicom gives exactly the same report. That count, not a
+     transcript-wide scan for ttester's error-message text, decides
+     PASS/FAIL: the old scan (classify(), FAILURE_PATTERNS) couldn't tell
+     "a real ttester failure happened" apart from "this runner gave up
+     waiting for an 'ok' that was never coming" - both just produced text
+     in the same transcript. It is kept only as a secondary disagreement
+     check, printed as a warning if it ever differs from TEST-END's own
+     verdict.
 
 Long test-file lines are re-wrapped before sending: forth6809's TIB is
 80 bytes (TIBBUFL EQU 80 in forth6809.asm), but several *.tests.fs lines
@@ -112,21 +116,20 @@ FAILURE_PATTERNS = [
     ERROR_MARKER,
 ]
 
-# ttester.fs's own TEST-REPORT word (}T now tallies TESTCOUNT/FAILCOUNT as
-# it runs; TEST-REPORT prints this line and resets both counters). This is
-# now the single authoritative pass/fail signal for a section - computed
-# in Forth, from the real T{...}T comparisons, so it's immune to the
-# per-line "ok" echo-timing ambiguity that made the OLD approach (scanning
-# the transcript for FAILURE_PATTERNS, below) occasionally misfire: a
-# multi-line colon-definition only gets one "ok" for the whole definition,
-# not one per physical line, and FAILURE_PATTERNS/classify() had no way to
-# tell "the runner gave up waiting mid-definition" apart from "a real
-# ttester failure happened" - both just produced text in the transcript.
-# FAILURE_PATTERNS/classify() are kept below only as a secondary sanity
-# check: if they ever disagree with TEST-REPORT's own count, that's worth
-# a loud warning (it would mean either ttester.fs predates TEST-REPORT, or
-# something stranger), but they no longer decide pass/fail themselves.
+# 00_test_prelude.fs's TEST-END word prints this line (}T tallies TESTCOUNT/
+# FAILCOUNT as it runs; TEST-BEGIN zeroes them). It is the single
+# authoritative pass/fail signal for a section - computed in Forth, from the
+# real T{...}T comparisons, so it's immune to the per-line "ok" echo-timing
+# ambiguity that made the OLD approach (scanning the transcript for
+# FAILURE_PATTERNS, below) occasionally misfire: a multi-line
+# colon-definition only gets one "ok" for the whole definition, not one per
+# physical line. FAILURE_PATTERNS/classify() are kept only as a secondary
+# sanity check: a disagreement with TEST-END's own count is worth a loud
+# warning, but they no longer decide pass/fail themselves.
 TEST_REPORT_RE = re.compile(rb"TEST SUMMARY:\s*(\d+)\s*run,\s*(\d+)\s*failed")
+# TEST-END's stack check: "STACK IMBALANCE: 4 extra cell(s) dropped" or
+# "STACK IMBALANCE: 2 cell(s) missing".
+IMBALANCE_RE = re.compile(rb"STACK IMBALANCE:[^\r\n]*")
 
 DEFAULT_SECTIONS = [
     "08", "09", "10", "11", "12", "13", "14", "15", "16",
@@ -782,26 +785,20 @@ def classify(transcript_bytes):
     return True
 
 
-def request_test_report(transport, char_delay, reply_timeout, log, flow):
-    """Send "TEST-REPORT" as its own line and parse the "TEST SUMMARY: N
-    run, M failed" line it prints (see ttester.fs's }T/TEST-REPORT). This
-    is a single, ordinary line as far as send_line_and_wait is concerned -
-    TEST-REPORT is defined in ttester.fs, loaded once ahead of every
-    section, so it's never wiped by a section's own MARKER reset, and it
-    always prints its summary and then the usual "  ok" before returning.
-
-    Returns (run_count, fail_count, timed_out). On a timeout or a reply
-    that doesn't match TEST_REPORT_RE at all (e.g. an older ttester.fs
-    with no TEST-REPORT word, which would answer with BADWORD's -13
-    instead), run_count/fail_count are both None - the caller must treat
-    that as its own failure, not silently report "0 failed"."""
-    result, buf = send_line_and_wait(transport, "TEST-REPORT", char_delay, reply_timeout, log, flow)
-    if result.timed_out:
-        return None, None, True
-    m = TEST_REPORT_RE.search(buf)
-    if not m:
-        return None, None, False
-    return int(m.group(1)), int(m.group(2)), False
+def parse_test_summary(transcript_bytes):
+    """Find the LAST "TEST SUMMARY: N run, M failed" line in what the target
+    printed (TEST-END, 00_test_prelude.fs) and any "STACK IMBALANCE" notes
+    after the previous summary. Returns (run, failed, imbalance_notes);
+    run/failed are None if no summary was printed at all (the file never
+    reached TEST-END, or doesn't call TEST-BEGIN/TEST-END)."""
+    matches = list(TEST_REPORT_RE.finditer(transcript_bytes))
+    if not matches:
+        return None, None, []
+    last = matches[-1]
+    notes = []
+    for m in IMBALANCE_RE.finditer(transcript_bytes, last.end()):
+        notes.append(m.group(0).decode("ascii", "replace"))
+    return int(last.group(1)), int(last.group(2)), notes
 
 
 def run_section(transport, ans_dir, section, char_delay, reply_timeout, retries, log_dir, flow, grace_timeout=1.0, trace_depth=False):
@@ -816,43 +813,27 @@ def run_section(transport, ans_dir, section, char_delay, reply_timeout, retries,
     with open(log_path, "wb") as log:
         fail_hit = send_file(transport, path, char_delay, reply_timeout, retries, log, transcript,
                               flow, grace_timeout=grace_timeout, trace_depth=trace_depth)
-        run_count, fail_count, report_timed_out = request_test_report(
-            transport, char_delay, reply_timeout, log, flow)
-        # Diagnostic: report and clear any stray data-stack cells so one
-        # section's leftovers can't skew the next (14's and 24's DEPTH-
-        # absolute tests need an empty stack at their start).
-        depth = None
-        res, buf = send_line_and_wait(transport, "DEPTH BASE @ SWAP DECIMAL . BASE !",
-                                      char_delay, reply_timeout, log, flow)
-        m = re.search(rb"(\d+)\s", buf.replace(b"DEPTH BASE @ SWAP DECIMAL . BASE !", b""))
-        if m:
-            depth = int(m.group(1))
-        if depth:
-            print(f"    [warn] {depth} stray cell(s) left on the data stack after section {section}; clearing",
-                  file=sys.stderr)
-            send_line_and_wait(transport, ": CLRSTK BEGIN DEPTH WHILE DROP REPEAT ;",
-                               char_delay, reply_timeout, log, flow)
-            send_line_and_wait(transport, "CLRSTK", char_delay, reply_timeout, log, flow)
 
     transcript_bytes = b"\n".join(transcript)
     legacy_clean = classify(transcript_bytes)
+    run_count, fail_count, imbalance = parse_test_summary(transcript_bytes)
 
     if fail_hit:
         print(f"    [note] mid-definition compile error or line timeout during load - "
-              f"TEST-REPORT's count below may not be trustworthy", file=sys.stderr)
-    if report_timed_out:
-        print(f"    [FAIL] TEST-REPORT never replied", file=sys.stderr)
-        passed = False
-    elif run_count is None:
-        print(f"    [FAIL] couldn't parse TEST-REPORT's summary line - is ttester.fs up to date?",
+              f"the TEST-END count below may not be trustworthy", file=sys.stderr)
+    if run_count is None:
+        print(f"    [FAIL] no 'TEST SUMMARY' line seen - did {path.name} reach TEST-END? "
+              f"(it must call TEST-BEGIN after its MARKER and TEST-END before the closing marker)",
               file=sys.stderr)
         passed = False
     else:
         passed = (fail_count == 0) and not fail_hit
-        print(f"    TEST-REPORT: {run_count} run, {fail_count} failed")
+        print(f"    TEST-END: {run_count} run, {fail_count} failed")
+        for note in imbalance:
+            print(f"    [warn] {note}", file=sys.stderr)
         if passed != legacy_clean:
             print(f"    [warn] legacy transcript scan ({'clean' if legacy_clean else 'flagged'}) "
-                  f"disagrees with TEST-REPORT ({'passed' if passed else 'failed'}) - worth a look",
+                  f"disagrees with TEST-END ({'passed' if passed else 'failed'}) - worth a look",
                   file=sys.stderr)
 
     print(f"    -> {'PASS' if passed else 'FAIL'} (log: {log_path})")
@@ -954,21 +935,19 @@ def main():
                 print(f"=== loading {fname} ===")
                 send_file(transport, fpath, args.char_delay, args.reply_timeout, args.retries, log, transcript,
                           flow, soft_timeout=True, grace_timeout=args.grace_timeout)
-            # 00_test_prelude.fs runs some T{...}T tests of its own (per
-            # this module's own docstring) - reset TESTCOUNT/FAILCOUNT
-            # here so the first section's own TEST-REPORT count isn't
-            # inflated by the prelude's tally. Not a correctness issue
-            # either way (only "run" would be off, never "failed"), just
-            # keeps each section's printed count honestly its own.
-            prelude_run, prelude_fail, prelude_timed_out = request_test_report(
-                transport, args.char_delay, args.reply_timeout, log, flow)
-            if prelude_timed_out or prelude_run is None:
-                print("[warn] couldn't read TEST-REPORT after the harness/preamble load - "
-                      "is ttester.fs up to date on the target?", file=sys.stderr)
-            elif prelude_fail:
+        # 00_test_prelude.fs calls TEST-BEGIN/TEST-END around its own T{...}T
+        # checks, so its summary is already in the harness transcript.
+        prelude_run, prelude_fail, prelude_imbalance = parse_test_summary(b"\n".join(transcript))
+        if prelude_run is None:
+            print("[warn] no TEST SUMMARY after the harness/preamble load - "
+                  "is 00_test_prelude.fs up to date (TEST-BEGIN/TEST-END)?", file=sys.stderr)
+        else:
+            print(f"=== harness/preamble: {prelude_run} run, {prelude_fail} failed ===")
+            if prelude_fail:
                 print(f"[warn] {prelude_fail} failure(s) in the harness/preamble itself "
-                      f"(ttester.fs/00_test_prelude.fs) - sections below start clean regardless",
-                      file=sys.stderr)
+                      f"(ttester.fs/00_test_prelude.fs)", file=sys.stderr)
+            for note in prelude_imbalance:
+                print(f"[warn] harness/preamble: {note}", file=sys.stderr)
 
         results = {}
         for section in args.sections:

@@ -17,6 +17,41 @@ MARKER MTPRELUDE
 
 HEX
 
+\ ---- Test reporting: TEST-BEGIN / TEST-END ----
+\ Every test file calls TEST-BEGIN on the line after its MARKER and
+\ TEST-END on the line before its closing marker. Together they are
+\ the whole per-file report - nothing else is needed, with or without
+\ the Python test runner.
+\   TEST-BEGIN  zeroes the pass/fail counters (TESTCOUNT, FAILCOUNT,
+\               bumped by }T in ttester.fs) and records the data
+\               stack depth, so stray cells can be spotted later.
+\   TEST-END    prints "TEST SUMMARY: N run, M failed" (always in
+\               DECIMAL) then, if the file left the stack deeper than
+\               TEST-BEGIN found it, "STACK IMBALANCE: n extra cell(s)
+\               dropped" and drops them so the next file starts clean.
+\               (A shallower stack is reported as "cell(s) missing".)
+VARIABLE TEST-DEPTH
+: TEST-BEGIN ( -- )
+0 TESTCOUNT ! 0 FAILCOUNT !
+DEPTH TEST-DEPTH ! ;
+: TEST-END ( -- )
+BASE @ >R DECIMAL
+CR ." TEST SUMMARY: " TESTCOUNT @ . ." run, "
+FAILCOUNT @ . ." failed" CR
+DEPTH TEST-DEPTH @ > IF
+." STACK IMBALANCE: " DEPTH TEST-DEPTH @ - .
+." extra cell(s) dropped" CR
+DEPTH TEST-DEPTH @ DO DROP LOOP
+THEN
+DEPTH TEST-DEPTH @ < IF
+." STACK IMBALANCE: " TEST-DEPTH @ DEPTH - .
+." cell(s) missing" CR
+THEN
+R> BASE ! ;
+
+\ Report on the prelude's own checks below, too.
+TEST-BEGIN
+
 \ ---- F.3.1 Basic Assumptions ----
 T{ -> }T                        \ Start with a clean slate
 T{ : BITSSET? IF 0 0 ELSE 0 THEN ; -> }T
@@ -81,3 +116,5 @@ CREATE SBUF 12 C, 34 C, 56 C,
 \ previously broke ambient-HEX for every section file that assumes
 \ it (several use bare hex literals like F, 8000, 7F with no local
 \ HEX call of their own).
+\ Report on the prelude's own checks and trim any stray cells.
+TEST-END

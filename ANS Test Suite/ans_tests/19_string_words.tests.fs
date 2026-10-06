@@ -18,6 +18,8 @@
 \ automation load/run/reset one section file at a time, in any
 \ order, without cross-file dictionary pollution.
 MARKER M19
+\ Reset the pass/fail counters, record the stack depth.
+TEST-BEGIN
 
 HERE 3 C, CHAR G C, CHAR T C, CHAR 1 C, CONSTANT GT1STRING
 
@@ -66,5 +68,7 @@ T{ parse-name-test abcde abcdf -> <FALSE> }T
 T{ parse-name-test abcdf abcde -> <FALSE> }T
 T{ parse-name-test abcde abcde -> <TRUE> }T
 
+\ Print this file's TEST SUMMARY and trim any stray stack cells.
+TEST-END
 \ ---- section-marker: undo everything above ----
 M19

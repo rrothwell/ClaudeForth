@@ -18,6 +18,8 @@
 \ automation load/run/reset one section file at a time, in any
 \ order, without cross-file dictionary pollution.
 MARKER M08
+\ Reset the pass/fail counters, record the stack depth.
+TEST-BEGIN
 
 \ F.6.1.0450  : (COLON)
 
@@ -191,5 +193,7 @@ T{ v2 -> -999 }T
 T{ -333 vd2 -> }T
 T{ v2 -> -333 }T
 T{ v1 -> 222 }T
+\ Print this file's TEST SUMMARY and trim any stray stack cells.
+TEST-END
 \ ---- section-marker: undo everything above ----
 M08
