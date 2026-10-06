@@ -658,8 +658,19 @@ def send_line_and_wait(transport, line, char_delay, reply_timeout, log, flow):
     return LineResult(payload, buf, saw_ok, saw_error, timed_out), buf
 
 
+DEPTH_PROBE = "DEPTH BASE @ SWAP DECIMAL . BASE !"
+
+
+def probe_depth(transport, char_delay, reply_timeout, log, flow):
+    """Ask the target for its data-stack depth (printed in DECIMAL,
+    BASE restored). Returns an int, or None if the reply can't be parsed."""
+    res, buf = send_line_and_wait(transport, DEPTH_PROBE, char_delay, reply_timeout, log, flow)
+    m = re.search(rb"(\d+)\s", buf.replace(DEPTH_PROBE.encode(), b""))
+    return int(m.group(1)) if m else None
+
+
 def send_file(transport, path, char_delay, reply_timeout, retries, log, transcript,
-              flow, soft_timeout=False, grace_timeout=1.0):
+              flow, soft_timeout=False, grace_timeout=1.0, trace_depth=False):
     """Two distinct, known cases produce fewer "ok" replies than lines
     sent, and both are correct target behavior, not data loss or a
     transport bug - so neither should cost a full reply_timeout stall
@@ -697,6 +708,7 @@ def send_file(transport, path, char_delay, reply_timeout, retries, log, transcri
     lines = rewrap_source(text)
     fail_hit = False
     depth = 0
+    last_depth = 0
     for line in lines:
         if line.strip() == "":
             continue
@@ -755,6 +767,11 @@ def send_file(transport, path, char_delay, reply_timeout, retries, log, transcri
             # A real reply came back (ok or ERROR) for a line we expected
             # one from - nothing to resync, depth is already trustworthy.
             break
+        if trace_depth and depth == 0 and not result.timed_out:
+            d = probe_depth(transport, char_delay, reply_timeout, log, flow)
+            if d is not None and d != last_depth:
+                print(f"    [depth {last_depth} -> {d}] after: {line[:70]!r}", file=sys.stderr)
+                last_depth = d
     return fail_hit
 
 
@@ -787,7 +804,7 @@ def request_test_report(transport, char_delay, reply_timeout, log, flow):
     return int(m.group(1)), int(m.group(2)), False
 
 
-def run_section(transport, ans_dir, section, char_delay, reply_timeout, retries, log_dir, flow, grace_timeout=1.0):
+def run_section(transport, ans_dir, section, char_delay, reply_timeout, retries, log_dir, flow, grace_timeout=1.0, trace_depth=False):
     matches = sorted(Path(ans_dir).glob(f"{section}_*.tests.fs"))
     if not matches:
         print(f"[skip] no test file found for section {section}", file=sys.stderr)
@@ -798,7 +815,7 @@ def run_section(transport, ans_dir, section, char_delay, reply_timeout, retries,
     transcript = []
     with open(log_path, "wb") as log:
         fail_hit = send_file(transport, path, char_delay, reply_timeout, retries, log, transcript,
-                              flow, grace_timeout=grace_timeout)
+                              flow, grace_timeout=grace_timeout, trace_depth=trace_depth)
         run_count, fail_count, report_timed_out = request_test_report(
             transport, char_delay, reply_timeout, log, flow)
         # Diagnostic: report and clear any stray data-stack cells so one
@@ -862,6 +879,9 @@ def main():
                     help="seconds to wait for a reply on a line that is known in advance not to get one "
                          "(interior lines of a multi-line colon-definition; default: 1.0). Kept short "
                          "since it only needs to catch a genuine compile-time error, not an 'ok'.")
+    p.add_argument("--trace-depth", action="store_true",
+                    help="after every line of each section, probe the data-stack depth and report each line "
+                         "that changes it (slow, but pinpoints which source line leaves stray cells)")
     p.add_argument("--log-dir", default="ans_test_results")
 
     # mame-target options (mirror run_all_tests.sh's flags/defaults)
@@ -955,7 +975,7 @@ def main():
             results[section] = run_section(
                 transport, args.ans_dir, section,
                 args.char_delay, args.reply_timeout, args.retries, args.log_dir,
-                flow, grace_timeout=args.grace_timeout,
+                flow, grace_timeout=args.grace_timeout, trace_depth=args.trace_depth,
             )
 
         print("\n=== summary ===")
