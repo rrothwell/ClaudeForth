@@ -4773,27 +4773,10 @@ QDBUILD:  LEAX 2,X
           PSHS X
           RTS
 
-UNLOOP:  RTS             ; DESIGN CHANGE: was PULS X/LEAS 6,S/PSHS X/RTS
-                          ; (a real discard of the loop-control frame).
-                          ; EXIT's own EXITUNLOOP mechanism already
-                          ; discards the frame automatically and
-                          ; correctly on every path - traced and
-                          ; confirmed: with no enclosing DO (compiled
-                          ; count 0), with one enclosing DO and no
-                          ; prior UNLOOP (discards the full 8-byte
-                          ; frame correctly). The one combination that
-                          ; broke was UNLOOP immediately before EXIT -
-                          ; UNLOOP discarding 6 of the 8 bytes itself,
-                          ; then EXITUNLOOP unconditionally discarding
-                          ; a full 8 more, overshooting into whatever
-                          ; sat below (typically the caller's own
-                          ; return address) and branching into random
-                          ; memory on return. Since UNLOOP has no
-                          ; other legitimate use than immediately
-                          ; preceding an exit from the definition, and
-                          ; EXIT already handles that correctly on its
-                          ; own, UNLOOP is now a true no-op rather than
-                          ; a second, conflicting discard mechanism.
+UNLOOP:  PULS  X          ; discard the 3-cell loop frame (index, limit,
+         LEAS  6,S        ; LEAVE flag) beneath our return address, so a
+         PSHS  X          ; following I/J sees the enclosing loop (GD6).
+         RTS
 
 EXIT:    LDD   #0
          STD   EXITCNT
@@ -4822,23 +4805,11 @@ EXSCANDONE:
          JSR   CODECOMMA
          RTS
 
-EXITUNLOOP: PULS X
-            LDD  ,X
-            TFR  D,Y
-EULOOP:     CMPY #0
-            BEQ  EUDONE
-            LEAS 6,S      ; BUG FIX: was 8. A DO frame on S is 3 cells
-                          ; (index, limit, LEAVE flag = 6 bytes; DOTEST's
-                          ; DTEXIT also drops 6). Discarding 8 per
-                          ; enclosing DO overshot into the caller's return
-                          ; address, so 12_control_flow's GD6 (two nested
-                          ; DOs, UNLOOP+EXIT) returned past its caller and
-                          ; abandoned the rest of the input line, leaving
-                          ; its 3 results stranded on the data stack.
-            LEAY -1,Y
-            BRA  EULOOP
-EUDONE:     PULS Y
-            JMP  ,Y
+EXITUNLOOP: PULS X        ; BUG FIX (GD6 3: expected 4 1 2, got 4 1 1): standard
+            PULS Y        ; EXIT does NOT discard loop frames - the program
+            JMP  ,Y       ; must UNLOOP first (UNLOOP is a real discard again, above).
+                          ; The inline count (X) is now ignored, so the
+                          ; EXSCAN compile-time count above is harmless.
 
 CASEW:   LDD   #0         ; BUG FIX HISTORY: this filler cell was removed
          PSHU  D          ; once already (see below) because nothing in
