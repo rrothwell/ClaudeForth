@@ -3194,10 +3194,10 @@ TWOCONSTANT: LDD #0
                             ; below.
              PULU D              ; x2, off the top
              STD  MSCR
-             JSR  COMMA            ; x1 -> lower address
-             LDD  MSCR
-             PSHU D
-             JSR  COMMA              ; x2 -> higher address
+             LDD  MSCR             ; BUG FIX: standard layout is x2 at
+             PSHU D                ; the lower address, x1 above it
+             JSR  COMMA            ; (matches 2@/2! below) - x2 -> low
+             JSR  COMMA            ; x1 -> higher address
              RTS
 
 BUFFERCOLON: PULU D
@@ -6361,22 +6361,18 @@ PLUSSTORE: PULU X
            STD  ,X
            RTS
 
-DFETCH:  PULU  X          ; BUG FIX: was reading high address first
-         LDD   ,X         ; (pushed deep) then low address second
-         PSHU  D          ; (pushed on top) - the reverse of what
-         LDD   2,X        ; DSTORE actually writes (x1 low, x2 high),
-         PSHU  D          ; so a 2! 2@ round trip swapped the two
-         RTS              ; values. Now reads low first (x1, pushed
-                          ; deep) then high second (x2, pushed on
-                          ; top), matching DSTORE and correctly
-                          ; round-tripping. Flagged by the parallel
-                          ; 68000 port, confirmed by inspection.
+DFETCH:  PULU  X          ; BUG FIX (runner, section 18): standard
+         LDD   2,X        ; 2@ ( a -- x1 x2 ) has x2 at a and x1 at
+         PSHU  D          ; a+cell. Was the other way round (it
+         LDD   ,X         ; round-tripped with 2! but a memory
+         PSHU  D          ; image 5,6 gave 5 6 not 6 5). Now x1
+         RTS              ; (high addr) deep, x2 (low addr) on top.
 
-DSTORE:  PULU  X
-         PULU  D
-         STD   2,X
+DSTORE:  PULU  X          ; 2! ( x1 x2 a -- ): x2 -> a, x1 -> a+2
          PULU  D
          STD   ,X
+         PULU  D
+         STD   2,X
          RTS
 
 CMOVEW:  PULU  D
