@@ -75,7 +75,8 @@ T{ c5 -> 5 }T
 \ verify what this custom test's author originally intended.
 
 : c6 CATCH ;
-T{ 6 7 ' t9 c6 3 -> 6 7 13 3 }T
+\ Expected -13 (standard undefined-word code), confirmed by design.
+T{ 6 7 ' t9 c6 3 -> 6 7 -13 3 }T
 HEX
 
 \ ---- section-marker: undo everything above ----
