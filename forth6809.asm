@@ -4827,7 +4827,14 @@ EXITUNLOOP: PULS X
             TFR  D,Y
 EULOOP:     CMPY #0
             BEQ  EUDONE
-            LEAS 8,S
+            LEAS 6,S      ; BUG FIX: was 8. A DO frame on S is 3 cells
+                          ; (index, limit, LEAVE flag = 6 bytes; DOTEST's
+                          ; DTEXIT also drops 6). Discarding 8 per
+                          ; enclosing DO overshot into the caller's return
+                          ; address, so 12_control_flow's GD6 (two nested
+                          ; DOs, UNLOOP+EXIT) returned past its caller and
+                          ; abandoned the rest of the input line, leaving
+                          ; its 3 results stranded on the data stack.
             LEAY -1,Y
             BRA  EULOOP
 EUDONE:     PULS Y
