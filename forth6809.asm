@@ -2053,7 +2053,9 @@ H_ABORT: FCB   5
                                ; then H_DOESGT, then H_DUMPW again once
                                ; DOES> moved out of the chain's newest slot;
                                ; now H_FALSE, the chain's newest entry
-         FDB   ABORT
+         FDB   ABORTW         ; BUG FIX: the ABORT *word* is -1 THROW so CATCH
+                               ; can intercept it (26's t6 c6); the bare ABORT
+                               ; label stays the unconditional reset.
 
 H_QUIT:  FCB   4
          FCC   "QUIT"
@@ -2619,7 +2621,11 @@ COLD:    LDD   #APPVARS
          PSHU  D
          JSR   TYPE
          JSR   CRW
-         ; falls through into ABORT
+         BRA   ABORT      ; (was a fall-through; ABORTW now sits between)
+
+ABORTW:  LDD   #-1        ; ANS ABORT = -1 THROW. With no CATCH frame,
+         PSHU  D          ; THROW falls into the ABORT reset below.
+         JMP   THROW
 
 ABORT:   LDU   #SP0
          ; falls through into QUIT
@@ -2708,6 +2714,10 @@ QLOOP:   JSR   QUERY
          ; any uncaught exception, which is exactly this case.
          LDD   #0
          STD   STATE
+
+         LDD   QTHROWCODE ; -1 is ABORT: reset silently, no "ERROR -1"
+         CMPD  #-1
+         LBEQ  QLOOP
 
          JSR   CRW
          LDX   #ERRMSG
@@ -4152,12 +4162,27 @@ CATCH:   PULU  X
          LDD   HANDLER
          PSHS  D
          PSHS  U
+         ; BUG FIX: ANS CATCH must save the input-source specification
+         ; and THROW must restore it. A THROW out of a nested EVALUATE
+         ; (11_catch_throw's t9/t8/t7) left SRCADDR/SRCLEN/TOIN pointing
+         ; into the abandoned EVALUATE string, so the rest of the outer
+         ; line was lost and stray cells (6 7 -13 3) stayed on the stack.
+         LDD   SRCADDR
+         PSHS  D
+         LDD   SRCLEN
+         PSHS  D
+         LDD   SRCID
+         PSHS  D
+         LDD   TOIN
+         PSHS  D
          TFR   S,D
          STD   HANDLER
 
          JSR   ,X
 
-         LEAS  2,S
+         LEAS  8,S        ; normal return: drop saved source (REFILL etc.
+                          ; may have legitimately changed it)
+         LEAS  2,S        ; saved U
          PULS  D
          STD   HANDLER
          LDD   #0
@@ -4173,6 +4198,14 @@ THROW:   PULU  D
          BEQ   THUNCAU
 
          TFR   X,S
+         PULS  D          ; restore input source saved by CATCH
+         STD   TOIN
+         PULS  D
+         STD   SRCID
+         PULS  D
+         STD   SRCLEN
+         PULS  D
+         STD   SRCADDR
          PULS  D
          TFR   D,U
          PULS  D
@@ -7600,14 +7633,14 @@ RFTERM:  JSR   QUERY
          PSHU  D
          RTS
 
-EVALUATEW: LDD  SRCADDR
-           STD  EVSAVEA
-           LDD  SRCLEN
-           STD  EVSAVEL
-           LDD  SRCID
-           STD  EVSAVEI
+EVALUATEW: LDD  SRCADDR   ; BUG FIX: the outer source was saved in
+           PSHS D         ; global EVSAVE* cells, so a nested EVALUATE
+           LDD  SRCLEN    ; (t9 -> t8 -> t7) overwrote the outer save and
+           PSHS D         ; every level restored the wrong source. Save
+           LDD  SRCID     ; on the return stack instead (EVSAVE* now
+           PSHS D         ; unused).
            LDD  TOIN
-           STD  EVSAVET
+           PSHS D
            PULU D
            STD  SRCLEN
            PULU D
@@ -7617,14 +7650,14 @@ EVALUATEW: LDD  SRCADDR
            LDD  #0
            STD  TOIN
            JSR  INTERPRET
-           LDD  EVSAVEA
-           STD  SRCADDR
-           LDD  EVSAVEL
-           STD  SRCLEN
-           LDD  EVSAVEI
-           STD  SRCID
-           LDD  EVSAVET
+           PULS D
            STD  TOIN
+           PULS D
+           STD  SRCID
+           PULS D
+           STD  SRCLEN
+           PULS D
+           STD  SRCADDR
            RTS
 
 ; ENVIRONMENT? - dispatcher complete; table has entries derived
