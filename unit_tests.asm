@@ -3340,6 +3340,14 @@ TSTSTSMZNAME: FCB  8
 ; (symmetric) tested against the same negative-dividend case
 ; specifically because that's where the two conventions actually
 ; diverge - confirmed distinct expected results for each.
+;
+; TSTUMSM2 (added later) is a dedicated boundary-case regression
+; test for UM/MOD's own ANS Annex F MAX-UINT/MAX-UINT case
+; (F.6.1.2370), on top of TSTUMSM's ordinary mid-range case - see
+; TSTUMSM2's own header/comment for why only UM/MOD, of every word
+; in this section, can actually reach the UDIV32 bug it regression-
+; tests (the other division words here all derive UDIV32's divisor
+; from a signed single cell, too narrow a range to trigger it).
 ; ------------------------------------------------------------
 TSTDARITH: JSR   CRW
            LDX   #TSTDARITHMSG
@@ -3353,6 +3361,7 @@ TSTDARITH: JSR   CRW
 
            JSR   TSTUMST
            JSR   TSTUMSM
+           JSR   TSTUMSM2
            JSR   TSTUMSZ
            JSR   TSTMSTAR
            JSR   TSTFMSM
@@ -3475,6 +3484,84 @@ UDDONE:     LDX   #TSTUMSMNAME
 
 TSTUMSMNAME: FCB  7
                FCC  "TSTUMSM"
+
+; ------------------------------------------------------------
+; TSTUMSM2 - unit test for UMSLASHMOD, MAX-UINT/MAX-UINT boundary
+; case (ANS Annex F F.6.1.2370: "MAX-UINT MAX-UINT UM* MAX-UINT
+; UM/MOD -> 0 MAX-UINT"). Direct regression test for the UDIV32 bug
+; found from a hardware report on exactly this case - see UDIV32's
+; own header/comment (forth6809.asm) for the full root-cause
+; analysis: a restoring-division boundary bug where the 16-bit
+; DIVREM register silently lost a 17th overflow bit whenever the
+; divisor was large enough (DIVDEN >= $8001) for the doubled-
+; remainder-plus-next-bit candidate to exceed $FFFF before the
+; compare-and-subtract step - wrongly skipping a subtraction (and
+; its quotient bit) it should have taken. Only UM/MOD can actually
+; reach that condition: it alone passes an arbitrary UNSIGNED
+; 16-bit divisor (up to $FFFF) straight through to UDIV32, where
+; SM/REM, FM/MOD, and plain /, MOD, /MOD all derive UDIV32's
+; divisor from a SIGNED single-cell value (magnitude capped at
+; $8000, from MIN-INT) - just low enough that 2*($8000-1)+1 =
+; $FFFF still fits in 16 bits, so none of those words can ever
+; trigger this particular bug regardless of input. That's why this
+; one boundary case, through UM/MOD specifically, is the test that
+; actually exercises the fixed code path - a plain mid-range
+; UMSLASHMOD case (TSTUMSM, above) does not.
+;
+; Dividend: MAX-UINT*MAX-UINT = $FFFE0001 (confirmed via UMSTAR's
+; own ANS Annex F case, F.6.1.2360: "MAX-UINT MAX-UINT UM* -> 1
+; 1 INVERT", i.e. low cell 1, high cell MAX-UINT/$FFFF - same
+; double value, split differently in that test's own terms).
+; Divisor: MAX-UINT ($FFFF). Expected: remainder 0, quotient
+; MAX-UINT ($FFFF) - verified against the buggy/fixed UDIV32
+; algorithm directly in a Python simulation and a 200,000-case
+; random fuzz run before applying the fix (see the project's own
+; learnings notes), not just by hand-tracing.
+; ------------------------------------------------------------
+TSTUMSM2:   STU   TSTU0
+
+           LDD   #TSTGUARD
+           PSHU  D
+           LDD   #$0001
+           PSHU  D
+           LDD   #$FFFE
+           PSHU  D
+           LDD   #$FFFF
+           PSHU  D
+           STU   TSTUB4
+
+           JSR   UMSLASHMOD
+
+           STU   TSTUAF
+
+           PULU  D
+           CMPD  #$FFFF
+           BNE   UM2FAIL
+           PULU  D
+           CMPD  #$0000
+           BNE   UM2FAIL
+           PULU  D
+           CMPD  #TSTGUARD
+           BNE   UM2FAIL
+
+           LDD   TSTUB4
+           SUBD  TSTUAF
+           CMPD  #-2
+           BNE   UM2FAIL
+
+           LDD   #TRUEV
+           BRA   UM2DONE
+UM2FAIL:    LDD   #FALSEV
+UM2DONE:    LDX   #TSTUMSM2NAME
+           PSHU  X
+           PSHU  D
+           JSR   TSTREPORT
+
+           LDU   TSTU0
+           RTS
+
+TSTUMSM2NAME: FCB  8
+                FCC  "TSTUMSM2"
 
 ; ------------------------------------------------------------
 ; TSTMSTAR - unit test for MSTAR. signed single*single->double.
