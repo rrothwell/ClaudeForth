@@ -30,6 +30,14 @@ Claude would often pursue any dependencies,
 including inspecting the code for similar bug patterns
 and updating the documentation.
 
+After several weeks of consistent effort the following was accomplished:
+1. Several problems with MAME serial communications were resolved.
+This allows cut/paste style development.
+1. ANS Test Suite execution was automated. 
+1. The ANS Test Suite was adapted for development purposes.
+1. Faults in ANS Test Suite expectations were corrected.
+1. Subtle bugs in the Claude Forth implementation were exposed, diagnosed and corrected.
+
 ## Development Environment
 
 The development machine is a MacMini with i7 Intel processor running MacOS Sonoma 14.7.4.
@@ -47,7 +55,8 @@ brew install binutils
 
 * ~~Warning: not functional at this time.~~*
 * ~~Warning: all words tested as functional, but with limited test coverage of edge cases. Tagged as version 1.00.~~*
-* Warning: all words tested as functional, with extensive automated tests. Tagged as version 1.10. *
+* ~~Warning: all words tested as functional, with extensive automated tests. Tagged as version 1.10.~~*
+* Warning: all words tested as functional, complying with ANS Forth Test Suite. Tagged as version 1.20. *
 
 | Item             | Completed   |
 |:-----------------|------------:|
@@ -63,7 +72,8 @@ brew install binutils
 |Automated assembler unit tests and identified bug fixes.  |:white_check_mark:|
 |Adapted the MAME mecb6809 driver for interrupt driven hardware handshaking.  |:white_check_mark:|
 |Optimised 6850 ACIA serial communications with interrupt driven hardware handshaking |:white_check_mark:|
-|Tests against ANS test suite and identified bug fixes.  | |
+|Tests against ANS test suite and identified bug fixes.  |:white_check_mark:|
+|Update documentation| |
 |Optimisation for space, compiler performance & application performance| |
 |Update documentation| |
 |Burn ROM and install onto real MECB 6809 hardware. | |
@@ -80,10 +90,12 @@ brew install binutils
   obtained by splitting the above file.
 + A conditional assembler unit testing file with automation scripts.
 + An updated MAME mecb6809.cpp driver file.
-+ An update MAME 6850acia.cpp ACIA emulation file with bugfix.
++ An updated MAME 6850acia.cpp ACIA emulation file with bugfixes 
+  and communication improvements.
 + A memory map graphic.
 + An interpreter graphic in UML.
-+ The ANS test suit.
++ Improved, corrected ANS test suite, with logs of finalised test results.
++ Scripts for automating execution of the ANS test suite .
 
 ### File types
 | File extension             | Description of contents   |
@@ -97,6 +109,7 @@ brew install binutils
 |.pdf| Portable Document Format |
 |.docx| Microsoft Word XML format |
 |.mmd| [Mermaid](https://mermaid.js.org) graphics text format for UML |
+|.fs| Forth source code |
 
 
 ### Documentation
@@ -118,7 +131,7 @@ brew install binutils
 
 
 ## Plans
-1. Assemble and test a bare bones ANS Forth.
+1. Assemble and test a bare bones ANS Forth [DONE].
 1. Scan for refactoring opportunities, removing code duplication.
 1. Debugging support.
 1. Reorganise dictionary ordering to improved compilation support.
