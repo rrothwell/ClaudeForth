@@ -107,10 +107,15 @@ brew install binutils
 |.bin| 6809 raw binary opcodes as ROM content |
 |.svg| Scalable Vector Graphics text XML format |
 |.png| Portable Network Graphics raster image format |
+|.jpg/.jpeg| JEPEG compressed graphics format |
 |.pdf| Portable Document Format |
 |.docx| Microsoft Word XML format |
 |.mmd| [Mermaid](https://mermaid.js.org) graphics text format for UML |
+|.cmd| A command file for MAME startup |
 |.fs| Forth source code |
+|.py| Python source code |
+|.bs| Bash script file |
+|.log| A logfile. Likely for accepting test results |
 
 
 ### Documentation
