@@ -71,8 +71,9 @@ brew install binutils
 |Update documentation|:white_check_mark:|
 |Automated assembler unit tests and identified bug fixes.  |:white_check_mark:|
 |Adapted the MAME mecb6809 driver for interrupt driven hardware handshaking.  |:white_check_mark:|
-|Optimised 6850 ACIA serial communications with interrupt driven hardware handshaking |:white_check_mark:|
-|Tests against ANS test suite and identified bug fixes.  |:white_check_mark:|
+|Optimised MAME emulated 6850 ACIA serial communications, with interrupt driven hardware handshaking |:white_check_mark:|
+|Solved reliability issues with MAME emulated 6850 ACIA serial communications, by using XON/XOFF software handshaking |:white_check_mark:|
+|Tests against ANS test suite, identifying, diagnosing and correcting bugs.  |:white_check_mark:|
 |Update documentation| |
 |Optimisation for space, compiler performance & application performance| |
 |Update documentation| |
@@ -133,6 +134,7 @@ brew install binutils
 ## Plans
 1. Assemble and test a bare bones ANS Forth [DONE].
 1. Scan for refactoring opportunities, removing code duplication.
+1. Development support words such as [IF], [ELSE], [THEN], FORGET, .(), etc..
 1. Debugging support.
 1. Reorganise dictionary ordering to improved compilation support.
 1. Optimised words for common constants.
