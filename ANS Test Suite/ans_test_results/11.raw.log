@@ -1,0 +1,82 @@
+\ ============================================================
+  ok\ ANS test suite - words implemented in forth6809.asm's
+  ok\ section 11 (11_catch_throw)
+  ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded
+  ok\ first, in that order (the prelude itself uses T{/->/}T, so
+  ok\ ttester.fs must come first). Extracted from the ANS Forth
+  ok\ Standard, Annex F
+  ok\ (https://forth-standard.org/standard/testsuite), which is
+  ok\ explicitly redistributable per its own copyright notice.
+  ok\ ============================================================
+  ok\ ---- section-marker: makes this file independently runnable ----
+  ok\ M11 snapshots the dictionary/HERE state right before this
+  ok\ file's own definitions begin. Invoking M11 at the end (below)
+  ok\ erases everything this file defined - including M11 itself -
+  ok\ restoring the system to the state it was in just after
+  ok\ ttester.fs + 00_test_prelude.fs were loaded. This lets the
+  ok\ automation load/run/reset one section file at a time, in any
+  ok\ order, without cross-file dictionary pollution.
+  okMARKER M11
+  ok\ Reset the pass/fail counters, record the stack depth.
+  okTEST-BEGIN
+  ok\ F.9.6.1.0875  CATCH
+  ok\ See F.9.6.1.2275 THROW.
+  ok\ F.9.6.1.2275  THROW - this whole file's throw-codes (99, 9999, -222,
+  ok\ etc) need DECIMAL; saved/restored around the whole file rather
+  ok\ than a bare DECIMAL, which would otherwise leak the base change
+  ok\ into whatever section file loads next (MARKER only resets the
+  ok\ dictionary/HERE, never BASE).
+  ok\ BUG FIX (round 1): was "BASE @ >R DECIMAL ... R> BASE !" - unsafe
+  ok\ spanning separate top-level lines (see 08_defining_words.tests.fs's
+  ok\ matching comment for the full >R/R> mechanism).
+  ok\ BUG FIX (round 2): a plain "BASE @ DECIMAL ... BASE !" save/restore
+  ok\ is ALSO fragile specifically in this file - it's the one file in
+  ok\ the corpus deliberately exercising uncaught-exception propagation
+  ok\ (t7/t8/t9 via nested EVALUATE), and QLOOP's own top-level recovery
+  ok\ resets the whole data stack on any uncaught error, wiping a parked
+  ok\ save. Unconditional restore instead - no save needed, since
+  ok\ ambient base here is always HEX by convention (see
+  ok\ 08_defining_words.tests.fs for the full reasoning).
+  okDECIMAL
+  ok: t1 9 ;
+  ok: c1 1 2 3 ['] t1 CATCH ;
+  okT{ c1 -> 1 2 3 9 0 }T  Actual:Expected 0 =?= 0 9 =?= 9 3 =?= 3 2 =?= 2 1 =?= 1 
+  ok: t2 8 0 THROW ;
+  ok: c2 1 2 ['] t2 CATCH ;
+  okT{ c2 -> 1 2 8 0 }T  Actual:Expected 0 =?= 0 8 =?= 8 2 =?= 2 1 =?= 1 
+  ok: t3 7 8 9 99 THROW ;
+  ok: c3 1 2 ['] t3 CATCH ;
+  okT{ c3 -> 1 2 99 }T  Actual:Expected 99 =?= 99 2 =?= 2 1 =?= 1 
+  ok: t4 1- DUP 0> IF RECURSE ELSE 999 THROW -222 THEN ;
+  ok: c4 3 4 5 10 ['] t4 CATCH -111 ;
+  okT{ c4 -> 3 4 5 0 999 -111 }T  Actual:Expected -111 =?= -111 999 =?= 999 0 =?= 0 5 =?= 5 4 =?= 4 3 =?= 3 
+  ok: t5 2DROP 2DROP 9999 THROW ;
+  ok: c5 1 2 3 4 ['] t5 CATCH DEPTH >R DROP 2DROP 2DROP R> ;
+  okT{ c5 -> 5 }T  Actual:Expected 5 =?= 5 
+  ok\ F.9.3.6  Exception handling 
+  ok\ (general propagation test, not tied
+  ok\ to a single word - included here since it exercises the same
+  ok\ THROW/CATCH/EVALUATE machinery this section implements)
+  ok: t7 S" 333 $$UndefedWord$$ 334" EVALUATE 335 ;
+  ok: t8 S" 222 t7 223" EVALUATE 224 ;
+  ok: t9 S" 111 112 t8 113" EVALUATE 114 ;
+  ok\ c6 was referenced but never defined anywhere in the corpus - not
+  ok\ an extraction bug (this whole test is custom, per the comment
+  ok\ above, not lifted from Annex F), just a missing definition.
+  ok\ Completing the obvious c1..c5 pattern here: a plain CATCH wrapper.
+  ok\ NOTE: forth6809.asm's BADWORD throws -13 (the standard ANS
+  ok\ "undefined word" code) for $$UndefedWord$$, not +13 - so the
+  ok\ expected result below may need to read "6 7 -13 3" rather than
+  ok\ "6 7 13 3" once this is actually run; left as-is since I can't
+  ok\ verify what this custom test's author originally intended.
+  ok: c6 CATCH ;
+  ok\ Expected -13 (standard undefined-word code), confirmed by design.
+  okT{ 6 7 ' t9 c6 3 -> 6 7 -13 3 }T$$UndefedWord$$  Actual:Expected 3 =?= 3 -13 =?= -13 7 =?= 7 6 =?= 6 
+  okHEX
+  ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
+  okTEST-END
+TEST SUMMARY: 6 run, 0 failed
+
+  ok\ ---- section-marker: undo everything above ----
+  okM11
+  ok

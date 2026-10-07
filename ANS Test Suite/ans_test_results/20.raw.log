@@ -1,0 +1,50 @@
+\ ============================================================
+  ok\ ANS test suite - words implemented in forth6809.asm's
+  ok\ section 20 (20_numeric_output)
+  ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded
+  ok\ first, in that order (the prelude itself uses T{/->/}T, so
+  ok\ ttester.fs must come first). Extracted from the ANS Forth
+  ok\ Standard, Annex F
+  ok\ (https://forth-standard.org/standard/testsuite), which is
+  ok\ explicitly redistributable per its own copyright notice.
+  ok\ ============================================================
+  ok\ ---- section-marker: makes this file independently runnable ----
+  ok\ M20 snapshots the dictionary/HERE state right before this
+  ok\ file's own definitions begin. Invoking M20 at the end (below)
+  ok\ erases everything this file defined - including M20 itself -
+  ok\ restoring the system to the state it was in just after
+  ok\ ttester.fs + 00_test_prelude.fs were loaded. This lets the
+  ok\ automation load/run/reset one section file at a time, in any
+  ok\ order, without cross-file dictionary pollution.
+  okMARKER M20
+  ok\ Reset the pass/fail counters, record the stack depth.
+  okTEST-BEGIN
+  ok\ F.6.1.0030  #
+  ok: GP3  <# 1 0 # # #> S" 01" S= ;   
+  okT{ GP3 -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  ok\ F.6.1.0040  #>
+  ok\ See F.6.1.0030 #, F.6.1.0050 #S, F.6.1.1670 HOLD and F.6.1.2210 SIGN.
+  ok\ F.6.1.0050  #S
+  ok: GP4  <# 1 0 #S #> S" 1" S= ;   
+  okT{ GP4 -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  ok\ F.6.1.0180  .
+  ok\ See F.6.1.1320 EMIT.
+  ok\ F.6.1.0490  <#
+  ok\ See F.6.1.0030 #, F.6.1.0050 #S, F.6.1.1670 HOLD, F.6.1.2210 SIGN.
+  ok\ F.6.1.1670  HOLD
+  ok: GP1 <# 41 HOLD 42 HOLD 0 0 #> S" BA" S= ;   
+  okT{ GP1 -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  ok\ F.6.1.2210  SIGN
+  ok: GP2 <# -1 SIGN 0 SIGN -1 SIGN 0 0 #> S" --" S= ;   
+  okT{ GP2 -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  ok\ F.6.1.2320  U.
+  ok\ See F.6.1.1320 EMIT.
+  ok\ F.6.2.1675  HOLDS
+  okT{ 0. <# S" Test" HOLDS #> S" Test" COMPARE -> 0 }T  Actual:Expected 0 =?= 0 
+  ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
+  okTEST-END
+TEST SUMMARY: 5 run, 0 failed
+
+  ok\ ---- section-marker: undo everything above ----
+  okM20
+  ok

@@ -1,0 +1,369 @@
+\ ============================================================
+  ok\ ANS test suite - words implemented in forth6809.asm's
+  ok\ section 15 (15_arithmetic)
+  ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded
+  ok\ first, in that order (the prelude itself uses T{/->/}T, so
+  ok\ ttester.fs must come first). Extracted from the ANS Forth
+  ok\ Standard, Annex F
+  ok\ (https://forth-standard.org/standard/testsuite), which is
+  ok\ explicitly redistributable per its own copyright notice.
+  ok\ ============================================================
+  ok\ ---- section-marker: makes this file independently runnable ----
+  ok\ M15 snapshots the dictionary/HERE state right before this
+  ok\ file's own definitions begin. Invoking M15 at the end (below)
+  ok\ erases everything this file defined - including M15 itself -
+  ok\ restoring the system to the state it was in just after
+  ok\ ttester.fs + 00_test_prelude.fs were loaded. This lets the
+  ok\ automation load/run/reset one section file at a time, in any
+  ok\ order, without cross-file dictionary pollution.
+  okMARKER M15
+  ok\ Reset the pass/fail counters, record the stack depth.
+  okTEST-BEGIN
+  ok\ F.6.1.0090  *
+  okT{ 0 0 * -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 0 1 * -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 1 0 * -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 1 2 * -> 2 }T  Actual:Expected 2 =?= 2 
+  okT{ 2 1 * -> 2 }T  Actual:Expected 2 =?= 2 
+  okT{ 3 3 * -> 9 }T  Actual:Expected 9 =?= 9 
+  okT{ -3 3 * -> -9 }T  Actual:Expected -9 =?= -9 
+  okT{ 3 -3 * -> -9 }T  Actual:Expected -9 =?= -9 
+  okT{ -3 -3 * -> 9 }T  Actual:Expected 9 =?= 9 
+  okT{ MID-UINT+1 1 RSHIFT 2 * -> MID-UINT+1 }T  Actual:Expected -8000 =?= -8000 
+  okT{ MID-UINT+1 2 RSHIFT 4 * -> MID-UINT+1 }T  Actual:Expected -8000 =?= -8000 
+  okT{ MID-UINT+1 1 RSHIFT MID-UINT+1 OR 2 * -> MID-UINT+1 }T  Actual:Expected -8000 =?= -8000 
+  ok\ F.6.1.0100  */ and F.6.1.0110  */MOD - */MOD's helper must be defined
+  ok\ before */'s (T*/ is defined in terms of T*/MOD), so */MOD's IFFLOORED/
+  ok\ IFSYM lines come first here, matching the authoritative Annex F
+  ok\ source order; this was previously reversed, a genuine forward-
+  ok\ reference bug (T*/ compiled before T*/MOD existed).
+  okIFFLOORED : T*/MOD >R M* R> FM/MOD ;
+  okIFSYM : T*/MOD >R M* R> SM/REM ;
+  okIFFLOORED : T*/ T*/MOD SWAP DROP ;
+  okIFSYM : T*/ T*/MOD SWAP DROP ;
+  okT{ 0 2 1 */ -> 0 2 1 T*/ }T  Actual:Expected 0 =?= 0 
+  okT{ 1 2 1 */ -> 1 2 1 T*/ }T  Actual:Expected 2 =?= 2 
+  okT{ 2 2 1 */ -> 2 2 1 T*/ }T  Actual:Expected 4 =?= 4 
+  okT{ -1 2 1 */ -> -1 2 1 T*/ }T  Actual:Expected -2 =?= -2 
+  okT{ -2 2 1 */ -> -2 2 1 T*/ }T  Actual:Expected -4 =?= -4 
+  okT{ 0 2 -1 */ -> 0 2 -1 T*/ }T  Actual:Expected 0 =?= 0 
+  okT{ 1 2 -1 */ -> 1 2 -1 T*/ }T  Actual:Expected -2 =?= -2 
+  okT{ 2 2 -1 */ -> 2 2 -1 T*/ }T  Actual:Expected -4 =?= -4 
+  okT{ -1 2 -1 */ -> -1 2 -1 T*/ }T  Actual:Expected 2 =?= 2 
+  okT{ -2 2 -1 */ -> -2 2 -1 T*/ }T  Actual:Expected 4 =?= 4 
+  okT{ 2 2 2 */ -> 2 2 2 T*/ }T  Actual:Expected 2 =?= 2 
+  okT{ -1 2 -1 */ -> -1 2 -1 T*/ }T  Actual:Expected 2 =?= 2 
+  okT{ -2 2 -2 */ -> -2 2 -2 T*/ }T  Actual:Expected 2 =?= 2 
+  okT{ 7 2 3 */ -> 7 2 3 T*/ }T  Actual:Expected 4 =?= 4 
+  okT{ 7 2 -3 */ -> 7 2 -3 T*/ }T  Actual:Expected -4 =?= -4 
+  okT{ -7 2 3 */ -> -7 2 3 T*/ }T  Actual:Expected -4 =?= -4 
+  okT{ -7 2 -3 */ -> -7 2 -3 T*/ }T  Actual:Expected 4 =?= 4 
+  okT{ MAX-INT 2 MAX-INT */ -> MAX-INT 2 MAX-INT T*/ }T  Actual:Expected 2 =?= 2 
+  okT{ MIN-INT 2 MIN-INT */ -> MIN-INT 2 MIN-INT T*/ }T  Actual:Expected 2 =?= 2 
+  okT{ 0 2 1 */MOD -> 0 2 1 T*/MOD }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 1 2 1 */MOD -> 1 2 1 T*/MOD }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ 2 2 1 */MOD -> 2 2 1 T*/MOD }T  Actual:Expected 4 =?= 4 0 =?= 0 
+  okT{ -1 2 1 */MOD -> -1 2 1 T*/MOD }T  Actual:Expected -2 =?= -2 0 =?= 0 
+  okT{ -2 2 1 */MOD -> -2 2 1 T*/MOD }T  Actual:Expected -4 =?= -4 0 =?= 0 
+  okT{ 0 2 -1 */MOD -> 0 2 -1 T*/MOD }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 1 2 -1 */MOD -> 1 2 -1 T*/MOD }T  Actual:Expected -2 =?= -2 0 =?= 0 
+  okT{ 2 2 -1 */MOD -> 2 2 -1 T*/MOD }T  Actual:Expected -4 =?= -4 0 =?= 0 
+  okT{ -1 2 -1 */MOD -> -1 2 -1 T*/MOD }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ -2 2 -1 */MOD -> -2 2 -1 T*/MOD }T  Actual:Expected 4 =?= 4 0 =?= 0 
+  okT{ 2 2 2 */MOD -> 2 2 2 T*/MOD }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ -1 2 -1 */MOD -> -1 2 -1 T*/MOD }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ -2 2 -2 */MOD -> -2 2 -2 T*/MOD }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ 7 2 3 */MOD -> 7 2 3 T*/MOD }T  Actual:Expected 4 =?= 4 2 =?= 2 
+  okT{ 7 2 -3 */MOD -> 7 2 -3 T*/MOD }T  Actual:Expected -4 =?= -4 2 =?= 2 
+  okT{ -7 2 3 */MOD -> -7 2 3 T*/MOD }T  Actual:Expected -4 =?= -4 -2 =?= -2 
+  okT{ -7 2 -3 */MOD -> -7 2 -3 T*/MOD }T  Actual:Expected 4 =?= 4 -2 =?= -2 
+  okT{ MAX-INT 2 MAX-INT */MOD -> MAX-INT 2 MAX-INT T*/MOD }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ MIN-INT 2 MIN-INT */MOD -> MIN-INT 2 MIN-INT T*/MOD }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  ok\ F.6.1.0120  +
+  okT{ 0 5 + -> 5 }T  Actual:Expected 5 =?= 5 
+  okT{ 5 0 + -> 5 }T  Actual:Expected 5 =?= 5 
+  okT{ 0 -5 + -> -5 }T  Actual:Expected -5 =?= -5 
+  okT{ -5 0 + -> -5 }T  Actual:Expected -5 =?= -5 
+  okT{ 1 2 + -> 3 }T  Actual:Expected 3 =?= 3 
+  okT{ 1 -2 + -> -1 }T  Actual:Expected -1 =?= -1 
+  okT{ -1 2 + -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ -1 -2 + -> -3 }T  Actual:Expected -3 =?= -3 
+  okT{ -1 1 + -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ MID-UINT 1 + -> MID-UINT+1 }T  Actual:Expected -8000 =?= -8000 
+  ok\ F.6.1.0160  -
+  okT{ 0 5 - -> -5 }T  Actual:Expected -5 =?= -5 
+  okT{ 5 0 - -> 5 }T  Actual:Expected 5 =?= 5 
+  okT{ 0 -5 - -> 5 }T  Actual:Expected 5 =?= 5 
+  okT{ -5 0 - -> -5 }T  Actual:Expected -5 =?= -5 
+  okT{ 1 2 - -> -1 }T  Actual:Expected -1 =?= -1 
+  okT{ 1 -2 - -> 3 }T  Actual:Expected 3 =?= 3 
+  okT{ -1 2 - -> -3 }T  Actual:Expected -3 =?= -3 
+  okT{ -1 -2 - -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ 0 1 - -> -1 }T  Actual:Expected -1 =?= -1 
+  okT{ MID-UINT+1 1 - -> MID-UINT }T  Actual:Expected 7FFF =?= 7FFF 
+  ok\ F.6.1.0230  / and F.6.1.0240  /MOD - same ordering fix as */ / */MOD
+  ok\ above: /'s helper (T/) is defined in terms of T/MOD, so T/MOD's
+  ok\ IFFLOORED/IFSYM lines must come first.
+  okIFFLOORED : T/MOD >R S>D R> FM/MOD ;
+  okIFSYM : T/MOD >R S>D R> SM/REM ;
+  okIFFLOORED : T/ T/MOD SWAP DROP ;
+  okIFSYM : T/ T/MOD SWAP DROP ;
+  okT{ 0 1 / -> 0 1 T/ }T  Actual:Expected 0 =?= 0 
+  okT{ 1 1 / -> 1 1 T/ }T  Actual:Expected 1 =?= 1 
+  okT{ 2 1 / -> 2 1 T/ }T  Actual:Expected 2 =?= 2 
+  okT{ -1 1 / -> -1 1 T/ }T  Actual:Expected -1 =?= -1 
+  okT{ -2 1 / -> -2 1 T/ }T  Actual:Expected -2 =?= -2 
+  okT{ 0 -1 / -> 0 -1 T/ }T  Actual:Expected 0 =?= 0 
+  okT{ 1 -1 / -> 1 -1 T/ }T  Actual:Expected -1 =?= -1 
+  okT{ 2 -1 / -> 2 -1 T/ }T  Actual:Expected -2 =?= -2 
+  okT{ -1 -1 / -> -1 -1 T/ }T  Actual:Expected 1 =?= 1 
+  okT{ -2 -1 / -> -2 -1 T/ }T  Actual:Expected 2 =?= 2 
+  okT{ 2 2 / -> 2 2 T/ }T  Actual:Expected 1 =?= 1 
+  okT{ -1 -1 / -> -1 -1 T/ }T  Actual:Expected 1 =?= 1 
+  okT{ -2 -2 / -> -2 -2 T/ }T  Actual:Expected 1 =?= 1 
+  okT{ 7 3 / -> 7 3 T/ }T  Actual:Expected 2 =?= 2 
+  okT{ 7 -3 / -> 7 -3 T/ }T  Actual:Expected -2 =?= -2 
+  okT{ -7 3 / -> -7 3 T/ }T  Actual:Expected -2 =?= -2 
+  okT{ -7 -3 / -> -7 -3 T/ }T  Actual:Expected 2 =?= 2 
+  okT{ MAX-INT 1 / -> MAX-INT 1 T/ }T  Actual:Expected 7FFF =?= 7FFF 
+  okT{ MIN-INT 1 / -> MIN-INT 1 T/ }T  Actual:Expected -8000 =?= -8000 
+  okT{ MAX-INT MAX-INT / -> MAX-INT MAX-INT T/ }T  Actual:Expected 1 =?= 1 
+  okT{ MIN-INT MIN-INT / -> MIN-INT MIN-INT T/ }T  Actual:Expected 1 =?= 1 
+  okT{ 0 1 /MOD -> 0 1 T/MOD }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 1 1 /MOD -> 1 1 T/MOD }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ 2 1 /MOD -> 2 1 T/MOD }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ -1 1 /MOD -> -1 1 T/MOD }T  Actual:Expected -1 =?= -1 0 =?= 0 
+  okT{ -2 1 /MOD -> -2 1 T/MOD }T  Actual:Expected -2 =?= -2 0 =?= 0 
+  okT{ 0 -1 /MOD -> 0 -1 T/MOD }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 1 -1 /MOD -> 1 -1 T/MOD }T  Actual:Expected -1 =?= -1 0 =?= 0 
+  okT{ 2 -1 /MOD -> 2 -1 T/MOD }T  Actual:Expected -2 =?= -2 0 =?= 0 
+  okT{ -1 -1 /MOD -> -1 -1 T/MOD }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ -2 -1 /MOD -> -2 -1 T/MOD }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ 2 2 /MOD -> 2 2 T/MOD }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ -1 -1 /MOD -> -1 -1 T/MOD }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ -2 -2 /MOD -> -2 -2 T/MOD }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ 7 3 /MOD -> 7 3 T/MOD }T  Actual:Expected 2 =?= 2 1 =?= 1 
+  okT{ 7 -3 /MOD -> 7 -3 T/MOD }T  Actual:Expected -2 =?= -2 1 =?= 1 
+  okT{ -7 3 /MOD -> -7 3 T/MOD }T  Actual:Expected -2 =?= -2 -1 =?= -1 
+  okT{ -7 -3 /MOD -> -7 -3 T/MOD }T  Actual:Expected 2 =?= 2 -1 =?= -1 
+  okT{ MAX-INT 1 /MOD -> MAX-INT 1 T/MOD }T  Actual:Expected 7FFF =?= 7FFF 0 =?= 0 
+  okT{ MIN-INT 1 /MOD -> MIN-INT 1 T/MOD }T  Actual:Expected -8000 =?= -8000 0 =?= 0 
+  okT{ MAX-INT MAX-INT /MOD -> MAX-INT MAX-INT T/MOD }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ MIN-INT MIN-INT /MOD -> MIN-INT MIN-INT T/MOD }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  ok\ F.6.1.0290  1+
+  okT{ 0 1+ -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ -1 1+ -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 1 1+ -> 2 }T  Actual:Expected 2 =?= 2 
+  okT{ MID-UINT 1+ -> MID-UINT+1 }T  Actual:Expected -8000 =?= -8000 
+  ok\ F.6.1.0300  1-
+  okT{ 2 1- -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ 1 1- -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 0 1- -> -1 }T  Actual:Expected -1 =?= -1 
+  okT{ MID-UINT+1 1- -> MID-UINT }T  Actual:Expected 7FFF =?= 7FFF 
+  ok\ F.6.1.0320  2*
+  okT{ 0S 2* -> 0S }T  Actual:Expected 0 =?= 0 
+  okT{ 1 2* -> 2 }T  Actual:Expected 2 =?= 2 
+  okT{ 4000 2* -> 8000 }T  Actual:Expected -8000 =?= -8000 
+  okT{ 1S 2* 1 XOR -> 1S }T  Actual:Expected -1 =?= -1 
+  okT{ MSB 2* -> 0S }T  Actual:Expected 0 =?= 0 
+  ok\ F.6.1.0330  2/
+  okT{ 0S 2/ -> 0S }T  Actual:Expected 0 =?= 0 
+  okT{ 1 2/ -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 4000 2/ -> 2000 }T  Actual:Expected 2000 =?= 2000 
+  ok\ MSB PROPOGATED
+  okT{ 1S 2/ -> 1S }T  Actual:Expected -1 =?= -1 
+  okT{ 1S 1 XOR 2/ -> 1S }T  Actual:Expected -1 =?= -1 
+  okT{ MSB 2/ MSB AND -> MSB }T  Actual:Expected -8000 =?= -8000 
+  ok\ F.6.1.0690  ABS
+  okT{ 0 ABS -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 1 ABS -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ -1 ABS -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ MIN-INT ABS -> MID-UINT+1 }T  Actual:Expected -8000 =?= -8000 
+  ok\ F.6.1.1561  FM/MOD
+  okT{ 0 S>D 1 FM/MOD -> 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 1 S>D 1 FM/MOD -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ 2 S>D 1 FM/MOD -> 0 2 }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ -1 S>D 1 FM/MOD -> 0 -1 }T  Actual:Expected -1 =?= -1 0 =?= 0 
+  okT{ -2 S>D 1 FM/MOD -> 0 -2 }T  Actual:Expected -2 =?= -2 0 =?= 0 
+  okT{ 0 S>D -1 FM/MOD -> 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 1 S>D -1 FM/MOD -> 0 -1 }T  Actual:Expected -1 =?= -1 0 =?= 0 
+  okT{ 2 S>D -1 FM/MOD -> 0 -2 }T  Actual:Expected -2 =?= -2 0 =?= 0 
+  okT{ -1 S>D -1 FM/MOD -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ -2 S>D -1 FM/MOD -> 0 2 }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ 2 S>D 2 FM/MOD -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ -1 S>D -1 FM/MOD -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ -2 S>D -2 FM/MOD -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ 7 S>D 3 FM/MOD -> 1 2 }T  Actual:Expected 2 =?= 2 1 =?= 1 
+  okT{ 7 S>D -3 FM/MOD -> -2 -3 }T  Actual:Expected -3 =?= -3 -2 =?= -2 
+  okT{ -7 S>D 3 FM/MOD -> 2 -3 }T  Actual:Expected -3 =?= -3 2 =?= 2 
+  okT{ -7 S>D -3 FM/MOD -> -1 2 }T  Actual:Expected 2 =?= 2 -1 =?= -1 
+  okT{ MAX-INT S>D 1 FM/MOD -> 0 MAX-INT }T  Actual:Expected 7FFF =?= 7FFF 0 =?= 0 
+  okT{ MIN-INT S>D 1 FM/MOD -> 0 MIN-INT }T  Actual:Expected -8000 =?= -8000 0 =?= 0 
+  okT{ MAX-INT S>D MAX-INT FM/MOD -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ MIN-INT S>D MIN-INT FM/MOD -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ 1S 1 4 FM/MOD -> 3 MAX-INT }T  Actual:Expected 7FFF =?= 7FFF 3 =?= 3 
+  okT{ 1 MIN-INT M* 1 FM/MOD -> 0 MIN-INT }T  Actual:Expected -8000 =?= -8000 0 =?= 0 
+  okT{ 1 MIN-INT M* MIN-INT FM/MOD -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ 2 MIN-INT M* 2 FM/MOD -> 0 MIN-INT }T  Actual:Expected -8000 =?= -8000 0 =?= 0 
+  okT{ 2 MIN-INT M* MIN-INT FM/MOD -> 0 2 }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ 1 MAX-INT M* 1 FM/MOD -> 0 MAX-INT }T  Actual:Expected 7FFF =?= 7FFF 0 =?= 0 
+  okT{ 1 MAX-INT M* MAX-INT FM/MOD -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ 2 MAX-INT M* 2 FM/MOD -> 0 MAX-INT }T  Actual:Expected 7FFF =?= 7FFF 0 =?= 0 
+  okT{ 2 MAX-INT M* MAX-INT FM/MOD -> 0 2 }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ MIN-INT MIN-INT M* MIN-INT FM/MOD -> 0 MIN-INT }T  Actual:Expected -8000 =?= -8000 0 =?= 0 
+  okT{ MIN-INT MAX-INT M* MIN-INT FM/MOD -> 0 MAX-INT }T  Actual:Expected 7FFF =?= 7FFF 0 =?= 0 
+  okT{ MIN-INT MAX-INT M* MAX-INT FM/MOD -> 0 MIN-INT }T  Actual:Expected -8000 =?= -8000 0 =?= 0 
+  okT{ MAX-INT MAX-INT M* MAX-INT FM/MOD -> 0 MAX-INT }T  Actual:Expected 7FFF =?= 7FFF 0 =?= 0 
+  ok\ F.6.1.1810  M*
+  okT{ 0 0 M* -> 0 S>D }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 0 1 M* -> 0 S>D }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 1 0 M* -> 0 S>D }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 1 2 M* -> 2 S>D }T  Actual:Expected 0 =?= 0 2 =?= 2 
+  okT{ 2 1 M* -> 2 S>D }T  Actual:Expected 0 =?= 0 2 =?= 2 
+  okT{ 3 3 M* -> 9 S>D }T  Actual:Expected 0 =?= 0 9 =?= 9 
+  okT{ -3 3 M* -> -9 S>D }T  Actual:Expected -1 =?= -1 -9 =?= -9 
+  okT{ 3 -3 M* -> -9 S>D }T  Actual:Expected -1 =?= -1 -9 =?= -9 
+  okT{ -3 -3 M* -> 9 S>D }T  Actual:Expected 0 =?= 0 9 =?= 9 
+  okT{ 0 MIN-INT M* -> 0 S>D }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 1 MIN-INT M* -> MIN-INT S>D }T  Actual:Expected -1 =?= -1 -8000 =?= -8000 
+  okT{ 2 MIN-INT M* -> 0 1S }T  Actual:Expected -1 =?= -1 0 =?= 0 
+  okT{ 0 MAX-INT M* -> 0 S>D }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 1 MAX-INT M* -> MAX-INT S>D }T  Actual:Expected 0 =?= 0 7FFF =?= 7FFF 
+  okT{ 2 MAX-INT M* -> MAX-INT 1 LSHIFT 0 }T  Actual:Expected 0 =?= 0 -2 =?= -2 
+  okT{ MIN-INT MIN-INT M* -> 0 MSB 1 RSHIFT }T  Actual:Expected 4000 =?= 4000 0 =?= 0 
+  okT{ MAX-INT MIN-INT M* -> MSB MSB 2/ }T  Actual:Expected -4000 =?= -4000 -8000 =?= -8000 
+  okT{ MAX-INT MAX-INT M* -> 1 MSB 2/ INVERT }T  Actual:Expected 3FFF =?= 3FFF 1 =?= 1 
+  ok\ F.6.1.1870  MAX
+  okT{ 0 1 MAX -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ 1 2 MAX -> 2 }T  Actual:Expected 2 =?= 2 
+  okT{ -1 0 MAX -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ -1 1 MAX -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ MIN-INT 0 MAX -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ MIN-INT MAX-INT MAX -> MAX-INT }T  Actual:Expected 7FFF =?= 7FFF 
+  okT{ 0 MAX-INT MAX -> MAX-INT }T  Actual:Expected 7FFF =?= 7FFF 
+  okT{ 0 0 MAX -> 0 }T   T{ 1 1 MAX -> 1 }T  Actual:Expected 0 =?= 0   Actual:Expected 1 =?= 1 
+  okT{ 1 0 MAX -> 1 }T   T{ 2 1 MAX -> 2 }T  Actual:Expected 1 =?= 1   Actual:Expected 2 =?= 2 
+  okT{ 0 -1 MAX -> 0 }T   T{ 1 -1 MAX -> 1 }T  Actual:Expected 0 =?= 0   Actual:Expected 1 =?= 1 
+  okT{ 0 MIN-INT MAX -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ MAX-INT MIN-INT MAX -> MAX-INT }T  Actual:Expected 7FFF =?= 7FFF 
+  okT{ MAX-INT 0 MAX -> MAX-INT }T  Actual:Expected 7FFF =?= 7FFF 
+  ok\ F.6.1.1880  MIN
+  okT{ 0 1 MIN -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 1 2 MIN -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ -1 0 MIN -> -1 }T  Actual:Expected -1 =?= -1 
+  okT{ -1 1 MIN -> -1 }T  Actual:Expected -1 =?= -1 
+  okT{ MIN-INT 0 MIN -> MIN-INT }T  Actual:Expected -8000 =?= -8000 
+  okT{ MIN-INT MAX-INT MIN -> MIN-INT }T  Actual:Expected -8000 =?= -8000 
+  okT{ 0 MAX-INT MIN -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 0 0 MIN -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 1 1 MIN -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ 1 0 MIN -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 2 1 MIN -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ 0 -1 MIN -> -1 }T  Actual:Expected -1 =?= -1 
+  okT{ 1 -1 MIN -> -1 }T  Actual:Expected -1 =?= -1 
+  okT{ 0 MIN-INT MIN -> MIN-INT }T  Actual:Expected -8000 =?= -8000 
+  okT{ MAX-INT MIN-INT MIN -> MIN-INT }T  Actual:Expected -8000 =?= -8000 
+  okT{ MAX-INT 0 MIN -> 0 }T  Actual:Expected 0 =?= 0 
+  ok\ F.6.1.1890  MOD
+  okIFFLOORED : TMOD T/MOD DROP ;
+  okIFSYM : TMOD T/MOD DROP ;
+  okT{ 0 1 MOD -> 0 1 TMOD }T  Actual:Expected 0 =?= 0 
+  okT{ 1 1 MOD -> 1 1 TMOD }T  Actual:Expected 0 =?= 0 
+  okT{ 2 1 MOD -> 2 1 TMOD }T  Actual:Expected 0 =?= 0 
+  okT{ -1 1 MOD -> -1 1 TMOD }T  Actual:Expected 0 =?= 0 
+  okT{ -2 1 MOD -> -2 1 TMOD }T  Actual:Expected 0 =?= 0 
+  okT{ 0 -1 MOD -> 0 -1 TMOD }T  Actual:Expected 0 =?= 0 
+  okT{ 1 -1 MOD -> 1 -1 TMOD }T  Actual:Expected 0 =?= 0 
+  okT{ 2 -1 MOD -> 2 -1 TMOD }T  Actual:Expected 0 =?= 0 
+  okT{ -1 -1 MOD -> -1 -1 TMOD }T  Actual:Expected 0 =?= 0 
+  okT{ -2 -1 MOD -> -2 -1 TMOD }T  Actual:Expected 0 =?= 0 
+  okT{ 2 2 MOD -> 2 2 TMOD }T  Actual:Expected 0 =?= 0 
+  okT{ -1 -1 MOD -> -1 -1 TMOD }T  Actual:Expected 0 =?= 0 
+  okT{ -2 -2 MOD -> -2 -2 TMOD }T  Actual:Expected 0 =?= 0 
+  okT{ 7 3 MOD -> 7 3 TMOD }T  Actual:Expected 1 =?= 1 
+  okT{ 7 -3 MOD -> 7 -3 TMOD }T  Actual:Expected 1 =?= 1 
+  okT{ -7 3 MOD -> -7 3 TMOD }T  Actual:Expected -1 =?= -1 
+  okT{ -7 -3 MOD -> -7 -3 TMOD }T  Actual:Expected -1 =?= -1 
+  okT{ MAX-INT 1 MOD -> MAX-INT 1 TMOD }T  Actual:Expected 0 =?= 0 
+  okT{ MIN-INT 1 MOD -> MIN-INT 1 TMOD }T  Actual:Expected 0 =?= 0 
+  okT{ MAX-INT MAX-INT MOD -> MAX-INT MAX-INT TMOD }T  Actual:Expected 0 =?= 0 
+  okT{ MIN-INT MIN-INT MOD -> MIN-INT MIN-INT TMOD }T  Actual:Expected 0 =?= 0 
+  ok\ F.6.1.1910  NEGATE
+  okT{ 0 NEGATE -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 1 NEGATE -> -1 }T  Actual:Expected -1 =?= -1 
+  okT{ -1 NEGATE -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ 2 NEGATE -> -2 }T  Actual:Expected -2 =?= -2 
+  okT{ -2 NEGATE -> 2 }T  Actual:Expected 2 =?= 2 
+  ok\ F.6.1.2170  S>D
+  okT{ 0 S>D -> 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 1 S>D -> 1 0 }T  Actual:Expected 0 =?= 0 1 =?= 1 
+  okT{ 2 S>D -> 2 0 }T  Actual:Expected 0 =?= 0 2 =?= 2 
+  okT{ -1 S>D -> -1 -1 }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{ -2 S>D -> -2 -1 }T  Actual:Expected -1 =?= -1 -2 =?= -2 
+  okT{ MIN-INT S>D -> MIN-INT -1 }T  Actual:Expected -1 =?= -1 -8000 =?= -8000 
+  okT{ MAX-INT S>D -> MAX-INT 0 }T  Actual:Expected 0 =?= 0 7FFF =?= 7FFF 
+  ok\ F.6.1.2214  SM/REM
+  okT{ 0 S>D 1 SM/REM -> 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 1 S>D 1 SM/REM -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ 2 S>D 1 SM/REM -> 0 2 }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ -1 S>D 1 SM/REM -> 0 -1 }T  Actual:Expected -1 =?= -1 0 =?= 0 
+  okT{ -2 S>D 1 SM/REM -> 0 -2 }T  Actual:Expected -2 =?= -2 0 =?= 0 
+  okT{ 0 S>D -1 SM/REM -> 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 1 S>D -1 SM/REM -> 0 -1 }T  Actual:Expected -1 =?= -1 0 =?= 0 
+  okT{ 2 S>D -1 SM/REM -> 0 -2 }T  Actual:Expected -2 =?= -2 0 =?= 0 
+  okT{ -1 S>D -1 SM/REM -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ -2 S>D -1 SM/REM -> 0 2 }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ 2 S>D 2 SM/REM -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ -1 S>D -1 SM/REM -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ -2 S>D -2 SM/REM -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ 7 S>D 3 SM/REM -> 1 2 }T  Actual:Expected 2 =?= 2 1 =?= 1 
+  okT{ 7 S>D -3 SM/REM -> 1 -2 }T  Actual:Expected -2 =?= -2 1 =?= 1 
+  okT{ -7 S>D 3 SM/REM -> -1 -2 }T  Actual:Expected -2 =?= -2 -1 =?= -1 
+  ok \ BUG FIX: was "-> 1 -2" (positive 1) -
+  ok\ a transcription typo, not a Forth bug. SM/REM's remainder takes the
+  ok\ sign of the DIVIDEND (-7, negative), so it must be <= 0 here, same
+  ok\ as every neighboring case on this line (7 S>D 3 -> 1 2; 7 S>D -3 ->
+  ok\ 1 -2; -7 S>D -3 -> -1 2) - only this one broke that pattern. Caught
+  ok\ via forth6809's own hardware-confirmed result (-1 -2), which is
+  ok\ self-consistent with every other SM/REM case on this line.   
+  okT{ -7 S>D -3 SM/REM -> -1 2 }T  Actual:Expected 2 =?= 2 -1 =?= -1 
+  okT{ MAX-INT S>D 1 SM/REM -> 0 MAX-INT }T  Actual:Expected 7FFF =?= 7FFF 0 =?= 0 
+  okT{ MIN-INT S>D 1 SM/REM -> 0 MIN-INT }T  Actual:Expected -8000 =?= -8000 0 =?= 0 
+  okT{ MAX-INT S>D MAX-INT SM/REM -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ MIN-INT S>D MIN-INT SM/REM -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ 1S 1 4 SM/REM -> 3 MAX-INT }T  Actual:Expected 7FFF =?= 7FFF 3 =?= 3 
+  okT{ 2 MIN-INT M* 2 SM/REM -> 0 MIN-INT }T  Actual:Expected -8000 =?= -8000 0 =?= 0 
+  okT{ 2 MIN-INT M* MIN-INT SM/REM -> 0 2 }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ 2 MAX-INT M* 2 SM/REM -> 0 MAX-INT }T  Actual:Expected 7FFF =?= 7FFF 0 =?= 0 
+  okT{ 2 MAX-INT M* MAX-INT SM/REM -> 0 2 }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ MIN-INT MIN-INT M* MIN-INT SM/REM -> 0 MIN-INT }T  Actual:Expected -8000 =?= -8000 0 =?= 0 
+  okT{ MIN-INT MAX-INT M* MIN-INT SM/REM -> 0 MAX-INT }T  Actual:Expected 7FFF =?= 7FFF 0 =?= 0 
+  okT{ MIN-INT MAX-INT M* MAX-INT SM/REM -> 0 MIN-INT }T  Actual:Expected -8000 =?= -8000 0 =?= 0 
+  okT{ MAX-INT MAX-INT M* MAX-INT SM/REM -> 0 MAX-INT }T  Actual:Expected 7FFF =?= 7FFF 0 =?= 0 
+  ok\ F.6.1.2360  UM*
+  okT{ 0 0 UM* -> 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 0 1 UM* -> 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 1 0 UM* -> 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 1 2 UM* -> 2 0 }T  Actual:Expected 0 =?= 0 2 =?= 2 
+  okT{ 2 1 UM* -> 2 0 }T  Actual:Expected 0 =?= 0 2 =?= 2 
+  okT{ 3 3 UM* -> 9 0 }T  Actual:Expected 0 =?= 0 9 =?= 9 
+  okT{ MID-UINT+1 1 RSHIFT 2 UM* -> MID-UINT+1 0 }T  Actual:Expected 0 =?= 0 -8000 =?= -8000 
+  okT{ MID-UINT+1 2 UM* -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ MID-UINT+1 4 UM* -> 0 2 }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ 1S 2 UM* -> 1S 1 LSHIFT 1 }T  Actual:Expected 1 =?= 1 -2 =?= -2 
+  okT{ MAX-UINT MAX-UINT UM* -> 1 1 INVERT }T  Actual:Expected -2 =?= -2 1 =?= 1 
+  ok\ F.6.1.2370  UM/MOD
+  okT{ 0 0 1 UM/MOD -> 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ 1 0 1 UM/MOD -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ 1 0 2 UM/MOD -> 1 0 }T  Actual:Expected 0 =?= 0 1 =?= 1 
+  okT{ 3 0 2 UM/MOD -> 1 1 }T  Actual:Expected 1 =?= 1 1 =?= 1 
+  okT{ MAX-UINT 2 UM* 2 UM/MOD -> 0 MAX-UINT }T  Actual:Expected -1 =?= -1 0 =?= 0 
+  okT{ MAX-UINT 2 UM* MAX-UINT UM/MOD -> 0 2 }T  Actual:Expected 2 =?= 2 0 =?= 0 
+  okT{ MAX-UINT MAX-UINT UM* MAX-UINT UM/MOD -> 0 MAX-UINT }T  Actual:Expected -1 =?= -1 0 =?= 0 
+  ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
+  okTEST-END
+TEST SUMMARY: 300 run, 0 failed
+
+  ok\ ---- section-marker: undo everything above ----
+  okM15
+  ok

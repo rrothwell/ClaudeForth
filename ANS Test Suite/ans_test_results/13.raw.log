@@ -1,0 +1,107 @@
+\ ============================================================
+  ok\ ANS test suite - words implemented in forth6809.asm's
+  ok\ section 13 (13_compiling_words)
+  ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded
+  ok\ first, in that order (the prelude itself uses T{/->/}T, so
+  ok\ ttester.fs must come first). Extracted from the ANS Forth
+  ok\ Standard, Annex F
+  ok\ (https://forth-standard.org/standard/testsuite), which is
+  ok\ explicitly redistributable per its own copyright notice.
+  ok\ ============================================================
+  ok\ ---- section-marker: makes this file independently runnable ----
+  ok\ M13 snapshots the dictionary/HERE state right before this
+  ok\ file's own definitions begin. Invoking M13 at the end (below)
+  ok\ erases everything this file defined - including M13 itself -
+  ok\ restoring the system to the state it was in just after
+  ok\ ttester.fs + 00_test_prelude.fs were loaded. This lets the
+  ok\ automation load/run/reset one section file at a time, in any
+  ok\ order, without cross-file dictionary pollution.
+  okMARKER M13
+  ok\ Reset the pass/fail counters, record the stack depth.
+  okTEST-BEGIN
+  ok\ F.6.1.0070  ' (TICK)
+  okT{ : GT1 123 ; -> }T
+  okT{ ' GT1 EXECUTE -> 123 }T  Actual:Expected 123 =?= 123 
+  ok\ F.6.1.2510  [']
+  okT{ : GT2 ['] GT1 ; IMMEDIATE -> }T
+  okT{ GT2 EXECUTE -> 123 }T  Actual:Expected 123 =?= 123 
+  ok\ F.6.1.0190  ."
+  okT{ : pb1 CR ." You should see 2345: " 2345 . ; pb1 -> }T
+You should see 2345: 2345 
+  ok\ See F.6.1.1320 EMIT.
+  ok\ F.6.1.0550  >BODY
+  okT{ CREATE CR0 -> }T
+  okT{ ' CR0 >BODY -> HERE }T  Actual:Expected 7805 =?= 7805 
+  ok\ F.6.1.1370  EXECUTE
+  ok\ See F.6.1.0070 ' and F.6.1.2510 '].
+  ok\ F.6.1.1710  IMMEDIATE
+  okT{ 123 CONSTANT iw1 IMMEDIATE iw1 -> 123 }T  Actual:Expected 123 =?= 123 
+  okT{ : iw2 iw1 LITERAL ; iw2 -> 123 }T  Actual:Expected 123 =?= 123 
+  okT{ VARIABLE iw3 IMMEDIATE 234 iw3 ! iw3 @ -> 234 }T  Actual:Expected 234 =?= 234 
+  okT{ : iw4 iw3 [ @ ] LITERAL ; iw4 -> 234 }T  Actual:Expected 234 =?= 234 
+  okT{ :NONAME [ 345 ] iw3 [ ! ] ; DROP iw3 @ -> 345 }T  Actual:Expected 345 =?= 345 
+  okT{ CREATE iw5 456 , IMMEDIATE -> }T
+  okT{ :NONAME iw5 [ @ iw3 ! ] ; DROP iw3 @ -> 456 }T  Actual:Expected 456 =?= 456 
+  okT{ : iw6 CREATE , IMMEDIATE DOES> @ 1+ ; -> }T
+  okT{ 111 iw6 iw7 iw7 -> 112 }T  Actual:Expected 112 =?= 112 
+  okT{ : iw8 iw7 LITERAL 1+ ; iw8 -> 113 }T  Actual:Expected 113 =?= 113 
+  okT{ : iw9 CREATE , DOES> @ 2 + IMMEDIATE ; -> }T
+  ok: find-iw BL WORD FIND NIP ;
+  ok\ iw10 is not immediate
+  okT{ 222 iw9 iw10 find-iw iw10 -> -1 }T  Actual:Expected -1 =?= -1 
+  ok\ iw10 becomes immediate
+  okT{ iw10 find-iw iw10 -> 224 1 }T  Actual:Expected 1 =?= 1 224 =?= 224 
+  ok\ F.6.1.1780  LITERAL
+  okT{ : GT3 GT2 LITERAL ; -> }T
+  okT{ GT3 -> ' GT1 }T  Actual:Expected 77CD =?= 77CD 
+  ok\ F.6.1.2033  POSTPONE
+  okT{ : GT4 POSTPONE GT1 ; IMMEDIATE -> }T
+  okT{ : GT5 GT4 ; -> }T
+  okT{ GT5 -> 123 }T  Actual:Expected 123 =?= 123 
+  okT{ : GT6 345 ; IMMEDIATE -> }T
+  okT{ : GT7 POSTPONE GT6 ; -> }T
+  okT{ GT7 -> 345 }T  Actual:Expected 345 =?= 345 
+  ok\ F.6.1.2165  S"
+  okT{ : GC4 S" XY" ; -> }T
+  okT{ GC4 SWAP DROP -> 2 }T  Actual:Expected 2 =?= 2 
+  okT{ GC4 DROP DUP C@ SWAP CHAR+ C@ -> 58 59 }T  Actual:Expected 59 =?= 59 58 =?= 58 
+  ok: GC5 S" A String"2DROP ;
+  okT{ GC5 -> }T
+  ok\ F.6.1.2250  STATE
+  okT{ : GT8 STATE @ ; IMMEDIATE -> }T
+  okT{ GT8 -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ : GT9 GT8 LITERAL ; -> }T
+  okT{ GT9 0= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  ok\ F.6.1.2500  [
+  ok\ GC1 belongs here in the authoritative Annex F source (right next to
+  ok\ the CHAR/[CHAR] tests, in the unsplit original) - our section split
+  ok\ moved its "real" definition into 19_string_words.tests.fs, which
+  ok\ loads after this file, leaving GC3 below with a forward reference.
+  ok\ Defining it locally here too (harmless redefinition when 19 runs
+  ok\ later) restores the dependency this test needs.
+  okT{ : GC1 [CHAR] X ; -> }T
+  okT{ : GC3 [ GC1 ] LITERAL ; -> }T
+  okT{ GC3 -> 58 }T  Actual:Expected 58 =?= 58 
+  ok\ F.6.1.2540  ]
+  ok\ See F.6.1.2500 [.
+  ok\ F.6.2.0945  COMPILE,
+  ok:NONAME DUP + ;
+  okCONSTANT dup+   
+  okT{ : q dup+ COMPILE, ; -> }T
+  okT{ : as [ q ] ; -> }T
+  okT{ 123 as -> 246 }T  Actual:Expected 246 =?= 246 
+  ok\ F.6.2.2530  [COMPILE]
+  okT{ : [c1] [COMPILE] DUP ; IMMEDIATE -> }T
+  okT{ 123 [c1] -> 123 123 }T  Actual:Expected 123 =?= 123 123 =?= 123 
+  okT{ : [c2] [COMPILE] [c1] ; -> }T
+  okT{ 234 [c2] -> 234 234 }T  Actual:Expected 234 =?= 234 234 =?= 234 
+  okT{ : [cif] [COMPILE] IF ; IMMEDIATE -> }T
+  okT{ : [c3] [cif] 111 ELSE 222 THEN ; -> }T
+  okT{ -1 [c3] -> 111 }T   T{ 0 [c3] -> 222 }T  Actual:Expected 111 =?= 111   Actual:Expected 222 =?= 222 
+  ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
+  okTEST-END
+TEST SUMMARY: 50 run, 0 failed
+
+  ok\ ---- section-marker: undo everything above ----
+  okM13
+  ok

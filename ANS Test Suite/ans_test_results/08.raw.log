@@ -1,0 +1,173 @@
+\ ============================================================
+  ok\ ANS test suite - words implemented in forth6809.asm's
+  ok\ section 8 (08_defining_words)
+  ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded
+  ok\ first, in that order (the prelude itself uses T{/->/}T, so
+  ok\ ttester.fs must come first). Extracted from the ANS Forth
+  ok\ Standard, Annex F
+  ok\ (https://forth-standard.org/standard/testsuite), which is
+  ok\ explicitly redistributable per its own copyright notice.
+  ok\ ============================================================
+  ok\ ---- section-marker: makes this file independently runnable ----
+  ok\ M08 snapshots the dictionary/HERE state right before this
+  ok\ file's own definitions begin. Invoking M08 at the end (below)
+  ok\ erases everything this file defined - including M08 itself -
+  ok\ restoring the system to the state it was in just after
+  ok\ ttester.fs + 00_test_prelude.fs were loaded. This lets the
+  ok\ automation load/run/reset one section file at a time, in any
+  ok\ order, without cross-file dictionary pollution.
+  okMARKER M08
+  ok\ Reset the pass/fail counters, record the stack depth.
+  okTEST-BEGIN
+  ok\ F.6.1.0450  : (COLON)
+  okT{ : NOP : POSTPONE ; ; -> }T
+  okT{ NOP NOP1 NOP NOP2 -> }T
+  okT{ NOP1 -> }T
+  okT{ NOP2 -> }T
+  ok\ The following tests the dictionary search order:
+  okT{ : GDX 123 ; : GDX GDX 234 ; -> }T
+  okT{ GDX -> 123 234 }T  Actual:Expected 234 =?= 234 123 =?= 123 
+  ok\ F.6.1.0460  ;
+  ok\ See F.6.1.0450 :.
+  ok\ F.6.1.0950  CONSTANT
+  okT{ 123 CONSTANT X123 -> }T
+  okT{ X123 -> 123 }T  Actual:Expected 123 =?= 123 
+  okT{ : EQU CONSTANT ; -> }T
+  okT{ X123 EQU Y123 -> }T
+  okT{ Y123 -> 123 }T  Actual:Expected 123 =?= 123 
+  ok\ F.6.1.1000  CREATE
+  ok\ See F.6.1.0550 >BODY and F.6.1.1250 DOES>.
+  ok\ F.6.1.1250  DOES>
+  okT{ : DOES1 DOES> @ 1 + ; -> }T
+  okT{ : DOES2 DOES> @ 2 + ; -> }T
+  okT{ CREATE CR1 -> }T
+  okT{ CR1 -> HERE }T  Actual:Expected 781C =?= 781C 
+  okT{ 1 , -> }T
+  okT{ CR1 @ -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ DOES1 -> }T
+  okT{ CR1 -> 2 }T  Actual:Expected 2 =?= 2 
+  okT{ DOES2 -> }T
+  okT{ CR1 -> 3 }T  Actual:Expected 3 =?= 3 
+  okT{ : WEIRD: CREATE DOES> 1 + DOES> 2 + ; -> }T
+  okT{ WEIRD: W1 -> }T
+  okT{ ' W1 >BODY -> HERE }T  Actual:Expected 783B =?= 783B 
+  okT{ W1 -> HERE 1 + }T  Actual:Expected 783C =?= 783C 
+  okT{ W1 -> HERE 2 + }T  Actual:Expected 783D =?= 783D 
+  ok\ F.6.1.2410  VARIABLE
+  okT{ VARIABLE V1 -> }T
+  okT{ 123 V1 ! -> }T
+  okT{ V1 @ -> 123 }T  Actual:Expected 123 =?= 123 
+  ok\ F.6.2.0455  :NONAME
+  okVARIABLE nn1
+  okVARIABLE nn2   
+  okT{ :NONAME 1234 ; nn1 ! -> }T
+  okT{ :NONAME 9876 ; nn2 ! -> }T
+  okT{ nn1 @ EXECUTE -> 1234 }T  Actual:Expected 1234 =?= 1234 
+  okT{ nn2 @ EXECUTE -> 9876 }T  Actual:Expected -678A =?= -678A 
+  ok\ F.6.2.0698  ACTION-OF
+  okT{ DEFER defer1 -> }T
+  okT{ : action-defer1 ACTION-OF defer1 ; -> }T
+  okT{ ' * ' defer1 DEFER! -> }T
+  okT{ 2 3 defer1 -> 6 }T  Actual:Expected 6 =?= 6 
+  okT{ ACTION-OF defer1 -> ' * }T  Actual:Expected -1267 =?= -1267 
+  okT{ action-defer1 -> ' * }T  Actual:Expected -1267 =?= -1267 
+  okT{ ' + IS defer1 -> }T
+  okT{ 1 2 defer1 -> 3 }T  Actual:Expected 3 =?= 3 
+  okT{ ACTION-OF defer1 -> ' + }T  Actual:Expected -12BD =?= -12BD 
+  okT{ action-defer1 -> ' + }T  Actual:Expected -12BD =?= -12BD 
+  ok\ F.6.2.0825  BUFFER: - the "127" literals below need DECIMAL, but a
+  ok\ bare DECIMAL with no restore leaks the base change forward into
+  ok\ whatever section file loads next (MARKER only resets the
+  ok\ dictionary/HERE, never BASE) - save/restore locally instead, so
+  ok\ this file keeps the "load in any order" promise its own header
+  ok\ comment makes.
+  ok\ BUG FIX (round 1): was "BASE @ >R DECIMAL ... R> BASE !" - >R/R>
+  ok\ are unsafe spanning separate top-level lines in this subroutine-
+  ok\ threaded system (the return stack IS the hardware call stack; >R
+  ok\ tucks its value underneath its own return address, which only
+  ok\ stays correct while control never returns past that point - but
+  ok\ QLOOP returns from INTERPRET after every sent line, so by the time
+  ok\ R> runs, many lines later, the stashed value sits where some long-
+  ok\ since-returned call frame's return address used to be, and
+  ok\ whichever RTS reaches it first jumps into garbage memory).
+  ok\ BUG FIX (round 2): switched to "BASE @ DECIMAL ... BASE !" (plain
+  ok\ data stack, no >R/R>) - safe from the above, but still fragile in
+  ok\ a different way: an UNCAUGHT error anywhere in between resets the
+  ok\ whole data stack to empty (QLOOP's own top-level recovery), wiping
+  ok\ the parked value, so a later BASE ! would restore garbage. This
+  ok\ file itself doesn't throw uncaught errors, but the save/restore
+  ok\ pattern shouldn't rely on that file by file. Unconditional restore
+  ok\ instead - no save needed, since ambient base entering this block
+  ok\ is always HEX by this corpus's own convention (set once by
+  ok\ 00_test_prelude.fs and kept correct by every file's own habit of
+  ok\ restoring it) - so just set it back to HEX directly, immune to
+  ok\ anything that happens to the stack in between.
+  okDECIMAL
+  okT{ 127 CHARS BUFFER: TBUF1 -> }T
+  okT{ 127 CHARS BUFFER: TBUF2 -> }T
+  ok\ Buffer is aligned   
+  okT{ TBUF1 ALIGNED -> TBUF1 }T  Actual:Expected 561 =?= 561 
+  ok\ Buffers do not overlap   
+  okT{ TBUF2 TBUF1 - ABS 127 CHARS < -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okHEX
+  ok\ Buffer can be written to
+  ok1 CHARS CONSTANT /CHAR
+  ok: TFULL? ( c-addr n char -- flag )
+TRUE 2SWAP CHARS OVER + SWAP ?DO
+OVER I C@ = AND
+/CHAR +LOOP NIP
+;
+  okT{ TBUF1 127 CHAR * FILL -> }T
+  okT{ TBUF1 127 CHAR * TFULL? -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ TBUF1 127 0 FILL -> }T
+  okT{ TBUF1 127 0 TFULL? -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  ok\ F.6.2.1173  DEFER
+  okT{ DEFER defer2 -> }T
+  okT{ ' * ' defer2 DEFER! -> }T
+  okT{ 2 3 defer2 -> 6 }T  Actual:Expected 6 =?= 6 
+  okT{ ' + IS defer2 -> }T
+  okT{ 1 2 defer2 -> 3 }T  Actual:Expected 3 =?= 3 
+  ok\ F.6.2.1175  DEFER!
+  okT{ DEFER defer3 -> }T
+  okT{ ' * ' defer3 DEFER! -> }T
+  okT{ 2 3 defer3 -> 6 }T  Actual:Expected 6 =?= 6 
+  okT{ ' + ' defer3 DEFER! -> }T
+  okT{ 1 2 defer3 -> 3 }T  Actual:Expected 3 =?= 3 
+  ok\ F.6.2.1177  DEFER@
+  okT{ DEFER defer4 -> }T
+  okT{ ' * ' defer4 DEFER! -> }T
+  okT{ 2 3 defer4 -> 6 }T  Actual:Expected 6 =?= 6 
+  okT{ ' defer4 DEFER@ -> ' * }T  Actual:Expected -1267 =?= -1267 
+  okT{ ' + IS defer4 -> }T
+  okT{ 1 2 defer4 -> 3 }T  Actual:Expected 3 =?= 3 
+  okT{ ' defer4 DEFER@ -> ' + }T  Actual:Expected -12BD =?= -12BD 
+  ok\ F.6.2.1725  IS
+  okT{ DEFER defer5 -> }T
+  okT{ : is-defer5 IS defer5 ; -> }T
+  okT{ ' * IS defer5 -> }T
+  okT{ 2 3 defer5 -> 6 }T  Actual:Expected 6 =?= 6 
+  okT{ ' + is-defer5 -> }T
+  okT{ 1 2 defer5 -> 3 }T  Actual:Expected 3 =?= 3 
+  ok\ F.6.2.2295  TO
+  ok\ See F.6.2.2405 VALUE.
+  ok\ F.6.2.2405  VALUE
+  okT{ 111 VALUE v1 -> }T
+  okT{ -999 VALUE v2 -> }T
+  okT{ v1 -> 111 }T  Actual:Expected 111 =?= 111 
+  okT{ v2 -> -999 }T  Actual:Expected -999 =?= -999 
+  okT{ 222 TO v1 -> }T
+  okT{ v1 -> 222 }T  Actual:Expected 222 =?= 222 
+  okT{ : vd1 v1 ; -> }T
+  okT{ vd1 -> 222 }T  Actual:Expected 222 =?= 222 
+  okT{ : vd2 TO v2 ; -> }T
+  okT{ v2 -> -999 }T  Actual:Expected -999 =?= -999 
+  okT{ -333 vd2 -> }T
+  okT{ v2 -> -333 }T  Actual:Expected -333 =?= -333 
+  okT{ v1 -> 222 }T  Actual:Expected 222 =?= 222 
+  ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
+  okTEST-END
+TEST SUMMARY: 87 run, 0 failed
+
+  ok\ ---- section-marker: undo everything above ----
+  okM08
+  ok

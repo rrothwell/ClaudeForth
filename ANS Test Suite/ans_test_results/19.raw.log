@@ -1,0 +1,62 @@
+\ ============================================================
+  ok\ ANS test suite - words implemented in forth6809.asm's
+  ok\ section 19 (19_string_words)
+  ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded
+  ok\ first, in that order (the prelude itself uses T{/->/}T, so
+  ok\ ttester.fs must come first). Extracted from the ANS Forth
+  ok\ Standard, Annex F
+  ok\ (https://forth-standard.org/standard/testsuite), which is
+  ok\ explicitly redistributable per its own copyright notice.
+  ok\ ============================================================
+  ok\ ---- section-marker: makes this file independently runnable ----
+  ok\ M19 snapshots the dictionary/HERE state right before this
+  ok\ file's own definitions begin. Invoking M19 at the end (below)
+  ok\ erases everything this file defined - including M19 itself -
+  ok\ restoring the system to the state it was in just after
+  ok\ ttester.fs + 00_test_prelude.fs were loaded. This lets the
+  ok\ automation load/run/reset one section file at a time, in any
+  ok\ order, without cross-file dictionary pollution.
+  okMARKER M19
+  ok\ Reset the pass/fail counters, record the stack depth.
+  okTEST-BEGIN
+  okHERE 3 C, CHAR G C, CHAR T C, CHAR 1 C, CONSTANT GT1STRING
+  ok\ F.6.1.0895  CHAR
+  okT{ CHAR X -> 58 }T  Actual:Expected 58 =?= 58 
+  okT{ CHAR HELLO -> 48 }T  Actual:Expected 48 =?= 48 
+  ok\ F.6.1.0980  COUNT
+  okT{ GT1STRING COUNT -> GT1STRING CHAR+ 3 }T  Actual:Expected 3 =?= 3 77CE =?= 77CE 
+  ok\ F.6.1.2310  TYPE
+  ok\ See F.6.1.1320 EMIT.
+  ok\ F.6.1.2450  WORD
+  ok: GS3 WORD COUNT SWAP C@ ;
+  okT{ BL GS3 HELLO -> 5 CHAR H }T  Actual:Expected 48 =?= 48 5 =?= 5 
+  okT{ CHAR " GS3 GOODBYE" -> 7 CHAR G }T  Actual:Expected 47 =?= 47 7 =?= 7 
+  ok\ The next test MUST stay split over two lines: it needs an
+  ok\ empty parse area, i.e. WORD finds the end of line.
+  okT{ BL GS3
+  okDROP -> 0 }T  Actual:Expected 0 =?= 0 
+  ok\ F.6.1.2520  [CHAR]
+  okT{ : GC1 [CHAR] X ; -> }T
+  okT{ : GC2 [CHAR] HELLO ; -> }T
+  okT{ GC1 -> 58 }T  Actual:Expected 58 =?= 58 
+  okT{ GC2 -> 48 }T  Actual:Expected 48 =?= 48 
+  ok\ F.6.2.2020  PARSE-NAME
+  okT{ PARSE-NAME abcd S" abcd" S= -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ PARSE-NAME abcde S" abcde" S= -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  ok\ test empty parse area - these two MUST stay split over two lines
+  okT{ PARSE-NAME
+  okNIP -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ PARSE-NAME
+  okNIP -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ : parse-name-test ( "name1" "name2" -- n ) PARSE-NAME PARSE-NAME S= ; -> }T
+  okT{ parse-name-test abcd abcd -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ parse-name-test abcde abcdf -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ parse-name-test abcdf abcde -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ parse-name-test abcde abcde -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
+  okTEST-END
+TEST SUMMARY: 19 run, 0 failed
+
+  ok\ ---- section-marker: undo everything above ----
+  okM19
+  ok

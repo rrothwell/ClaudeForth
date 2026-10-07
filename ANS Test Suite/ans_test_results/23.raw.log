@@ -1,6 +1,6 @@
 \ ============================================================
   ok\ ANS test suite - words implemented in forth6809.asm's
-  ok\ section 21 (21_base_radix)
+  ok\ section 23 (23_comment_words)
   ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded
   ok\ first, in that order (the prelude itself uses T{/->/}T, so
   ok\ ttester.fs must come first). Extracted from the ANS Forth
@@ -9,27 +9,24 @@
   ok\ explicitly redistributable per its own copyright notice.
   ok\ ============================================================
   ok\ ---- section-marker: makes this file independently runnable ----
-  ok\ M21 snapshots the dictionary/HERE state right before this
-  ok\ file's own definitions begin. Invoking M21 at the end (below)
-  ok\ erases everything this file defined - including M21 itself -
+  ok\ M23 snapshots the dictionary/HERE state right before this
+  ok\ file's own definitions begin. Invoking M23 at the end (below)
+  ok\ erases everything this file defined - including M23 itself -
   ok\ restoring the system to the state it was in just after
   ok\ ttester.fs + 00_test_prelude.fs were loaded. This lets the
   ok\ automation load/run/reset one section file at a time, in any
   ok\ order, without cross-file dictionary pollution.
-  okMARKER M21
+  okMARKER M23
   ok\ Reset the pass/fail counters, record the stack depth.
   okTEST-BEGIN
-  ok\ F.6.1.0750  BASE
-  ok: GN2 ( -- 16 10 ) BASE @ >R HEX BASE @ DECIMAL BASE @ R> BASE ! ;   
-  okT{ GN2 -> 10 A }T  Actual:Expected A =?= A 10 =?= 10 
-  ok\ F.6.1.1170  DECIMAL
-  ok\ See F.6.1.0750 BASE.
-  ok\ F.6.2.1660  HEX
-  ok\ See F.6.1.0750 BASE.
+  ok\ F.6.1.0080  (
+  ok\ There is no space either side of the ).  
+  okT{ ( A comment)1234 -> 1234 }T  Actual:Expected 1234 =?= 1234 
+  okT{ : pc1 ( A comment)1234 ; pc1 -> 1234 }T  Actual:Expected 1234 =?= 1234 
   ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
   okTEST-END
-TEST SUMMARY: 1 run, 0 failed
+TEST SUMMARY: 2 run, 0 failed
 
   ok\ ---- section-marker: undo everything above ----
-  okM21
+  okM23
   ok

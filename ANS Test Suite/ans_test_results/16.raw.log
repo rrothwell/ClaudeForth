@@ -1,0 +1,94 @@
+\ ============================================================
+  ok\ ANS test suite - words implemented in forth6809.asm's
+  ok\ section 16 (16_logic_shifts_address_arith)
+  ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded
+  ok\ first, in that order (the prelude itself uses T{/->/}T, so
+  ok\ ttester.fs must come first). Extracted from the ANS Forth
+  ok\ Standard, Annex F
+  ok\ (https://forth-standard.org/standard/testsuite), which is
+  ok\ explicitly redistributable per its own copyright notice.
+  ok\ ============================================================
+  ok\ ---- section-marker: makes this file independently runnable ----
+  ok\ M16 snapshots the dictionary/HERE state right before this
+  ok\ file's own definitions begin. Invoking M16 at the end (below)
+  ok\ erases everything this file defined - including M16 itself -
+  ok\ restoring the system to the state it was in just after
+  ok\ ttester.fs + 00_test_prelude.fs were loaded. This lets the
+  ok\ automation load/run/reset one section file at a time, in any
+  ok\ order, without cross-file dictionary pollution.
+  okMARKER M16
+  ok\ Reset the pass/fail counters, record the stack depth.
+  okTEST-BEGIN
+  ok\ F.6.1.0705  ALIGN
+  okALIGN 1 ALLOT HERE ALIGN HERE 3 CELLS ALLOT
+  okCONSTANT A-ADDR 
+  okCONSTANT UA-ADDR   
+  okT{ UA-ADDR ALIGNED -> A-ADDR }T  Actual:Expected 77CE =?= 77CE 
+  okT{ 1 A-ADDR C! A-ADDR C@ -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ 1234 A-ADDR ! A-ADDR @ -> 1234 }T  Actual:Expected 1234 =?= 1234 
+  okT{ 123 456 A-ADDR 2! A-ADDR 2@ -> 123 456 }T  Actual:Expected 456 =?= 456 123 =?= 123 
+  okT{ 2 A-ADDR CHAR+ C! A-ADDR CHAR+ C@ -> 2 }T  Actual:Expected 2 =?= 2 
+  okT{ 3 A-ADDR CELL+ C! A-ADDR CELL+ C@ -> 3 }T  Actual:Expected 3 =?= 3 
+  okT{ 1234 A-ADDR CELL+ ! A-ADDR CELL+ @ -> 1234 }T  Actual:Expected 1234 =?= 1234 
+  okT{ 123 456 A-ADDR CELL+ 2! A-ADDR CELL+ 2@ -> 123 456 }T  Actual:Expected 456 =?= 456 123 =?= 123 
+  ok\ F.6.1.0720  AND
+  okT{ 0 0 AND -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 0 1 AND -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 1 0 AND -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 1 1 AND -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ 0 INVERT 1 AND -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ 1 INVERT 1 AND -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 0S 0S AND -> 0S }T  Actual:Expected 0 =?= 0 
+  okT{ 0S 1S AND -> 0S }T  Actual:Expected 0 =?= 0 
+  okT{ 1S 0S AND -> 0S }T  Actual:Expected 0 =?= 0 
+  okT{ 1S 1S AND -> 1S }T  Actual:Expected -1 =?= -1 
+  ok\ F.6.1.0880  CELL+
+  ok\ See F.6.1.0150 ,.
+  ok\ F.6.1.0890  CELLS
+  ok: BITS ( X -- U )
+0 SWAP BEGIN DUP WHILE
+DUP MSB AND IF >R 1+ R> THEN 2*
+REPEAT DROP ;
+  okT{ 1 CELLS 1 < -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 1 CELLS 1 CHARS MOD -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 1S BITS 10 < -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  ok\ F.6.1.0897  CHAR+
+  ok\ See F.6.1.0860 C,.
+  ok\ F.6.1.0898  CHARS
+  okT{ 1 CHARS 1 < -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 1 CHARS 1 CELLS > -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  ok\ F.6.1.1720  INVERT
+  okT{ 0S INVERT -> 1S }T  Actual:Expected -1 =?= -1 
+  okT{ 1S INVERT -> 0S }T  Actual:Expected 0 =?= 0 
+  ok\ F.6.1.1805  LSHIFT
+  okT{ 1 0 LSHIFT -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ 1 1 LSHIFT -> 2 }T  Actual:Expected 2 =?= 2 
+  okT{ 1 2 LSHIFT -> 4 }T  Actual:Expected 4 =?= 4 
+  okT{ 1 F LSHIFT -> 8000 }T  Actual:Expected -8000 =?= -8000 
+  okT{ 1S 1 LSHIFT 1 XOR -> 1S }T  Actual:Expected -1 =?= -1 
+  okT{ MSB 1 LSHIFT -> 0 }T  Actual:Expected 0 =?= 0 
+  ok\ F.6.1.1980  OR
+  okT{ 0S 0S OR -> 0S }T  Actual:Expected 0 =?= 0 
+  okT{ 0S 1S OR -> 1S }T  Actual:Expected -1 =?= -1 
+  okT{ 1S 0S OR -> 1S }T  Actual:Expected -1 =?= -1 
+  okT{ 1S 1S OR -> 1S }T  Actual:Expected -1 =?= -1 
+  ok\ F.6.1.2162  RSHIFT
+  okT{ 1 0 RSHIFT -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ 1 1 RSHIFT -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ 2 1 RSHIFT -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ 4 2 RSHIFT -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ 8000 F RSHIFT -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ MSB 1 RSHIFT MSB AND -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ MSB 1 RSHIFT 2* -> MSB }T  Actual:Expected -8000 =?= -8000 
+  ok\ F.6.1.2490  XOR
+  okT{ 0S 0S XOR -> 0S }T  Actual:Expected 0 =?= 0 
+  okT{ 0S 1S XOR -> 1S }T  Actual:Expected -1 =?= -1 
+  okT{ 1S 0S XOR -> 1S }T  Actual:Expected -1 =?= -1 
+  okT{ 1S 1S XOR -> 0S }T  Actual:Expected 0 =?= 0 
+  ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
+  okTEST-END
+TEST SUMMARY: 46 run, 0 failed
+
+  ok\ ---- section-marker: undo everything above ----
+  okM16
+  ok

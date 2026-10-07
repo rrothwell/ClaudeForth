@@ -1,0 +1,97 @@
+\ ============================================================
+  ok\ ANS test suite - words implemented in forth6809.asm's
+  ok\ section 17 (17_comparison)
+  ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded
+  ok\ first, in that order (the prelude itself uses T{/->/}T, so
+  ok\ ttester.fs must come first). Extracted from the ANS Forth
+  ok\ Standard, Annex F
+  ok\ (https://forth-standard.org/standard/testsuite), which is
+  ok\ explicitly redistributable per its own copyright notice.
+  ok\ ============================================================
+  ok\ ---- section-marker: makes this file independently runnable ----
+  ok\ M17 snapshots the dictionary/HERE state right before this
+  ok\ file's own definitions begin. Invoking M17 at the end (below)
+  ok\ erases everything this file defined - including M17 itself -
+  ok\ restoring the system to the state it was in just after
+  ok\ ttester.fs + 00_test_prelude.fs were loaded. This lets the
+  ok\ automation load/run/reset one section file at a time, in any
+  ok\ order, without cross-file dictionary pollution.
+  okMARKER M17
+  ok\ Reset the pass/fail counters, record the stack depth.
+  okTEST-BEGIN
+  ok\ F.6.1.0250  0<
+  okT{ 0 0< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ -1 0< -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ MIN-INT 0< -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ 1 0< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MAX-INT 0< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  ok\ F.6.1.0270  0=
+  okT{ 0 0= -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ 1 0= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 2 0= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ -1 0= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MAX-UINT 0= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MIN-INT 0= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MAX-INT 0= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  ok\ F.6.1.0480  <
+  okT{ 0 1 < -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ 1 2 < -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ -1 0 < -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ -1 1 < -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ MIN-INT 0 < -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ MIN-INT MAX-INT < -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ 0 MAX-INT < -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ 0 0 < -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 1 1 < -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 1 0 < -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 2 1 < -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 0 -1 < -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 1 -1 < -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 0 MIN-INT < -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MAX-INT MIN-INT < -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MAX-INT 0 < -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  ok\ F.6.1.0530  =
+  okT{ 0 0 = -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ 1 1 = -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ -1 -1 = -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ 1 0 = -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ -1 0 = -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 0 1 = -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 0 -1 = -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  ok\ F.6.1.0540  >
+  okT{ 0 1 > -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 1 2 > -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ -1 0 > -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ -1 1 > -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MIN-INT 0 > -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MIN-INT MAX-INT > -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 0 MAX-INT > -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 0 0 > -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 1 1 > -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 1 0 > -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ 2 1 > -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ 0 -1 > -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ 1 -1 > -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ 0 MIN-INT > -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ MAX-INT MIN-INT > -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ MAX-INT 0 > -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  ok\ F.6.1.2340  U<
+  okT{ 0 1 U< -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ 1 2 U< -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ 0 MID-UINT U< -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ 0 MAX-UINT U< -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ MID-UINT MAX-UINT U< -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ 0 0 U< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 1 1 U< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 1 0 U< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ 2 1 U< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MID-UINT 0 U< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MAX-UINT 0 U< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MAX-UINT MID-UINT U< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
+  okTEST-END
+TEST SUMMARY: 63 run, 0 failed
+
+  ok\ ---- section-marker: undo everything above ----
+  okM17
+  ok

@@ -1,0 +1,68 @@
+\ ============================================================
+  ok\ ANS test suite - words implemented in forth6809.asm's
+  ok\ section 26 (26_abort_quit_headers)
+  ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded
+  ok\ first, in that order (the prelude itself uses T{/->/}T, so
+  ok\ ttester.fs must come first). Extracted from the ANS Forth
+  ok\ Standard, Annex F
+  ok\ (https://forth-standard.org/standard/testsuite), which is
+  ok\ explicitly redistributable per its own copyright notice.
+  ok\ ============================================================
+  ok\ ---- section-marker: makes this file independently runnable ----
+  ok\ M26 snapshots the dictionary/HERE state right before this
+  ok\ file's own definitions begin. Invoking M26 at the end (below)
+  ok\ erases everything this file defined - including M26 itself -
+  ok\ restoring the system to the state it was in just after
+  ok\ ttester.fs + 00_test_prelude.fs were loaded. This lets the
+  ok\ automation load/run/reset one section file at a time, in any
+  ok\ order, without cross-file dictionary pollution.
+  okMARKER M26
+  ok\ Reset the pass/fail counters, record the stack depth.
+  okTEST-BEGIN
+  ok\ F.9.6.2.0670  ABORT
+  ok\ See F.9.6.2.0680 ABORT".
+  ok\ F.9.6.2.0680  ABORT" - exc_undef (-13) and the OF branch values need
+  ok\ DECIMAL; saved/restored locally rather than a bare DECIMAL, for
+  ok\ the same reason as the other files this round (this one happens
+  ok\ to be last in load order, so nothing downstream is affected
+  ok\ today, but there's no guarantee it stays last).
+  ok\ BUG FIX (round 1): was "BASE @ >R DECIMAL ... R> BASE !" - unsafe
+  ok\ spanning separate top-level lines (see 08_defining_words.tests.fs's
+  ok\ matching comment for the full >R/R> mechanism).
+  ok\ BUG FIX (round 2): plain "BASE @ DECIMAL ... BASE !" is also
+  ok\ fragile here - this file tests ABORT/ABORT"/CATCH directly, a
+  ok\ plausible source of an uncaught error that would wipe a parked
+  ok\ stack value via QLOOP's top-level recovery. Unconditional restore
+  ok\ instead - see 08_defining_words.tests.fs for the full reasoning.
+  okDECIMAL
+  ok-1 CONSTANT exc_abort
+  ok-2 CONSTANT exc_abort"
+  ok-13 CONSTANT exc_undef
+  ok: t6 ABORT ;
+  ok: t10 77 SWAP ABORT" This should not be displayed" ;
+  ok: c6 CATCH
+CASE exc_abort OF 11 ENDOF
+exc_abort" OF 12 ENDOF
+exc_undef OF 13 ENDOF
+ENDCASE
+;
+  okT{ 1 2 ' t6 c6 -> 1 2 11 }T  Actual:Expected 11 =?= 11 2 =?= 2 1 =?= 1 
+  okT{ 3 0 ' t10 c6 -> 3 77 }T  Actual:Expected 77 =?= 77 3 =?= 3 
+  okT{ 4 5 ' t10 c6 -> 4 77 12 }TThis should not be displayed  Actual:Expected 12 =?= 12 77 =?= 77 4 =?= 4 
+  okHEX
+  ok\ F.6.2.1485  FALSE
+  ok\ Added after these tests were first organized: TRUE/FALSE were
+  ok\ not yet implemented as dictionary words at that point (see
+  ok\ README and the open-items checklist). Now resolved.
+  okT{ FALSE -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ FALSE -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  ok\ F.6.2.2298  TRUE
+  okT{ TRUE -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ TRUE -> 0 INVERT }T  Actual:Expected -1 =?= -1 
+  ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
+  okTEST-END
+TEST SUMMARY: 7 run, 0 failed
+
+  ok\ ---- section-marker: undo everything above ----
+  okM26
+  ok

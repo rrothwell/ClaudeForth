@@ -1,0 +1,85 @@
+\ ============================================================
+  ok\ ANS test suite - words implemented in forth6809.asm's
+  ok\ section 10 (10_query_accept_key_emit)
+  ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded
+  ok\ first, in that order (the prelude itself uses T{/->/}T, so
+  ok\ ttester.fs must come first). Extracted from the ANS Forth
+  ok\ Standard, Annex F
+  ok\ (https://forth-standard.org/standard/testsuite), which is
+  ok\ explicitly redistributable per its own copyright notice.
+  ok\ ============================================================
+  ok\ ---- section-marker: makes this file independently runnable ----
+  ok\ M10 snapshots the dictionary/HERE state right before this
+  ok\ file's own definitions begin. Invoking M10 at the end (below)
+  ok\ erases everything this file defined - including M10 itself -
+  ok\ restoring the system to the state it was in just after
+  ok\ ttester.fs + 00_test_prelude.fs were loaded. This lets the
+  ok\ automation load/run/reset one section file at a time, in any
+  ok\ order, without cross-file dictionary pollution.
+  okMARKER M10
+  ok\ Reset the pass/fail counters, record the stack depth.
+  okTEST-BEGIN
+  ok\ F.6.1.0695  ACCEPT
+  okCREATE ABUF 80 CHARS ALLOT
+  ok: ACCEPT-TEST
+CR ." PLEASE TYPE UP TO 80 CHARACTERS:" CR
+ABUF 80 ACCEPT
+CR ." RECEIVED: " [CHAR] " EMIT
+ABUF SWAP TYPE [CHAR] " EMIT CR
+;
+  okT{ ACCEPT-TEST -> }T
+PLEASE TYPE UP TO 80 CHARACTERS:
+\ F.6.1.0990  CR
+RECEIVED: "\ F.6.1.0990  CR"
+
+  ok\ See F.6.1.1320 EMIT.
+  ok\ F.6.1.1320  EMIT
+  ok: OUTPUT-TEST
+." YOU SHOULD SEE THE STANDARD GRAPHIC CHARACTERS:" CR
+41 BL DO I EMIT LOOP CR
+61 41 DO I EMIT LOOP CR
+7F 61 DO I EMIT LOOP CR
+." YOU SHOULD SEE 0-9 SEPARATED BY A SPACE:" CR
+9 1+ 0 DO I . LOOP CR
+." YOU SHOULD SEE 0-9 (WITH NO SPACES):" CR
+[CHAR] 9 1+ [CHAR] 0 DO I 0 SPACES EMIT LOOP CR
+." YOU SHOULD SEE A-G SEPARATED BY A SPACE:" CR
+[CHAR] G 1+ [CHAR] A DO I EMIT SPACE LOOP CR
+." YOU SHOULD SEE 0-5 SEPARATED BY TWO SPACES:" CR
+5 1+ 0 DO I [CHAR] 0 + EMIT 2 SPACES LOOP CR
+." YOU SHOULD SEE TWO SEPARATE LINES:" CR
+S" LINE 1" TYPE CR S" LINE 2" TYPE CR
+." YOU SHOULD SEE THE NUMBER RANGES OF SIGNED AND UNSIGNED NUMBERS:" CR
+." SIGNED: " MIN-INT . MAX-INT . CR
+." UNSIGNED: " 0 U. MAX-UINT U. CR
+;
+  okT{ OUTPUT-TEST -> }TYOU SHOULD SEE THE STANDARD GRAPHIC CHARACTERS:
+ !"#$%&'()*+,-./0123456789:;<=>?@
+ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`
+abcdefghijklmnopqrstuvwxyz{|}~
+YOU SHOULD SEE 0-9 SEPARATED BY A SPACE:
+0 1 2 3 4 5 6 7 8 9 
+YOU SHOULD SEE 0-9 (WITH NO SPACES):
+0123456789
+YOU SHOULD SEE A-G SEPARATED BY A SPACE:
+A B C D E F G 
+YOU SHOULD SEE 0-5 SEPARATED BY TWO SPACES:
+0  1  2  3  4  5  
+YOU SHOULD SEE TWO SEPARATE LINES:
+LINE 1
+LINE 2
+YOU SHOULD SEE THE NUMBER RANGES OF SIGNED AND UNSIGNED NUMBERS:
+SIGNED: -8000 7FFF 
+UNSIGNED: 0 FFFF 
+
+  ok\ F.6.1.2220  SPACE
+  ok\ See F.6.1.1320 EMIT.
+  ok\ F.6.1.2230  SPACES
+  ok\ See F.6.1.1320 EMIT.
+  ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
+  okTEST-END
+TEST SUMMARY: 2 run, 0 failed
+
+  ok\ ---- section-marker: undo everything above ----
+  okM10
+  ok

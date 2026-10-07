@@ -1,0 +1,145 @@
+\ ============================================================
+  ok\ ANS test suite - words implemented in forth6809.asm's
+  ok\ section 24 (24_environmental_query)
+  ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded
+  ok\ first, in that order (the prelude itself uses T{/->/}T, so
+  ok\ ttester.fs must come first). Extracted from the ANS Forth
+  ok\ Standard, Annex F
+  ok\ (https://forth-standard.org/standard/testsuite), which is
+  ok\ explicitly redistributable per its own copyright notice.
+  ok\ ============================================================
+  ok\ ---- section-marker: makes this file independently runnable ----
+  ok\ M24 snapshots the dictionary/HERE state right before this
+  ok\ file's own definitions begin. Invoking M24 at the end (below)
+  ok\ erases everything this file defined - including M24 itself -
+  ok\ restoring the system to the state it was in just after
+  ok\ ttester.fs + 00_test_prelude.fs were loaded. This lets the
+  ok\ automation load/run/reset one section file at a time, in any
+  ok\ order, without cross-file dictionary pollution.
+  okMARKER M24
+  ok\ Reset the pass/fail counters, record the stack depth.
+  okTEST-BEGIN
+  ok\ F.6.1.0560  >IN
+  okVARIABLE SCANS
+  ok\ This test must retain the multiline split 
+  ok\ to proceed to completion by scanning multiple lines.
+  ok\ It infinite loops in INTERPRET otherwise.
+  ok: RESCAN? -1 SCANS +! SCANS @ IF 0 >IN ! THEN ;
+  okT{ 2 SCANS !
+  ok 345 RESCAN?
+  ok -> 345 345 }T  Actual:Expected 345 =?= 345 345 =?= 345 
+  ok: GS2 5 SCANS ! S" 123 RESCAN?" EVALUATE ;
+  okT{ GS2 -> 123 123 123 123 123 }T  Actual:Expected 123 =?= 123 123 =?= 123 123 =?= 123 123 =?= 123 123 =?= 123 
+  ok\ These tests must start on a new line
+  ok\ This block's literals (123456, 14145, 8115...) need DECIMAL, but
+  ok\ the >NUMBER section right below needs ambient HEX back - its own
+  ok\ expected results include bare hex digits ("F", and BL's "20")
+  ok\ that aren't valid decimal numbers at all. Previously this file
+  ok\ called DECIMAL here and never switched back, which broke its own
+  ok\ later >NUMBER tests (not just the next file in load order, as
+  ok\ with 08/11/12 - this one broke itself). Save/restore locally.
+  ok\ BUG FIX (round 1): was "BASE @ >R DECIMAL ... R> BASE !" - unsafe
+  ok\ spanning separate top-level lines (see 08_defining_words.tests.fs's
+  ok\ matching comment for the full >R/R> mechanism). (GN1 and
+  ok\ >NUMBER-BASED below use >R/R> too, but entirely inside their own
+  ok\ single colon-definition, executed as one unbroken call - that's
+  ok\ the safe, standard use and is left alone.)
+  ok\ BUG FIX (round 2): plain "BASE @ DECIMAL ... BASE !" is also
+  ok\ fragile - an uncaught error anywhere in between wipes a parked
+  ok\ stack value via QLOOP's top-level recovery. Unconditional restore
+  ok\ instead - see 08_defining_words.tests.fs for the full reasoning.
+  ok\ BUG FIX (cell size): the original Annex F text used 123456 here,
+  ok\ which needs a 32-bit cell - in a 16-bit cell it wraps to $E240
+  ok\ (negative as signed), so "9 <" is wrongly true on the very first
+  ok\ pass, >IN lands on the "IN" of ">IN" and BADWORD throws -13. The
+  ok\ standard itself later changed this test to 12345 for 16-bit
+  ok\ systems (forth-standard.org >IN page). Expected results below
+  ok\ follow from the same digit-stripping: 12345 2345 345 45 5.
+  ok\ BUG FIX (missing text): the second test originally ended
+  ok\ "14 >IN ! GCD calculation" - those two words are deliberately
+  ok\ skipped over by the ">IN +!" 34-character jump; without them the
+  ok\ jump overshoots the end of the line instead of landing on "->".
+  ok\ Both tests rely on >IN pointing at or beyond the end of the line
+  ok\ being treated as end-of-input (WORD/PARSE/PARSE-NAME fix).
+  ok\ Kept in the standard's own two-line layout, which deliberately
+  ok\ exercises >IN landing just past the end of the first line.
+  okDECIMAL
+  okT{ 12345 DEPTH OVER 9 < 35 AND + 3 + >IN !
+  ok-> 12345 2345 345 45 5 }T  Actual:Expected 5 =?= 5 45 =?= 45 345 =?= 345 2345 =?= 2345 12345 =?= 12345 
+  okT{ 14145 8115 ?DUP 0= 34 AND >IN +! TUCK MOD 14 >IN ! GCD calculation
+  ok-> 15 }T  Actual:Expected 15 =?= 15 
+  okHEX
+  ok\ F.6.1.0570  >NUMBER
+  okCREATE GN-BUF 0 C,
+  ok: GN-STRING GN-BUF 1 ;
+  ok: GN-CONSUMED GN-BUF CHAR+ 0 ;
+  ok: GN' [CHAR] ' WORD CHAR+ C@ GN-BUF C! GN-STRING ;
+  okT{ 0 0 GN' 0' >NUMBER -> 0 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 781A =?= 781A 0 =?= 0 0 =?= 0 
+  okT{ 0 0 GN' 1' >NUMBER -> 1 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 781A =?= 781A 0 =?= 0 1 =?= 1 
+  okT{ 1 0 GN' 1' >NUMBER -> BASE @ 1+ 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 781A =?= 781A 0 =?= 0 11 =?= 11 
+  ok\ FOLLOWING SHOULD FAIL TO CONVERT
+  ok\ BUG FIX: these three tests used to be glued onto the end of this
+  ok\ comment's own line - the same "comment swallows the rest of the
+  ok\ line" hazard found and fixed in 12_control_flow.tests.fs,
+  ok\ 23_comment_words.tests.fs, 08_defining_words.tests.fs, and
+  ok\ 19_string_words.tests.fs - so none of them ever ran. Split onto
+  ok\ their own line below.
+  okT{ 0 0 GN' -' >NUMBER -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 7819 =?= 7819 0 =?= 0 0 =?= 0 
+  okT{ 0 0 GN' +' >NUMBER -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 7819 =?= 7819 0 =?= 0 0 =?= 0 
+  okT{ 0 0 GN' .' >NUMBER -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 7819 =?= 7819 0 =?= 0 0 =?= 0 
+  ok: >NUMBER-BASED BASE @ >R BASE ! >NUMBER R> BASE ! ;
+  okT{ 0 0 GN' 2' 10 >NUMBER-BASED -> 2 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 781A =?= 781A 0 =?= 0 2 =?= 2 
+  okT{ 0 0 GN' 2' 2 >NUMBER-BASED -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 7819 =?= 7819 0 =?= 0 0 =?= 0 
+  okT{ 0 0 GN' F' 10 >NUMBER-BASED -> F 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 781A =?= 781A 0 =?= 0 F =?= F 
+  okT{ 0 0 GN' G' 10 >NUMBER-BASED -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 7819 =?= 7819 0 =?= 0 0 =?= 0 
+  okT{ 0 0 GN' G' MAX-BASE >NUMBER-BASED -> 10 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 781A =?= 781A 0 =?= 0 10 =?= 10 
+  okT{ 0 0 GN' Z' MAX-BASE >NUMBER-BASED -> 23 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 781A =?= 781A 0 =?= 0 23 =?= 23 
+  ok: GN1 ( UD BASE -- UD' LEN )
+BASE @ >R BASE !
+<# #S #> 0 0 2SWAP >NUMBER SWAP DROP
+R> BASE ! ;
+  okT{ 0 0 2 GN1 -> 0 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 0 =?= 0 
+  okT{ MAX-UINT 0 2 GN1 -> MAX-UINT 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 -1 =?= -1 
+  okT{ MAX-UINT DUP 2 GN1 -> MAX-UINT DUP 0 }T  Actual:Expected 0 =?= 0 -1 =?= -1 -1 =?= -1 
+  okT{ 0 0 MAX-BASE GN1 -> 0 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 0 =?= 0 
+  okT{ MAX-UINT 0 MAX-BASE GN1 -> MAX-UINT 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 -1 =?= -1 
+  okT{ MAX-UINT DUP MAX-BASE GN1 -> MAX-UINT DUP 0 }T  Actual:Expected 0 =?= 0 -1 =?= -1 -1 =?= -1 
+  ok\ F.6.1.0770  BL
+  okT{ BL -> 20 }T  Actual:Expected 20 =?= 20 
+  ok\ F.6.1.1345  ENVIRONMENT?
+  ok\ ERRATUM IN THE STANDARD'S OWN TEST: "DUP 0= XOR INVERT" turns ANY
+  ok\ single flag into 0 (flag XOR (flag=0) is always -1, and INVERT
+  ok\ makes that 0), so the published X:deferred test "-> <TRUE>" can
+  ok\ never pass on any system. A contributor note on forth-standard.org's
+  ok\ ENVIRONMENT? page says the same, and also that a conforming system
+  ok\ may answer false to every query. Replaced it with a valid check:
+  ok\ whatever ENVIRONMENT? answers for X:deferred, the result must be
+  ok\ exactly one well-formed flag (0 or -1, no extra cells, which the
+  ok\ harness depth check enforces). X:notfound below is unchanged.
+  okT{ S" X:deferred" ENVIRONMENT? DUP 0= OVER TRUE = OR NIP -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  okT{ S" X:notfound" ENVIRONMENT? DUP 0= XOR INVERT -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  ok\ F.6.1.1360  EVALUATE
+  ok: GE1 S" 123" ; IMMEDIATE
+  ok: GE2 S" 123 1+" ; IMMEDIATE
+  ok: GE3 S" : GE4 345 ;" ;
+  ok: GE5 EVALUATE ; IMMEDIATE
+  okT{ GE1 EVALUATE -> 123 }T  Actual:Expected 123 =?= 123 
+  okT{ GE2 EVALUATE -> 124 }T  Actual:Expected 124 =?= 124 
+  okT{ GE3 EVALUATE -> }T
+  okT{ GE4 -> 345 }T  Actual:Expected 345 =?= 345 
+  okT{ : GE6 GE1 GE5 ; -> }T
+  okT{ GE6 -> 123 }T  Actual:Expected 123 =?= 123 
+  okT{ : GE7 GE2 GE5 ; -> }T
+  okT{ GE7 -> 124 }T  Actual:Expected 124 =?= 124 
+  ok\ F.6.1.2216  SOURCE
+  ok: GS1 S" SOURCE" 2DUP EVALUATE >R SWAP >R = R> R> = ;
+  okT{ GS1 -> <TRUE> <TRUE> }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  ok: GS4 SOURCE >IN ! DROP ;   
+  okT{ GS4 123 456 -> }T
+  ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
+  okTEST-END
+TEST SUMMARY: 34 run, 0 failed
+
+  ok\ ---- section-marker: undo everything above ----
+  okM24
+  ok
