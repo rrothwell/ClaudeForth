@@ -2,7 +2,7 @@
 # ==============================================================================
 # Script Name:  ans_test_runner.py
 # Description:  Triggers an ANS Test run with typical options.
-# Author:       Your Name (your.email@example.com)
+# Author:       Claude Chat
 # Date:         2026-10-07
 # Version:      1.0.0
 # Usage:        ./ans_test_runner.py
@@ -27,3 +27,4 @@ python3 ans_test_runner.py \
 #    --sections 08 09 10 11 12 13 14 15 16 17 18 19 20 21 23 24 26
 #    --rom-dest "$HOME/Library/Application Support/mame/roms/mecb6809/mecb6809.bin" \
 #    --serialpoll 0
+
