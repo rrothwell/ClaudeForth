@@ -39,13 +39,14 @@ This includes, from one terminal:
 
 1. Replacing the buggy 6850acia.cpp file  
 provided in the MAME git project with the modified version
-provide in the ClaudForth git project.
+provide in the ClaudeForth git project.
 1. Installing the mecb6809.cpp driver source file.
 1. Building the MAME project.
-1. Assembling. then installing the forth6809.asm 
+1. Assembling then installing, the forth6809.asm 
    as a .bin file into the MAME rom directory.
 
 ```bash
+# The update to the MAME executable.
 cp \
     ${HOME}/git/ClaudeForth/MECB6809\ Emulation/6850acia.cpp \
     ${HOME}/git/mame0288/src/devices/machine/6850acia.cpp    
@@ -58,6 +59,7 @@ make SUBTARGET=mecb6809 SOURCES=src/mame/homebrew/mecb6809.cpp TOOLS=1 REGENIE=1
 
 Then in another terminal: 
 ```bash
+# Providing the ROM file.
 cd ${HOME}/git/ClaudeForth
 lwasm --6809 --format=raw '
    --output=forth6809.bin --list=forth6809.lst \
@@ -73,7 +75,7 @@ cp forth6809.bin "${HOME}/Library/Application Support/mame/roms/mecb6809/mecb680
 #### Usage
 
 Then in another terminal,
-assuming a git clone to download this project,
+assuming a git clone to download this project.
  
 Navigate to the top level ClaudeForth directory. 
 and then to the ANS Test Suite. Execute the test runner script:
@@ -159,7 +161,7 @@ The terminal emulator should now respond to keyboard input,
 with the per character delay and handshaking preset.
 
 In a text editor supporting copy and paste, choose a forth source code file,
-select the text, copy it to the clipboard and then paste it into the minicome window.
+select the text, copy it to the clipboard and then paste it into the minicom window.
 All the files are load in this way, 
 in the same order as used by the python test runner.
 
@@ -172,7 +174,7 @@ in the same order as used by the python test runner.
 1. The ans_tests sub-directory containing the forth test files
    organised according to the glossary sections for forth6809.
 1. The ans_test_results sub-directory containing the log files
-   recording previois test run results.
+   recording previous test run results.
 1. Miscellaneous utility scripts.
 
 What follows is a more detailed description of the contents of ans_tests 
@@ -186,11 +188,13 @@ the following ttester.fs file is compiled.
 
 This file provides `[IF]`/`[ELSE]`/`[THEN]` 
 from the Programming-Tools word set. 
-These words are not provide by Claude Forth.
+These words are not provide by ClaudeForth.
 
-`ttester.fs` needs them immediately, in its own `HAS-FLOATING`/
-`HAS-FLOATING-STACK` checks, so this file loads first, ahead of even
-`ttester.fs`. It's the informative reference implementation given by
+`ttester.fs` needs them immediately, in its own conditional compilation of the
+`HAS-FLOATING`/`HAS-FLOATING-STACK` source blocks, so this file loads first, 
+ahead of even `ttester.fs`. 
+
+`[IF]`/`[ELSE]`/`[THEN]` is provided as a reference implementation by
 the standard itself (forth-standard.org/standard/tools/BracketELSE),
 built only from words forth6809.asm already has (`BL WORD COUNT S"
 COMPARE REFILL IF/ELSE/THEN BEGIN/WHILE/REPEAT/UNTIL ?DUP EXIT
@@ -232,8 +236,8 @@ It provides shared section setup utilities with support for:
 
 ### ANS Forth Tests
 
-The ANS Forth test files `NN_name.tests.fs` are aligned 
-with one file per forth6809.asm section 
+The ANS Forth test files, `NN_name.tests.fs`, 
+are aligned with one file per forth6809.asm section 
 (matching the exact same numbering and filenames as `forth6809_split/`).
 These contain every ANS test block for the words that each section implements.
 
@@ -328,5 +332,5 @@ Most of the Programming-Tools word set is also omitted
 (AHEAD, CS-PICK, CS-ROLL, N>R, [THEN] etc..
 They have no ANS test coverage relevant here.
 
-The Tools word set — `.S`, `WORDS`, `DUMP` are non-standard extensions
-with no official ANS test cases to begin with).
+The Tools word set — `.S`, `WORDS`, `DUMP` are non-standard extensions,
+so they have no official ANS test cases.
