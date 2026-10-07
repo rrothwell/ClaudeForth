@@ -75,6 +75,7 @@ brew install binutils
 |Solved reliability issues with MAME emulated 6850 ACIA serial communications, by using XON/XOFF software handshaking |:white_check_mark:|
 |Tests against ANS test suite, identifying, diagnosing and correcting bugs.  |:white_check_mark:|
 |Update documentation| |
+|Retest with assembler test suite and adjust expectations.| |
 |Optimisation for space, compiler performance & application performance| |
 |Update documentation| |
 |Burn ROM and install onto real MECB 6809 hardware. | |
