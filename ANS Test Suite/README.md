@@ -5,6 +5,7 @@
 The ANS Forth Test Suite is intended to prove that a forth distribution 
 is in compliance with the ANS Forth standard. 
 However full compliance requires other conditions to be satisfied. 
+Those conditions are not satisfied in this project.
 
 > Source: [https://forth-standard.org/standard/testsuite (Annex F)](https://forth-standard.org/standard/testsuite), fetched
 > 2026-07-15. Explicitly redistributable per the test harness's own header:
@@ -20,8 +21,9 @@ Modifications include:
 1. File splits by section.
 1. Sections can be executed individually, without dependencies on prior tests.
 1. Performance enhancements.
-1. Improved reporting.
+1. Improved reporting (`TEST-BEGIN`/`TEST-END`, see *Test Reporting* below).
 1. Corrections for test expectations that violate the standard.
+1. Adaptations for a 16-bit cell.
 
 Testing can target serial-connected hardware (MECB 6809) 
 or the MAME software emulation of a 6809 SBC with a 6850 ACIA.
@@ -39,7 +41,7 @@ This includes, from one terminal:
 
 1. Replacing the buggy 6850acia.cpp file  
 provided in the MAME git project with the modified version
-provide in the ClaudeForth git project.
+provided in the ClaudeForth git project.
 1. Installing the mecb6809.cpp driver source file.
 1. Building the MAME project.
 1. Assembling then installing, the forth6809.asm 
@@ -51,7 +53,7 @@ cp \
     ${HOME}/git/ClaudeForth/MECB6809\ Emulation/6850acia.cpp \
     ${HOME}/git/mame0288/src/devices/machine/6850acia.cpp    
 cp \
-    ${HOME}/git/ClaudeForth/MECB6809 Emulation/mecb6809.cpp \
+    ${HOME}/git/ClaudeForth/MECB6809\ Emulation/mecb6809.cpp \
     ${HOME}/git/mame0288/src/mame/homebrew/mecb6809.cpp 
 cd ${HOME}/git/mame0288    
 make SUBTARGET=mecb6809 SOURCES=src/mame/homebrew/mecb6809.cpp TOOLS=1 REGENIE=1 -j2
@@ -61,7 +63,7 @@ Then in another terminal:
 ```bash
 # Providing the ROM file.
 cd ${HOME}/git/ClaudeForth
-lwasm --6809 --format=raw '
+lwasm --6809 --format=raw \
    --output=forth6809.bin --list=forth6809.lst \
    --define=UNITTESTS=0 --define=TSTSELECTOR=15 \
    --define=SERIALPOLL=1 \
@@ -74,10 +76,9 @@ cp forth6809.bin "${HOME}/Library/Application Support/mame/roms/mecb6809/mecb680
 
 #### Usage
 
-Then in another terminal,
-assuming a git clone to download this project.
- 
-Navigate to the top level ClaudeForth directory. 
+In a further terminal,
+assuming a git clone to download this project,
+navigate to the top level ClaudeForth directory 
 and then to the ANS Test Suite. Execute the test runner script:
 
 ```bash
@@ -101,10 +102,20 @@ python3 ans_test_runner.py \
 `ans_test_runner.py` automates loading the setup forth files
 into a running forth6809 image.
 Then it loads the forth tests.
-The test runner reports summary PASS/FAIL 
+The test runner reports a summary PASS/FAIL 
 per section into the stderr of the terminal.
-The forth code via the test runner also reports detailed PASS/FAIL 
-per section into the the log files.
+The full transcript of each section, 
+including the `TEST SUMMARY` and any ttester assertion failure messages, 
+are written to a per-section log file in the `--log-dir` directory.
+
+A section PASSes when its `TEST SUMMARY` line reports zero failures
+and the section loaded without a compile error or line timeout.
+A section with no `TEST SUMMARY` line at all FAILs. 
+The runner prints a warning if it sees stack imbalance notes.
+
+To locate the data stack cell at which a section leaks,
+add the `--trace-depth` option. 
+The runner then asks the target for `DEPTH` after every line it sends.
 
 #### Operating Principles
 
@@ -115,21 +126,27 @@ or a real serial-connected MECB6809 with the Forth
 binary in EPROM (via pyserial). 
 
 The test runner applies per character delays, but doesn't apply end-of-line delays.
-Instead it uses forth6809's *own* line-by-line ok/"ERROR reply 
+Instead it uses forth6809's *own* line-by-line `ok`/`ERROR` reply 
 as the pacing signal.
 In other words: one line goes out, 
 the runner blocks until that line's own reply comes back, 
 then the next line goes out.
 Long test-file lines (some exceed 1000 characters) are automatically
 re-wrapped to fit under `TIBBUFL` (80 bytes) 
-without ever splitting inside a `S"`/`."`/`\` construct. 
+without ever splitting inside a `S"`/`."`/`\` construct 
+or inside a `T{ ... }T` assertion. 
+Software (XON/XOFF) flow control from the target is honoured.
+
+The runner also removes the dead `HAS-FLOATING` branches of `ttester.fs`
+before sending it (the target has no floating-point word set), 
+which removes most of the harness load time.
 
 See the script's own `--help` and
 module docstring for every option.
 
 ### Manual Cut and Paste Via Terminal Emulator
 
-### Usage
+#### Usage
 
 For full communication details refer to the file: 
 ```bash
@@ -146,6 +163,9 @@ In yet another terminal startup minicom:
 ```bash
 minicom 57600_XONXOFF
 ```
+Note: refer to MAME_to_minicom.md for the 
+location and construction of the 
+~/.minirc.57600_XONXOFF stored settings file.
 
 In yet another terminal startup MAME as the MECB 6809 emulator:
 ```bash
@@ -162,8 +182,80 @@ with the per character delay and handshaking preset.
 
 In a text editor supporting copy and paste, choose a forth source code file,
 select the text, copy it to the clipboard and then paste it into the minicom window.
-All the files are load in this way, 
-in the same order as used by the python test runner.
+All the files are loaded in this way, 
+in the same order as used by the python test runner:
+
+1. `00a_tool_ext_conditionals.fs`
+1. `ttester.fs`
+1. `00_test_prelude.fs`
+1. any section files, in any order.
+
+Each section file prints its own `TEST SUMMARY` at its end,
+so no runner is needed to read the result. 
+Do not paste a file that has been reflowed by an editor: 
+see *Editing Test Files* below.
+
+### Test Reporting
+
+Each section file reports for itself, using two words 
+defined in `00_test_prelude.fs`:
+
+| Word | Purpose |
+|------|---------|
+| `TEST-BEGIN` | Zeroes the pass and fail counters (`TESTCOUNT`, `FAILCOUNT`, incremented by `}T` in `ttester.fs`) and records the current data stack depth. |
+| `TEST-END` | Prints the file's statistics, then checks the data stack depth against the depth recorded by `TEST-BEGIN`. Always prints in DECIMAL and preserves `BASE`. |
+
+Every section file calls `TEST-BEGIN` on the line after its `MARKER Mnn`
+and `TEST-END` on the line before its closing `Mnn`. 
+The prelude calls them around its own checks as well.
+
+Typical output:
+
+```
+TEST SUMMARY: 125 run, 0 failed
+```
+
+If a file leaves the data stack deeper than it found it:
+
+```
+TEST SUMMARY: 31 run, 0 failed
+STACK IMBALANCE: 3 extra cell(s) dropped
+```
+
+The extra cells are dropped so the next file starts clean. 
+A shallower stack is reported as `n cell(s) missing`.
+
+The stack check matters because `T{ ... }T` measures depth relative to its own 
+starting depth, so a stray cell left by an earlier test is invisible to it. 
+A file can show zero failures and still leak cells.
+
+When a test fails, ttester prints a message in the terminal such as `INCORRECT RESULT:` 
+followed by the test source line. 
+A failure counted in `TEST SUMMARY` always has such a message earlier in the output.
+
+### Editing Test Files
+
+A few tests depend on the physical line layout of the file, 
+because the target's `ACCEPT` gives each test exactly one input line. 
+These must stay split exactly as they are:
+
+- `19_string_words.tests.fs`: `T{ BL GS3` / `DROP -> 0 }T`, and both 
+  `T{ PARSE-NAME` / `NIP -> 0 }T` pairs. They need an empty parse area, 
+  i.e. the end of the line must be reached.
+- `24_environmental_query.tests.fs`: the `>IN` tests, 
+  the three-line `RESCAN?` test, and `GS4`.
+
+Other guidance:
+
+- Keep one test per line, so a failure message identifies it.
+- Never put a test on the same physical line as a `\` comment.
+  The rest of the line is swallowed and the test silently never runs.
+- A bare `DECIMAL` or `HEX` leaks into the next section file, 
+  because `MARKER` restores the dictionary but not `BASE`. 
+  Restore it unconditionally, as the existing files do.
+- `>R`/`R>` must not span separate top-level lines.
+- Keep `TEST-BEGIN` after `MARKER Mnn` and `TEST-END` before the closing `Mnn`.
+  The tool script `apply_test_markers.py` inserts both idempotently.
 
 ## Manifest
 
@@ -188,7 +280,7 @@ the following ttester.fs file is compiled.
 
 This file provides `[IF]`/`[ELSE]`/`[THEN]` 
 from the Programming-Tools word set. 
-These words are not provide by ClaudeForth.
+These words are not provided by ClaudeForth.
 
 `ttester.fs` needs them immediately, in its own conditional compilation of the
 `HAS-FLOATING`/`HAS-FLOATING-STACK` source blocks, so this file loads first, 
@@ -206,12 +298,12 @@ run the ANS suite.
 `ttester.fs` — represents the test harness itself
 (ANS Forth Standard, Annex F, Section F.2.3). 
 
-It defines the test setup/assertion words`T{`/`->`/`}T` 
+It defines the test setup/assertion words `T{`/`->`/`}T` 
 and every supporting word, including:
 1. `ERROR`
 1. `EMPTY-STACK`
 1. `HAS-FLOATING`/`HAS-FLOATING-STACK` detection.
-1. `X}T`/`R}T`assertion words for mixed cell/float stack pictures). 
+1. `X}T`/`R}T` assertion words for mixed cell/float stack pictures. 
 
 Load this file first, before the prelude or any section file. 
 
@@ -222,15 +314,19 @@ The extraction of this file was validated by checking nesting of:
 No unbalanced conditional-compilation or colon
 definitions were introduced while extracting it from the original source page.
 
+The original `TEST-REPORT` word has been removed from this file. 
+Reporting is now done by `TEST-BEGIN`/`TEST-END` in the prelude.
+
 ### ANS Forth Test Prelude
 
 The prelude file `00_test_prelude.fs` is loaded after `ttester.fs`, 
 but before the test section files.
 It provides shared section setup utilities with support for: 
+1. Test reporting (`TEST-BEGIN`, `TEST-END`).
 1. Two's-complement assumptions (BITSSET?). 
-1. Bound constants (MAX-UINT,MAX-INT, MIN-INT, MID-UINT, MID-UINT+1, MSB). 
+1. Bound constants (MAX-UINT, MAX-INT, MIN-INT, MID-UINT, MID-UINT+1, MSB). 
 1. Boolean constants (0S/1S via <FALSE>/<TRUE>). 
-1. Floored-vs-symmetric division helpers(IFFLOORED/IFSYM). 
+1. Floored-vs-symmetric division helpers (IFFLOORED/IFSYM). 
 1. String-compare helper (S=). 
 1. Shared memory buffers used by the FILL/MOVE tests (FBUF/SBUF/SEEBUF). 
 
@@ -246,6 +342,8 @@ Sections that implement no words with an official ANS test
 have no corresponding file.
 For example: section 5's inner-interpreter primitives like LIT/BRANCH, 
 have no directly-callable ANS name, so there are no tests.
+Everything else in Core (F.6.1) and the Core Extension subset this
+system implements (F.6.2) maps to exactly one section.
 
 ## ANS Forth Test Change Notes
 
@@ -272,7 +370,8 @@ times, from a single shared harness+prelude load:
   invoke its own marker leaves the dictionary, value-space and search
   chain exactly as they were right after `ttester.fs` +
   `00_test_prelude.fs` were loaded — no leftover state for the next
-  section file to trip over, whatever order they run in.
+  section file to trip over, whatever order they run in. 
+  (`BASE` is not part of that snapshot, see *Editing Test Files*.)
 - `18_memory.tests.fs`'s `MOVE` test still depends on the `FBUF`/`SBUF`/
   `SEEBUF` state left behind by the immediately preceding `FILL` test —
   this is fine, since both are in the same file and thus inside the same
@@ -286,23 +385,31 @@ The fixed load order is now simply: `00a_tool_ext_conditionals.fs`,
 any sequence — see `ans_test_runner.py` (one level up), which automates
 exactly this against either MAME or a real serial-connected MECB6809.
 
-### Unresolved Issues
+### Test Reporting and Runner Changes
 
-The issues below appear to be resolved 
-and should probably be deleted as no longer irrelevant.
- 
-- **`TRUE` and `FALSE` were not implemented as dictionary words** when
-  this test suite was first organized — checked directly against
-  `forth6809.asm`'s dictionary section at the time: only the internal
-  assembler constants `TRUEV`/`FALSEV` existed, never exposed as
-  `CONSTANT TRUE` / `CONSTANT FALSE` a running program could call. This
-  has since been resolved: both are now real dictionary words
-  (`CONSTANT TRUE -1` / `CONSTANT FALSE 0`), and their tests
-  (`F.6.2.1485 FALSE`, `F.6.2.2298 TRUE`) are now included at the end of
-  `26_abort_quit_headers.tests.fs`, alongside that section's other
-  ROM-resident, hand-built words.
-- Everything else in Core (F.6.1) and the Core Extension subset this
-  system implements (F.6.2) mapped cleanly to exactly one section.
+- **`TEST-BEGIN`/`TEST-END`** replace the old approach, where the runner sent
+  its own reporting commands after each section and `ttester.fs` carried a
+  `TEST-REPORT` word. Each section file now carries its own report, 
+  so the result is identical with or without the runner.
+- **Pass/fail is decided by the `TEST SUMMARY` count**, computed in Forth from 
+  the real `T{ ... }T` comparisons. The earlier transcript scan for ttester 
+  error text could not tell a real test failure from the runner giving up on a 
+  missing `ok`, and is now only a secondary consistency warning.
+- **Stack leak detection.** `TEST-END` reports `STACK IMBALANCE` and drops stray cells. 
+  Before this, leaks were invisible to `T{ ... }T`, and absolute `DEPTH` tests 
+  (sections 14 and 24) were only reliable if every earlier file had left the stack empty.
+- **Compile-state tracking.** The runner's colon-definition tracking now scans
+  raw tokens, so a `T{ : name ... ; -> }T` test is recognised as opening a definition 
+  and the runner no longer waits for an `ok` that a definition body line never sends.
+- **`ACCEPT` tests.** The test line that follows `ACCEPT-TEST` is consumed 
+  by the target as input and is sent without waiting for an `ok`.
+- **Flow control and diagnostics.** XON/XOFF is honoured, 
+  and `--trace-depth` probes `DEPTH` after each line.
+- **Dead floating-point text** in `ttester.fs` is removed before sending, 
+  instead of being skipped by the target line by line.
+
+### Corrections to Test Content
+
 - **Transcription bug, since fixed**: several "See F.x.x.xxxx WORD."
   cross-reference notes (and one "The following tests..." narrative
   line, in `08_defining_words.tests.fs`) had lost their leading `\ `
@@ -311,25 +418,92 @@ and should probably be deleted as no longer irrelevant.
   words ("See", "F.6.1.0450", "The", "following", ...) the moment that
   file loaded. Found and fixed across all 17 section files while
   wiring up `ans_test_runner.py`.
+- **Tests swallowed by comments.** In several files (08, 12, 19, 23, 24) 
+  tests had been glued to the end of a `\` comment line, so they never ran. 
+  They are now on their own lines. 
+- **`TRUE` and `FALSE`.** These were not dictionary words when the suite was
+  first organised. Both are now real words, and their tests
+  (`F.6.2.1485 FALSE`, `F.6.2.2298 TRUE`) are at the end of
+  `26_abort_quit_headers.tests.fs`.
+- **`BASE` handling.** Sections 08, 11, 12, 24 and 26 change `BASE` and 
+  restore it explicitly. A bare `DECIMAL` in one file broke the next file in load order 
+  (and in section 24, broke the same file's own later `>NUMBER` tests).
+- **16-bit cell adaptation (section 24).** The `>IN` test used `123456`, which 
+  wraps in a 16-bit cell. It uses `12345`, as the standard itself later did for 16-bit systems.
+  The second `>IN` test had also lost the words it deliberately skips (`GCD calculation`); 
+  they are restored.
+- **`ENVIRONMENT?` erratum (section 24).** The published `X:deferred` test, 
+  `DUP 0= XOR INVERT -> <TRUE>`, can never pass on any system. It is replaced 
+  by a check that the answer is a single well-formed flag.
+- **`SM/REM` (section 15).** One expected remainder broke the sign-of-dividend 
+  pattern of its neighbours and was corrected.
+- **`CATCH`/`THROW` (section 11).** The undefined-word case expects `-13`.
+- **Line layout.** Several original lines carried many tests each. 
+  They are one test per line now, apart from the layout-sensitive cases described in *Editing Test Files*.
 
+### Implementation Defects Found by the Suite
+
+The tests exposed these defects in `forth6809.asm`. All are fixed, 
+and all 17 sections now pass with a clean stack on MAME and via minicom.
+
+- **`2@` / `2!`** had the cell order reversed (x2 must be at `addr`, x1 at `addr+2`). 
+  `2CONSTANT` was corrected to match.
+- **`CATCH`/`THROW`** did not save and restore the input source (`SRCADDR`, `SRCLEN`, 
+  `SRCID`, `>IN`). A throw out of a nested `EVALUATE` lost the rest of the calling line 
+  and left stray stack cells. The frame now carries all four.
+- **`EVALUATE`** now saves and restores the input source on the return stack.
+- **`ABORT`** did not throw. It is now `-1 THROW`, and the top level prints nothing for `-1`.
+- **`UNLOOP` and `EXIT`.** `UNLOOP` was a no-op and `EXIT` discarded the wrong number of
+  loop-frame bytes (8 instead of 6). `UNLOOP` now drops the three-cell loop frame, 
+  and `EXIT` does not touch loop frames, as the standard requires 
+  (use `UNLOOP` before `EXIT`).
+
+## Known Limitations and Open Items
+
+- **Compliance is not claimed.** Annex F is a necessary check, not proof of 
+  compliance. Many Annex F tests are adapted for a 16-bit cell and the
+  suite excludes the word sets listed below.
+- **Double-Number tests are not loaded.** The system implements part of the
+  Double-Number word set (see *Tests Not Included*) but no Annex F double-number
+  test file exists in `ans_tests` yet. Adding one, and implementing the missing words
+  it needs, is the main open item.
+- **`ENVIRONMENT?` coverage.** `X:deferred` is not in the query table, so it answers false. 
+  The test accepts either answer. `WORDLISTS` is deliberately absent 
+  (no Search-Order word set).
+- **`ABORT` is silent.** It prints nothing and returns to the prompt, 
+  and `-1 THROW` at the top level also prints nothing. 
+  `ABORT"` message behaviour at the top level is not covered by the suite.
+- **Layout-sensitive tests** (see *Editing Test Files*) 
+  cannot be reflowed, and pasting by hand needs the same care as the runner.
+- **Floating-point build option.** `ttester.fs` stays in its original form with the 
+  floating branches in place. Only the runner removes them while sending. 
+  A manual paste of `ttester.fs` therefore runs slowly 
+  (every dead line passes through the target's `[ELSE]` skip).
 
 ## Tests Not Included
 
-The following tests have no corresponding implementation 
-so they are not included:
+The following tests are not included because the word set 
+is not implemented or is implemented only in part:
 
-1. Double-Number.
-1. Facility.
+1. Double-Number. *Partly implemented, no tests yet.* 
+   Present: `D+`, `D-`, `DNEGATE`, `DABS`, `DMAX`, `DMIN`, `M+`, `S>D`, `D>S`, 
+   `D=`, `D<`, `DU<`, `D.`, `D.R`, `2ROT`, `2VARIABLE`, `2CONSTANT`, 
+   and double-number literals (`123.`).
+   Appear to be missing: `D0=`, `D0<`, `D2*`, `D2/`, `M*/`, `2LITERAL`, `2VALUE`.
+   Several of the present words are exercised indirectly 
+   by sections 15 and 20 (`M*`, `S>D`, `UM/MOD`, `>NUMBER`, `HOLD`), 
+   but there is no Annex F Double-Number test file.
+1. Facility. Only `KEY?` is implemented. No tests are included for it.
 1. File-Access.
 1. Floating-Point.
-1. Memory-Allocation,
-1. Search-Order 
+1. Memory-Allocation.
+1. Search-Order. 
 
 Search-Order's absence is documented explicitly
-in the ClaudeForth documentation, Section 4.5). 
+in the ClaudeForth documentation, Section 4.5.
 
 Most of the Programming-Tools word set is also omitted
-(AHEAD, CS-PICK, CS-ROLL, N>R, [THEN] etc..
+(AHEAD, CS-PICK, CS-ROLL, N>R, [THEN] etc.).
 They have no ANS test coverage relevant here.
 
 The Tools word set — `.S`, `WORDS`, `DUMP` are non-standard extensions,
