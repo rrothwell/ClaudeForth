@@ -70,6 +70,7 @@ bash "$HOME/git/ClaudeForth/MECB6809 Emulation/MAME test automation/run all test
 
 ### Typical Output
 
+```
 ==================================================================
 === SUMMARY ===
 ==================================================================
@@ -92,3 +93,4 @@ N    SECTION          STATUS
 15   3.16_Comments    PASS
 16   3.17_EnvSys      PASS
 17   3.18_Tools       PASS
+```
