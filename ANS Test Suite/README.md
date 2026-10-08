@@ -14,8 +14,8 @@ Those conditions are not satisfied in this project.
 
 The test suite files here have been modified 
 to facilitate development testing, instead of compliance testing. 
-This includes development by manual cut/paste of forth source into a terminal emulator  
-or by running the supplied automation script. 
+This includes development by manual cut/paste of forth source 
+into a terminal emulator or by running the supplied automation script. 
 
 Modifications include: 
 1. File splits by section.
