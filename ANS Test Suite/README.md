@@ -105,7 +105,7 @@ Then it loads the forth tests.
 The test runner reports a summary PASS/FAIL 
 per section into the stderr of the terminal.
 The full transcript of each section, 
-including the `TEST SUMMARY` and any ttester assertion failure messages, 
+including the `TEST SUMMARY` and any ttester assertion failure messages,
 are written to a per-section log file in the `--log-dir` directory.
 
 A section PASSes when its `TEST SUMMARY` line reports zero failures
@@ -314,9 +314,6 @@ The extraction of this file was validated by checking nesting of:
 No unbalanced conditional-compilation or colon
 definitions were introduced while extracting it from the original source page.
 
-The original `TEST-REPORT` word has been removed from this file. 
-Reporting is now done by `TEST-BEGIN`/`TEST-END` in the prelude.
-
 ### ANS Forth Test Prelude
 
 The prelude file `00_test_prelude.fs` is loaded after `ttester.fs`, 
@@ -345,23 +342,20 @@ have no directly-callable ANS name, so there are no tests.
 Everything else in Core (F.6.1) and the Core Extension subset this
 system implements (F.6.2) maps to exactly one section.
 
-## ANS Forth Test Change Notes
+## Differences from the Published Annex F Suite
 
 ### Test File Section Independence
 
 The original ANS suite is one continuous stream where later tests reuse
 words and constants defined by earlier ones (explicit in the standard's
 own F.3 narrative: "these are included in the appropriate test").
-Splitting it by forth6809.asm section preserved the *word groupings* but
-broke that original ordering — this has since been fixed so every
-section file is independently runnable, in any order, any number of
-times, from a single shared harness+prelude load:
+Here every section file is independently runnable, in any order, any
+number of times, from a single shared harness+prelude load:
 
-- `09_outer_interpreter.tests.fs` (FIND) used to depend on `GT1`/`GT2`
-  from `13_compiling_words.tests.fs`. It now carries its own copy of
-  both (`: GT1 123 ; : GT2 ['] GT1 ; IMMEDIATE`), so section 13 no
-  longer needs to run first.
-- Every section file now opens with `MARKER Mnn` (nn = the section
+- `09_outer_interpreter.tests.fs` (FIND) carries its own copy of
+  `GT1`/`GT2` (`: GT1 123 ; : GT2 ['] GT1 ; IMMEDIATE`) rather than
+  depending on `13_compiling_words.tests.fs`.
+- Every section file opens with `MARKER Mnn` (nn = the section
   number, e.g. `M08`) right after its header comment, and closes with a
   bare invocation of `Mnn` as its last line. `MARKER` snapshots
   `DPHERE`/`CODEHERE`/`VARHERE`/`LATEST` when created and restores all
@@ -372,7 +366,7 @@ times, from a single shared harness+prelude load:
   `00_test_prelude.fs` were loaded — no leftover state for the next
   section file to trip over, whatever order they run in. 
   (`BASE` is not part of that snapshot, see *Editing Test Files*.)
-- `18_memory.tests.fs`'s `MOVE` test still depends on the `FBUF`/`SBUF`/
+- `18_memory.tests.fs`'s `MOVE` test depends on the `FBUF`/`SBUF`/
   `SEEBUF` state left behind by the immediately preceding `FILL` test —
   this is fine, since both are in the same file and thus inside the same
   `MARKER` bracket.
@@ -380,83 +374,38 @@ times, from a single shared harness+prelude load:
   and `S=`, all provided by `00_test_prelude.fs`, which sits outside
   every section's own `MARKER` bracket and is loaded once, up front.
 
-The fixed load order is now simply: `00a_tool_ext_conditionals.fs`,
+The load order is simply: `00a_tool_ext_conditionals.fs`,
 `ttester.fs`, `00_test_prelude.fs`, then any subset of section files, in
 any sequence — see `ans_test_runner.py` (one level up), which automates
 exactly this against either MAME or a real serial-connected MECB6809.
 
-### Test Reporting and Runner Changes
+### Deviations from Annex F
 
-- **`TEST-BEGIN`/`TEST-END`** replace the old approach, where the runner sent
-  its own reporting commands after each section and `ttester.fs` carried a
-  `TEST-REPORT` word. Each section file now carries its own report, 
-  so the result is identical with or without the runner.
-- **Pass/fail is decided by the `TEST SUMMARY` count**, computed in Forth from 
-  the real `T{ ... }T` comparisons. The earlier transcript scan for ttester 
-  error text could not tell a real test failure from the runner giving up on a 
-  missing `ok`, and is now only a secondary consistency warning.
-- **Stack leak detection.** `TEST-END` reports `STACK IMBALANCE` and drops stray cells. 
-  Before this, leaks were invisible to `T{ ... }T`, and absolute `DEPTH` tests 
-  (sections 14 and 24) were only reliable if every earlier file had left the stack empty.
-- **Compile-state tracking.** The runner's colon-definition tracking now scans
-  raw tokens, so a `T{ : name ... ; -> }T` test is recognised as opening a definition 
-  and the runner no longer waits for an `ok` that a definition body line never sends.
-- **`ACCEPT` tests.** The test line that follows `ACCEPT-TEST` is consumed 
-  by the target as input and is sent without waiting for an `ok`.
-- **Flow control and diagnostics.** XON/XOFF is honoured, 
-  and `--trace-depth` probes `DEPTH` after each line.
-- **Dead floating-point text** in `ttester.fs` is removed before sending, 
-  instead of being skipped by the target line by line.
+Where the section files differ from the published test text:
 
-### Corrections to Test Content
-
-- **Transcription bug, since fixed**: several "See F.x.x.xxxx WORD."
-  cross-reference notes (and one "The following tests..." narrative
-  line, in `08_defining_words.tests.fs`) had lost their leading `\ `
-  comment marker when the original web page's text was extracted —
-  each would have been fed to the interpreter as literal, undefined
-  words ("See", "F.6.1.0450", "The", "following", ...) the moment that
-  file loaded. Found and fixed across all 17 section files while
-  wiring up `ans_test_runner.py`.
-- **Tests swallowed by comments.** In several files (08, 12, 19, 23, 24) 
-  tests had been glued to the end of a `\` comment line, so they never ran. 
-  They are now on their own lines. 
-- **`TRUE` and `FALSE`.** These were not dictionary words when the suite was
-  first organised. Both are now real words, and their tests
-  (`F.6.2.1485 FALSE`, `F.6.2.2298 TRUE`) are at the end of
-  `26_abort_quit_headers.tests.fs`.
-- **`BASE` handling.** Sections 08, 11, 12, 24 and 26 change `BASE` and 
-  restore it explicitly. A bare `DECIMAL` in one file broke the next file in load order 
-  (and in section 24, broke the same file's own later `>NUMBER` tests).
-- **16-bit cell adaptation (section 24).** The `>IN` test used `123456`, which 
-  wraps in a 16-bit cell. It uses `12345`, as the standard itself later did for 16-bit systems.
-  The second `>IN` test had also lost the words it deliberately skips (`GCD calculation`); 
-  they are restored.
-- **`ENVIRONMENT?` erratum (section 24).** The published `X:deferred` test, 
-  `DUP 0= XOR INVERT -> <TRUE>`, can never pass on any system. It is replaced 
-  by a check that the answer is a single well-formed flag.
-- **`SM/REM` (section 15).** One expected remainder broke the sign-of-dividend 
-  pattern of its neighbours and was corrected.
+- **Cross-reference notes.** Every "See F.x.x.xxxx WORD." note and
+  narrative line is a `\ ` comment, so none is interpreted as Forth.
+- **One test per line.** Tests sit on their own lines, never after a `\`
+  comment, apart from the layout-sensitive cases described in *Editing Test Files*.
+- **`TRUE` and `FALSE`.** Their tests (`F.6.2.1485 FALSE`, `F.6.2.2298 TRUE`)
+  are at the end of `26_abort_quit_headers.tests.fs`, alongside that
+  section's other ROM-resident, hand-built words.
+- **`BASE` handling.** Sections 08, 11, 12, 24 and 26 change `BASE` and
+  restore it explicitly, so no file leaks a base change into the next.
+- **16-bit cell (section 24).** The `>IN` test uses `12345` where the original used
+  `123456`, which wraps in a 16-bit cell. The standard itself later made the same
+  change for 16-bit systems. The second `>IN` test keeps the words it
+  deliberately skips (`GCD calculation`).
+- **`ENVIRONMENT?` erratum (section 24).** The published `X:deferred` test,
+  `DUP 0= XOR INVERT -> <TRUE>`, can never pass on any system. It checks
+  instead that the answer is a single well-formed flag.
+- **`SM/REM` (section 15).** One expected remainder is corrected to follow the
+  sign-of-dividend pattern of its neighbours.
 - **`CATCH`/`THROW` (section 11).** The undefined-word case expects `-13`.
-- **Line layout.** Several original lines carried many tests each. 
-  They are one test per line now, apart from the layout-sensitive cases described in *Editing Test Files*.
+- **Reporting.** Each file starts with `TEST-BEGIN` and ends with `TEST-END`
+  (see *Test Reporting*). `ttester.fs` has no `TEST-REPORT` word.
 
-### Implementation Defects Found by the Suite
-
-The tests exposed these defects in `forth6809.asm`. All are fixed, 
-and all 17 sections now pass with a clean stack on MAME and via minicom.
-
-- **`2@` / `2!`** had the cell order reversed (x2 must be at `addr`, x1 at `addr+2`). 
-  `2CONSTANT` was corrected to match.
-- **`CATCH`/`THROW`** did not save and restore the input source (`SRCADDR`, `SRCLEN`, 
-  `SRCID`, `>IN`). A throw out of a nested `EVALUATE` lost the rest of the calling line 
-  and left stray stack cells. The frame now carries all four.
-- **`EVALUATE`** now saves and restores the input source on the return stack.
-- **`ABORT`** did not throw. It is now `-1 THROW`, and the top level prints nothing for `-1`.
-- **`UNLOOP` and `EXIT`.** `UNLOOP` was a no-op and `EXIT` discarded the wrong number of
-  loop-frame bytes (8 instead of 6). `UNLOOP` now drops the three-cell loop frame, 
-  and `EXIT` does not touch loop frames, as the standard requires 
-  (use `UNLOOP` before `EXIT`).
+Defects in `forth6809.asm` that these tests exposed are recorded in `bug_fixes.md`.
 
 ## Known Limitations and Open Items
 
