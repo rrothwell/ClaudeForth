@@ -74,8 +74,9 @@ brew install binutils
 |Optimised MAME emulated 6850 ACIA serial communications, with interrupt driven hardware handshaking |:white_check_mark:|
 |Solved reliability issues with MAME emulated 6850 ACIA serial communications, by using XON/XOFF software handshaking |:white_check_mark:|
 |Tests against ANS test suite, identifying, diagnosing and correcting bugs.  |:white_check_mark:|
-|Update documentation| |
-|Retest with assembler test suite and adjust expectations.| |
+|Update documentation for ANS test suite|:white_check_mark:|
+|Retest with assembler test suite and adjust expectations.|:white_check_mark:|
+|Update general documentation||
 |Optimisation for space, compiler performance & application performance| |
 |Update documentation| |
 |Burn ROM and install onto real MECB 6809 hardware. | |

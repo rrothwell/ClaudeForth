@@ -6178,39 +6178,24 @@ TSTBWRNAME: FCB  6
             FCC  "TSTBWR"
 
 ; ------------------------------------------------------------
-; TSTRECUR - unit test for RECURSE. Builds a fake dictionary
-; header in scratch (TSTFHDR: LEN/FL=3, name "FOO", a
-; don't-care LINK, and DUP's real address as the CFA), points
-; LATEST at it, then calls RECURSE directly. Verifies RECURSE
-; correctly parses an arbitrary header (LEN/FL's 5-bit length
-; field, skipping name+LINK to reach the CFA) and compiles a
-; correct call to it - tests the actual mechanism (header
-; parsing, CFA extraction, CCALL), not genuine self-recursion,
-; which would need a real in-progress compilation to set up
-; meaningfully. Confirmed by hand-trace: RECURSE's own address
-; arithmetic (+1 past LEN/FL, +namelen past the name, +2 past
-; LINK) lands exactly on TSTFHDR+6, where the CFA is placed.
+; TSTRECUR - unit test for RECURSE. RECURSE now compiles a call
+; to CURXT, the execution token recorded by ":" / ":NONAME" for
+; the definition in progress (it no longer walks LATEST's header,
+; which was wrong inside :NONAME). This test saves CURXT, sets it
+; to DUP's real address, calls RECURSE directly, and verifies a
+; correct call to DUP was compiled - tests the actual mechanism
+; (CURXT read, CCALL), not genuine self-recursion, which would
+; need a real in-progress compilation to set up meaningfully.
+; (Rewritten: the old version faked a dictionary header via
+; LATEST, which RECURSE no longer reads.)
 ; ------------------------------------------------------------
-TSTRECUR: LDD  LATEST
+TSTRECUR: LDD  CURXT
           STD  TSTLSAV
           LDD  CODEHERE
           STD  TSTCSAV
 
-          LDA  #3
-          STA  TSTFHDR
-          LDA  #'F'
-          STA  TSTFHDR+1
-          LDA  #'O'
-          STA  TSTFHDR+2
-          LDA  #'O'
-          STA  TSTFHDR+3
-          LDD  #0
-          STD  TSTFHDR+4
           LDD  #DUP
-          STD  TSTFHDR+6
-
-          LDD  #TSTFHDR
-          STD  LATEST
+          STD  CURXT
 
           LDD  #TSTCBUF
           STD  CODEHERE
@@ -6224,7 +6209,7 @@ TSTRECUR: LDD  LATEST
           LDD  TSTCSAV
           STD  CODEHERE
           LDD  TSTLSAV
-          STD  LATEST
+          STD  CURXT
 
           STU  TSTU0
 
@@ -6787,10 +6772,13 @@ TSTLEAVENAME: FCB  8
 
 ; ------------------------------------------------------------
 ; TSTEXIT - unit test for EXIT. Compiles
-; "DO I DUP 3 LITERAL = IF EXIT THEN I + LOOP", limit=10,
-; start=0 - EXIT fires when I=3, discarding the one open DO
-; frame and returning immediately. Sets the real CSP to U's
-; value right before the first control-flow marker is pushed
+; "DO I 3 = IF UNLOOP EXIT THEN I + LOOP", limit=10, start=0,
+; seed sum=0 - EXIT fires when I=3. EXIT no longer discards
+; loop frames (standard: UNLOOP first), so the test calls UNLOOP
+; itself right before EXIT, then EXIT returns immediately.
+; (Rewritten: it used to rely on EXIT discarding the open DO
+; frame, which made EXIT return through the stale loop cells.)
+; Sets the real CSP to U's value right before the first control-flow marker is pushed
 ; (matching what ":" does at the start of a real definition),
 ; since EXIT's own compile-time frame count depends on it -
 ; confirmed by hand-trace: at the point EXIT is compiled, U
@@ -6816,10 +6804,6 @@ TSTEXIT: LDD   CSP
          PSHU  D
          JSR   CCALL
 
-         LDD   #DUP
-         PSHU  D
-         JSR   CCALL
-
          LDD   #3
          PSHU  D
          JSR   LITERALW
@@ -6830,9 +6814,17 @@ TSTEXIT: LDD   CSP
 
          JSR   IF
 
+         LDD   #UNLOOP
+         PSHU  D
+         JSR   CCALL
+
          JSR   EXIT
 
          JSR   THEN
+
+         LDD   #IWORD
+         PSHU  D
+         JSR   CCALL
 
          LDD   #PLUS
          PSHU  D
@@ -6892,42 +6884,37 @@ TSTEXITNAME: FCB  7
              FCC  "TSTEXIT"
 
 ; ------------------------------------------------------------
-; TSTUNLOOP - unit test for UNLOOP. A true no-op (bare RTS) per
-; its own extensively-documented design history in the source -
-; superseded by EXIT's own automatic frame-discarding, kept
-; only for source compatibility. Not compile-time/immediate
-; like the rest of this section - a plain runtime word, tested
-; directly without the compile harness, same pattern as ALIGN's
-; own test in section 3.6: pushes decoy values, calls UNLOOP,
-; confirms the whole stack is genuinely undisturbed.
+; TSTUNLOOP - unit test for UNLOOP. UNLOOP discards the 3-cell
+; DO frame (index, limit, LEAVE flag = 6 bytes) that sits on the
+; return stack directly beneath its own return address, and
+; leaves the data stack alone. The test pushes a fake 6-byte
+; frame on S, calls UNLOOP, and checks S rose by exactly 6 and U
+; did not move. (Rewritten: UNLOOP used to be a bare RTS, and the
+; old test called it with no frame on S - with the real UNLOOP
+; that would discard six bytes of the test's own return
+; addresses and crash the run.) Scratch: TSTUB4/TSTUAF hold the
+; S values here, TSTSCR holds U.
 ; ------------------------------------------------------------
 TSTUNLOOP: STU  TSTU0
 
-           LDD  #TSTGUARD
-           PSHU D
            LDD  #TSTVAL1
-           PSHU D
+           PSHS D               ; fake frame: LEAVE flag
            LDD  #TSTVAL2
-           PSHU D
-           STU  TSTUB4
+           PSHS D               ;             limit
+           LDD  #TSTVAL1
+           PSHS D               ;             index
+           STS  TSTUB4          ; S with the fake frame in place
+           STU  TSTSCR          ; U before
 
            JSR  UNLOOP
 
-           STU  TSTUAF
+           STS  TSTUAF          ; S after
 
-           PULU D
-           CMPD #TSTVAL2
+           LDD  TSTUAF
+           SUBD TSTUB4
+           CMPD #6
            BNE  UOFAIL
-           PULU D
-           CMPD #TSTVAL1
-           BNE  UOFAIL
-           PULU D
-           CMPD #TSTGUARD
-           BNE  UOFAIL
-
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #0
+           CMPU TSTSCR
            BNE  UOFAIL
 
            LDD  #TRUEV
@@ -10860,9 +10847,11 @@ TSTPSNAME: FCB  12
 
 ; ------------------------------------------------------------
 ; TST2FETCHSTORE - unit test for 2@ and 2! together. Stores a
-; known pair, fetches it back, and verifies the correct
-; ordering (x1 at the lower address, x2 at the higher, matching
-; the documented convention on both ends).
+; known pair, fetches it back, and verifies the standard
+; ordering: ( x1 x2 a-addr -- ) stores x2 at a-addr (the lower
+; address) and x1 at a-addr+cell, and 2@ restores x1 x2.
+; (Corrected: this test used to expect x1 at the lower address,
+; the reverse of the standard - ANS Annex F section 18 caught it.)
 ; ------------------------------------------------------------
 TST2FETCHSTORE: STU  TSTU0
 
@@ -10901,10 +10890,10 @@ TST2FETCHSTORE: STU  TSTU0
                 BNE  DFFAIL
 
                 LDD  TSTCBUF
-                CMPD #TSTVAL1
+                CMPD #TSTVAL2
                 BNE  DFFAIL
                 LDD  TSTCBUF+2
-                CMPD #TSTVAL2
+                CMPD #TSTVAL1
                 BNE  DFFAIL
 
                 LDD  #TRUEV

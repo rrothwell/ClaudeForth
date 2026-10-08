@@ -1,0 +1,4 @@
+[listener] listening on 127.0.0.1:2000, waiting for MAME to connect...
+[listener] connected from ('127.0.0.1', 50050)
+[listener] idle timeout (5.0s of silence) - treating run as complete
+[listener] done: 376 bytes captured in 5.6s -> /Users/richardrothwell/git/ClaudeForth/MECB6809 Emulation/MAME test automation/results/8_3.9_DefWords.log

@@ -1,0 +1,45 @@
+
+SysIO
+TSTKEYQ OK
+ATSTEMIT OK
+
+TSTCR OK
+ TSTSPACE OK
+   TSTSPACES OK
+TSTSPACESZ OK
+ABTSTTYPE OK
+
+Stack
+
+RetStack
+
+SArithmetic
+
+DArithmetic
+
+Logic
+
+Compare
+
+CtrlFlow
+
+DefWords
+
+CompWords
+
+Memory
+
+StrParse
+
+NumOut
+
+BaseRadix
+
+Except
+
+Comments
+
+EnvSys
+
+Tools
+6809 FORTH v1.0

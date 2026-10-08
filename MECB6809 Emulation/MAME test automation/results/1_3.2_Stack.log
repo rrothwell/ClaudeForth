@@ -1,0 +1,54 @@
+
+SysIO
+
+Stack
+TSTDUP OK
+TSTDROP OK
+TSTSWAP OK
+TSTOVER OK
+TSTROT OK
+TSTQDUPNZ OK
+TSTQDUPZ OK
+TSTDEPTH OK
+TSTDDUP OK
+TSTDDROP OK
+TSTDSWAP OK
+TSTDOVER OK
+TSTNIP OK
+TSTTUCK OK
+TSTPICK OK
+TSTROLL OK
+TSTDROT OK
+
+RetStack
+
+SArithmetic
+
+DArithmetic
+
+Logic
+
+Compare
+
+CtrlFlow
+
+DefWords
+
+CompWords
+
+Memory
+
+StrParse
+
+NumOut
+
+BaseRadix
+
+Except
+
+Comments
+
+EnvSys
+
+Tools
+6809 FORTH v1.0

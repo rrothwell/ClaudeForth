@@ -130,6 +130,16 @@ Each was found by the unit tests, the ANS Annex F tests, or a real run.
       `ttester.fs`. `ans_test_runner.py` now reads those lines instead of
       sending its own reporting commands. `apply_test_markers.py` adds both
       calls to new section files.
+- [x] **Assembly unit tests (`unit_tests.asm`) re-verified; all pass.**
+      Four tests had outdated expectations after the fixes above and were
+      corrected (the asm was right in each case):
+      `TST2FETCHSTORE` (now expects x2 at the lower address, x1 at
+      addr+cell), `TSTRECUR` (sets and restores `CURXT` instead of faking
+      a header via `LATEST`), `TSTUNLOOP` (pushes a fake 3-cell DO frame
+      on S and checks S rises by 6 and U is untouched; the old version
+      treated `UNLOOP` as a bare RTS and crashed the CtrlFlow run) and
+      `TSTEXIT` (calls `UNLOOP` before `EXIT`; the compiled body is now
+      `DO I 3 = IF UNLOOP EXIT THEN I + LOOP`).
 - [x] **Documentation:** ANS Test Suite `README.md` (how to run, edit and
       read the tests, differences from Annex F, known limitations) and
       `bug_fixes.md` (history of the defects above).

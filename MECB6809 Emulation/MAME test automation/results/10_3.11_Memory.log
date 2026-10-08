@@ -1,0 +1,53 @@
+
+SysIO
+
+Stack
+
+RetStack
+
+SArithmetic
+
+DArithmetic
+
+Logic
+
+Compare
+
+CtrlFlow
+
+DefWords
+
+CompWords
+
+Memory
+TSTFETCHSTORE OK
+TSTCFETCHSTORE OK
+TSTPLUSSTORE OK
+TST2FETCHSTORE OK
+TSTCODEHERE OK
+TSTVARHERE OK
+TSTPAD OK
+TSTUNUSED OK
+TSTVUNUSED OK
+TSTFILL OK
+TSTERASE OK
+TSTCMOVE OK
+TSTCMOVEGT OK
+TSTMOVE1 OK
+TSTMOVE2 OK
+TSTMOVE3 OK
+
+StrParse
+
+NumOut
+
+BaseRadix
+
+Except
+
+Comments
+
+EnvSys
+
+Tools
+6809 FORTH v1.0
