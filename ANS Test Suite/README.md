@@ -14,8 +14,8 @@ Those conditions are not satisfied in this project.
 
 The test suite files here have been modified 
 to facilitate development testing, instead of compliance testing. 
-This includes development by manual cut/paste of forth source 
-into a terminal emulator or by running the supplied automation script. 
+This includes development by manual cut/paste of forth source into a terminal emulator  
+or by running the supplied automation script. 
 
 Modifications include: 
 1. File splits by section.
@@ -255,7 +255,10 @@ Other guidance:
   Restore it unconditionally, as the existing files do.
 - `>R`/`R>` must not span separate top-level lines.
 - Keep `TEST-BEGIN` after `MARKER Mnn` and `TEST-END` before the closing `Mnn`.
-  The tool script `apply_test_markers.py` inserts both idempotently.
+  For a new section file that already has its `MARKER Mnn` lines,
+  `python3 apply_test_markers.py ans_tests [--dry-run]` inserts both.
+  It examines every file in the directory, skips files that already have them,
+  and keeps no backup, so use `--dry-run` first or run it under version control.
 
 ## Manifest
 
