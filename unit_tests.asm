@@ -42,190 +42,190 @@
 ;   forth6809.asm
 ; ============================================================
 
-TSTU0    EQU   APPVARS       ; saved U, before a test touches it
-TSTUB4   EQU   APPVARS+2     ; U immediately before the op under test
-TSTUAF   EQU   APPVARS+4     ; U immediately after the op under test
-TSTFLAG  EQU   APPVARS+6     ; scratch for TSTREPORT's pass/fail arg
+TSTU0       EQU   APPVARS           ; saved U, before a test touches it
+TSTUB4      EQU   APPVARS+2         ; U immediately before the op under test
+TSTUAF      EQU   APPVARS+4         ; U immediately after the op under test
+TSTFLAG     EQU   APPVARS+6         ; scratch for TSTREPORT's pass/fail arg
 
-TSTGUARD EQU   $3C7A         ; sentinel value, pushed below the value
-                              ; under test, to prove an operation
-                              ; doesn't disturb what's beneath it
-TSTVAL1  EQU   $59E1         ; the value under test itself - neither
-                              ; constant is 0, 1, or -1, so a test
-                              ; that only appears to pass due to a
-                              ; trivial/special-cased value would be
-                              ; caught rather than masked
-TSTVAL2  EQU   $2468         ; additional distinct, non-trivial
-TSTVAL3  EQU   $7B3D         ; values for multi-item tests (SWAP,
-TSTVAL4  EQU   $4E2C         ; OVER, ROT, 2DUP, 2ROT, etc) - none are
-TSTVAL5  EQU   $19A7         ; 0, 1, -1, TSTGUARD, or any of each
-TSTVAL6  EQU   $6D95         ; other
+TSTGUARD    EQU   $3C7A             ; sentinel value, pushed below the value
+                                    ; under test, to prove an operation
+                                    ; doesn't disturb what's beneath it
+TSTVAL1     EQU   $59E1             ; the value under test itself - neither
+                                    ; constant is 0, 1, or -1, so a test
+                                    ; that only appears to pass due to a
+                                    ; trivial/special-cased value would be
+                                    ; caught rather than masked
+TSTVAL2     EQU   $2468             ; additional distinct, non-trivial
+TSTVAL3     EQU   $7B3D             ; values for multi-item tests (SWAP,
+TSTVAL4     EQU   $4E2C             ; OVER, ROT, 2DUP, 2ROT, etc) - none are
+TSTVAL5     EQU   $19A7             ; 0, 1, -1, TSTGUARD, or any of each
+TSTVAL6     EQU   $6D95             ; other
 
-TSTSCR   EQU   APPVARS+8     ; extra scratch cell - for tests (DEPTH)
-                              ; that need to compute an expected value
-                              ; independently before comparing
+TSTSCR      EQU   APPVARS+8         ; extra scratch cell - for tests (DEPTH)
+                                    ; that need to compute an expected value
+                                    ; independently before comparing
 
-TSTCBUF  EQU   APPVARS+10    ; compile-time test harness (section 3.8,
-                              ; control flow): scratch buffer real
-                              ; compile-time words (IF/THEN/DO/LOOP/
-                              ; etc) actually compile into - CODEHERE
-                              ; is redirected here for the duration of
-                              ; each compile, then restored, so the
-                              ; real ROM/dictionary is never touched.
-                              ; 80 bytes - generous headroom for the
-                              ; small test snippets planned (the
-                              ; largest, CASE with two OF clauses,
-                              ; comes nowhere close)
-TSTCSAV  EQU   APPVARS+90    ; saved CODEHERE, across a redirected
-                              ; compile
-TSTCSPS  EQU   APPVARS+92    ; saved CSP, across a redirected compile -
-                              ; EXIT's own frame-counting scan depends
-                              ; on CSP marking the right baseline
-TSTLSAV  EQU   APPVARS+94    ; saved LATEST, across a RECURSE test
-                              ; (which reads LATEST directly)
-TSTFHDR  EQU   APPVARS+96    ; fake dictionary header, for RECURSE to
-                              ; read via a redirected LATEST - 16
-                              ; bytes (LEN/FL + name + LINK + CFA,
-                              ; comfortably fits any short test name)
+TSTCBUF     EQU   APPVARS+10        ; compile-time test harness (section 3.8,
+                                    ; control flow): scratch buffer real
+                                    ; compile-time words (IF/THEN/DO/LOOP/
+                                    ; etc) actually compile into - CODEHERE
+                                    ; is redirected here for the duration of
+                                    ; each compile, then restored, so the
+                                    ; real ROM/dictionary is never touched.
+                                    ; 80 bytes - generous headroom for the
+                                    ; small test snippets planned (the
+                                    ; largest, CASE with two OF clauses,
+                                    ; comes nowhere close)
+TSTCSAV     EQU   APPVARS+90        ; saved CODEHERE, across a redirected
+                                    ; compile
+TSTCSPS     EQU   APPVARS+92        ; saved CSP, across a redirected compile -
+                                    ; EXIT's own frame-counting scan depends
+                                    ; on CSP marking the right baseline
+TSTLSAV     EQU   APPVARS+94        ; saved LATEST, across a RECURSE test
+                                    ; (which reads LATEST directly)
+TSTFHDR     EQU   APPVARS+96        ; fake dictionary header, for RECURSE to
+                                    ; read via a redirected LATEST - 16
+                                    ; bytes (LEN/FL + name + LINK + CFA,
+                                    ; comfortably fits any short test name)
 
-TSTDBUF  EQU   APPVARS+112   ; defining-words test harness (section
-                              ; 3.9): scratch dictionary buffer -
-                              ; DPHERE is redirected here for the
-                              ; duration of each defining-word call,
-                              ; so a real header never lands in the
-                              ; real dictionary. 40 bytes.
-TSTDSAV  EQU   APPVARS+152   ; saved DPHERE
-TSTVBUF  EQU   APPVARS+154   ; scratch VARHERE buffer, for VARIABLE/
-                              ; VALUE/2VARIABLE/BUFFER: to reserve
-                              ; their own mutable space into. 20
-                              ; bytes.
-TSTVSAV  EQU   APPVARS+174   ; saved VARHERE
-TSTNAMEB EQU   APPVARS+176   ; scratch fake source text, for HEADER's
-                              ; own WORD-based name parsing (every
-                              ; defining word reads a name from the
-                              ; input source - unlike anything in
-                              ; section 3.8) - 16 bytes
-TSTSASAV EQU   APPVARS+192   ; saved SRCADDR
-TSTSLSAV EQU   APPVARS+194   ; saved SRCLEN
-TSTTISAV EQU   APPVARS+196   ; saved TOIN
-TSTWCFA  EQU   APPVARS+198   ; the newly-defined test word's own CFA -
-                              ; equal to CODEHERE (redirected) at the
-                              ; moment the defining word is called,
-                              ; saved so the compiled trampoline can
-                              ; be executed afterward to verify its
-                              ; runtime behavior
-TSTSTSAV EQU   APPVARS+200   ; saved STATE, across a :/; test
-TSTSMFLG EQU   APPVARS+202   ; scratch: header SMUDGE-bit check result
-TSTDOESA EQU   APPVARS+204   ; address of a compiled "JSR SETDOES" -
-                              ; JSR'd directly to simulate an outer
-                              ; defining word reaching that point,
-                              ; without needing to actually build one
-TSTCSAV2 EQU   APPVARS+212   ; MARKER test: CODEHERE right after
-                              ; executing the marker word (before it's
-                              ; overwritten by this test's own restore)
-TSTDSAV2 EQU   APPVARS+214   ; same, DPHERE
-TSTVSAV2 EQU   APPVARS+216   ; same, VARHERE
-TSTLSAV2 EQU   APPVARS+218   ; same, LATEST
-TSTCBUF2 EQU   APPVARS+220   ; a SECOND, separate CODEHERE-redirect
-                              ; target - real bug found via MAME: WORD
-                              ; writes its parsed-token output directly
-                              ; at CODEHERE (by its own documented
-                              ; design, matching the ANS transient-
-                              ; region contract - confirmed by reading
-                              ; WORD's own code, not assumed). Any test
-                              ; that parses a SECOND name later (TO,
-                              ; IS, ACTION-OF) must NOT redirect
-                              ; CODEHERE back to TSTCBUF for that
-                              ; second parse, since TSTCBUF still holds
-                              ; the FIRST word's already-compiled
-                              ; trampoline at that point - WORD would
-                              ; silently overwrite it, corrupting the
-                              ; CFA that TSTWCFA still points to before
-                              ; it gets a second chance to execute. 20
-                              ; bytes - comfortably fits any short
-                              ; parsed name plus its length byte.
-TSTUMID  EQU   APPVARS+240   ; intermediate U capture (section 3.3,
-                              ; return stack): >R/2>R tests capture U
-                              ; right after moving a value to the
-                              ; return stack, before moving it back -
-                              ; a round-trip-only check could pass even
-                              ; if both the move-out and move-back were
-                              ; broken no-ops, since the value would
-                              ; never have actually left; this catches
-                              ; that specifically.
+TSTDBUF     EQU   APPVARS+112       ; defining-words test harness (section
+                                    ; 3.9): scratch dictionary buffer -
+                                    ; DPHERE is redirected here for the
+                                    ; duration of each defining-word call,
+                                    ; so a real header never lands in the
+                                    ; real dictionary. 40 bytes.
+TSTDSAV     EQU   APPVARS+152       ; saved DPHERE
+TSTVBUF     EQU   APPVARS+154       ; scratch VARHERE buffer, for VARIABLE/
+                                    ; VALUE/2VARIABLE/BUFFER: to reserve
+                                    ; their own mutable space into. 20
+                                    ; bytes.
+TSTVSAV     EQU   APPVARS+174       ; saved VARHERE
+TSTNAMEB    EQU   APPVARS+176       ; scratch fake source text, for HEADER's
+                                    ; own WORD-based name parsing (every
+                                    ; defining word reads a name from the
+                                    ; input source - unlike anything in
+                                    ; section 3.8) - 16 bytes
+TSTSASAV    EQU   APPVARS+192       ; saved SRCADDR
+TSTSLSAV    EQU   APPVARS+194       ; saved SRCLEN
+TSTTISAV    EQU   APPVARS+196       ; saved TOIN
+TSTWCFA     EQU   APPVARS+198       ; the newly-defined test word's own CFA -
+                                    ; equal to CODEHERE (redirected) at the
+                                    ; moment the defining word is called,
+                                    ; saved so the compiled trampoline can
+                                    ; be executed afterward to verify its
+                                    ; runtime behavior
+TSTSTSAV    EQU   APPVARS+200       ; saved STATE, across a :/; test
+TSTSMFLG    EQU   APPVARS+202       ; scratch: header SMUDGE-bit check result
+TSTDOESA    EQU   APPVARS+204       ; address of a compiled "JSR SETDOES" -
+                                    ; JSR'd directly to simulate an outer
+                                    ; defining word reaching that point,
+                                    ; without needing to actually build one
+TSTCSAV2    EQU   APPVARS+212       ; MARKER test: CODEHERE right after
+                                    ; executing the marker word (before it's
+                                    ; overwritten by this test's own restore)
+TSTDSAV2    EQU   APPVARS+214       ; same, DPHERE
+TSTVSAV2    EQU   APPVARS+216       ; same, VARHERE
+TSTLSAV2    EQU   APPVARS+218       ; same, LATEST
+TSTCBUF2    EQU   APPVARS+220       ; a SECOND, separate CODEHERE-redirect
+                                    ; target - real bug found via MAME: WORD
+                                    ; writes its parsed-token output directly
+                                    ; at CODEHERE (by its own documented
+                                    ; design, matching the ANS transient-
+                                    ; region contract - confirmed by reading
+                                    ; WORD's own code, not assumed). Any test
+                                    ; that parses a SECOND name later (TO,
+                                    ; IS, ACTION-OF) must NOT redirect
+                                    ; CODEHERE back to TSTCBUF for that
+                                    ; second parse, since TSTCBUF still holds
+                                    ; the FIRST word's already-compiled
+                                    ; trampoline at that point - WORD would
+                                    ; silently overwrite it, corrupting the
+                                    ; CFA that TSTWCFA still points to before
+                                    ; it gets a second chance to execute. 20
+                                    ; bytes - comfortably fits any short
+                                    ; parsed name plus its length byte.
+TSTUMID     EQU   APPVARS+240       ; intermediate U capture (section 3.3,
+                                    ; return stack): >R/2>R tests capture U
+                                    ; right after moving a value to the
+                                    ; return stack, before moving it back -
+                                    ; a round-trip-only check could pass even
+                                    ; if both the move-out and move-back were
+                                    ; broken no-ops, since the value would
+                                    ; never have actually left; this catches
+                                    ; that specifically.
 
-TSTOHSAV EQU   APPVARS+242   ; section 3.1 (System/Console I/O):
-                              ; saves OUTHEAD (the output ring buffer's
-                              ; write index) before an EMIT-family call,
-                              ; so the test can confirm the character(s)
-                              ; were genuinely queued into OUTBUF - not
-                              ; just that the call returned without
-                              ; crashing.
+TSTOHSAV    EQU   APPVARS+242       ; section 3.1 (System/Console I/O):
+                                    ; saves OUTHEAD (the output ring buffer's
+                                    ; write index) before an EMIT-family call,
+                                    ; so the test can confirm the character(s)
+                                    ; were genuinely queued into OUTBUF - not
+                                    ; just that the call returned without
+                                    ; crashing.
 
-TSTBASAV EQU   APPVARS+243   ; section 3.13 (Numeric Output): saves the
-                              ; real BASE across tests that do digit
-                              ; conversion. Real bug found via MAME:
-                              ; this whole test framework runs before
-                              ; COLD (confirmed by tracing the boot
-                              ; sequence directly - COLDSTRT clears all
-                              ; of GLOBALS, including BASE, to zero,
-                              ; then calls TSTRUNNER, with COLD's own
-                              ; "BASE=10" initialization not running
-                              ; until later) - so BASE reads as zero at
-                              ; test time, not 10. With BASE=0,
-                              ; UDDIGIT's own restoring-division
-                              ; algorithm degrades into an unconditional
-                              ; shift (the "subtract and check" step
-                              ; never actually subtracts, since nothing
-                              ; can compare below zero), so the value
-                              ; being converted never genuinely
-                              ; decreases - NUMSIGNS' own loop-until-
-                              ; zero condition then never becomes true.
-                              ; Every test in this section doing digit
-                              ; conversion now explicitly saves BASE,
-                              ; sets it to 10, and restores it
-                              ; afterward - the same save/set/restore
-                              ; pattern already established for
-                              ; CODEHERE/STATE/SRCADDR etc throughout
-                              ; this whole session, just not initially
-                              ; applied to BASE since it was assumed
-                              ; (incorrectly, for this specific,
-                              ; pre-COLD execution context) to already
-                              ; hold a valid value.
+TSTBASAV    EQU   APPVARS+243       ; section 3.13 (Numeric Output): saves the
+                                    ; real BASE across tests that do digit
+                                    ; conversion. Real bug found via MAME:
+                                    ; this whole test framework runs before
+                                    ; COLD (confirmed by tracing the boot
+                                    ; sequence directly - COLDSTRT clears all
+                                    ; of GLOBALS, including BASE, to zero,
+                                    ; then calls TSTRUNNER, with COLD's own
+                                    ; "BASE=10" initialization not running
+                                    ; until later) - so BASE reads as zero at
+                                    ; test time, not 10. With BASE=0,
+                                    ; UDDIGIT's own restoring-division
+                                    ; algorithm degrades into an unconditional
+                                    ; shift (the "subtract and check" step
+                                    ; never actually subtracts, since nothing
+                                    ; can compare below zero), so the value
+                                    ; being converted never genuinely
+                                    ; decreases - NUMSIGNS' own loop-until-
+                                    ; zero condition then never becomes true.
+                                    ; Every test in this section doing digit
+                                    ; conversion now explicitly saves BASE,
+                                    ; sets it to 10, and restores it
+                                    ; afterward - the same save/set/restore
+                                    ; pattern already established for
+                                    ; CODEHERE/STATE/SRCADDR etc throughout
+                                    ; this whole session, just not initially
+                                    ; applied to BASE since it was assumed
+                                    ; (incorrectly, for this specific,
+                                    ; pre-COLD execution context) to already
+                                    ; hold a valid value.
 
-TSTHANDSAV EQU APPVARS+245   ; section 3.15 (Exception Handling): saves
-                              ; the real HANDLER across a test verifying
-                              ; CATCH correctly restores it afterward,
-                              ; on both the success and throw paths -
-                              ; confirmed via CATCH's own code that it
-                              ; saves/restores HANDLER around every
-                              ; call regardless of outcome, matching its
-                              ; own documented "restores... HANDLER on
-                              ; either path".
+TSTHANDSAV  EQU   APPVARS+245       ; section 3.15 (Exception Handling): saves
+                                    ; the real HANDLER across a test verifying
+                                    ; CATCH correctly restores it afterward,
+                                    ; on both the success and throw paths -
+                                    ; confirmed via CATCH's own code that it
+                                    ; saves/restores HANDLER around every
+                                    ; call regardless of outcome, matching its
+                                    ; own documented "restores... HANDLER on
+                                    ; either path".
 
-TSTSISAV EQU   APPVARS+247   ; section 3.17 (Environmental & System
-                              ; Queries): saves the real SRCID across
-                              ; TSTSOURCEID's and TSTREFILL's own tests,
-                              ; both of which redirect SRCID directly.
+TSTSISAV    EQU   APPVARS+247       ; section 3.17 (Environmental & System
+                                    ; Queries): saves the real SRCID across
+                                    ; TSTSOURCEID's and TSTREFILL's own tests,
+                                    ; both of which redirect SRCID directly.
 
-TSTNEG1  EQU   $CFC7         ; -12345 - distinct, non-trivial negative
-                              ; test values, needed for arithmetic
-                              ; tests (ABS, NEGATE, MIN/MAX, signed
-                              ; division, 2/) whose logic genuinely
-                              ; branches on sign - TSTVAL1-6 above are
-                              ; all positive, which wouldn't exercise
-                              ; those branches
-TSTNEG2  EQU   $FEBF         ; -321
+TSTNEG1     EQU   $CFC7             ; -12345 - distinct, non-trivial negative
+                                    ; test values, needed for arithmetic
+                                    ; tests (ABS, NEGATE, MIN/MAX, signed
+                                    ; division, 2/) whose logic genuinely
+                                    ; branches on sign - TSTVAL1-6 above are
+                                    ; all positive, which wouldn't exercise
+                                    ; those branches
+TSTNEG2     EQU   $FEBF             ; -321
 
-TSTD1HI  EQU   $0001         ; TSTDBL1 = 70000 (positive, exceeds 16
-TSTD1LO  EQU   $1170         ; bits - exercises real double-cell width,
-                              ; not just a sign-extended single)
-TSTD2HI  EQU   $FFFE         ; TSTDBL2 = -70000
-TSTD2LO  EQU   $EE90
-TSTD3HI  EQU   $00BC         ; TSTDBL3 = 12345678
-TSTD3LO  EQU   $614E
-TSTDSHI  EQU   $0000         ; TSTDBLSMALL = 500 - small enough to fit
-TSTDSLO  EQU   $01F4         ; in a single cell, for D>S
+TSTD1HI     EQU   $0001             ; TSTDBL1 = 70000 (positive, exceeds 16
+TSTD1LO     EQU   $1170             ; bits - exercises real double-cell width,
+                                    ; not just a sign-extended single)
+TSTD2HI     EQU   $FFFE             ; TSTDBL2 = -70000
+TSTD2LO     EQU   $EE90
+TSTD3HI     EQU   $00BC             ; TSTDBL3 = 12345678
+TSTD3LO     EQU   $614E
+TSTDSHI     EQU   $0000             ; TSTDBLSMALL = 500 - small enough to fit
+TSTDSLO     EQU   $01F4             ; in a single cell, for D>S
 
 ; ------------------------------------------------------------
 ; TSTREPORT - ( testname-caddr passflag -- ) shared by every
@@ -233,53 +233,53 @@ TSTDSLO  EQU   $01F4         ; in a single cell, for D>S
 ; " FAIL" depending on passflag (TRUEV = pass, FALSEV = fail),
 ; then a CR, readying the terminal for the next test's line.
 ; ------------------------------------------------------------
-TSTREPORT: PULU  D
-           STD   TSTFLAG
-           JSR   COUNT
-           JSR   TYPE
-           LDD   TSTFLAG
-           BEQ   TSTFAILR
-           LDD   #TSTOKMSG
-           PSHU  D
-           LDD   #TSTOKMSGL
-           PSHU  D
-           BRA   TSTPRINT
-TSTFAILR:  LDD   #TSTFAILMSG
-           PSHU  D
-           LDD   #TSTFAILMSGL
-           PSHU  D
-TSTPRINT:  JSR   TYPE
-           JSR   CRW
-           RTS
+TSTREPORT:  PULU  D
+            STD   TSTFLAG
+            JSR   COUNT
+            JSR   TYPE
+            LDD   TSTFLAG
+            BEQ   TSTFAILR
+            LDD   #TSTOKMSG
+            PSHU  D
+            LDD   #TSTOKMSGL
+            PSHU  D
+            BRA   TSTPRINT
+TSTFAILR:   LDD   #TSTFAILMSG
+            PSHU  D
+            LDD   #TSTFAILMSGL
+            PSHU  D
+TSTPRINT:   JSR   TYPE
+            JSR   CRW
+            RTS
 
-TSTOKMSG:    FCC " OK"
-TSTOKMSGL    EQU  *-TSTOKMSG
-TSTFAILMSG:  FCC " FAIL"
-TSTFAILMSGL  EQU  *-TSTFAILMSG
+TSTOKMSG:   FCC   " OK"
+TSTOKMSGL   EQU   *-TSTOKMSG
+TSTFAILMSG: FCC   " FAIL"
+TSTFAILMSGL EQU   *-TSTFAILMSG
 
 ; ------------------------------------------------------------
 ; TSTRUNNER - calls each test group in turn. Add new groups
 ; here as they're written.
 ; ------------------------------------------------------------
-TSTRUNNER: JSR   TSTSYSIO
-           JSR   TSTSTACK
-           JSR   TSTRETSTACK
-           JSR   TSTSARITH
-           JSR   TSTDARITH
-           JSR   TSTLOGIC
-           JSR   TSTCOMPARE
-           JSR   TSTCTRLFLOW
-           JSR   TSTDEFWORDS
-           JSR   TSTCOMPWORDS
-           JSR   TSTMEMORY
-           JSR   TSTSTRPARSE
-           JSR   TSTNUMOUT
-           JSR   TSTBASERADIX
-           JSR   TSTEXCEPTION
-           JSR   TSTCOMMENTS
-           JSR   TSTENVSYS
-           JSR   TSTTOOLS
-           RTS
+TSTRUNNER:  JSR   TSTSYSIO
+            JSR   TSTSTACK
+            JSR   TSTRETSTACK
+            JSR   TSTSARITH
+            JSR   TSTDARITH
+            JSR   TSTLOGIC
+            JSR   TSTCOMPARE
+            JSR   TSTCTRLFLOW
+            JSR   TSTDEFWORDS
+            JSR   TSTCOMPWORDS
+            JSR   TSTMEMORY
+            JSR   TSTSTRPARSE
+            JSR   TSTNUMOUT
+            JSR   TSTBASERADIX
+            JSR   TSTEXCEPTION
+            JSR   TSTCOMMENTS
+            JSR   TSTENVSYS
+            JSR   TSTTOOLS
+            RTS
 
 ; ------------------------------------------------------------
 ; TSTSYSIO - System/Console I/O tests (glossary section 3.1, 12
@@ -303,31 +303,32 @@ TSTRUNNER: JSR   TSTSYSIO
 ; output ring buffer to confirm they were genuinely queued, not
 ; just that the call returned without crashing.
 ; ------------------------------------------------------------
-TSTSYSIO: JSR   CRW
-           LDX   #TSTSYSIOMSG
-           PSHU  X
-           LDD   #5
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+TSTSYSIO:   JSR   CRW
+            LDX   #TSTSYSIOMSG
+            PSHU  X
+            LDD   #5
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-0  ; >>>>
+            IFEQ  TSTSELECTOR-0     ; >>>>
 
-           JSR   TSTKEYQ
-           JSR   TSTEMIT
-           JSR   TSTCR
-           JSR   TSTSPACE
-           JSR   TSTSPACES
-           JSR   TSTSPACESZ
-           JSR   TSTTYPE
+            JSR   TSTKEYQ
+            JSR   TSTEMIT
+            JSR   TSTCR
+            JSR   TSTSPACE
+            JSR   TSTSPACES
+            JSR   TSTSPACESZ
+            JSR   TSTTYPE
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTSYSIOMSG: FCC "SysIO"
+TSTSYSIOMSG:
+            FCC   "SysIO"
 
-           IFEQ TSTSELECTOR-0  ; >>>>
+            IFEQ  TSTSELECTOR-0     ; >>>>
 
 ; ------------------------------------------------------------
 ; System/Console I/O test harness (glossary section 3.1). Half
@@ -364,41 +365,42 @@ TSTSYSIOMSG: FCC "SysIO"
 ; during automated boot-time testing, expects FALSE - the
 ; normal, expected case for this kind of test run.
 ; ------------------------------------------------------------
-TSTKEYQ: STU   TSTU0
+TSTKEYQ:    STU   TSTU0
 
-         LDD   #TSTGUARD
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-         JSR   KEYQ
+            JSR   KEYQ
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         PULU  D
-         CMPD  #FALSEV
-         BNE   KYFAIL
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   KYFAIL
+            PULU  D
+            CMPD  #FALSEV
+            BNE   KYFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   KYFAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #2
-         BNE   KYFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   KYFAIL
 
-         LDD   #TRUEV
-         BRA   KYDONE
-KYFAIL: LDD   #FALSEV
-KYDONE: LDX   #TSTKEYQNAME
-         PSHU  X
-         PSHU  D
-         JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   KYDONE
+KYFAIL:     LDD   #FALSEV
+KYDONE:     LDX   #TSTKEYQNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU   TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTKEYQNAME: FCB  7
-             FCC  "TSTKEYQ"
+TSTKEYQNAME:
+            FCB   7
+            FCC   "TSTKEYQ"
 
 ; ------------------------------------------------------------
 ; TSTEMIT - unit test for EMIT. Verifies the actual queuing
@@ -408,326 +410,330 @@ TSTKEYQNAME: FCB  7
 ; position genuinely matches the character emitted - not just
 ; that the call returned.
 ; ------------------------------------------------------------
-TSTEMIT: STU   TSTU0
+TSTEMIT:    STU   TSTU0
 
-         LDD   #TSTGUARD
-         PSHU  D
-         LDD   #65
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #65
+            PSHU  D
+            STU   TSTUB4
 
-         JSR   EMIT
+            JSR   EMIT
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         LDA   EMITCH  ; BUG FIX: was checking OUTHEAD/OUTBUF, assuming
-                        ; the interrupt-driven EMIT (SERIALPOLL=0). Real
-                        ; bug found via MAME: EMIT has two entirely
-                        ; different implementations, gated the same way
-                        ; as KEY's own two variants - the polling one
-                        ; (SERIALPOLL=1, confirmed the currently active
-                        ; build) writes directly to ACIADR and never
-                        ; touches OUTHEAD/OUTBUF at all, so that check
-                        ; always failed despite the character genuinely
-                        ; being transmitted (confirmed in the terminal
-                        ; output itself). EMITCH, by contrast, is set
-                        ; unconditionally by both variants as their very
-                        ; first step, before either mode-specific branch
-                        ; - checking it verifies the argument was
-                        ; correctly extracted from the stack regardless
-                        ; of which EMIT variant is active, with no
-                        ; conditional needed.
-         CMPA  #65
-         BNE   EMFAIL
+            LDA   EMITCH            ; BUG FIX: was checking OUTHEAD/OUTBUF, assuming
+                                    ; the interrupt-driven EMIT (SERIALPOLL=0). Real
+                                    ; bug found via MAME: EMIT has two entirely
+                                    ; different implementations, gated the same way
+                                    ; as KEY's own two variants - the polling one
+                                    ; (SERIALPOLL=1, confirmed the currently active
+                                    ; build) writes directly to ACIADR and never
+                                    ; touches OUTHEAD/OUTBUF at all, so that check
+                                    ; always failed despite the character genuinely
+                                    ; being transmitted (confirmed in the terminal
+                                    ; output itself). EMITCH, by contrast, is set
+                                    ; unconditionally by both variants as their very
+                                    ; first step, before either mode-specific branch
+                                    ; - checking it verifies the argument was
+                                    ; correctly extracted from the stack regardless
+                                    ; of which EMIT variant is active, with no
+                                    ; conditional needed.
+            CMPA  #65
+            BNE   EMFAIL
 
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   EMFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   EMFAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #-2
-         BNE   EMFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   EMFAIL
 
-         LDD   #TRUEV
-         BRA   EMDONE
-EMFAIL:  LDD   #FALSEV
-EMDONE:  LDX   #TSTEMITNAME
-         PSHU  X
-         PSHU  D
-         JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   EMDONE
+EMFAIL:     LDD   #FALSEV
+EMDONE:     LDX   #TSTEMITNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU   TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTEMITNAME: FCB  7
-             FCC  "TSTEMIT"
+TSTEMITNAME:
+            FCB   7
+            FCC   "TSTEMIT"
 
 ; ------------------------------------------------------------
 ; TSTCR - unit test for CR. Verifies both queued bytes (13 then
 ; 10, CR then LF, matching the documented "CR then LF") land
 ; correctly in the output ring buffer, in order.
 ; ------------------------------------------------------------
-TSTCR:   STU   TSTU0
+TSTCR:      STU   TSTU0
 
-         IFEQ SERIALPOLL  ; >>>>
-         LDA   OUTHEAD
-         STA   TSTOHSAV
-         ENDC ; <<<<
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   OUTHEAD
+            STA   TSTOHSAV
+            ENDC                    ; <<<<
 
 
-         LDD   #TSTGUARD
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-         JSR   CRW
+            JSR   CRW
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         IFEQ SERIALPOLL  ; >>>> full check: interrupt-driven EMIT
-                          ; queues both bytes into OUTBUF, verifiable
-                          ; in order
-         LDA   TSTOHSAV
-         ADDA  #2
-         ANDA  #OUTBUFSZ-1
-         CMPA  OUTHEAD
-         BNE   CRFAIL
+            IFEQ  SERIALPOLL        ; >>>> full check: interrupt-driven EMIT
+                                    ; queues both bytes into OUTBUF, verifiable
+                                    ; in order
+            LDA   TSTOHSAV
+            ADDA  #2
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            BNE   CRFAIL
 
-         LDX   #OUTBUF
-         LDB   TSTOHSAV
-         LDA   B,X
-         CMPA  #13
-         BNE   CRFAIL
-         INCB
-         ANDB  #OUTBUFSZ-1
-         LDA   B,X
-         CMPA  #10
-         BNE   CRFAIL
-         ELSE  ; <<<<>>>> BUG FIX: was unconditionally checking OUTHEAD/
-                          ; OUTBUF, assuming the interrupt-driven EMIT.
-                          ; Real bug found via MAME: EMIT has two
-                          ; entirely different implementations, gated
-                          ; the same way as KEY's own two variants - the
-                          ; polling one (SERIALPOLL=1, confirmed the
-                          ; currently active build) writes directly to
-                          ; ACIADR and never touches OUTHEAD/OUTBUF at
-                          ; all, so this check always failed despite
-                          ; both characters genuinely being transmitted
-                          ; (confirmed in the terminal output itself).
-                          ; EMITCH only reflects the LAST of the two
-                          ; characters CRW emits (10, the LF) by the
-                          ; time this runs, since each EMIT call
-                          ; overwrites it - checking that plus the
-                          ; depth check below is the most this variant
-                          ; genuinely allows verifying; a direct
-                          ; hardware write has no other inspectable,
-                          ; persistent state.
-         LDA   EMITCH
-         CMPA  #10
-         BNE   CRFAIL
-         ENDC  ; <<<<<<<<<<
+            LDX   #OUTBUF
+            LDB   TSTOHSAV
+            LDA   B,X
+            CMPA  #13
+            BNE   CRFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #10
+            BNE   CRFAIL
+            ELSE                    ; <<<<>>>> BUG FIX: was unconditionally checking OUTHEAD/
+                                    ; OUTBUF, assuming the interrupt-driven EMIT.
+                                    ; Real bug found via MAME: EMIT has two
+                                    ; entirely different implementations, gated
+                                    ; the same way as KEY's own two variants - the
+                                    ; polling one (SERIALPOLL=1, confirmed the
+                                    ; currently active build) writes directly to
+                                    ; ACIADR and never touches OUTHEAD/OUTBUF at
+                                    ; all, so this check always failed despite
+                                    ; both characters genuinely being transmitted
+                                    ; (confirmed in the terminal output itself).
+                                    ; EMITCH only reflects the LAST of the two
+                                    ; characters CRW emits (10, the LF) by the
+                                    ; time this runs, since each EMIT call
+                                    ; overwrites it - checking that plus the
+                                    ; depth check below is the most this variant
+                                    ; genuinely allows verifying; a direct
+                                    ; hardware write has no other inspectable,
+                                    ; persistent state.
+            LDA   EMITCH
+            CMPA  #10
+            BNE   CRFAIL
+            ENDC                    ; <<<<<<<<<<
 
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   CRFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   CRFAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #0
-         BNE   CRFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   CRFAIL
 
-         LDD   #TRUEV
-         BRA   CRDONE
-CRFAIL: LDD   #FALSEV
-CRDONE: LDX   #TSTCRNAME
-         PSHU  X
-         PSHU  D
-         JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   CRDONE
+CRFAIL:     LDD   #FALSEV
+CRDONE:     LDX   #TSTCRNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU   TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTCRNAME: FCB  5
-           FCC  "TSTCR"
+TSTCRNAME:  FCB   5
+            FCC   "TSTCR"
 
 ; ------------------------------------------------------------
 ; TSTSPACE - unit test for SPACE. Verifies one space (32) is
 ; genuinely queued.
 ; ------------------------------------------------------------
-TSTSPACE: STU  TSTU0
+TSTSPACE:   STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  SPACEW
+            JSR   SPACEW
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          LDA  EMITCH  ; BUG FIX: was checking OUTHEAD/OUTBUF - same
-                        ; fix and same reasoning as TSTEMIT's own fix
-                        ; (see its comment). SPACEW calls EMIT
-                        ; internally with a single character (32), so
-                        ; EMITCH correctly reflects it regardless of
-                        ; which EMIT variant is active.
-          CMPA #32
-          BNE  SCFAIL
+            LDA   EMITCH            ; BUG FIX: was checking OUTHEAD/OUTBUF - same
+                                    ; fix and same reasoning as TSTEMIT's own fix
+                                    ; (see its comment). SPACEW calls EMIT
+                                    ; internally with a single character (32), so
+                                    ; EMITCH correctly reflects it regardless of
+                                    ; which EMIT variant is active.
+            CMPA  #32
+            BNE   SCFAIL
 
-          PULU D
-          CMPD #TSTGUARD
-          BNE  SCFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SCFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #0
-          BNE  SCFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   SCFAIL
 
-          LDD  #TRUEV
-          BRA  SCDONE
-SCFAIL:   LDD  #FALSEV
-SCDONE:  LDX  #TSTSPACENAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   SCDONE
+SCFAIL:     LDD   #FALSEV
+SCDONE:     LDX   #TSTSPACENAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTSPACENAME: FCB  8
-              FCC  "TSTSPACE"
+TSTSPACENAME:
+            FCB   8
+            FCC   "TSTSPACE"
 
 ; ------------------------------------------------------------
 ; TSTSPACES - unit test for SPACES, normal (n=3) case. Verifies
 ; all three queued bytes are genuinely spaces (32), not just
 ; that OUTHEAD advanced by the right count.
 ; ------------------------------------------------------------
-TSTSPACES: STU  TSTU0
+TSTSPACES:  STU   TSTU0
 
-           IFEQ SERIALPOLL  ; >>>>
-           LDA  OUTHEAD
-           STA  TSTOHSAV
-           ENDC ; <<<<
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   OUTHEAD
+            STA   TSTOHSAV
+            ENDC                    ; <<<<
 
-           LDD  #TSTGUARD
-           PSHU D
-           LDD  #3
-           PSHU D
-           STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #3
+            PSHU  D
+            STU   TSTUB4
 
-           JSR  SPACESW
+            JSR   SPACESW
 
-           STU  TSTUAF
+            STU   TSTUAF
 
-           IFEQ SERIALPOLL  ; >>>> full check: interrupt-driven EMIT
-                            ; queues all three bytes into OUTBUF,
-                            ; verifiable individually
-           LDA  TSTOHSAV
-           ADDA #3
-           ANDA #OUTBUFSZ-1
-           CMPA OUTHEAD
-           BNE  SSFAIL
+            IFEQ  SERIALPOLL        ; >>>> full check: interrupt-driven EMIT
+                                    ; queues all three bytes into OUTBUF,
+                                    ; verifiable individually
+            LDA   TSTOHSAV
+            ADDA  #3
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            BNE   SSFAIL
 
-           LDX  #OUTBUF
-           LDB  TSTOHSAV
-           LDA  B,X
-           CMPA #32
-           BNE  SSFAIL
-           INCB
-           ANDB #OUTBUFSZ-1
-           LDA  B,X
-           CMPA #32
-           BNE  SSFAIL
-           INCB
-           ANDB #OUTBUFSZ-1
-           LDA  B,X
-           CMPA #32
-           BNE  SSFAIL
-           ELSE  ; <<<<>>>> BUG FIX: was unconditionally checking
-                            ; OUTHEAD/OUTBUF - same fix and reasoning as
-                            ; TSTCR's own fix. In polling mode, EMITCH
-                            ; only reflects the LAST of the three
-                            ; identical spaces emitted, and there is no
-                            ; persistent per-call count to verify
-                            ; exactly three calls happened, not just
-                            ; one or two - a genuine limitation of a
-                            ; direct hardware write with no buffering,
-                            ; not something this test can work around.
-                            ; The depth check below still confirms n=3
-                            ; was correctly consumed as an argument.
-           LDA  EMITCH
-           CMPA #32
-           BNE  SSFAIL
-           ENDC  ; <<<<<<<<<<
+            LDX   #OUTBUF
+            LDB   TSTOHSAV
+            LDA   B,X
+            CMPA  #32
+            BNE   SSFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #32
+            BNE   SSFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #32
+            BNE   SSFAIL
+            ELSE                    ; <<<<>>>> BUG FIX: was unconditionally checking
+                                    ; OUTHEAD/OUTBUF - same fix and reasoning as
+                                    ; TSTCR's own fix. In polling mode, EMITCH
+                                    ; only reflects the LAST of the three
+                                    ; identical spaces emitted, and there is no
+                                    ; persistent per-call count to verify
+                                    ; exactly three calls happened, not just
+                                    ; one or two - a genuine limitation of a
+                                    ; direct hardware write with no buffering,
+                                    ; not something this test can work around.
+                                    ; The depth check below still confirms n=3
+                                    ; was correctly consumed as an argument.
+            LDA   EMITCH
+            CMPA  #32
+            BNE   SSFAIL
+            ENDC                    ; <<<<<<<<<<
 
-           PULU D
-           CMPD #TSTGUARD
-           BNE  SSFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SSFAIL
 
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #-2
-           BNE  SSFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   SSFAIL
 
-           LDD  #TRUEV
-           BRA  SSDONE
-SSFAIL:    LDD  #FALSEV
-SSDONE:    LDX  #TSTSPACESNAME
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   SSDONE
+SSFAIL:     LDD   #FALSEV
+SSDONE:     LDX   #TSTSPACESNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSPACESNAME: FCB  9
-               FCC  "TSTSPACES"
+TSTSPACESNAME:
+            FCB   9
+            FCC   "TSTSPACES"
 
 ; ------------------------------------------------------------
 ; TSTSPACESZ - unit test for SPACES, n<=0 case. Documented
 ; behavior is "no output if n <= 0" - verifies OUTHEAD genuinely
 ; doesn't advance at all, not just that the call didn't crash.
 ; ------------------------------------------------------------
-TSTSPACESZ: LDA  OUTHEAD
-            STA  TSTOHSAV
+TSTSPACESZ: LDA   OUTHEAD
+            STA   TSTOHSAV
 
-            STU  TSTU0
+            STU   TSTU0
 
-            LDD  #TSTGUARD
-            PSHU D
-            LDD  #0
-            PSHU D
-            STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            STU   TSTUB4
 
-            JSR  SPACESW
+            JSR   SPACESW
 
-            STU  TSTUAF
+            STU   TSTUAF
 
-            LDA  TSTOHSAV
-            CMPA OUTHEAD
-            BNE  S0FAIL
+            LDA   TSTOHSAV
+            CMPA  OUTHEAD
+            BNE   S0FAIL
 
-            PULU D
-            CMPD #TSTGUARD
-            BNE  S0FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   S0FAIL
 
-            LDD  TSTUB4
-            SUBD TSTUAF
-            CMPD #-2
-            BNE  S0FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   S0FAIL
 
-            LDD  #TRUEV
-            BRA  S0DONE
-S0FAIL:     LDD  #FALSEV
-S0DONE:     LDX  #TSTSPACESZNAME
-            PSHU X
-            PSHU D
-            JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   S0DONE
+S0FAIL:     LDD   #FALSEV
+S0DONE:     LDX   #TSTSPACESZNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-            LDU  TSTU0
+            LDU   TSTU0
             RTS
 
-TSTSPACESZNAME: FCB  10
-                FCC  "TSTSPACESZ"
+TSTSPACESZNAME:
+            FCB   10
+            FCC   "TSTSPACESZ"
 
 ; ------------------------------------------------------------
 ; TSTTYPE - unit test for TYPE. Writes a known 2-character
@@ -735,126 +741,128 @@ TSTSPACESZNAME: FCB  10
 ; queued bytes genuinely match the source string, in order -
 ; not just that OUTHEAD advanced by the right count.
 ; ------------------------------------------------------------
-TSTTYPE: LDA   #'A'
-         STA   TSTNAMEB
-         LDA   #'B'
-         STA   TSTNAMEB+1
+TSTTYPE:    LDA   #'A'
+            STA   TSTNAMEB
+            LDA   #'B'
+            STA   TSTNAMEB+1
 
-         IFEQ SERIALPOLL  ; >>>>
-         LDA   OUTHEAD
-         STA   TSTOHSAV
-         ENDC ; <<<<
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   OUTHEAD
+            STA   TSTOHSAV
+            ENDC                    ; <<<<
 
-         STU   TSTU0
+            STU   TSTU0
 
-         LDD   #TSTGUARD
-         PSHU  D
-         LDD   #TSTNAMEB
-         PSHU  D
-         LDD   #2
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTNAMEB
+            PSHU  D
+            LDD   #2
+            PSHU  D
+            STU   TSTUB4
 
-         JSR   TYPE
+            JSR   TYPE
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         IFEQ SERIALPOLL  ; >>>> full check: interrupt-driven EMIT
-                          ; (called internally by TYPE for each
-                          ; character) queues both bytes into OUTBUF,
-                          ; verifiable in order
-         LDA   TSTOHSAV
-         ADDA  #2
-         ANDA  #OUTBUFSZ-1
-         CMPA  OUTHEAD
-         BNE   TEFAIL
+            IFEQ  SERIALPOLL        ; >>>> full check: interrupt-driven EMIT
+                                    ; (called internally by TYPE for each
+                                    ; character) queues both bytes into OUTBUF,
+                                    ; verifiable in order
+            LDA   TSTOHSAV
+            ADDA  #2
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            BNE   TEFAIL
 
-         LDX   #OUTBUF
-         LDB   TSTOHSAV
-         LDA   B,X
-         CMPA  #'A'
-         BNE   TEFAIL
-         INCB
-         ANDB  #OUTBUFSZ-1
-         LDA   B,X
-         CMPA  #'B'
-         BNE   TEFAIL
-         ELSE  ; <<<<>>>> BUG FIX: was unconditionally checking OUTHEAD/
-                          ; OUTBUF - same fix and reasoning as TSTCR's
-                          ; own fix. EMITCH only reflects the LAST of
-                          ; the two characters TYPE emits ('B') by the
-                          ; time this runs; the depth check below still
-                          ; confirms the addr/len arguments were
-                          ; correctly consumed.
-         LDA   EMITCH
-         CMPA  #'B'
-         BNE   TEFAIL
-         ENDC  ; <<<<<<<<<<
+            LDX   #OUTBUF
+            LDB   TSTOHSAV
+            LDA   B,X
+            CMPA  #'A'
+            BNE   TEFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'B'
+            BNE   TEFAIL
+            ELSE                    ; <<<<>>>> BUG FIX: was unconditionally checking OUTHEAD/
+                                    ; OUTBUF - same fix and reasoning as TSTCR's
+                                    ; own fix. EMITCH only reflects the LAST of
+                                    ; the two characters TYPE emits ('B') by the
+                                    ; time this runs; the depth check below still
+                                    ; confirms the addr/len arguments were
+                                    ; correctly consumed.
+            LDA   EMITCH
+            CMPA  #'B'
+            BNE   TEFAIL
+            ENDC                    ; <<<<<<<<<<
 
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   TEFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   TEFAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #-4
-         BNE   TEFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   TEFAIL
 
-         LDD   #TRUEV
-         BRA   TEDONE
-TEFAIL:  LDD   #FALSEV
-TEDONE:  LDX   #TSTTYPENAME
-         PSHU  X
-         PSHU  D
-         JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   TEDONE
+TEFAIL:     LDD   #FALSEV
+TEDONE:     LDX   #TSTTYPENAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU   TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTTYPENAME: FCB  7
-             FCC  "TSTTYPE"
+TSTTYPENAME:
+            FCB   7
+            FCC   "TSTTYPE"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTSTACK - data stack operation tests. Add new tests here as
 ; they're written.
 ; ------------------------------------------------------------
-TSTSTACK:  JSR   CRW
-           LDX   #TSTSTACKMSG
-           PSHU  X
-           LDD   #5
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+TSTSTACK:   JSR   CRW
+            LDX   #TSTSTACKMSG
+            PSHU  X
+            LDD   #5
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-1  ; >>>>
+            IFEQ  TSTSELECTOR-1     ; >>>>
 
-           JSR   TSTDUP
-           JSR   TSTDROP
-           JSR   TSTSWAP
-           JSR   TSTOVER
-           JSR   TSTROT
-           JSR   TSTQDUPNZ
-           JSR   TSTQDUPZ
-           JSR   TSTDEPTH
-           JSR   TSTDDUP
-           JSR   TSTDDROP
-           JSR   TSTDSWAP
-           JSR   TSTDOVER
-           JSR   TSTNIP
-           JSR   TSTTUCK
-           JSR   TSTPICK
-           JSR   TSTROLL
-           JSR   TSTDROT
+            JSR   TSTDUP
+            JSR   TSTDROP
+            JSR   TSTSWAP
+            JSR   TSTOVER
+            JSR   TSTROT
+            JSR   TSTQDUPNZ
+            JSR   TSTQDUPZ
+            JSR   TSTDEPTH
+            JSR   TSTDDUP
+            JSR   TSTDDROP
+            JSR   TSTDSWAP
+            JSR   TSTDOVER
+            JSR   TSTNIP
+            JSR   TSTTUCK
+            JSR   TSTPICK
+            JSR   TSTROLL
+            JSR   TSTDROT
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTSTACKMSG: FCC "Stack"
+TSTSTACKMSG:
+            FCC   "Stack"
 
-           IFEQ TSTSELECTOR-1  ; >>>>
+            IFEQ  TSTSELECTOR-1     ; >>>>
 
 ; ------------------------------------------------------------
 ; TSTDUP - unit test for DUP ( x -- x x ). Verifies both the
@@ -864,46 +872,46 @@ TSTSTACKMSG: FCC "Stack"
 ; bytes - DUP's own net effect, not conflated with the two
 ; pushes that set the test up).
 ; ------------------------------------------------------------
-TSTDUP:    STU   TSTU0
+TSTDUP:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DUP
+            JSR   DUP
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   TDFAIL
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   TDFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   TDFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   TDFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   TDFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   TDFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #2
-           BNE   TDFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   TDFAIL
 
-           LDD   #TRUEV
-           BRA   TDDONE
-TDFAIL:    LDD   #FALSEV
-TDDONE:    LDX   #TSTDUPNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   TDDONE
+TDFAIL:     LDD   #FALSEV
+TDDONE:     LDX   #TSTDUPNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDUPNAME: FCB  6
-            FCC  "TSTDUP"
+TSTDUPNAME: FCB   6
+            FCC   "TSTDUP"
 
 ; ------------------------------------------------------------
 ; TSTDROP - unit test for DROP ( x -- ). Verifies both the
@@ -913,192 +921,195 @@ TSTDUPNAME: FCB  6
 ; own net effect, not conflated with the two pushes that set the
 ; test up).
 ; ------------------------------------------------------------
-TSTDROP:   STU   TSTU0
+TSTDROP:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DROP
+            JSR   DROP
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   DPFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DPFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   DPFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   DPFAIL
 
-           LDD   #TRUEV
-           BRA   DPDONE
-DPFAIL:    LDD   #FALSEV
-DPDONE:    LDX   #TSTDROPNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   DPDONE
+DPFAIL:     LDD   #FALSEV
+DPDONE:     LDX   #TSTDROPNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDROPNAME: FCB  7
-             FCC  "TSTDROP"
+TSTDROPNAME:
+            FCB   7
+            FCC   "TSTDROP"
 
 ; ------------------------------------------------------------
 ; TSTSWAP - unit test for SWAP ( n1 n2 -- n2 n1 ). Verifies the
 ; two items exchange places, the guard beneath is undisturbed,
 ; and the net stack depth is unchanged.
 ; ------------------------------------------------------------
-TSTSWAP:   STU   TSTU0
+TSTSWAP:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   SWAP
+            JSR   SWAP
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   SWFAIL
-           PULU  D
-           CMPD  #TSTVAL2
-           BNE   SWFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   SWFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   SWFAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   SWFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SWFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   SWFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   SWFAIL
 
-           LDD   #TRUEV
-           BRA   SWDONE
-SWFAIL:    LDD   #FALSEV
-SWDONE:    LDX   #TSTSWAPNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   SWDONE
+SWFAIL:     LDD   #FALSEV
+SWDONE:     LDX   #TSTSWAPNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSWAPNAME: FCB  7
-             FCC  "TSTSWAP"
+TSTSWAPNAME:
+            FCB   7
+            FCC   "TSTSWAP"
 
 ; ------------------------------------------------------------
 ; TSTOVER - unit test for OVER ( n1 n2 -- n1 n2 n1 ). Verifies
 ; the copy of n1 is correct, the originals and guard are
 ; undisturbed, and exactly one cell was added.
 ; ------------------------------------------------------------
-TSTOVER:   STU   TSTU0
+TSTOVER:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   OVER
+            JSR   OVER
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   OVFAIL
-           PULU  D
-           CMPD  #TSTVAL2
-           BNE   OVFAIL
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   OVFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   OVFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   OVFAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   OVFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   OVFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   OVFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #2
-           BNE   OVFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   OVFAIL
 
-           LDD   #TRUEV
-           BRA   OVDONE
-OVFAIL:    LDD   #FALSEV
-OVDONE:    LDX   #TSTOVERNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   OVDONE
+OVFAIL:     LDD   #FALSEV
+OVDONE:     LDX   #TSTOVERNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTOVERNAME: FCB  7
-             FCC  "TSTOVER"
+TSTOVERNAME:
+            FCB   7
+            FCC   "TSTOVER"
 
 ; ------------------------------------------------------------
 ; TSTROT - unit test for ROT ( n1 n2 n3 -- n2 n3 n1 ). Verifies
 ; the rotation order, the guard beneath is undisturbed, and the
 ; net stack depth is unchanged.
 ; ------------------------------------------------------------
-TSTROT:    STU   TSTU0
+TSTROT:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           LDD   #TSTVAL3
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            LDD   #TSTVAL3
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   ROT
+            JSR   ROT
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   RTFAIL
-           PULU  D
-           CMPD  #TSTVAL3
-           BNE   RTFAIL
-           PULU  D
-           CMPD  #TSTVAL2
-           BNE   RTFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   RTFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   RTFAIL
+            PULU  D
+            CMPD  #TSTVAL3
+            BNE   RTFAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   RTFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   RTFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   RTFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   RTFAIL
 
-           LDD   #TRUEV
-           BRA   RTDONE
-RTFAIL:    LDD   #FALSEV
-RTDONE:    LDX   #TSTROTNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   RTDONE
+RTFAIL:     LDD   #FALSEV
+RTDONE:     LDX   #TSTROTNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTROTNAME: FCB  6
-            FCC  "TSTROT"
+TSTROTNAME: FCB   6
+            FCC   "TSTROT"
 
 ; ------------------------------------------------------------
 ; TSTQDUPNZ - unit test for ?DUP ( n -- n n | 0 ), nonzero case.
@@ -1108,46 +1119,46 @@ TSTROTNAME: FCB  6
 ; condition, since DUP-like and no-op are genuinely different
 ; code paths (QDUP branches on the popped value).
 ; ------------------------------------------------------------
-TSTQDUPNZ: STU   TSTU0
+TSTQDUPNZ:  STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   QDUP
+            JSR   QDUP
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   QNFAIL
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   QNFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   QNFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   QNFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   QNFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   QNFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #2
-           BNE   QNFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   QNFAIL
 
-           LDD   #TRUEV
-           BRA   QNDONE
-QNFAIL:    LDD   #FALSEV
-QNDONE:    LDX   #TSTQNNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   QNDONE
+QNFAIL:     LDD   #FALSEV
+QNDONE:     LDX   #TSTQNNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTQNNAME: FCB  9
-           FCC  "TSTQDUPNZ"
+TSTQNNAME:  FCB   9
+            FCC   "TSTQDUPNZ"
 
 ; ------------------------------------------------------------
 ; TSTQDUPZ - unit test for ?DUP ( n -- n n | 0 ), zero case.
@@ -1155,43 +1166,43 @@ TSTQNNAME: FCB  9
 ; guard beneath is undisturbed, and the net stack depth is
 ; unchanged.
 ; ------------------------------------------------------------
-TSTQDUPZ:  STU   TSTU0
+TSTQDUPZ:   STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #0
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   QDUP
+            JSR   QDUP
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #0
-           BNE   QZFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   QZFAIL
+            PULU  D
+            CMPD  #0
+            BNE   QZFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   QZFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   QZFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   QZFAIL
 
-           LDD   #TRUEV
-           BRA   QZDONE
-QZFAIL:    LDD   #FALSEV
-QZDONE:    LDX   #TSTQZNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   QZDONE
+QZFAIL:     LDD   #FALSEV
+QZDONE:     LDX   #TSTQZNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTQZNAME: FCB  8
-           FCC  "TSTQDUPZ"
+TSTQZNAME:  FCB   8
+            FCC   "TSTQDUPZ"
 
 ; ------------------------------------------------------------
 ; TSTDEPTH - unit test for DEPTH ( -- n ). Independently
@@ -1202,212 +1213,216 @@ TSTQZNAME: FCB  8
 ; (exactly one cell pushed) and that the three items pushed to
 ; set up the test are left undisturbed.
 ; ------------------------------------------------------------
-TSTDEPTH:  STU   TSTU0
+TSTDEPTH:   STU   TSTU0
 
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           LDD   #TSTVAL3
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            LDD   #TSTVAL3
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DEPTH
+            JSR   DEPTH
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           LDD   #SP0
-           SUBD  TSTUB4
-           LSRA
-           RORB
-           STD   TSTSCR
+            LDD   #SP0
+            SUBD  TSTUB4
+            LSRA
+            RORB
+            STD   TSTSCR
 
-           PULU  D
-           CMPD  TSTSCR
-           BNE   DHFAIL
+            PULU  D
+            CMPD  TSTSCR
+            BNE   DHFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #2
-           BNE   DHFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   DHFAIL
 
-           PULU  D
-           CMPD  #TSTVAL3
-           BNE   DHFAIL
-           PULU  D
-           CMPD  #TSTVAL2
-           BNE   DHFAIL
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   DHFAIL
+            PULU  D
+            CMPD  #TSTVAL3
+            BNE   DHFAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   DHFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   DHFAIL
 
-           LDD   #TRUEV
-           BRA   DHDONE
-DHFAIL:    LDD   #FALSEV
-DHDONE:    LDX   #TSTDEPTHNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   DHDONE
+DHFAIL:     LDD   #FALSEV
+DHDONE:     LDX   #TSTDEPTHNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDEPTHNAME: FCB  8
-              FCC  "TSTDEPTH"
+TSTDEPTHNAME:
+            FCB   8
+            FCC   "TSTDEPTH"
 
 ; ------------------------------------------------------------
 ; TSTDDUP - unit test for 2DUP ( x1 x2 -- x1 x2 x1 x2 ).
 ; Verifies the duplicated pair, the originals and guard are
 ; undisturbed, and exactly two cells were added.
 ; ------------------------------------------------------------
-TSTDDUP:   STU   TSTU0
+TSTDDUP:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DDUP
+            JSR   DDUP
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL2
-           BNE   DU2FAIL
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   DU2FAIL
-           PULU  D
-           CMPD  #TSTVAL2
-           BNE   DU2FAIL
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   DU2FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   DU2FAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   DU2FAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   DU2FAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   DU2FAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   DU2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DU2FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #4
-           BNE   DU2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #4
+            BNE   DU2FAIL
 
-           LDD   #TRUEV
-           BRA   DU2DONE
-DU2FAIL:   LDD   #FALSEV
-DU2DONE:   LDX   #TSTDDUPNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   DU2DONE
+DU2FAIL:    LDD   #FALSEV
+DU2DONE:    LDX   #TSTDDUPNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDDUPNAME: FCB  7
-             FCC  "TSTDDUP"
+TSTDDUPNAME:
+            FCB   7
+            FCC   "TSTDDUP"
 
 ; ------------------------------------------------------------
 ; TSTDDROP - unit test for 2DROP ( x1 x2 -- ). Verifies both
 ; items are removed, the guard beneath is undisturbed, and
 ; exactly two cells were freed.
 ; ------------------------------------------------------------
-TSTDDROP:  STU   TSTU0
+TSTDDROP:   STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DDROP
+            JSR   DDROP
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   DR2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DR2FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-4
-           BNE   DR2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   DR2FAIL
 
-           LDD   #TRUEV
-           BRA   DR2DONE
-DR2FAIL:   LDD   #FALSEV
-DR2DONE:   LDX   #TSTDDROPNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   DR2DONE
+DR2FAIL:    LDD   #FALSEV
+DR2DONE:    LDX   #TSTDDROPNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDDROPNAME: FCB  8
-              FCC  "TSTDDROP"
+TSTDDROPNAME:
+            FCB   8
+            FCC   "TSTDDROP"
 
 ; ------------------------------------------------------------
 ; TSTDSWAP - unit test for 2SWAP ( x1 x2 x3 x4 -- x3 x4 x1 x2 ).
 ; Verifies the two pairs exchange places, the guard beneath is
 ; undisturbed, and the net stack depth is unchanged.
 ; ------------------------------------------------------------
-TSTDSWAP:  STU   TSTU0
+TSTDSWAP:   STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           LDD   #TSTVAL3
-           PSHU  D
-           LDD   #TSTVAL4
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            LDD   #TSTVAL3
+            PSHU  D
+            LDD   #TSTVAL4
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DSWAP
+            JSR   DSWAP
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL2
-           BNE   SW2FAIL
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   SW2FAIL
-           PULU  D
-           CMPD  #TSTVAL4
-           BNE   SW2FAIL
-           PULU  D
-           CMPD  #TSTVAL3
-           BNE   SW2FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   SW2FAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   SW2FAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   SW2FAIL
+            PULU  D
+            CMPD  #TSTVAL4
+            BNE   SW2FAIL
+            PULU  D
+            CMPD  #TSTVAL3
+            BNE   SW2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SW2FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   SW2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   SW2FAIL
 
-           LDD   #TRUEV
-           BRA   SW2DONE
-SW2FAIL:   LDD   #FALSEV
-SW2DONE:   LDX   #TSTDSWAPNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   SW2DONE
+SW2FAIL:    LDD   #FALSEV
+SW2DONE:    LDX   #TSTDSWAPNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDSWAPNAME: FCB  8
-              FCC  "TSTDSWAP"
+TSTDSWAPNAME:
+            FCB   8
+            FCC   "TSTDSWAP"
 
 ; ------------------------------------------------------------
 ; TSTDOVER - unit test for 2OVER
@@ -1415,160 +1430,162 @@ TSTDSWAPNAME: FCB  8
 ; pair, the originals and guard are undisturbed, and exactly
 ; two cells were added.
 ; ------------------------------------------------------------
-TSTDOVER:  STU   TSTU0
+TSTDOVER:   STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           LDD   #TSTVAL3
-           PSHU  D
-           LDD   #TSTVAL4
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            LDD   #TSTVAL3
+            PSHU  D
+            LDD   #TSTVAL4
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DOVER
+            JSR   DOVER
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL2
-           BNE   OV2FAIL
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   OV2FAIL
-           PULU  D
-           CMPD  #TSTVAL4
-           BNE   OV2FAIL
-           PULU  D
-           CMPD  #TSTVAL3
-           BNE   OV2FAIL
-           PULU  D
-           CMPD  #TSTVAL2
-           BNE   OV2FAIL
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   OV2FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   OV2FAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   OV2FAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   OV2FAIL
+            PULU  D
+            CMPD  #TSTVAL4
+            BNE   OV2FAIL
+            PULU  D
+            CMPD  #TSTVAL3
+            BNE   OV2FAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   OV2FAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   OV2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   OV2FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #4
-           BNE   OV2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #4
+            BNE   OV2FAIL
 
-           LDD   #TRUEV
-           BRA   OV2DONE
-OV2FAIL:   LDD   #FALSEV
-OV2DONE:   LDX   #TSTDOVERNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   OV2DONE
+OV2FAIL:    LDD   #FALSEV
+OV2DONE:    LDX   #TSTDOVERNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDOVERNAME: FCB  8
-              FCC  "TSTDOVER"
+TSTDOVERNAME:
+            FCB   8
+            FCC   "TSTDOVER"
 
 ; ------------------------------------------------------------
 ; TSTNIP - unit test for NIP ( x1 x2 -- x2 ). Verifies the
 ; second item is discarded, x2 is left on top, the guard beneath
 ; is undisturbed, and exactly one cell was freed.
 ; ------------------------------------------------------------
-TSTNIP:    STU   TSTU0
+TSTNIP:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   NIP
+            JSR   NIP
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL2
-           BNE   NPFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   NPFAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   NPFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   NPFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   NPFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   NPFAIL
 
-           LDD   #TRUEV
-           BRA   NPDONE
-NPFAIL:    LDD   #FALSEV
-NPDONE:    LDX   #TSTNIPNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   NPDONE
+NPFAIL:     LDD   #FALSEV
+NPDONE:     LDX   #TSTNIPNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTNIPNAME: FCB  6
-            FCC  "TSTNIP"
+TSTNIPNAME: FCB   6
+            FCC   "TSTNIP"
 
 ; ------------------------------------------------------------
 ; TSTTUCK - unit test for TUCK ( x1 x2 -- x2 x1 x2 ). Verifies
 ; the copy of x2 is tucked correctly beneath x1, the guard
 ; beneath is undisturbed, and exactly one cell was added.
 ; ------------------------------------------------------------
-TSTTUCK:   STU   TSTU0
+TSTTUCK:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   TUCK
+            JSR   TUCK
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL2
-           BNE   TKFAIL
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   TKFAIL
-           PULU  D
-           CMPD  #TSTVAL2
-           BNE   TKFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   TKFAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   TKFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   TKFAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   TKFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   TKFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #2
-           BNE   TKFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   TKFAIL
 
-           LDD   #TRUEV
-           BRA   TKDONE
-TKFAIL:    LDD   #FALSEV
-TKDONE:    LDX   #TSTTUCKNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   TKDONE
+TKFAIL:     LDD   #FALSEV
+TKDONE:     LDX   #TSTTUCKNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTTUCKNAME: FCB  7
-             FCC  "TSTTUCK"
+TSTTUCKNAME:
+            FCB   7
+            FCC   "TSTTUCK"
 
 ; ------------------------------------------------------------
 ; TSTPICK - unit test for PICK ( xu ... x0 u -- xu ... x0 xu ),
@@ -1579,58 +1596,59 @@ TSTTUCKNAME: FCB  7
 ; undisturbed, and the net stack depth is unchanged (u popped,
 ; one copy pushed).
 ; ------------------------------------------------------------
-TSTPICK:   STU   TSTU0
+TSTPICK:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           LDD   #TSTVAL3
-           PSHU  D
-           LDD   #2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            LDD   #TSTVAL3
+            PSHU  D
+            LDD   #2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   PICK
+            JSR   PICK
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   PKFAIL
-           PULU  D
-           CMPD  #TSTVAL3
-           BNE   PKFAIL
-           PULU  D
-           CMPD  #TSTVAL2
-           BNE   PKFAIL
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   PKFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   PKFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   PKFAIL
+            PULU  D
+            CMPD  #TSTVAL3
+            BNE   PKFAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   PKFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   PKFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   PKFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   PKFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   PKFAIL
 
-           LDD   #TRUEV
-           BRA   PKDONE
-PKFAIL:    LDD   #FALSEV
-PKDONE:    LDX   #TSTPICKNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   PKDONE
+PKFAIL:     LDD   #FALSEV
+PKDONE:     LDX   #TSTPICKNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTPICKNAME: FCB  7
-             FCC  "TSTPICK"
+TSTPICKNAME:
+            FCB   7
+            FCC   "TSTPICK"
 
 ; ------------------------------------------------------------
 ; TSTROLL - unit test for ROLL
@@ -1642,55 +1660,56 @@ TSTPICKNAME: FCB  7
 ; and exactly one cell was freed (u popped, nothing replaces it
 ; numerically - the rolled item moves within the existing space).
 ; ------------------------------------------------------------
-TSTROLL:   STU   TSTU0
+TSTROLL:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           LDD   #TSTVAL3
-           PSHU  D
-           LDD   #2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            LDD   #TSTVAL3
+            PSHU  D
+            LDD   #2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   ROLL
+            JSR   ROLL
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   RLFAIL
-           PULU  D
-           CMPD  #TSTVAL3
-           BNE   RLFAIL
-           PULU  D
-           CMPD  #TSTVAL2
-           BNE   RLFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   RLFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   RLFAIL
+            PULU  D
+            CMPD  #TSTVAL3
+            BNE   RLFAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   RLFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   RLFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   RLFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   RLFAIL
 
-           LDD   #TRUEV
-           BRA   RLDONE
-RLFAIL:    LDD   #FALSEV
-RLDONE:    LDX   #TSTROLLNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   RLDONE
+RLFAIL:     LDD   #FALSEV
+RLDONE:     LDX   #TSTROLLNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTROLLNAME: FCB  7
-             FCC  "TSTROLL"
+TSTROLLNAME:
+            FCB   7
+            FCC   "TSTROLL"
 
 ; ------------------------------------------------------------
 ; TSTDROT - unit test for 2ROT
@@ -1698,70 +1717,71 @@ TSTROLLNAME: FCB  7
 ; rotation order of all three cell pairs, the guard beneath is
 ; undisturbed, and the net stack depth is unchanged.
 ; ------------------------------------------------------------
-TSTDROT:   STU   TSTU0
+TSTDROT:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           LDD   #TSTVAL3
-           PSHU  D
-           LDD   #TSTVAL4
-           PSHU  D
-           LDD   #TSTVAL5
-           PSHU  D
-           LDD   #TSTVAL6
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            LDD   #TSTVAL3
+            PSHU  D
+            LDD   #TSTVAL4
+            PSHU  D
+            LDD   #TSTVAL5
+            PSHU  D
+            LDD   #TSTVAL6
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DROT
+            JSR   DROT
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL2
-           BNE   RO2FAIL
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   RO2FAIL
-           PULU  D
-           CMPD  #TSTVAL6
-           BNE   RO2FAIL
-           PULU  D
-           CMPD  #TSTVAL5
-           BNE   RO2FAIL
-           PULU  D
-           CMPD  #TSTVAL4
-           BNE   RO2FAIL
-           PULU  D
-           CMPD  #TSTVAL3
-           BNE   RO2FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   RO2FAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   RO2FAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   RO2FAIL
+            PULU  D
+            CMPD  #TSTVAL6
+            BNE   RO2FAIL
+            PULU  D
+            CMPD  #TSTVAL5
+            BNE   RO2FAIL
+            PULU  D
+            CMPD  #TSTVAL4
+            BNE   RO2FAIL
+            PULU  D
+            CMPD  #TSTVAL3
+            BNE   RO2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   RO2FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   RO2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   RO2FAIL
 
-           LDD   #TRUEV
-           BRA   RO2DONE
-RO2FAIL:   LDD   #FALSEV
-RO2DONE:   LDX   #TSTDROTNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   RO2DONE
+RO2FAIL:    LDD   #FALSEV
+RO2DONE:    LDX   #TSTDROTNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDROTNAME: FCB  7
-             FCC  "TSTDROT"
+TSTDROTNAME:
+            FCB   7
+            FCC   "TSTDROT"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTRETSTACK - return-stack tests (glossary section 3.3, 6
@@ -1780,28 +1800,29 @@ TSTDROTNAME: FCB  7
 ; still correct - not just that the peek itself returned the
 ; right value once.
 ; ------------------------------------------------------------
-TSTRETSTACK: JSR CRW
-           LDX   #TSTRETMSG
-           PSHU  X
-           LDD   #8
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+TSTRETSTACK:
+            JSR   CRW
+            LDX   #TSTRETMSG
+            PSHU  X
+            LDD   #8
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-2  ; >>>>
+            IFEQ  TSTSELECTOR-2     ; >>>>
 
-           JSR   TSTTOR
-           JSR   TSTRFETCH
-           JSR   TSTTWOTOR
-           JSR   TSTTWORFETCH
+            JSR   TSTTOR
+            JSR   TSTRFETCH
+            JSR   TSTTWOTOR
+            JSR   TSTTWORFETCH
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTRETMSG: FCC "RetStack"
+TSTRETMSG:  FCC   "RetStack"
 
-           IFEQ TSTSELECTOR-2  ; >>>>
+            IFEQ  TSTSELECTOR-2     ; >>>>
 
 ; ------------------------------------------------------------
 ; Return-stack test harness (glossary section 3.3). Unlike
@@ -1828,52 +1849,52 @@ TSTRETMSG: FCC "RetStack"
 ; could pass even if both words were broken no-ops, since the
 ; value would never actually have left.
 ; ------------------------------------------------------------
-TSTTOR:  STU   TSTU0
+TSTTOR:     STU   TSTU0
 
-         LDD   #TSTGUARD
-         PSHU  D
-         LDD   #TSTVAL1
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-         JSR   TOR
+            JSR   TOR
 
-         STU   TSTUMID
+            STU   TSTUMID
 
-         LDD   TSTUB4
-         SUBD  TSTUMID
-         CMPD  #-2
-         BNE   TRFAIL
+            LDD   TSTUB4
+            SUBD  TSTUMID
+            CMPD  #-2
+            BNE   TRFAIL
 
-         JSR   FROMR
+            JSR   FROMR
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         PULU  D
-         CMPD  #TSTVAL1
-         BNE   TRFAIL
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   TRFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   TRFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   TRFAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #0
-         BNE   TRFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   TRFAIL
 
-         LDD   #TRUEV
-         BRA   TRDONE
-TRFAIL:  LDD   #FALSEV
-TRDONE:  LDX   #TSTTORNAME
-         PSHU  X
-         PSHU  D
-         JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   TRDONE
+TRFAIL:     LDD   #FALSEV
+TRDONE:     LDX   #TSTTORNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU   TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTTORNAME: FCB  6
-            FCC  "TSTTOR"
+TSTTORNAME: FCB   6
+            FCC   "TSTTOR"
 
 ; ------------------------------------------------------------
 ; TSTRFETCH - unit test for R@. Moves a value to the return
@@ -1883,48 +1904,49 @@ TSTTORNAME: FCB  6
 ; the right value once) - confirming "non-destructive" for real,
 ; not assumed from the name.
 ; ------------------------------------------------------------
-TSTRFETCH: STU  TSTU0
+TSTRFETCH:  STU   TSTU0
 
-           LDD  #TSTGUARD
-           PSHU D
-           LDD  #TSTVAL1
-           PSHU D
-           STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR  TOR
-           JSR  RFETCH
-           JSR  FROMR
+            JSR   TOR
+            JSR   RFETCH
+            JSR   FROMR
 
-           STU  TSTUAF
+            STU   TSTUAF
 
-           PULU D
-           CMPD #TSTVAL1
-           BNE  RFFAIL
-           PULU D
-           CMPD #TSTVAL1
-           BNE  RFFAIL
-           PULU D
-           CMPD #TSTGUARD
-           BNE  RFFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   RFFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   RFFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   RFFAIL
 
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #2
-           BNE  RFFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   RFFAIL
 
-           LDD  #TRUEV
-           BRA  RFDONE
-RFFAIL:    LDD  #FALSEV
-RFDONE:    LDX  #TSTRFETCHNAME
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   RFDONE
+RFFAIL:     LDD   #FALSEV
+RFDONE:     LDX   #TSTRFETCHNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTRFETCHNAME: FCB  9
-               FCC  "TSTRFETCH"
+TSTRFETCHNAME:
+            FCB   9
+            FCC   "TSTRFETCH"
 
 ; ------------------------------------------------------------
 ; TSTTWOTOR - unit test for 2>R and 2R> together. Same
@@ -1932,57 +1954,58 @@ TSTRFETCHNAME: FCB  9
 ; confirms both cells genuinely left the data stack before
 ; verifying the round trip.
 ; ------------------------------------------------------------
-TSTTWOTOR: STU  TSTU0
+TSTTWOTOR:  STU   TSTU0
 
-           LDD  #TSTGUARD
-           PSHU D
-           LDD  #TSTVAL1
-           PSHU D
-           LDD  #TSTVAL2
-           PSHU D
-           STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR  TWOTOR
+            JSR   TWOTOR
 
-           STU  TSTUMID
+            STU   TSTUMID
 
-           LDD  TSTUB4
-           SUBD TSTUMID
-           CMPD #-4
-           BNE  T2RFAIL
+            LDD   TSTUB4
+            SUBD  TSTUMID
+            CMPD  #-4
+            BNE   T2RFAIL
 
-           JSR  TWOFROMR
+            JSR   TWOFROMR
 
-           STU  TSTUAF
+            STU   TSTUAF
 
-           PULU D
-           CMPD #TSTVAL2
-           BNE  T2RFAIL
-           PULU D
-           CMPD #TSTVAL1
-           BNE  T2RFAIL
-           PULU D
-           CMPD #TSTGUARD
-           BNE  T2RFAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   T2RFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   T2RFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   T2RFAIL
 
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #0
-           BNE  T2RFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   T2RFAIL
 
-           LDD  #TRUEV
-           BRA  T2RDONE
-T2RFAIL:   LDD  #FALSEV
-T2RDONE:   LDX  #TSTTWOTORNAME
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   T2RDONE
+T2RFAIL:    LDD   #FALSEV
+T2RDONE:    LDX   #TSTTWOTORNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTTWOTORNAME: FCB  9
-               FCC  "TSTTWOTOR"
+TSTTWOTORNAME:
+            FCB   9
+            FCC   "TSTTWOTOR"
 
 ; ------------------------------------------------------------
 ; TSTTWORFETCH - unit test for 2R@. Same reasoning as
@@ -1991,58 +2014,60 @@ TSTTWOTORNAME: FCB  9
 ; ordered), then retrieves the originals via 2R> (verifying 2R@
 ; genuinely left them there undisturbed).
 ; ------------------------------------------------------------
-TSTTWORFETCH: STU  TSTU0
+TSTTWORFETCH:
+            STU   TSTU0
 
-              LDD  #TSTGUARD
-              PSHU D
-              LDD  #TSTVAL1
-              PSHU D
-              LDD  #TSTVAL2
-              PSHU D
-              STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-              JSR  TWOTOR
-              JSR  TWORFETCH
-              JSR  TWOFROMR
+            JSR   TWOTOR
+            JSR   TWORFETCH
+            JSR   TWOFROMR
 
-              STU  TSTUAF
+            STU   TSTUAF
 
-              PULU D
-              CMPD #TSTVAL2
-              BNE  T2FFAIL
-              PULU D
-              CMPD #TSTVAL1
-              BNE  T2FFAIL
-              PULU D
-              CMPD #TSTVAL2
-              BNE  T2FFAIL
-              PULU D
-              CMPD #TSTVAL1
-              BNE  T2FFAIL
-              PULU D
-              CMPD #TSTGUARD
-              BNE  T2FFAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   T2FFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   T2FFAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   T2FFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   T2FFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   T2FFAIL
 
-              LDD  TSTUB4
-              SUBD TSTUAF
-              CMPD #4
-              BNE  T2FFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #4
+            BNE   T2FFAIL
 
-              LDD  #TRUEV
-              BRA  T2FDONE
-T2FFAIL:       LDD  #FALSEV
-T2FDONE:       LDX  #TSTTWORFETCHNAME
-              PSHU X
-              PSHU D
-              JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   T2FDONE
+T2FFAIL:    LDD   #FALSEV
+T2FDONE:    LDX   #TSTTWORFETCHNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-              LDU  TSTU0
-              RTS
+            LDU   TSTU0
+            RTS
 
-TSTTWORFETCHNAME: FCB  12
-                  FCC  "TSTTWORFETCH"
+TSTTWORFETCHNAME:
+            FCB   12
+            FCC   "TSTTWORFETCH"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTSARITH - single-cell arithmetic tests (glossary section 3.4).
@@ -2054,310 +2079,317 @@ TSTTWORFETCHNAME: FCB  12
 ; open-items checklist for the full reasoning behind the specific
 ; cases chosen.
 ; ------------------------------------------------------------
-TSTSARITH: JSR   CRW
-           LDX   #TSTSARITHMSG
-           PSHU  X
-           LDD   #11
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+TSTSARITH:  JSR   CRW
+            LDX   #TSTSARITHMSG
+            PSHU  X
+            LDD   #11
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-3  ; >>>>
+            IFEQ  TSTSELECTOR-3     ; >>>>
 
-           JSR   TSTPLUS
-           JSR   TSTMINUS
-           JSR   TSTSTAR1
-           JSR   TSTSTAR2
-           JSR   TSTSLASH1
-           JSR   TSTSLASH2
-           JSR   TSTSLASHZ
-           JSR   TSTMODW
-           JSR   TSTMODZ
-           JSR   TSTSLMOD
-           JSR   TSTSLMODZ
-           JSR   TSTNEGATE
-           JSR   TSTABS1
-           JSR   TSTABS2
-           JSR   TSTMIN1
-           JSR   TSTMIN2
-           JSR   TSTMAX1
-           JSR   TSTMAX2
-           JSR   TSTONEP
-           JSR   TSTONEM
-           JSR   TSTTWOP
-           JSR   TSTTWOS
-           JSR   TSTTWOD1
-           JSR   TSTTWOD2
-           JSR   TSTSTSL
-           JSR   TSTSTSLZ
-           JSR   TSTSTSM
-           JSR   TSTSTSMZ
+            JSR   TSTPLUS
+            JSR   TSTMINUS
+            JSR   TSTSTAR1
+            JSR   TSTSTAR2
+            JSR   TSTSLASH1
+            JSR   TSTSLASH2
+            JSR   TSTSLASHZ
+            JSR   TSTMODW
+            JSR   TSTMODZ
+            JSR   TSTSLMOD
+            JSR   TSTSLMODZ
+            JSR   TSTNEGATE
+            JSR   TSTABS1
+            JSR   TSTABS2
+            JSR   TSTMIN1
+            JSR   TSTMIN2
+            JSR   TSTMAX1
+            JSR   TSTMAX2
+            JSR   TSTONEP
+            JSR   TSTONEM
+            JSR   TSTTWOP
+            JSR   TSTTWOS
+            JSR   TSTTWOD1
+            JSR   TSTTWOD2
+            JSR   TSTSTSL
+            JSR   TSTSTSLZ
+            JSR   TSTSTSM
+            JSR   TSTSTSMZ
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTSARITHMSG: FCC "SArithmetic"
+TSTSARITHMSG:
+            FCC   "SArithmetic"
 
-           IFEQ TSTSELECTOR-3  ; >>>>
+            IFEQ  TSTSELECTOR-3     ; >>>>
 
 ; ------------------------------------------------------------
 ; TSTPLUS - unit test for PLUS. n1 + n2, mixed signs.
 ; ------------------------------------------------------------
 TSTPLUS:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   PLUS
+            JSR   PLUS
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$29A8
-           BNE   PLFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   PLFAIL
+            PULU  D
+            CMPD  #$29A8
+            BNE   PLFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   PLFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   PLFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   PLFAIL
 
-           LDD   #TRUEV
-           BRA   PLDONE
+            LDD   #TRUEV
+            BRA   PLDONE
 PLFAIL:     LDD   #FALSEV
 PLDONE:     LDX   #TSTPLUSNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTPLUSNAME: FCB  7
-               FCC  "TSTPLUS"
+TSTPLUSNAME:
+            FCB   7
+            FCC   "TSTPLUS"
 
 ; ------------------------------------------------------------
 ; TSTMINUS - unit test for MINUS. n1 - n2 (operand order matters).
 ; ------------------------------------------------------------
 TSTMINUS:   STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   MINUS
+            JSR   MINUS
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$3579
-           BNE   MNFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   MNFAIL
+            PULU  D
+            CMPD  #$3579
+            BNE   MNFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   MNFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   MNFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   MNFAIL
 
-           LDD   #TRUEV
-           BRA   MNDONE
+            LDD   #TRUEV
+            BRA   MNDONE
 MNFAIL:     LDD   #FALSEV
 MNDONE:     LDX   #TSTMINUSNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTMINUSNAME: FCB  8
-                FCC  "TSTMINUS"
+TSTMINUSNAME:
+            FCB   8
+            FCC   "TSTMINUS"
 
 ; ------------------------------------------------------------
 ; TSTSTAR1 - unit test for STAR. normal signed multiply.
 ; ------------------------------------------------------------
 TSTSTAR1:   STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           LDD   #TSTNEG2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            LDD   #TSTNEG2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   STAR
+            JSR   STAR
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$5998
-           BNE   S1FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   S1FAIL
+            PULU  D
+            CMPD  #$5998
+            BNE   S1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   S1FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   S1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   S1FAIL
 
-           LDD   #TRUEV
-           BRA   S1DONE
+            LDD   #TRUEV
+            BRA   S1DONE
 S1FAIL:     LDD   #FALSEV
 S1DONE:     LDX   #TSTSTAR1NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSTAR1NAME: FCB  8
-                FCC  "TSTSTAR1"
+TSTSTAR1NAME:
+            FCB   8
+            FCC   "TSTSTAR1"
 
 ; ------------------------------------------------------------
 ; TSTSTAR2 - unit test for STAR. overflow case - product exceeds 16-bit range; ANS defines * as truncating, not erroring.
 ; ------------------------------------------------------------
 TSTSTAR2:   STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #$03E8
-           PSHU  D
-           LDD   #$03E8
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #$03E8
+            PSHU  D
+            LDD   #$03E8
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   STAR
+            JSR   STAR
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$4240
-           BNE   S2FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   S2FAIL
+            PULU  D
+            CMPD  #$4240
+            BNE   S2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   S2FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   S2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   S2FAIL
 
-           LDD   #TRUEV
-           BRA   S2DONE
+            LDD   #TRUEV
+            BRA   S2DONE
 S2FAIL:     LDD   #FALSEV
 S2DONE:     LDX   #TSTSTAR2NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSTAR2NAME: FCB  8
-                FCC  "TSTSTAR2"
+TSTSTAR2NAME:
+            FCB   8
+            FCC   "TSTSTAR2"
 
 ; ------------------------------------------------------------
 ; TSTSLASH1 - unit test for SLASH. normal signed symmetric division (quotient only - SLASH pushes DIVNUM, not the remainder too).
 ; ------------------------------------------------------------
 TSTSLASH1:  STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   SLASH
+            JSR   SLASH
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$0002
-           BNE   SLFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   SLFAIL
+            PULU  D
+            CMPD  #$0002
+            BNE   SLFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SLFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   SLFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   SLFAIL
 
-           LDD   #TRUEV
-           BRA   SLDONE
+            LDD   #TRUEV
+            BRA   SLDONE
 SLFAIL:     LDD   #FALSEV
 SLDONE:     LDX   #TSTSLASH1NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSLASH1NAME: FCB  9
-                 FCC  "TSTSLASH1"
+TSTSLASH1NAME:
+            FCB   9
+            FCC   "TSTSLASH1"
 
 ; ------------------------------------------------------------
 ; TSTSLASH2 - unit test for SLASH. negative dividend, symmetric division.
 ; ------------------------------------------------------------
 TSTSLASH2:  STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   SLASH
+            JSR   SLASH
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFFF
-           BNE   SNFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   SNFAIL
+            PULU  D
+            CMPD  #$FFFF
+            BNE   SNFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SNFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   SNFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   SNFAIL
 
-           LDD   #TRUEV
-           BRA   SNDONE
+            LDD   #TRUEV
+            BRA   SNDONE
 SNFAIL:     LDD   #FALSEV
 SNDONE:     LDX   #TSTSLASH2NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSLASH2NAME: FCB  9
-                 FCC  "TSTSLASH2"
+TSTSLASH2NAME:
+            FCB   9
+            FCC   "TSTSLASH2"
 
 ; ------------------------------------------------------------
 ; TSTSLASHZ - unit test for SLASH, divide-by-zero case. n2 = 0.
@@ -2372,83 +2404,85 @@ TSTSLASH2NAME: FCB  9
 ; ------------------------------------------------------------
 TSTSLASHZ:  STU   TSTU0
 
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #$0000
-           PSHU  D
-           LDX   #SLASH
-           PSHU  X
-           STU   TSTUB4
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #$0000
+            PSHU  D
+            LDX   #SLASH
+            PSHU  X
+            STU   TSTUB4
 
-           JSR   CATCH
+            JSR   CATCH
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #-10
-           BNE   SZFAIL
+            PULU  D
+            CMPD  #-10
+            BNE   SZFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   SZFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   SZFAIL
 
-           LDD   #TRUEV
-           BRA   SZDONE
+            LDD   #TRUEV
+            BRA   SZDONE
 SZFAIL:     LDD   #FALSEV
 SZDONE:     LDX   #TSTSLASHZNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSLASHZNAME: FCB  9
-                 FCC  "TSTSLASHZ"
+TSTSLASHZNAME:
+            FCB   9
+            FCC   "TSTSLASHZ"
 
 ; ------------------------------------------------------------
 ; TSTMODW - unit test for MODW. negative dividend, symmetric remainder.
 ; ------------------------------------------------------------
 TSTMODW:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   MODW
+            JSR   MODW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$F42F
-           BNE   MDFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   MDFAIL
+            PULU  D
+            CMPD  #$F42F
+            BNE   MDFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   MDFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   MDFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   MDFAIL
 
-           LDD   #TRUEV
-           BRA   MDDONE
+            LDD   #TRUEV
+            BRA   MDDONE
 MDFAIL:     LDD   #FALSEV
 MDDONE:     LDX   #TSTMODWNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTMODWNAME: FCB  7
-               FCC  "TSTMODW"
+TSTMODWNAME:
+            FCB   7
+            FCC   "TSTMODW"
 
 ; ------------------------------------------------------------
 ; TSTMODZ - unit test for MODW, divide-by-zero case. n2 = 0.
@@ -2463,86 +2497,88 @@ TSTMODWNAME: FCB  7
 ; ------------------------------------------------------------
 TSTMODZ:    STU   TSTU0
 
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #$0000
-           PSHU  D
-           LDX   #MODW
-           PSHU  X
-           STU   TSTUB4
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #$0000
+            PSHU  D
+            LDX   #MODW
+            PSHU  X
+            STU   TSTUB4
 
-           JSR   CATCH
+            JSR   CATCH
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #-10
-           BNE   MZFAIL
+            PULU  D
+            CMPD  #-10
+            BNE   MZFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   MZFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   MZFAIL
 
-           LDD   #TRUEV
-           BRA   MZDONE
+            LDD   #TRUEV
+            BRA   MZDONE
 MZFAIL:     LDD   #FALSEV
 MZDONE:     LDX   #TSTMODZNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTMODZNAME: FCB  7
-               FCC  "TSTMODZ"
+TSTMODZNAME:
+            FCB   7
+            FCC   "TSTMODZ"
 
 ; ------------------------------------------------------------
 ; TSTSLMOD - unit test for SLASHMOD. /MOD together - both remainder and quotient.
 ; ------------------------------------------------------------
 TSTSLMOD:   STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTNEG2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTNEG2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   SLASHMOD
+            JSR   SLASHMOD
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFB9
-           BNE   SMFAIL
-           PULU  D
-           CMPD  #$00DA
-           BNE   SMFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   SMFAIL
+            PULU  D
+            CMPD  #$FFB9
+            BNE   SMFAIL
+            PULU  D
+            CMPD  #$00DA
+            BNE   SMFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SMFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   SMFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   SMFAIL
 
-           LDD   #TRUEV
-           BRA   SMDONE
+            LDD   #TRUEV
+            BRA   SMDONE
 SMFAIL:     LDD   #FALSEV
 SMDONE:     LDX   #TSTSLMODNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSLMODNAME: FCB  8
-                FCC  "TSTSLMOD"
+TSTSLMODNAME:
+            FCB   8
+            FCC   "TSTSLMOD"
 
 ; ------------------------------------------------------------
 ; TSTSLMODZ - unit test for SLASHMOD, divide-by-zero case. n2 = 0.
@@ -2557,626 +2593,641 @@ TSTSLMODNAME: FCB  8
 ; ------------------------------------------------------------
 TSTSLMODZ:  STU   TSTU0
 
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #$0000
-           PSHU  D
-           LDX   #SLASHMOD
-           PSHU  X
-           STU   TSTUB4
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #$0000
+            PSHU  D
+            LDX   #SLASHMOD
+            PSHU  X
+            STU   TSTUB4
 
-           JSR   CATCH
+            JSR   CATCH
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #-10
-           BNE   MXFAIL
+            PULU  D
+            CMPD  #-10
+            BNE   MXFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   MXFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   MXFAIL
 
-           LDD   #TRUEV
-           BRA   MXDONE
+            LDD   #TRUEV
+            BRA   MXDONE
 MXFAIL:     LDD   #FALSEV
 MXDONE:     LDX   #TSTSLMODZNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSLMODZNAME: FCB  9
-                 FCC  "TSTSLMODZ"
+TSTSLMODZNAME:
+            FCB   9
+            FCC   "TSTSLMODZ"
 
 ; ------------------------------------------------------------
 ; TSTNEGATE - unit test for NEGATE. two's-complement negate.
 ; ------------------------------------------------------------
 TSTNEGATE:  STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   NEGATE
+            JSR   NEGATE
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$A61F
-           BNE   NGFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   NGFAIL
+            PULU  D
+            CMPD  #$A61F
+            BNE   NGFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   NGFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   NGFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   NGFAIL
 
-           LDD   #TRUEV
-           BRA   NGDONE
+            LDD   #TRUEV
+            BRA   NGDONE
 NGFAIL:     LDD   #FALSEV
 NGDONE:     LDX   #TSTNEGATENAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTNEGATENAME: FCB  9
-                 FCC  "TSTNEGATE"
+TSTNEGATENAME:
+            FCB   9
+            FCC   "TSTNEGATE"
 
 ; ------------------------------------------------------------
 ; TSTABS1 - unit test for ABSW. positive input - already non-negative, unchanged.
 ; ------------------------------------------------------------
 TSTABS1:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   ABSW
+            JSR   ABSW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   A1FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   A1FAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   A1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   A1FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   A1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   A1FAIL
 
-           LDD   #TRUEV
-           BRA   A1DONE
+            LDD   #TRUEV
+            BRA   A1DONE
 A1FAIL:     LDD   #FALSEV
 A1DONE:     LDX   #TSTABS1NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTABS1NAME: FCB  7
-               FCC  "TSTABS1"
+TSTABS1NAME:
+            FCB   7
+            FCC   "TSTABS1"
 
 ; ------------------------------------------------------------
 ; TSTABS2 - unit test for ABSW. negative input - the branch that actually negates.
 ; ------------------------------------------------------------
 TSTABS2:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   ABSW
+            JSR   ABSW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$3039
-           BNE   A2FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   A2FAIL
+            PULU  D
+            CMPD  #$3039
+            BNE   A2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   A2FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   A2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   A2FAIL
 
-           LDD   #TRUEV
-           BRA   A2DONE
+            LDD   #TRUEV
+            BRA   A2DONE
 A2FAIL:     LDD   #FALSEV
 A2DONE:     LDX   #TSTABS2NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTABS2NAME: FCB  7
-               FCC  "TSTABS2"
+TSTABS2NAME:
+            FCB   7
+            FCC   "TSTABS2"
 
 ; ------------------------------------------------------------
 ; TSTMIN1 - unit test for MIN. n1 < n2 - n1 is the min, left unchanged.
 ; ------------------------------------------------------------
 TSTMIN1:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   MIN
+            JSR   MIN
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$CFC7
-           BNE   N1FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   N1FAIL
+            PULU  D
+            CMPD  #$CFC7
+            BNE   N1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   N1FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   N1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   N1FAIL
 
-           LDD   #TRUEV
-           BRA   N1DONE
+            LDD   #TRUEV
+            BRA   N1DONE
 N1FAIL:     LDD   #FALSEV
 N1DONE:     LDX   #TSTMIN1NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTMIN1NAME: FCB  7
-               FCC  "TSTMIN1"
+TSTMIN1NAME:
+            FCB   7
+            FCC   "TSTMIN1"
 
 ; ------------------------------------------------------------
 ; TSTMIN2 - unit test for MIN. n1 > n2 - n2 is the min, replaces n1.
 ; ------------------------------------------------------------
 TSTMIN2:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   MIN
+            JSR   MIN
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$CFC7
-           BNE   N2FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   N2FAIL
+            PULU  D
+            CMPD  #$CFC7
+            BNE   N2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   N2FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   N2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   N2FAIL
 
-           LDD   #TRUEV
-           BRA   N2DONE
+            LDD   #TRUEV
+            BRA   N2DONE
 N2FAIL:     LDD   #FALSEV
 N2DONE:     LDX   #TSTMIN2NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTMIN2NAME: FCB  7
-               FCC  "TSTMIN2"
+TSTMIN2NAME:
+            FCB   7
+            FCC   "TSTMIN2"
 
 ; ------------------------------------------------------------
 ; TSTMAX1 - unit test for MAX. n1 < n2 - n2 is the max, replaces n1.
 ; ------------------------------------------------------------
 TSTMAX1:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   MAX
+            JSR   MAX
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   X1FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   X1FAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   X1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   X1FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   X1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   X1FAIL
 
-           LDD   #TRUEV
-           BRA   X1DONE
+            LDD   #TRUEV
+            BRA   X1DONE
 X1FAIL:     LDD   #FALSEV
 X1DONE:     LDX   #TSTMAX1NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTMAX1NAME: FCB  7
-               FCC  "TSTMAX1"
+TSTMAX1NAME:
+            FCB   7
+            FCC   "TSTMAX1"
 
 ; ------------------------------------------------------------
 ; TSTMAX2 - unit test for MAX. n1 > n2 - n1 is the max, left unchanged.
 ; ------------------------------------------------------------
 TSTMAX2:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   MAX
+            JSR   MAX
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   X2FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   X2FAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   X2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   X2FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   X2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   X2FAIL
 
-           LDD   #TRUEV
-           BRA   X2DONE
+            LDD   #TRUEV
+            BRA   X2DONE
 X2FAIL:     LDD   #FALSEV
 X2DONE:     LDX   #TSTMAX2NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTMAX2NAME: FCB  7
-               FCC  "TSTMAX2"
+TSTMAX2NAME:
+            FCB   7
+            FCC   "TSTMAX2"
 
 ; ------------------------------------------------------------
 ; TSTONEP - unit test for ONEPLUS. add one.
 ; ------------------------------------------------------------
 TSTONEP:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   ONEPLUS
+            JSR   ONEPLUS
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$59E2
-           BNE   OPFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   OPFAIL
+            PULU  D
+            CMPD  #$59E2
+            BNE   OPFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   OPFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   OPFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   OPFAIL
 
-           LDD   #TRUEV
-           BRA   OPDONE
+            LDD   #TRUEV
+            BRA   OPDONE
 OPFAIL:     LDD   #FALSEV
 OPDONE:     LDX   #TSTONEPNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTONEPNAME: FCB  7
-               FCC  "TSTONEP"
+TSTONEPNAME:
+            FCB   7
+            FCC   "TSTONEP"
 
 ; ------------------------------------------------------------
 ; TSTONEM - unit test for ONEMINUS. subtract one.
 ; ------------------------------------------------------------
 TSTONEM:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   ONEMINUS
+            JSR   ONEMINUS
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$59E0
-           BNE   OMFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   OMFAIL
+            PULU  D
+            CMPD  #$59E0
+            BNE   OMFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   OMFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   OMFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   OMFAIL
 
-           LDD   #TRUEV
-           BRA   OMDONE
+            LDD   #TRUEV
+            BRA   OMDONE
 OMFAIL:     LDD   #FALSEV
 OMDONE:     LDX   #TSTONEMNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTONEMNAME: FCB  7
-               FCC  "TSTONEM"
+TSTONEMNAME:
+            FCB   7
+            FCC   "TSTONEM"
 
 ; ------------------------------------------------------------
 ; TSTTWOP - unit test for TWOPLUS. add two (not ANS-standard).
 ; ------------------------------------------------------------
 TSTTWOP:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   TWOPLUS
+            JSR   TWOPLUS
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$59E3
-           BNE   TPFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   TPFAIL
+            PULU  D
+            CMPD  #$59E3
+            BNE   TPFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   TPFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   TPFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   TPFAIL
 
-           LDD   #TRUEV
-           BRA   TPDONE
+            LDD   #TRUEV
+            BRA   TPDONE
 TPFAIL:     LDD   #FALSEV
 TPDONE:     LDX   #TSTTWOPNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTTWOPNAME: FCB  7
-               FCC  "TSTTWOP"
+TSTTWOPNAME:
+            FCB   7
+            FCC   "TSTTWOP"
 
 ; ------------------------------------------------------------
 ; TSTTWOS - unit test for TWOSTAR. arithmetic shift left one bit.
 ; ------------------------------------------------------------
 TSTTWOS:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   TWOSTAR
+            JSR   TWOSTAR
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$48D0
-           BNE   TWFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   TWFAIL
+            PULU  D
+            CMPD  #$48D0
+            BNE   TWFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   TWFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   TWFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   TWFAIL
 
-           LDD   #TRUEV
-           BRA   TWDONE
+            LDD   #TRUEV
+            BRA   TWDONE
 TWFAIL:     LDD   #FALSEV
 TWDONE:     LDX   #TSTTWOSNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTTWOSNAME: FCB  7
-               FCC  "TSTTWOS"
+TSTTWOSNAME:
+            FCB   7
+            FCC   "TSTTWOS"
 
 ; ------------------------------------------------------------
 ; TSTTWOD1 - unit test for TWOSLASH. positive input, arithmetic shift right.
 ; ------------------------------------------------------------
 TSTTWOD1:   STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   TWOSLASH
+            JSR   TWOSLASH
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$1234
-           BNE   D1FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   D1FAIL
+            PULU  D
+            CMPD  #$1234
+            BNE   D1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   D1FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   D1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   D1FAIL
 
-           LDD   #TRUEV
-           BRA   D1DONE
+            LDD   #TRUEV
+            BRA   D1DONE
 D1FAIL:     LDD   #FALSEV
 D1DONE:     LDX   #TSTTWOD1NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTTWOD1NAME: FCB  8
-                FCC  "TSTTWOD1"
+TSTTWOD1NAME:
+            FCB   8
+            FCC   "TSTTWOD1"
 
 ; ------------------------------------------------------------
 ; TSTTWOD2 - unit test for TWOSLASH. negative input - the case that actually tests sign-preservation.
 ; ------------------------------------------------------------
 TSTTWOD2:   STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   TWOSLASH
+            JSR   TWOSLASH
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$E7E3
-           BNE   D2FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   D2FAIL
+            PULU  D
+            CMPD  #$E7E3
+            BNE   D2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   D2FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   D2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   D2FAIL
 
-           LDD   #TRUEV
-           BRA   D2DONE
+            LDD   #TRUEV
+            BRA   D2DONE
 D2FAIL:     LDD   #FALSEV
 D2DONE:     LDX   #TSTTWOD2NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTTWOD2NAME: FCB  8
-                FCC  "TSTTWOD2"
+TSTTWOD2NAME:
+            FCB   8
+            FCC   "TSTTWOD2"
 
 ; ------------------------------------------------------------
 ; TSTSTSL - unit test for STARSLASH. n1*n2/n3 via double-cell intermediate, no truncation until final divide.
 ; ------------------------------------------------------------
 TSTSTSL:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           LDD   #TSTVAL3
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            LDD   #TSTVAL3
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   STARSLASH
+            JSR   STARSLASH
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$1A8D
-           BNE   TSFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   TSFAIL
+            PULU  D
+            CMPD  #$1A8D
+            BNE   TSFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   TSFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-4
-           BNE   TSFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   TSFAIL
 
-           LDD   #TRUEV
-           BRA   TSDONE
+            LDD   #TRUEV
+            BRA   TSDONE
 TSFAIL:     LDD   #FALSEV
 TSDONE:     LDX   #TSTSTSLNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSTSLNAME: FCB  7
-               FCC  "TSTSTSL"
+TSTSTSLNAME:
+            FCB   7
+            FCC   "TSTSTSL"
 
 ; ------------------------------------------------------------
 ; TSTSTSLZ - unit test for STARSLASH, divide-by-zero case. n3 = 0.
@@ -3191,90 +3242,92 @@ TSTSTSLNAME: FCB  7
 ; ------------------------------------------------------------
 TSTSTSLZ:   STU   TSTU0
 
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           LDD   #$0000
-           PSHU  D
-           LDX   #STARSLASH
-           PSHU  X
-           STU   TSTUB4
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            LDD   #$0000
+            PSHU  D
+            LDX   #STARSLASH
+            PSHU  X
+            STU   TSTUB4
 
-           JSR   CATCH
+            JSR   CATCH
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #-10
-           BNE   TZFAIL
+            PULU  D
+            CMPD  #-10
+            BNE   TZFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   TZFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   TZFAIL
 
-           LDD   #TRUEV
-           BRA   TZDONE
+            LDD   #TRUEV
+            BRA   TZDONE
 TZFAIL:     LDD   #FALSEV
 TZDONE:     LDX   #TSTSTSLZNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSTSLZNAME: FCB  8
-                FCC  "TSTSTSLZ"
+TSTSTSLZNAME:
+            FCB   8
+            FCC   "TSTSTSLZ"
 
 ; ------------------------------------------------------------
 ; TSTSTSM - unit test for STARSLASHMOD. */MOD together - remainder and quotient.
 ; ------------------------------------------------------------
 TSTSTSM:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           LDD   #TSTVAL3
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            LDD   #TSTVAL3
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   STARSLASHMOD
+            JSR   STARSLASHMOD
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$F1C2
-           BNE   TMFAIL
-           PULU  D
-           CMPD  #$939E
-           BNE   TMFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   TMFAIL
+            PULU  D
+            CMPD  #$F1C2
+            BNE   TMFAIL
+            PULU  D
+            CMPD  #$939E
+            BNE   TMFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   TMFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   TMFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   TMFAIL
 
-           LDD   #TRUEV
-           BRA   TMDONE
+            LDD   #TRUEV
+            BRA   TMDONE
 TMFAIL:     LDD   #FALSEV
 TMDONE:     LDX   #TSTSTSMNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSTSMNAME: FCB  7
-               FCC  "TSTSTSM"
+TSTSTSMNAME:
+            FCB   7
+            FCC   "TSTSTSM"
 
 ; ------------------------------------------------------------
 ; TSTSTSMZ - unit test for STARSLASHMOD, divide-by-zero case. n3 = 0.
@@ -3289,44 +3342,45 @@ TSTSTSMNAME: FCB  7
 ; ------------------------------------------------------------
 TSTSTSMZ:   STU   TSTU0
 
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           LDD   #$0000
-           PSHU  D
-           LDX   #STARSLASHMOD
-           PSHU  X
-           STU   TSTUB4
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            LDD   #$0000
+            PSHU  D
+            LDX   #STARSLASHMOD
+            PSHU  X
+            STU   TSTUB4
 
-           JSR   CATCH
+            JSR   CATCH
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #-10
-           BNE   TXFAIL
+            PULU  D
+            CMPD  #-10
+            BNE   TXFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   TXFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   TXFAIL
 
-           LDD   #TRUEV
-           BRA   TXDONE
+            LDD   #TRUEV
+            BRA   TXDONE
 TXFAIL:     LDD   #FALSEV
 TXDONE:     LDX   #TSTSTSMZNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSTSMZNAME: FCB  8
-                FCC  "TSTSTSMZ"
+TSTSTSMZNAME:
+            FCB   8
+            FCC   "TSTSTSMZ"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTDARITH - mixed & double-precision arithmetic tests (glossary
@@ -3349,43 +3403,44 @@ TSTSTSMZNAME: FCB  8
 ; tests (the other division words here all derive UDIV32's divisor
 ; from a signed single cell, too narrow a range to trigger it).
 ; ------------------------------------------------------------
-TSTDARITH: JSR   CRW
-           LDX   #TSTDARITHMSG
-           PSHU  X
-           LDD   #11
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+TSTDARITH:  JSR   CRW
+            LDX   #TSTDARITHMSG
+            PSHU  X
+            LDD   #11
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-4  ; >>>>
+            IFEQ  TSTSELECTOR-4     ; >>>>
 
-           JSR   TSTUMST
-           JSR   TSTUMSM
-           JSR   TSTUMSM2
-           JSR   TSTUMSZ
-           JSR   TSTMSTAR
-           JSR   TSTFMSM
-           JSR   TSTFMSZ
-           JSR   TSTSMRM
-           JSR   TSTSMRZ
-           JSR   TSTDPLUS
-           JSR   TSTDMIN2
-           JSR   TSTDNEG
-           JSR   TSTDABS1
-           JSR   TSTDABS2
-           JSR   TSTMPLUS
-           JSR   TSTSTOD
-           JSR   TSTDTOS
-           JSR   TSTDMAX
-           JSR   TSTDMIN
+            JSR   TSTUMST
+            JSR   TSTUMSM
+            JSR   TSTUMSM2
+            JSR   TSTUMSZ
+            JSR   TSTMSTAR
+            JSR   TSTFMSM
+            JSR   TSTFMSZ
+            JSR   TSTSMRM
+            JSR   TSTSMRZ
+            JSR   TSTDPLUS
+            JSR   TSTDMIN2
+            JSR   TSTDNEG
+            JSR   TSTDABS1
+            JSR   TSTDABS2
+            JSR   TSTMPLUS
+            JSR   TSTSTOD
+            JSR   TSTDTOS
+            JSR   TSTDMAX
+            JSR   TSTDMIN
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTDARITHMSG: FCC "DArithmetic"
+TSTDARITHMSG:
+            FCC   "DArithmetic"
 
-           IFEQ TSTSELECTOR-4  ; >>>>
+            IFEQ  TSTSELECTOR-4     ; >>>>
 
 ; ------------------------------------------------------------
 ; TSTUMST - unit test for UMSTAR. unsigned single*single->double.
@@ -3394,46 +3449,47 @@ TSTDARITHMSG: FCC "DArithmetic"
 ; ------------------------------------------------------------
 TSTUMST:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   UMSTAR
+            JSR   UMSTAR
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$0CC8
-           BNE   UMFAIL
-           PULU  D
-           CMPD  #$2768
-           BNE   UMFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   UMFAIL
+            PULU  D
+            CMPD  #$0CC8
+            BNE   UMFAIL
+            PULU  D
+            CMPD  #$2768
+            BNE   UMFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   UMFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   UMFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   UMFAIL
 
-           LDD   #TRUEV
-           BRA   UMDONE
+            LDD   #TRUEV
+            BRA   UMDONE
 UMFAIL:     LDD   #FALSEV
 UMDONE:     LDX   #TSTUMSTNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTUMSTNAME: FCB  7
-               FCC  "TSTUMST"
+TSTUMSTNAME:
+            FCB   7
+            FCC   "TSTUMST"
 
 ; ------------------------------------------------------------
 ; TSTUMSM - unit test for UMSLASHMOD. unsigned double/single -> remainder, quotient.
@@ -3442,48 +3498,49 @@ TSTUMSTNAME: FCB  7
 ; ------------------------------------------------------------
 TSTUMSM:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTD1LO
-           PSHU  D
-           LDD   #TSTD1HI
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTD1LO
+            PSHU  D
+            LDD   #TSTD1HI
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   UMSLASHMOD
+            JSR   UMSLASHMOD
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$0007
-           BNE   UDFAIL
-           PULU  D
-           CMPD  #$1298
-           BNE   UDFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   UDFAIL
+            PULU  D
+            CMPD  #$0007
+            BNE   UDFAIL
+            PULU  D
+            CMPD  #$1298
+            BNE   UDFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   UDFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   UDFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   UDFAIL
 
-           LDD   #TRUEV
-           BRA   UDDONE
+            LDD   #TRUEV
+            BRA   UDDONE
 UDFAIL:     LDD   #FALSEV
 UDDONE:     LDX   #TSTUMSMNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTUMSMNAME: FCB  7
-               FCC  "TSTUMSM"
+TSTUMSMNAME:
+            FCB   7
+            FCC   "TSTUMSM"
 
 ; ------------------------------------------------------------
 ; TSTUMSM2 - unit test for UMSLASHMOD, MAX-UINT/MAX-UINT boundary
@@ -3520,48 +3577,49 @@ TSTUMSMNAME: FCB  7
 ; ------------------------------------------------------------
 TSTUMSM2:   STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #$0001
-           PSHU  D
-           LDD   #$FFFE
-           PSHU  D
-           LDD   #$FFFF
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #$0001
+            PSHU  D
+            LDD   #$FFFE
+            PSHU  D
+            LDD   #$FFFF
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   UMSLASHMOD
+            JSR   UMSLASHMOD
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFFF
-           BNE   UM2FAIL
-           PULU  D
-           CMPD  #$0000
-           BNE   UM2FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   UM2FAIL
+            PULU  D
+            CMPD  #$FFFF
+            BNE   UM2FAIL
+            PULU  D
+            CMPD  #$0000
+            BNE   UM2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   UM2FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   UM2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   UM2FAIL
 
-           LDD   #TRUEV
-           BRA   UM2DONE
+            LDD   #TRUEV
+            BRA   UM2DONE
 UM2FAIL:    LDD   #FALSEV
 UM2DONE:    LDX   #TSTUMSM2NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTUMSM2NAME: FCB  8
-                FCC  "TSTUMSM2"
+TSTUMSM2NAME:
+            FCB   8
+            FCC   "TSTUMSM2"
 
 ; ------------------------------------------------------------
 ; TSTMSTAR - unit test for MSTAR. signed single*single->double.
@@ -3570,46 +3628,47 @@ TSTUMSM2NAME: FCB  8
 ; ------------------------------------------------------------
 TSTMSTAR:   STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   MSTAR
+            JSR   MSTAR
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$F924
-           BNE   MCFAIL
-           PULU  D
-           CMPD  #$64D8
-           BNE   MCFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   MCFAIL
+            PULU  D
+            CMPD  #$F924
+            BNE   MCFAIL
+            PULU  D
+            CMPD  #$64D8
+            BNE   MCFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   MCFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   MCFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   MCFAIL
 
-           LDD   #TRUEV
-           BRA   MCDONE
+            LDD   #TRUEV
+            BRA   MCDONE
 MCFAIL:     LDD   #FALSEV
 MCDONE:     LDX   #TSTMSTARNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTMSTARNAME: FCB  8
-                FCC  "TSTMSTAR"
+TSTMSTARNAME:
+            FCB   8
+            FCC   "TSTMSTAR"
 
 ; ------------------------------------------------------------
 ; TSTFMSM - unit test for FMSLASHMOD. floored double/single division.
@@ -3618,48 +3677,49 @@ TSTMSTARNAME: FCB  8
 ; ------------------------------------------------------------
 TSTFMSM:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTD2LO
-           PSHU  D
-           LDD   #TSTD2HI
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTD2LO
+            PSHU  D
+            LDD   #TSTD2HI
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   FMSLASHMOD
+            JSR   FMSLASHMOD
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFF8
-           BNE   FMFAIL
-           PULU  D
-           CMPD  #$11D0
-           BNE   FMFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   FMFAIL
+            PULU  D
+            CMPD  #$FFF8
+            BNE   FMFAIL
+            PULU  D
+            CMPD  #$11D0
+            BNE   FMFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   FMFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   FMFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   FMFAIL
 
-           LDD   #TRUEV
-           BRA   FMDONE
+            LDD   #TRUEV
+            BRA   FMDONE
 FMFAIL:     LDD   #FALSEV
 FMDONE:     LDX   #TSTFMSMNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTFMSMNAME: FCB  7
-               FCC  "TSTFMSM"
+TSTFMSMNAME:
+            FCB   7
+            FCC   "TSTFMSM"
 
 ; ------------------------------------------------------------
 ; TSTSMRM - unit test for SMSLASHREM. symmetric double/single division.
@@ -3668,48 +3728,49 @@ TSTFMSMNAME: FCB  7
 ; ------------------------------------------------------------
 TSTSMRM:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTD2LO
-           PSHU  D
-           LDD   #TSTD2HI
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTD2LO
+            PSHU  D
+            LDD   #TSTD2HI
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   SMSLASHREM
+            JSR   SMSLASHREM
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFF9
-           BNE   SRFAIL
-           PULU  D
-           CMPD  #$ED68
-           BNE   SRFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   SRFAIL
+            PULU  D
+            CMPD  #$FFF9
+            BNE   SRFAIL
+            PULU  D
+            CMPD  #$ED68
+            BNE   SRFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SRFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   SRFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   SRFAIL
 
-           LDD   #TRUEV
-           BRA   SRDONE
+            LDD   #TRUEV
+            BRA   SRDONE
 SRFAIL:     LDD   #FALSEV
 SRDONE:     LDX   #TSTSMRMNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSMRMNAME: FCB  7
-               FCC  "TSTSMRM"
+TSTSMRMNAME:
+            FCB   7
+            FCC   "TSTSMRM"
 
 ; ------------------------------------------------------------
 ; TSTDPLUS - unit test for DPLUS. double-cell add, with carry propagation.
@@ -3718,50 +3779,51 @@ TSTSMRMNAME: FCB  7
 ; ------------------------------------------------------------
 TSTDPLUS:   STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTD1LO
-           PSHU  D
-           LDD   #TSTD1HI
-           PSHU  D
-           LDD   #TSTD3LO
-           PSHU  D
-           LDD   #TSTD3HI
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTD1LO
+            PSHU  D
+            LDD   #TSTD1HI
+            PSHU  D
+            LDD   #TSTD3LO
+            PSHU  D
+            LDD   #TSTD3HI
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DPLUS
+            JSR   DPLUS
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$00BD
-           BNE   PDFAIL
-           PULU  D
-           CMPD  #$72BE
-           BNE   PDFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   PDFAIL
+            PULU  D
+            CMPD  #$00BD
+            BNE   PDFAIL
+            PULU  D
+            CMPD  #$72BE
+            BNE   PDFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   PDFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-4
-           BNE   PDFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   PDFAIL
 
-           LDD   #TRUEV
-           BRA   PDDONE
+            LDD   #TRUEV
+            BRA   PDDONE
 PDFAIL:     LDD   #FALSEV
 PDDONE:     LDX   #TSTDPLUSNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDPLUSNAME: FCB  8
-                FCC  "TSTDPLUS"
+TSTDPLUSNAME:
+            FCB   8
+            FCC   "TSTDPLUS"
 
 ; ------------------------------------------------------------
 ; TSTDMIN2 - unit test for DMINUS. double-cell subtract, with borrow propagation.
@@ -3770,50 +3832,51 @@ TSTDPLUSNAME: FCB  8
 ; ------------------------------------------------------------
 TSTDMIN2:   STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTD3LO
-           PSHU  D
-           LDD   #TSTD3HI
-           PSHU  D
-           LDD   #TSTD1LO
-           PSHU  D
-           LDD   #TSTD1HI
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTD3LO
+            PSHU  D
+            LDD   #TSTD3HI
+            PSHU  D
+            LDD   #TSTD1LO
+            PSHU  D
+            LDD   #TSTD1HI
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DMINUS
+            JSR   DMINUS
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$00BB
-           BNE   BDFAIL
-           PULU  D
-           CMPD  #$4FDE
-           BNE   BDFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   BDFAIL
+            PULU  D
+            CMPD  #$00BB
+            BNE   BDFAIL
+            PULU  D
+            CMPD  #$4FDE
+            BNE   BDFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   BDFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-4
-           BNE   BDFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   BDFAIL
 
-           LDD   #TRUEV
-           BRA   BDDONE
+            LDD   #TRUEV
+            BRA   BDDONE
 BDFAIL:     LDD   #FALSEV
 BDDONE:     LDX   #TSTDMIN2NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDMIN2NAME: FCB  8
-                FCC  "TSTDMIN2"
+TSTDMIN2NAME:
+            FCB   8
+            FCC   "TSTDMIN2"
 
 ; ------------------------------------------------------------
 ; TSTDNEG - unit test for DNEGATEW. double-cell two's-complement negate.
@@ -3822,46 +3885,47 @@ TSTDMIN2NAME: FCB  8
 ; ------------------------------------------------------------
 TSTDNEG:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTD3LO
-           PSHU  D
-           LDD   #TSTD3HI
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTD3LO
+            PSHU  D
+            LDD   #TSTD3HI
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DNEGATEW
+            JSR   DNEGATEW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FF43
-           BNE   DNFAIL
-           PULU  D
-           CMPD  #$9EB2
-           BNE   DNFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   DNFAIL
+            PULU  D
+            CMPD  #$FF43
+            BNE   DNFAIL
+            PULU  D
+            CMPD  #$9EB2
+            BNE   DNFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DNFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   DNFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   DNFAIL
 
-           LDD   #TRUEV
-           BRA   DNDONE
+            LDD   #TRUEV
+            BRA   DNDONE
 DNFAIL:     LDD   #FALSEV
 DNDONE:     LDX   #TSTDNEGNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDNEGNAME: FCB  7
-               FCC  "TSTDNEG"
+TSTDNEGNAME:
+            FCB   7
+            FCC   "TSTDNEG"
 
 ; ------------------------------------------------------------
 ; TSTDABS1 - unit test for DABSW. positive double - already non-negative, unchanged.
@@ -3870,46 +3934,47 @@ TSTDNEGNAME: FCB  7
 ; ------------------------------------------------------------
 TSTDABS1:   STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTD3LO
-           PSHU  D
-           LDD   #TSTD3HI
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTD3LO
+            PSHU  D
+            LDD   #TSTD3HI
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DABSW
+            JSR   DABSW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTD3HI
-           BNE   DAFAIL
-           PULU  D
-           CMPD  #TSTD3LO
-           BNE   DAFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   DAFAIL
+            PULU  D
+            CMPD  #TSTD3HI
+            BNE   DAFAIL
+            PULU  D
+            CMPD  #TSTD3LO
+            BNE   DAFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DAFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   DAFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   DAFAIL
 
-           LDD   #TRUEV
-           BRA   DADONE
+            LDD   #TRUEV
+            BRA   DADONE
 DAFAIL:     LDD   #FALSEV
 DADONE:     LDX   #TSTDABS1NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDABS1NAME: FCB  8
-                FCC  "TSTDABS1"
+TSTDABS1NAME:
+            FCB   8
+            FCC   "TSTDABS1"
 
 ; ------------------------------------------------------------
 ; TSTDABS2 - unit test for DABSW. negative double - the branch that actually negates.
@@ -3918,46 +3983,47 @@ TSTDABS1NAME: FCB  8
 ; ------------------------------------------------------------
 TSTDABS2:   STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTD2LO
-           PSHU  D
-           LDD   #TSTD2HI
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTD2LO
+            PSHU  D
+            LDD   #TSTD2HI
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DABSW
+            JSR   DABSW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTD1HI
-           BNE   DBFAIL
-           PULU  D
-           CMPD  #TSTD1LO
-           BNE   DBFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   DBFAIL
+            PULU  D
+            CMPD  #TSTD1HI
+            BNE   DBFAIL
+            PULU  D
+            CMPD  #TSTD1LO
+            BNE   DBFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DBFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   DBFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   DBFAIL
 
-           LDD   #TRUEV
-           BRA   DBDONE
+            LDD   #TRUEV
+            BRA   DBDONE
 DBFAIL:     LDD   #FALSEV
 DBDONE:     LDX   #TSTDABS2NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDABS2NAME: FCB  8
-                FCC  "TSTDABS2"
+TSTDABS2NAME:
+            FCB   8
+            FCC   "TSTDABS2"
 
 ; ------------------------------------------------------------
 ; TSTMPLUS - unit test for MPLUS. add a single-cell value into a double.
@@ -3966,48 +4032,49 @@ TSTDABS2NAME: FCB  8
 ; ------------------------------------------------------------
 TSTMPLUS:   STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTD1LO
-           PSHU  D
-           LDD   #TSTD1HI
-           PSHU  D
-           LDD   #TSTNEG2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTD1LO
+            PSHU  D
+            LDD   #TSTD1HI
+            PSHU  D
+            LDD   #TSTNEG2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   MPLUS
+            JSR   MPLUS
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$0001
-           BNE   MPFAIL
-           PULU  D
-           CMPD  #$102F
-           BNE   MPFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   MPFAIL
+            PULU  D
+            CMPD  #$0001
+            BNE   MPFAIL
+            PULU  D
+            CMPD  #$102F
+            BNE   MPFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   MPFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   MPFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   MPFAIL
 
-           LDD   #TRUEV
-           BRA   MPDONE
+            LDD   #TRUEV
+            BRA   MPDONE
 MPFAIL:     LDD   #FALSEV
 MPDONE:     LDX   #TSTMPLUSNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTMPLUSNAME: FCB  8
-                FCC  "TSTMPLUS"
+TSTMPLUSNAME:
+            FCB   8
+            FCC   "TSTMPLUS"
 
 ; ------------------------------------------------------------
 ; TSTSTOD - unit test for STOD. sign-extend a negative single to double (this word's own documented bug history was in this exact case).
@@ -4016,44 +4083,45 @@ TSTMPLUSNAME: FCB  8
 ; ------------------------------------------------------------
 TSTSTOD:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   STOD
+            JSR   STOD
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFFF
-           BNE   SDFAIL
-           PULU  D
-           CMPD  #TSTNEG1
-           BNE   SDFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   SDFAIL
+            PULU  D
+            CMPD  #$FFFF
+            BNE   SDFAIL
+            PULU  D
+            CMPD  #TSTNEG1
+            BNE   SDFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SDFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #2
-           BNE   SDFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   SDFAIL
 
-           LDD   #TRUEV
-           BRA   SDDONE
+            LDD   #TRUEV
+            BRA   SDDONE
 SDFAIL:     LDD   #FALSEV
 SDDONE:     LDX   #TSTSTODNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSTODNAME: FCB  7
-               FCC  "TSTSTOD"
+TSTSTODNAME:
+            FCB   7
+            FCC   "TSTSTOD"
 
 ; ------------------------------------------------------------
 ; TSTDTOS - unit test for DTOS. narrow a double that fits to a single cell.
@@ -4062,43 +4130,44 @@ TSTSTODNAME: FCB  7
 ; ------------------------------------------------------------
 TSTDTOS:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTDSLO
-           PSHU  D
-           LDD   #TSTDSHI
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTDSLO
+            PSHU  D
+            LDD   #TSTDSHI
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DTOS
+            JSR   DTOS
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTDSLO
-           BNE   NSFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   NSFAIL
+            PULU  D
+            CMPD  #TSTDSLO
+            BNE   NSFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   NSFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   NSFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   NSFAIL
 
-           LDD   #TRUEV
-           BRA   NSDONE
+            LDD   #TRUEV
+            BRA   NSDONE
 NSFAIL:     LDD   #FALSEV
 NSDONE:     LDX   #TSTDTOSNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDTOSNAME: FCB  7
-               FCC  "TSTDTOS"
+TSTDTOSNAME:
+            FCB   7
+            FCC   "TSTDTOS"
 
 ; ------------------------------------------------------------
 ; TSTDMAX - unit test for DMAXW. double-cell signed maximum, cross-sign case.
@@ -4107,50 +4176,51 @@ TSTDTOSNAME: FCB  7
 ; ------------------------------------------------------------
 TSTDMAX:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTD1LO
-           PSHU  D
-           LDD   #TSTD1HI
-           PSHU  D
-           LDD   #TSTD2LO
-           PSHU  D
-           LDD   #TSTD2HI
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTD1LO
+            PSHU  D
+            LDD   #TSTD1HI
+            PSHU  D
+            LDD   #TSTD2LO
+            PSHU  D
+            LDD   #TSTD2HI
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DMAXW
+            JSR   DMAXW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTD1HI
-           BNE   XMFAIL
-           PULU  D
-           CMPD  #TSTD1LO
-           BNE   XMFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   XMFAIL
+            PULU  D
+            CMPD  #TSTD1HI
+            BNE   XMFAIL
+            PULU  D
+            CMPD  #TSTD1LO
+            BNE   XMFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   XMFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-4
-           BNE   XMFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   XMFAIL
 
-           LDD   #TRUEV
-           BRA   XMDONE
+            LDD   #TRUEV
+            BRA   XMDONE
 XMFAIL:     LDD   #FALSEV
 XMDONE:     LDX   #TSTDMAXNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDMAXNAME: FCB  7
-               FCC  "TSTDMAX"
+TSTDMAXNAME:
+            FCB   7
+            FCC   "TSTDMAX"
 
 ; ------------------------------------------------------------
 ; TSTDMIN - unit test for DMINW. double-cell signed minimum, cross-sign case.
@@ -4159,50 +4229,51 @@ TSTDMAXNAME: FCB  7
 ; ------------------------------------------------------------
 TSTDMIN:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTD1LO
-           PSHU  D
-           LDD   #TSTD1HI
-           PSHU  D
-           LDD   #TSTD2LO
-           PSHU  D
-           LDD   #TSTD2HI
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTD1LO
+            PSHU  D
+            LDD   #TSTD1HI
+            PSHU  D
+            LDD   #TSTD2LO
+            PSHU  D
+            LDD   #TSTD2HI
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DMINW
+            JSR   DMINW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTD2HI
-           BNE   NMFAIL
-           PULU  D
-           CMPD  #TSTD2LO
-           BNE   NMFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   NMFAIL
+            PULU  D
+            CMPD  #TSTD2HI
+            BNE   NMFAIL
+            PULU  D
+            CMPD  #TSTD2LO
+            BNE   NMFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   NMFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-4
-           BNE   NMFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   NMFAIL
 
-           LDD   #TRUEV
-           BRA   NMDONE
+            LDD   #TRUEV
+            BRA   NMDONE
 NMFAIL:     LDD   #FALSEV
 NMDONE:     LDX   #TSTDMINNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDMINNAME: FCB  7
-               FCC  "TSTDMIN"
+TSTDMINNAME:
+            FCB   7
+            FCC   "TSTDMIN"
 
 ; ------------------------------------------------------------
 ; TSTUMSZ - unit test for UMSLASHMOD, divide-by-zero case. u1 = 0.
@@ -4212,42 +4283,43 @@ TSTDMINNAME: FCB  7
 ; ------------------------------------------------------------
 TSTUMSZ:    STU   TSTU0
 
-           LDD   #TSTD1LO
-           PSHU  D
-           LDD   #TSTD1HI
-           PSHU  D
-           LDD   #$0000
-           PSHU  D
-           LDX   #UMSLASHMOD
-           PSHU  X
-           STU   TSTUB4
+            LDD   #TSTD1LO
+            PSHU  D
+            LDD   #TSTD1HI
+            PSHU  D
+            LDD   #$0000
+            PSHU  D
+            LDX   #UMSLASHMOD
+            PSHU  X
+            STU   TSTUB4
 
-           JSR   CATCH
+            JSR   CATCH
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #-10
-           BNE   UZFAIL
+            PULU  D
+            CMPD  #-10
+            BNE   UZFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   UZFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   UZFAIL
 
-           LDD   #TRUEV
-           BRA   UZDONE
+            LDD   #TRUEV
+            BRA   UZDONE
 UZFAIL:     LDD   #FALSEV
 UZDONE:     LDX   #TSTUMSZNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTUMSZNAME: FCB  7
-               FCC  "TSTUMSZ"
+TSTUMSZNAME:
+            FCB   7
+            FCC   "TSTUMSZ"
 
 ; ------------------------------------------------------------
 ; TSTFMSZ - unit test for FMSLASHMOD, divide-by-zero case. n1 = 0.
@@ -4257,42 +4329,43 @@ TSTUMSZNAME: FCB  7
 ; ------------------------------------------------------------
 TSTFMSZ:    STU   TSTU0
 
-           LDD   #TSTD2LO
-           PSHU  D
-           LDD   #TSTD2HI
-           PSHU  D
-           LDD   #$0000
-           PSHU  D
-           LDX   #FMSLASHMOD
-           PSHU  X
-           STU   TSTUB4
+            LDD   #TSTD2LO
+            PSHU  D
+            LDD   #TSTD2HI
+            PSHU  D
+            LDD   #$0000
+            PSHU  D
+            LDX   #FMSLASHMOD
+            PSHU  X
+            STU   TSTUB4
 
-           JSR   CATCH
+            JSR   CATCH
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #-10
-           BNE   FZFAIL
+            PULU  D
+            CMPD  #-10
+            BNE   FZFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   FZFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   FZFAIL
 
-           LDD   #TRUEV
-           BRA   FZDONE
+            LDD   #TRUEV
+            BRA   FZDONE
 FZFAIL:     LDD   #FALSEV
 FZDONE:     LDX   #TSTFMSZNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTFMSZNAME: FCB  7
-               FCC  "TSTFMSZ"
+TSTFMSZNAME:
+            FCB   7
+            FCC   "TSTFMSZ"
 
 ; ------------------------------------------------------------
 ; TSTSMRZ - unit test for SMSLASHREM, divide-by-zero case. n1 = 0.
@@ -4302,44 +4375,45 @@ TSTFMSZNAME: FCB  7
 ; ------------------------------------------------------------
 TSTSMRZ:    STU   TSTU0
 
-           LDD   #TSTD2LO
-           PSHU  D
-           LDD   #TSTD2HI
-           PSHU  D
-           LDD   #$0000
-           PSHU  D
-           LDX   #SMSLASHREM
-           PSHU  X
-           STU   TSTUB4
+            LDD   #TSTD2LO
+            PSHU  D
+            LDD   #TSTD2HI
+            PSHU  D
+            LDD   #$0000
+            PSHU  D
+            LDX   #SMSLASHREM
+            PSHU  X
+            STU   TSTUB4
 
-           JSR   CATCH
+            JSR   CATCH
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #-10
-           BNE   RZFAIL
+            PULU  D
+            CMPD  #-10
+            BNE   RZFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   RZFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   RZFAIL
 
-           LDD   #TRUEV
-           BRA   RZDONE
+            LDD   #TRUEV
+            BRA   RZDONE
 RZFAIL:     LDD   #FALSEV
 RZDONE:     LDX   #TSTSMRZNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSMRZNAME: FCB  7
-               FCC  "TSTSMRZ"
+TSTSMRZNAME:
+            FCB   7
+            FCC   "TSTSMRZ"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTLOGIC - logic, shift, and address-arithmetic tests (glossary
@@ -4358,36 +4432,37 @@ TSTSMRZNAME: FCB  7
 ; case that actually distinguishes the two conventions, same
 ; reasoning already applied to 2/ and FM/MOD vs SM/REM earlier.
 ; ------------------------------------------------------------
-TSTLOGIC:  JSR   CRW
-           LDX   #TSTLOGICMSG
-           PSHU  X
-           LDD   #5
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+TSTLOGIC:   JSR   CRW
+            LDX   #TSTLOGICMSG
+            PSHU  X
+            LDD   #5
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-5  ; >>>>
+            IFEQ  TSTSELECTOR-5     ; >>>>
 
-           JSR   TSTAND
-           JSR   TSTOR
-           JSR   TSTXOR
-           JSR   TSTINV
-           JSR   TSTLSH
-           JSR   TSTRSH
-           JSR   TSTCELS
-           JSR   TSTCELP
-           JSR   TSTCHRS
-           JSR   TSTCHRP
-           JSR   TSTALGD
-           JSR   TSTALGN
+            JSR   TSTAND
+            JSR   TSTOR
+            JSR   TSTXOR
+            JSR   TSTINV
+            JSR   TSTLSH
+            JSR   TSTRSH
+            JSR   TSTCELS
+            JSR   TSTCELP
+            JSR   TSTCHRS
+            JSR   TSTCHRP
+            JSR   TSTALGD
+            JSR   TSTALGN
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTLOGICMSG: FCC "Logic"
+TSTLOGICMSG:
+            FCC   "Logic"
 
-           IFEQ TSTSELECTOR-5  ; >>>>
+            IFEQ  TSTSELECTOR-5     ; >>>>
 
 ; ------------------------------------------------------------
 ; TSTAND - unit test for ANDW. bitwise AND.
@@ -4396,43 +4471,43 @@ TSTLOGICMSG: FCC "Logic"
 ; ------------------------------------------------------------
 TSTAND:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   ANDW
+            JSR   ANDW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$0060
-           BNE   ANFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   ANFAIL
+            PULU  D
+            CMPD  #$0060
+            BNE   ANFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   ANFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   ANFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   ANFAIL
 
-           LDD   #TRUEV
-           BRA   ANDONE
+            LDD   #TRUEV
+            BRA   ANDONE
 ANFAIL:     LDD   #FALSEV
 ANDONE:     LDX   #TSTANDNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTANDNAME: FCB  6
-              FCC  "TSTAND"
+TSTANDNAME: FCB   6
+            FCC   "TSTAND"
 
 ; ------------------------------------------------------------
 ; TSTOR - unit test for ORW. bitwise OR.
@@ -4441,43 +4516,43 @@ TSTANDNAME: FCB  6
 ; ------------------------------------------------------------
 TSTOR:      STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   ORW
+            JSR   ORW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$7DE9
-           BNE   ORFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   ORFAIL
+            PULU  D
+            CMPD  #$7DE9
+            BNE   ORFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   ORFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   ORFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   ORFAIL
 
-           LDD   #TRUEV
-           BRA   ORDONE
+            LDD   #TRUEV
+            BRA   ORDONE
 ORFAIL:     LDD   #FALSEV
 ORDONE:     LDX   #TSTORNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTORNAME: FCB  5
-             FCC  "TSTOR"
+TSTORNAME:  FCB   5
+            FCC   "TSTOR"
 
 ; ------------------------------------------------------------
 ; TSTXOR - unit test for XORW. bitwise exclusive OR.
@@ -4486,43 +4561,43 @@ TSTORNAME: FCB  5
 ; ------------------------------------------------------------
 TSTXOR:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   XORW
+            JSR   XORW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$7D89
-           BNE   XRFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   XRFAIL
+            PULU  D
+            CMPD  #$7D89
+            BNE   XRFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   XRFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   XRFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   XRFAIL
 
-           LDD   #TRUEV
-           BRA   XRDONE
+            LDD   #TRUEV
+            BRA   XRDONE
 XRFAIL:     LDD   #FALSEV
 XRDONE:     LDX   #TSTXORNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTXORNAME: FCB  6
-              FCC  "TSTXOR"
+TSTXORNAME: FCB   6
+            FCC   "TSTXOR"
 
 ; ------------------------------------------------------------
 ; TSTINV - unit test for INVERT. one's-complement, in-place (never touches U itself, unlike most words - the test only cares what's observable via the stack, not how the implementation gets there).
@@ -4531,41 +4606,41 @@ TSTXORNAME: FCB  6
 ; ------------------------------------------------------------
 TSTINV:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   INVERT
+            JSR   INVERT
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$A61E
-           BNE   IVFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   IVFAIL
+            PULU  D
+            CMPD  #$A61E
+            BNE   IVFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   IVFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   IVFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   IVFAIL
 
-           LDD   #TRUEV
-           BRA   IVDONE
+            LDD   #TRUEV
+            BRA   IVDONE
 IVFAIL:     LDD   #FALSEV
 IVDONE:     LDX   #TSTINVNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTINVNAME: FCB  6
-              FCC  "TSTINV"
+TSTINVNAME: FCB   6
+            FCC   "TSTINV"
 
 ; ------------------------------------------------------------
 ; TSTLSH - unit test for LSHIFT. logical shift left, zero-fill, truncated to 16 bits.
@@ -4574,43 +4649,43 @@ TSTINVNAME: FCB  6
 ; ------------------------------------------------------------
 TSTLSH:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           LDD   #$0004
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            LDD   #$0004
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   LSHIFT
+            JSR   LSHIFT
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$4680
-           BNE   L2FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   L2FAIL
+            PULU  D
+            CMPD  #$4680
+            BNE   L2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   L2FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   L2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   L2FAIL
 
-           LDD   #TRUEV
-           BRA   L2DONE
+            LDD   #TRUEV
+            BRA   L2DONE
 L2FAIL:     LDD   #FALSEV
 L2DONE:     LDX   #TSTLSHNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTLSHNAME: FCB  6
-              FCC  "TSTLSH"
+TSTLSHNAME: FCB   6
+            FCC   "TSTLSH"
 
 ; ------------------------------------------------------------
 ; TSTRSH - unit test for RSHIFT. logical shift right, zero-fill (not arithmetic/sign-preserving) - negative input is the case that actually distinguishes this from an arithmetic shift.
@@ -4619,43 +4694,43 @@ TSTLSHNAME: FCB  6
 ; ------------------------------------------------------------
 TSTRSH:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           LDD   #$0004
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            LDD   #$0004
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   RSHIFT
+            JSR   RSHIFT
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$0CFC
-           BNE   R2FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   R2FAIL
+            PULU  D
+            CMPD  #$0CFC
+            BNE   R2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   R2FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   R2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   R2FAIL
 
-           LDD   #TRUEV
-           BRA   R2DONE
+            LDD   #TRUEV
+            BRA   R2DONE
 R2FAIL:     LDD   #FALSEV
 R2DONE:     LDX   #TSTRSHNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTRSHNAME: FCB  6
-              FCC  "TSTRSH"
+TSTRSHNAME: FCB   6
+            FCC   "TSTRSH"
 
 ; ------------------------------------------------------------
 ; TSTCELS - unit test for CELLSW. convert a cell count to a byte offset (x2, this system's cell size).
@@ -4664,41 +4739,42 @@ TSTRSHNAME: FCB  6
 ; ------------------------------------------------------------
 TSTCELS:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   CELLSW
+            JSR   CELLSW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$48D0
-           BNE   CSFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   CSFAIL
+            PULU  D
+            CMPD  #$48D0
+            BNE   CSFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   CSFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   CSFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   CSFAIL
 
-           LDD   #TRUEV
-           BRA   CSDONE
+            LDD   #TRUEV
+            BRA   CSDONE
 CSFAIL:     LDD   #FALSEV
 CSDONE:     LDX   #TSTCELSNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTCELSNAME: FCB  7
-               FCC  "TSTCELS"
+TSTCELSNAME:
+            FCB   7
+            FCC   "TSTCELS"
 
 ; ------------------------------------------------------------
 ; TSTCELP - unit test for CELLPLUS. add one cell's size (2 bytes).
@@ -4707,41 +4783,42 @@ TSTCELSNAME: FCB  7
 ; ------------------------------------------------------------
 TSTCELP:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   CELLPLUS
+            JSR   CELLPLUS
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$59E3
-           BNE   CPFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   CPFAIL
+            PULU  D
+            CMPD  #$59E3
+            BNE   CPFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   CPFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   CPFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   CPFAIL
 
-           LDD   #TRUEV
-           BRA   CPDONE
+            LDD   #TRUEV
+            BRA   CPDONE
 CPFAIL:     LDD   #FALSEV
 CPDONE:     LDX   #TSTCELPNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTCELPNAME: FCB  7
-               FCC  "TSTCELP"
+TSTCELPNAME:
+            FCB   7
+            FCC   "TSTCELP"
 
 ; ------------------------------------------------------------
 ; TSTCHRS - unit test for CHARSW. convert a character count to a byte offset - documented no-op on this system (1 byte per character already).
@@ -4750,41 +4827,42 @@ TSTCELPNAME: FCB  7
 ; ------------------------------------------------------------
 TSTCHRS:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   CHARSW
+            JSR   CHARSW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   C3FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   C3FAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   C3FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   C3FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   C3FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   C3FAIL
 
-           LDD   #TRUEV
-           BRA   C3DONE
+            LDD   #TRUEV
+            BRA   C3DONE
 C3FAIL:     LDD   #FALSEV
 C3DONE:     LDX   #TSTCHRSNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTCHRSNAME: FCB  7
-               FCC  "TSTCHRS"
+TSTCHRSNAME:
+            FCB   7
+            FCC   "TSTCHRS"
 
 ; ------------------------------------------------------------
 ; TSTCHRP - unit test for CHARPLUS. add one character's size (1 byte).
@@ -4793,41 +4871,42 @@ TSTCHRSNAME: FCB  7
 ; ------------------------------------------------------------
 TSTCHRP:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   CHARPLUS
+            JSR   CHARPLUS
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$59E2
-           BNE   HPFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   HPFAIL
+            PULU  D
+            CMPD  #$59E2
+            BNE   HPFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   HPFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   HPFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   HPFAIL
 
-           LDD   #TRUEV
-           BRA   HPDONE
+            LDD   #TRUEV
+            BRA   HPDONE
 HPFAIL:     LDD   #FALSEV
 HPDONE:     LDX   #TSTCHRPNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTCHRPNAME: FCB  7
-               FCC  "TSTCHRP"
+TSTCHRPNAME:
+            FCB   7
+            FCC   "TSTCHRP"
 
 ; ------------------------------------------------------------
 ; TSTALGD - unit test for ALIGNEDW. align a given address - documented no-op on the 6809 (no alignment restrictions to enforce).
@@ -4836,41 +4915,42 @@ TSTCHRPNAME: FCB  7
 ; ------------------------------------------------------------
 TSTALGD:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   ALIGNEDW
+            JSR   ALIGNEDW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   ADFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   ADFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   ADFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   ADFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   ADFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   ADFAIL
 
-           LDD   #TRUEV
-           BRA   ADDONE
+            LDD   #TRUEV
+            BRA   ADDONE
 ADFAIL:     LDD   #FALSEV
 ADDONE:     LDX   #TSTALGDNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTALGDNAME: FCB  7
-               FCC  "TSTALGD"
+TSTALGDNAME:
+            FCB   7
+            FCC   "TSTALGD"
 
 ; ------------------------------------------------------------
 ; TSTALGN - unit test for ALIGNW. align HERE to a cell boundary - documented no-op on the 6809, and takes no stack arguments at all. Verifies pushed decoy values are entirely undisturbed, not just a single value's persistence.
@@ -4879,48 +4959,49 @@ TSTALGDNAME: FCB  7
 ; ------------------------------------------------------------
 TSTALGN:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   ALIGNW
+            JSR   ALIGNW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #TSTVAL2
-           BNE   AGFAIL
-           PULU  D
-           CMPD  #TSTVAL1
-           BNE   AGFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   AGFAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   AGFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   AGFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   AGFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   AGFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   AGFAIL
 
-           LDD   #TRUEV
-           BRA   AGDONE
+            LDD   #TRUEV
+            BRA   AGDONE
 AGFAIL:     LDD   #FALSEV
 AGDONE:     LDX   #TSTALGNNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTALGNNAME: FCB  7
-               FCC  "TSTALGN"
+TSTALGNNAME:
+            FCB   7
+            FCC   "TSTALGN"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTCOMPARE - comparison tests (glossary section 3.7). Covers
@@ -4940,38 +5021,38 @@ TSTALGNNAME: FCB  7
 ; would get wrong.
 ; ------------------------------------------------------------
 TSTCOMPARE: JSR   CRW
-           LDX   #TSTCOMPMSG
-           PSHU  X
-           LDD   #7
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+            LDX   #TSTCOMPMSG
+            PSHU  X
+            LDD   #7
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-6  ; >>>>
+            IFEQ  TSTSELECTOR-6     ; >>>>
 
-           JSR   TSTEQ
-           JSR   TSTLT
-           JSR   TSTGT
-           JSR   TSTZEQ
-           JSR   TSTZLT
-           JSR   TSTULT
-           JSR   TSTNE
-           JSR   TSTZNE
-           JSR   TSTZGT
-           JSR   TSTUGT
-           JSR   TSTWI1
-           JSR   TSTWI2
-           JSR   TSTDEQ
-           JSR   TSTDLT
-           JSR   TSTDULT
+            JSR   TSTEQ
+            JSR   TSTLT
+            JSR   TSTGT
+            JSR   TSTZEQ
+            JSR   TSTZLT
+            JSR   TSTULT
+            JSR   TSTNE
+            JSR   TSTZNE
+            JSR   TSTZGT
+            JSR   TSTUGT
+            JSR   TSTWI1
+            JSR   TSTWI2
+            JSR   TSTDEQ
+            JSR   TSTDLT
+            JSR   TSTDULT
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTCOMPMSG: FCC "Compare"
+TSTCOMPMSG: FCC   "Compare"
 
-           IFEQ TSTSELECTOR-6  ; >>>>
+            IFEQ  TSTSELECTOR-6     ; >>>>
 
 ; ------------------------------------------------------------
 ; TSTEQ - unit test for EQUALW. true if equal - tested with matching values, the case that actually exercises the true branch.
@@ -4980,43 +5061,43 @@ TSTCOMPMSG: FCC "Compare"
 ; ------------------------------------------------------------
 TSTEQ:      STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   EQUALW
+            JSR   EQUALW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFFF
-           BNE   EQFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   EQFAIL
+            PULU  D
+            CMPD  #$FFFF
+            BNE   EQFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   EQFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   EQFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   EQFAIL
 
-           LDD   #TRUEV
-           BRA   EQDONE
+            LDD   #TRUEV
+            BRA   EQDONE
 EQFAIL:     LDD   #FALSEV
 EQDONE:     LDX   #TSTEQNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTEQNAME: FCB  5
-             FCC  "TSTEQ"
+TSTEQNAME:  FCB   5
+            FCC   "TSTEQ"
 
 ; ------------------------------------------------------------
 ; TSTLT - unit test for LESSW. true if n1 signed less than n2 - tested with a negative n1 and positive n2, the case that distinguishes signed from unsigned comparison.
@@ -5025,43 +5106,43 @@ TSTEQNAME: FCB  5
 ; ------------------------------------------------------------
 TSTLT:      STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   LESSW
+            JSR   LESSW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFFF
-           BNE   LTFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   LTFAIL
+            PULU  D
+            CMPD  #$FFFF
+            BNE   LTFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   LTFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   LTFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   LTFAIL
 
-           LDD   #TRUEV
-           BRA   LTDONE
+            LDD   #TRUEV
+            BRA   LTDONE
 LTFAIL:     LDD   #FALSEV
 LTDONE:     LDX   #TSTLTNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTLTNAME: FCB  5
-             FCC  "TSTLT"
+TSTLTNAME:  FCB   5
+            FCC   "TSTLT"
 
 ; ------------------------------------------------------------
 ; TSTGT - unit test for GREATERW. true if n1 signed greater than n2 - same reasoning as < , reversed operands.
@@ -5070,43 +5151,43 @@ TSTLTNAME: FCB  5
 ; ------------------------------------------------------------
 TSTGT:      STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   GREATERW
+            JSR   GREATERW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFFF
-           BNE   GTFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   GTFAIL
+            PULU  D
+            CMPD  #$FFFF
+            BNE   GTFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   GTFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   GTFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   GTFAIL
 
-           LDD   #TRUEV
-           BRA   GTDONE
+            LDD   #TRUEV
+            BRA   GTDONE
 GTFAIL:     LDD   #FALSEV
 GTDONE:     LDX   #TSTGTNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTGTNAME: FCB  5
-             FCC  "TSTGT"
+TSTGTNAME:  FCB   5
+            FCC   "TSTGT"
 
 ; ------------------------------------------------------------
 ; TSTZEQ - unit test for ZEROEQ. true if n is zero - tested with a nonzero value, confirming false is genuinely reachable, not just the trivial zero case.
@@ -5115,41 +5196,41 @@ TSTGTNAME: FCB  5
 ; ------------------------------------------------------------
 TSTZEQ:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   ZEROEQ
+            JSR   ZEROEQ
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$0000
-           BNE   ZEFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   ZEFAIL
+            PULU  D
+            CMPD  #$0000
+            BNE   ZEFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   ZEFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   ZEFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   ZEFAIL
 
-           LDD   #TRUEV
-           BRA   ZEDONE
+            LDD   #TRUEV
+            BRA   ZEDONE
 ZEFAIL:     LDD   #FALSEV
 ZEDONE:     LDX   #TSTZEQNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTZEQNAME: FCB  6
-              FCC  "TSTZEQ"
+TSTZEQNAME: FCB   6
+            FCC   "TSTZEQ"
 
 ; ------------------------------------------------------------
 ; TSTZLT - unit test for ZEROLT. true if n is negative.
@@ -5158,41 +5239,41 @@ TSTZEQNAME: FCB  6
 ; ------------------------------------------------------------
 TSTZLT:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   ZEROLT
+            JSR   ZEROLT
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFFF
-           BNE   ZLFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   ZLFAIL
+            PULU  D
+            CMPD  #$FFFF
+            BNE   ZLFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   ZLFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   ZLFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   ZLFAIL
 
-           LDD   #TRUEV
-           BRA   ZLDONE
+            LDD   #TRUEV
+            BRA   ZLDONE
 ZLFAIL:     LDD   #FALSEV
 ZLDONE:     LDX   #TSTZLTNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTZLTNAME: FCB  6
-              FCC  "TSTZLT"
+TSTZLTNAME: FCB   6
+            FCC   "TSTZLT"
 
 ; ------------------------------------------------------------
 ; TSTULT - unit test for ULESSW. true if u1 unsigned less than u2 - tested with TSTVAL1 vs TSTNEG1's raw bit pattern (a large unsigned magnitude), the case that would invert under signed comparison, confirming this is genuinely unsigned.
@@ -5201,43 +5282,43 @@ TSTZLTNAME: FCB  6
 ; ------------------------------------------------------------
 TSTULT:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   ULESSW
+            JSR   ULESSW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFFF
-           BNE   ULFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   ULFAIL
+            PULU  D
+            CMPD  #$FFFF
+            BNE   ULFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   ULFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   ULFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   ULFAIL
 
-           LDD   #TRUEV
-           BRA   ULDONE
+            LDD   #TRUEV
+            BRA   ULDONE
 ULFAIL:     LDD   #FALSEV
 ULDONE:     LDX   #TSTULTNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTULTNAME: FCB  6
-              FCC  "TSTULT"
+TSTULTNAME: FCB   6
+            FCC   "TSTULT"
 
 ; ------------------------------------------------------------
 ; TSTNE - unit test for NOTEQUAL. true if not equal.
@@ -5246,43 +5327,43 @@ TSTULTNAME: FCB  6
 ; ------------------------------------------------------------
 TSTNE:      STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           LDD   #TSTVAL2
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   NOTEQUAL
+            JSR   NOTEQUAL
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFFF
-           BNE   NEFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   NEFAIL
+            PULU  D
+            CMPD  #$FFFF
+            BNE   NEFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   NEFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   NEFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   NEFAIL
 
-           LDD   #TRUEV
-           BRA   NEDONE
+            LDD   #TRUEV
+            BRA   NEDONE
 NEFAIL:     LDD   #FALSEV
 NEDONE:     LDX   #TSTNENAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTNENAME: FCB  5
-             FCC  "TSTNE"
+TSTNENAME:  FCB   5
+            FCC   "TSTNE"
 
 ; ------------------------------------------------------------
 ; TSTZNE - unit test for ZERONE. true if n is not zero.
@@ -5291,41 +5372,41 @@ TSTNENAME: FCB  5
 ; ------------------------------------------------------------
 TSTZNE:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   ZERONE
+            JSR   ZERONE
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFFF
-           BNE   ZNFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   ZNFAIL
+            PULU  D
+            CMPD  #$FFFF
+            BNE   ZNFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   ZNFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   ZNFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   ZNFAIL
 
-           LDD   #TRUEV
-           BRA   ZNDONE
+            LDD   #TRUEV
+            BRA   ZNDONE
 ZNFAIL:     LDD   #FALSEV
 ZNDONE:     LDX   #TSTZNENAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTZNENAME: FCB  6
-              FCC  "TSTZNE"
+TSTZNENAME: FCB   6
+            FCC   "TSTZNE"
 
 ; ------------------------------------------------------------
 ; TSTZGT - unit test for ZEROGT. true if n is greater than zero - tested with a negative value, confirming the comparison correctly excludes negatives (not just zero).
@@ -5334,41 +5415,41 @@ TSTZNENAME: FCB  6
 ; ------------------------------------------------------------
 TSTZGT:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   ZEROGT
+            JSR   ZEROGT
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$0000
-           BNE   ZGFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   ZGFAIL
+            PULU  D
+            CMPD  #$0000
+            BNE   ZGFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   ZGFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #0
-           BNE   ZGFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   ZGFAIL
 
-           LDD   #TRUEV
-           BRA   ZGDONE
+            LDD   #TRUEV
+            BRA   ZGDONE
 ZGFAIL:     LDD   #FALSEV
 ZGDONE:     LDX   #TSTZGTNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTZGTNAME: FCB  6
-              FCC  "TSTZGT"
+TSTZGTNAME: FCB   6
+            FCC   "TSTZGT"
 
 ; ------------------------------------------------------------
 ; TSTUGT - unit test for UGREATER. true if u1 unsigned greater than u2 - same reasoning as U< : TSTNEG1's raw bit pattern is a large unsigned magnitude, genuinely greater than TSTVAL1's here.
@@ -5377,43 +5458,43 @@ TSTZGTNAME: FCB  6
 ; ------------------------------------------------------------
 TSTUGT:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTNEG1
-           PSHU  D
-           LDD   #TSTVAL1
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   UGREATER
+            JSR   UGREATER
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFFF
-           BNE   UGFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   UGFAIL
+            PULU  D
+            CMPD  #$FFFF
+            BNE   UGFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   UGFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-2
-           BNE   UGFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   UGFAIL
 
-           LDD   #TRUEV
-           BRA   UGDONE
+            LDD   #TRUEV
+            BRA   UGDONE
 UGFAIL:     LDD   #FALSEV
 UGDONE:     LDX   #TSTUGTNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTUGTNAME: FCB  6
-              FCC  "TSTUGT"
+TSTUGTNAME: FCB   6
+            FCC   "TSTUGT"
 
 ; ------------------------------------------------------------
 ; TSTWI1 - unit test for WITHINW. true if n2<=n1<n3 - tested with a wraparound range (n2 near $FFFF, n3 wrapped past $0000), the documented special case this word's own unsigned-offset implementation exists to handle correctly, with n1 inside the wrapped range.
@@ -5422,45 +5503,45 @@ TSTUGTNAME: FCB  6
 ; ------------------------------------------------------------
 TSTWI1:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #$FFFA
-           PSHU  D
-           LDD   #$FFF0
-           PSHU  D
-           LDD   #$0010
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #$FFFA
+            PSHU  D
+            LDD   #$FFF0
+            PSHU  D
+            LDD   #$0010
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   WITHINW
+            JSR   WITHINW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFFF
-           BNE   W1FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   W1FAIL
+            PULU  D
+            CMPD  #$FFFF
+            BNE   W1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   W1FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-4
-           BNE   W1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   W1FAIL
 
-           LDD   #TRUEV
-           BRA   W1DONE
+            LDD   #TRUEV
+            BRA   W1DONE
 W1FAIL:     LDD   #FALSEV
 W1DONE:     LDX   #TSTWI1NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTWI1NAME: FCB  6
-              FCC  "TSTWI1"
+TSTWI1NAME: FCB   6
+            FCC   "TSTWI1"
 
 ; ------------------------------------------------------------
 ; TSTWI2 - unit test for WITHINW. same wraparound range as TSTWI1, with n1 genuinely outside it - confirms the wraparound handling correctly excludes as well as includes.
@@ -5469,45 +5550,45 @@ TSTWI1NAME: FCB  6
 ; ------------------------------------------------------------
 TSTWI2:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #$0020
-           PSHU  D
-           LDD   #$FFF0
-           PSHU  D
-           LDD   #$0010
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #$0020
+            PSHU  D
+            LDD   #$FFF0
+            PSHU  D
+            LDD   #$0010
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   WITHINW
+            JSR   WITHINW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$0000
-           BNE   W2FAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   W2FAIL
+            PULU  D
+            CMPD  #$0000
+            BNE   W2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   W2FAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-4
-           BNE   W2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   W2FAIL
 
-           LDD   #TRUEV
-           BRA   W2DONE
+            LDD   #TRUEV
+            BRA   W2DONE
 W2FAIL:     LDD   #FALSEV
 W2DONE:     LDX   #TSTWI2NAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTWI2NAME: FCB  6
-              FCC  "TSTWI2"
+TSTWI2NAME: FCB   6
+            FCC   "TSTWI2"
 
 ; ------------------------------------------------------------
 ; TSTDEQ - unit test for DEQUAL. double-cell equal - tested with matching double values.
@@ -5516,47 +5597,47 @@ TSTWI2NAME: FCB  6
 ; ------------------------------------------------------------
 TSTDEQ:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #TSTD1LO
-           PSHU  D
-           LDD   #TSTD1HI
-           PSHU  D
-           LDD   #TSTD1LO
-           PSHU  D
-           LDD   #TSTD1HI
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTD1LO
+            PSHU  D
+            LDD   #TSTD1HI
+            PSHU  D
+            LDD   #TSTD1LO
+            PSHU  D
+            LDD   #TSTD1HI
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DEQUAL
+            JSR   DEQUAL
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFFF
-           BNE   DQFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   DQFAIL
+            PULU  D
+            CMPD  #$FFFF
+            BNE   DQFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DQFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-6
-           BNE   DQFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-6
+            BNE   DQFAIL
 
-           LDD   #TRUEV
-           BRA   DQDONE
+            LDD   #TRUEV
+            BRA   DQDONE
 DQFAIL:     LDD   #FALSEV
 DQDONE:     LDX   #TSTDEQNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDEQNAME: FCB  6
-              FCC  "TSTDEQ"
+TSTDEQNAME: FCB   6
+            FCC   "TSTDEQ"
 
 ; ------------------------------------------------------------
 ; TSTDLT - unit test for DLESSW. double-cell signed less than - tested with equal high cells and different low cells, the tie-break case this word's own documented behavior specifically calls out (compares low cells unsigned only when the high cells are equal).
@@ -5565,47 +5646,47 @@ TSTDEQNAME: FCB  6
 ; ------------------------------------------------------------
 TSTDLT:     STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #$1000
-           PSHU  D
-           LDD   #$0005
-           PSHU  D
-           LDD   #$2000
-           PSHU  D
-           LDD   #$0005
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #$1000
+            PSHU  D
+            LDD   #$0005
+            PSHU  D
+            LDD   #$2000
+            PSHU  D
+            LDD   #$0005
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DLESSW
+            JSR   DLESSW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFFF
-           BNE   DLFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   DLFAIL
+            PULU  D
+            CMPD  #$FFFF
+            BNE   DLFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DLFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-6
-           BNE   DLFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-6
+            BNE   DLFAIL
 
-           LDD   #TRUEV
-           BRA   DLDONE
+            LDD   #TRUEV
+            BRA   DLDONE
 DLFAIL:     LDD   #FALSEV
 DLDONE:     LDX   #TSTDLTNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDLTNAME: FCB  6
-              FCC  "TSTDLT"
+TSTDLTNAME: FCB   6
+            FCC   "TSTDLT"
 
 ; ------------------------------------------------------------
 ; TSTDULT - unit test for DULESSW. double-cell unsigned less than - same tie-break reasoning as D<, both tiers compared unsigned.
@@ -5614,49 +5695,50 @@ TSTDLTNAME: FCB  6
 ; ------------------------------------------------------------
 TSTDULT:    STU   TSTU0
 
-           LDD   #TSTGUARD
-           PSHU  D
-           LDD   #$1000
-           PSHU  D
-           LDD   #$0005
-           PSHU  D
-           LDD   #$2000
-           PSHU  D
-           LDD   #$0005
-           PSHU  D
-           STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #$1000
+            PSHU  D
+            LDD   #$0005
+            PSHU  D
+            LDD   #$2000
+            PSHU  D
+            LDD   #$0005
+            PSHU  D
+            STU   TSTUB4
 
-           JSR   DULESSW
+            JSR   DULESSW
 
-           STU   TSTUAF
+            STU   TSTUAF
 
-           PULU  D
-           CMPD  #$FFFF
-           BNE   DZFAIL
-           PULU  D
-           CMPD  #TSTGUARD
-           BNE   DZFAIL
+            PULU  D
+            CMPD  #$FFFF
+            BNE   DZFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DZFAIL
 
-           LDD   TSTUB4
-           SUBD  TSTUAF
-           CMPD  #-6
-           BNE   DZFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-6
+            BNE   DZFAIL
 
-           LDD   #TRUEV
-           BRA   DZDONE
+            LDD   #TRUEV
+            BRA   DZDONE
 DZFAIL:     LDD   #FALSEV
 DZDONE:     LDX   #TSTDULTNAME
-           PSHU  X
-           PSHU  D
-           JSR   TSTREPORT
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU   TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDULTNAME: FCB  7
-               FCC  "TSTDULT"
+TSTDULTNAME:
+            FCB   7
+            FCC   "TSTDULT"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTCTRLFLOW - control-flow tests (glossary section 3.8, 22
@@ -5688,44 +5770,45 @@ TSTDULTNAME: FCB  7
 ; before the loop is entered at all, confirmed fast and safe by
 ; the same kind of trace.
 ; ------------------------------------------------------------
-TSTCTRLFLOW: JSR CRW
-           LDX   #TSTCTRLMSG
-           PSHU  X
-           LDD   #8
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+TSTCTRLFLOW:
+            JSR   CRW
+            LDX   #TSTCTRLMSG
+            PSHU  X
+            LDD   #8
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-7  ; >>>>
+            IFEQ  TSTSELECTOR-7     ; >>>>
 
-           JSR   TSTIFT1
-           JSR   TSTIFT2
-           JSR   TSTIET1
-           JSR   TSTIET2
-           JSR   TSTBGU
-           JSR   TSTBWR
-           JSR   TSTRECUR
-           JSR   TSTDOLP
-           JSR   TSTQDOLP
-           JSR   TSTQDOLPEQ
-           JSR   TSTPLOOP
-           JSR   TSTJIDX
-           JSR   TSTLEAVE
-           JSR   TSTEXIT
-           JSR   TSTUNLOOP
-           JSR   TSTCASE1
-           JSR   TSTCASE2
-           JSR   TSTTHENZ
-           JSR   TSTUNTILZ
-           JSR   TSTENDOFZ
+            JSR   TSTIFT1
+            JSR   TSTIFT2
+            JSR   TSTIET1
+            JSR   TSTIET2
+            JSR   TSTBGU
+            JSR   TSTBWR
+            JSR   TSTRECUR
+            JSR   TSTDOLP
+            JSR   TSTQDOLP
+            JSR   TSTQDOLPEQ
+            JSR   TSTPLOOP
+            JSR   TSTJIDX
+            JSR   TSTLEAVE
+            JSR   TSTEXIT
+            JSR   TSTUNLOOP
+            JSR   TSTCASE1
+            JSR   TSTCASE2
+            JSR   TSTTHENZ
+            JSR   TSTUNTILZ
+            JSR   TSTENDOFZ
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTCTRLMSG: FCC "CtrlFlow"
+TSTCTRLMSG: FCC   "CtrlFlow"
 
-           IFEQ TSTSELECTOR-7  ; >>>>
+            IFEQ  TSTSELECTOR-7     ; >>>>
 
 ; ------------------------------------------------------------
 ; Control-flow test harness (glossary section 3.8). Each test
@@ -5753,63 +5836,64 @@ TSTCTRLMSG: FCC "CtrlFlow"
 ; past the compiled LIT+111), correctly skipping nothing when
 ; the flag is true and falling through into the literal.
 ; ------------------------------------------------------------
-TSTIFT1: LDD   CODEHERE
-         STD   TSTCSAV
-         LDD   #TSTCBUF
-         STD   CODEHERE
+TSTIFT1:    LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-         JSR   IF
+            JSR   IF
 
-         LDD   #111
-         PSHU  D
-         JSR   LITERALW
+            LDD   #111
+            PSHU  D
+            JSR   LITERALW
 
-         JSR   THEN
+            JSR   THEN
 
-         LDD   #OPRTS
-         PSHU  D
-         JSR   CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-         LDD   TSTCSAV
-         STD   CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-         STU   TSTU0
+            STU   TSTU0
 
-         LDD   #TSTGUARD
-         PSHU  D
-         LDD   #TRUEV
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TRUEV
+            PSHU  D
+            STU   TSTUB4
 
-         JSR   TSTCBUF
+            JSR   TSTCBUF
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         PULU  D
-         CMPD  #111
-         BNE   T1FAIL
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   T1FAIL
+            PULU  D
+            CMPD  #111
+            BNE   T1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   T1FAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #0
-         BNE   T1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   T1FAIL
 
-         LDD   #TRUEV
-         BRA   T1DONE
-T1FAIL:  LDD   #FALSEV
-T1DONE:  LDX   #TSTIFT1NAME
-         PSHU  X
-         PSHU  D
-         JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   T1DONE
+T1FAIL:     LDD   #FALSEV
+T1DONE:     LDX   #TSTIFT1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU   TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTIFT1NAME: FCB  7
-             FCC  "TSTIFT1"
+TSTIFT1NAME:
+            FCB   7
+            FCC   "TSTIFT1"
 
 ; ------------------------------------------------------------
 ; TSTIFT2 - unit test for IF/THEN, false case. Same compiled
@@ -5817,60 +5901,61 @@ TSTIFT1NAME: FCB  7
 ; branch IS taken, jumping straight past the LIT+111, so 111
 ; should NOT appear; only the guard remains.
 ; ------------------------------------------------------------
-TSTIFT2: LDD   CODEHERE
-         STD   TSTCSAV
-         LDD   #TSTCBUF
-         STD   CODEHERE
+TSTIFT2:    LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-         JSR   IF
+            JSR   IF
 
-         LDD   #111
-         PSHU  D
-         JSR   LITERALW
+            LDD   #111
+            PSHU  D
+            JSR   LITERALW
 
-         JSR   THEN
+            JSR   THEN
 
-         LDD   #OPRTS
-         PSHU  D
-         JSR   CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-         LDD   TSTCSAV
-         STD   CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-         STU   TSTU0
+            STU   TSTU0
 
-         LDD   #TSTGUARD
-         PSHU  D
-         LDD   #FALSEV
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #FALSEV
+            PSHU  D
+            STU   TSTUB4
 
-         JSR   TSTCBUF
+            JSR   TSTCBUF
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   T2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   T2FAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #-2
-         BNE   T2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   T2FAIL
 
-         LDD   #TRUEV
-         BRA   T2DONE
-T2FAIL:  LDD   #FALSEV
-T2DONE:  LDX   #TSTIFT2NAME
-         PSHU  X
-         PSHU  D
-         JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   T2DONE
+T2FAIL:     LDD   #FALSEV
+T2DONE:     LDX   #TSTIFT2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU   TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTIFT2NAME: FCB  7
-             FCC  "TSTIFT2"
+TSTIFT2NAME:
+            FCB   7
+            FCC   "TSTIFT2"
 
 ; ------------------------------------------------------------
 ; TSTIET1 - unit test for IF/ELSE/THEN, true case. Compiles
@@ -5880,138 +5965,140 @@ TSTIFT2NAME: FCB  7
 ; IF's patched offset (12) lands exactly at the ELSE-body's
 ; start; ELSE's own patched offset (7) lands exactly past it.
 ; ------------------------------------------------------------
-TSTIET1: LDD   CODEHERE
-         STD   TSTCSAV
-         LDD   #TSTCBUF
-         STD   CODEHERE
+TSTIET1:    LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-         JSR   IF
+            JSR   IF
 
-         LDD   #111
-         PSHU  D
-         JSR   LITERALW
+            LDD   #111
+            PSHU  D
+            JSR   LITERALW
 
-         JSR   ELSE
+            JSR   ELSE
 
-         LDD   #222
-         PSHU  D
-         JSR   LITERALW
+            LDD   #222
+            PSHU  D
+            JSR   LITERALW
 
-         JSR   THEN
+            JSR   THEN
 
-         LDD   #OPRTS
-         PSHU  D
-         JSR   CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-         LDD   TSTCSAV
-         STD   CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-         STU   TSTU0
+            STU   TSTU0
 
-         LDD   #TSTGUARD
-         PSHU  D
-         LDD   #TRUEV
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TRUEV
+            PSHU  D
+            STU   TSTUB4
 
-         JSR   TSTCBUF
+            JSR   TSTCBUF
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         PULU  D
-         CMPD  #111
-         BNE   E1FAIL
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   E1FAIL
+            PULU  D
+            CMPD  #111
+            BNE   E1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   E1FAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #0
-         BNE   E1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   E1FAIL
 
-         LDD   #TRUEV
-         BRA   E1DONE
-E1FAIL:  LDD   #FALSEV
-E1DONE:  LDX   #TSTIET1NAME
-         PSHU  X
-         PSHU  D
-         JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   E1DONE
+E1FAIL:     LDD   #FALSEV
+E1DONE:     LDX   #TSTIET1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU   TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTIET1NAME: FCB  7
-             FCC  "TSTIET1"
+TSTIET1NAME:
+            FCB   7
+            FCC   "TSTIET1"
 
 ; ------------------------------------------------------------
 ; TSTIET2 - unit test for IF/ELSE/THEN, false case. Same
 ; compiled snippet as TSTIET1, run with a false flag - should
 ; take the ELSE-body (222) instead, IF-body (111) skipped.
 ; ------------------------------------------------------------
-TSTIET2: LDD   CODEHERE
-         STD   TSTCSAV
-         LDD   #TSTCBUF
-         STD   CODEHERE
+TSTIET2:    LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-         JSR   IF
+            JSR   IF
 
-         LDD   #111
-         PSHU  D
-         JSR   LITERALW
+            LDD   #111
+            PSHU  D
+            JSR   LITERALW
 
-         JSR   ELSE
+            JSR   ELSE
 
-         LDD   #222
-         PSHU  D
-         JSR   LITERALW
+            LDD   #222
+            PSHU  D
+            JSR   LITERALW
 
-         JSR   THEN
+            JSR   THEN
 
-         LDD   #OPRTS
-         PSHU  D
-         JSR   CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-         LDD   TSTCSAV
-         STD   CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-         STU   TSTU0
+            STU   TSTU0
 
-         LDD   #TSTGUARD
-         PSHU  D
-         LDD   #FALSEV
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #FALSEV
+            PSHU  D
+            STU   TSTUB4
 
-         JSR   TSTCBUF
+            JSR   TSTCBUF
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         PULU  D
-         CMPD  #222
-         BNE   E2FAIL
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   E2FAIL
+            PULU  D
+            CMPD  #222
+            BNE   E2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   E2FAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #0
-         BNE   E2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   E2FAIL
 
-         LDD   #TRUEV
-         BRA   E2DONE
-E2FAIL:  LDD   #FALSEV
-E2DONE:  LDX   #TSTIET2NAME
-         PSHU  X
-         PSHU  D
-         JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   E2DONE
+E2FAIL:     LDD   #FALSEV
+E2DONE:     LDX   #TSTIET2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU   TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTIET2NAME: FCB  7
-             FCC  "TSTIET2"
+TSTIET2NAME:
+            FCB   7
+            FCC   "TSTIET2"
 
 ; ------------------------------------------------------------
 ; TSTBGU - unit test for BEGIN/UNTIL. Compiles
@@ -6024,75 +6111,75 @@ TSTIET2NAME: FCB  7
 ; used for forward references handling both directions
 ; correctly based on relative position.
 ; ------------------------------------------------------------
-TSTBGU:  LDD   CODEHERE
-         STD   TSTCSAV
-         LDD   #TSTCBUF
-         STD   CODEHERE
+TSTBGU:     LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-         JSR   BEGIN
+            JSR   BEGIN
 
-         LDD   #ONEPLUS
-         PSHU  D
-         JSR   CCALL
+            LDD   #ONEPLUS
+            PSHU  D
+            JSR   CCALL
 
-         LDD   #DUP
-         PSHU  D
-         JSR   CCALL
+            LDD   #DUP
+            PSHU  D
+            JSR   CCALL
 
-         LDD   #5
-         PSHU  D
-         JSR   LITERALW
+            LDD   #5
+            PSHU  D
+            JSR   LITERALW
 
-         LDD   #EQUALW
-         PSHU  D
-         JSR   CCALL
+            LDD   #EQUALW
+            PSHU  D
+            JSR   CCALL
 
-         JSR   UNTIL
+            JSR   UNTIL
 
-         LDD   #OPRTS
-         PSHU  D
-         JSR   CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-         LDD   TSTCSAV
-         STD   CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-         STU   TSTU0
+            STU   TSTU0
 
-         LDD   #TSTGUARD
-         PSHU  D
-         LDD   #0
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            STU   TSTUB4
 
-         JSR   TSTCBUF
+            JSR   TSTCBUF
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         PULU  D
-         CMPD  #5
-         BNE   BUFAIL
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   BUFAIL
+            PULU  D
+            CMPD  #5
+            BNE   BUFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   BUFAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #0
-         BNE   BUFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   BUFAIL
 
-         LDD   #TRUEV
-         BRA   BUDONE
-BUFAIL:  LDD   #FALSEV
-BUDONE:  LDX   #TSTBGUNAME
-         PSHU  X
-         PSHU  D
-         JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   BUDONE
+BUFAIL:     LDD   #FALSEV
+BUDONE:     LDX   #TSTBGUNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU   TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTBGUNAME: FCB  6
-            FCC  "TSTBGU"
+TSTBGUNAME: FCB   6
+            FCC   "TSTBGU"
 
 ; ------------------------------------------------------------
 ; TSTBWR - unit test for BEGIN/WHILE/REPEAT. Compiles
@@ -6105,77 +6192,77 @@ TSTBGUNAME: FCB  6
 ; lands exactly at the final RTS; REPEAT's patched back-edge
 ; (-22) lands exactly at BEGIN.
 ; ------------------------------------------------------------
-TSTBWR:  LDD   CODEHERE
-         STD   TSTCSAV
-         LDD   #TSTCBUF
-         STD   CODEHERE
+TSTBWR:     LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-         JSR   BEGIN
+            JSR   BEGIN
 
-         LDD   #DUP
-         PSHU  D
-         JSR   CCALL
+            LDD   #DUP
+            PSHU  D
+            JSR   CCALL
 
-         LDD   #5
-         PSHU  D
-         JSR   LITERALW
+            LDD   #5
+            PSHU  D
+            JSR   LITERALW
 
-         LDD   #LESSW
-         PSHU  D
-         JSR   CCALL
+            LDD   #LESSW
+            PSHU  D
+            JSR   CCALL
 
-         JSR   WHILE
+            JSR   WHILE
 
-         LDD   #ONEPLUS
-         PSHU  D
-         JSR   CCALL
+            LDD   #ONEPLUS
+            PSHU  D
+            JSR   CCALL
 
-         JSR   REPEAT
+            JSR   REPEAT
 
-         LDD   #OPRTS
-         PSHU  D
-         JSR   CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-         LDD   TSTCSAV
-         STD   CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-         STU   TSTU0
+            STU   TSTU0
 
-         LDD   #TSTGUARD
-         PSHU  D
-         LDD   #0
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            STU   TSTUB4
 
-         JSR   TSTCBUF
+            JSR   TSTCBUF
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         PULU  D
-         CMPD  #5
-         BNE   BWFAIL
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   BWFAIL
+            PULU  D
+            CMPD  #5
+            BNE   BWFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   BWFAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #0
-         BNE   BWFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   BWFAIL
 
-         LDD   #TRUEV
-         BRA   BWDONE
-BWFAIL:  LDD   #FALSEV
-BWDONE:  LDX   #TSTBWRNAME
-         PSHU  X
-         PSHU  D
-         JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   BWDONE
+BWFAIL:     LDD   #FALSEV
+BWDONE:     LDX   #TSTBWRNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU   TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTBWRNAME: FCB  6
-            FCC  "TSTBWR"
+TSTBWRNAME: FCB   6
+            FCC   "TSTBWR"
 
 ; ------------------------------------------------------------
 ; TSTRECUR - unit test for RECURSE. RECURSE now compiles a call
@@ -6189,68 +6276,69 @@ TSTBWRNAME: FCB  6
 ; (Rewritten: the old version faked a dictionary header via
 ; LATEST, which RECURSE no longer reads.)
 ; ------------------------------------------------------------
-TSTRECUR: LDD  CURXT
-          STD  TSTLSAV
-          LDD  CODEHERE
-          STD  TSTCSAV
+TSTRECUR:   LDD   CURXT
+            STD   TSTLSAV
+            LDD   CODEHERE
+            STD   TSTCSAV
 
-          LDD  #DUP
-          STD  CURXT
+            LDD   #DUP
+            STD   CURXT
 
-          LDD  #TSTCBUF
-          STD  CODEHERE
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-          JSR  RECURSE
+            JSR   RECURSE
 
-          LDD  #OPRTS
-          PSHU D
-          JSR  CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-          LDD  TSTCSAV
-          STD  CODEHERE
-          LDD  TSTLSAV
-          STD  CURXT
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTLSAV
+            STD   CURXT
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          LDD  #TSTVAL1
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  TSTCBUF
+            JSR   TSTCBUF
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          PULU D
-          CMPD #TSTVAL1
-          BNE  RCFAIL
-          PULU D
-          CMPD #TSTVAL1
-          BNE  RCFAIL
-          PULU D
-          CMPD #TSTGUARD
-          BNE  RCFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   RCFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   RCFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   RCFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #2
-          BNE  RCFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   RCFAIL
 
-          LDD  #TRUEV
-          BRA  RCDONE
-RCFAIL:   LDD  #FALSEV
-RCDONE:   LDX  #TSTRECURNAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   RCDONE
+RCFAIL:     LDD   #FALSEV
+RCDONE:     LDX   #TSTRECURNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTRECURNAME: FCB  8
-              FCC  "TSTRECUR"
+TSTRECURNAME:
+            FCB   8
+            FCC   "TSTRECUR"
 
 ; ------------------------------------------------------------
 ; TSTDOLP - unit test for DO/LOOP. Compiles "DO I + LOOP",
@@ -6269,142 +6357,144 @@ TSTRECURNAME: FCB  8
 ; impractical for a boot-time self-check. Left untested, not
 ; guessed at; noted in the open-items checklist.
 ; ------------------------------------------------------------
-TSTDOLP: LDD   CODEHERE
-         STD   TSTCSAV
-         LDD   #TSTCBUF
-         STD   CODEHERE
+TSTDOLP:    LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-         JSR   DO
+            JSR   DO
 
-         LDD   #IWORD
-         PSHU  D
-         JSR   CCALL
+            LDD   #IWORD
+            PSHU  D
+            JSR   CCALL
 
-         LDD   #PLUS
-         PSHU  D
-         JSR   CCALL
+            LDD   #PLUS
+            PSHU  D
+            JSR   CCALL
 
-         JSR   LOOP
+            JSR   LOOP
 
-         LDD   #OPRTS
-         PSHU  D
-         JSR   CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-         LDD   TSTCSAV
-         STD   CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-         STU   TSTU0
+            STU   TSTU0
 
-         LDD   #TSTGUARD
-         PSHU  D
-         LDD   #0
-         PSHU  D
-         LDD   #5
-         PSHU  D
-         LDD   #0
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            STU   TSTUB4
 
-         JSR   TSTCBUF
+            JSR   TSTCBUF
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         PULU  D
-         CMPD  #10
-         BNE   DWFAIL
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   DWFAIL
+            PULU  D
+            CMPD  #10
+            BNE   DWFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DWFAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #-4
-         BNE   DWFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   DWFAIL
 
-         LDD   #TRUEV
-         BRA   DWDONE
-DWFAIL:  LDD   #FALSEV
-DWDONE:  LDX   #TSTDOLPNAME
-         PSHU  X
-         PSHU  D
-         JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   DWDONE
+DWFAIL:     LDD   #FALSEV
+DWDONE:     LDX   #TSTDOLPNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU   TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTDOLPNAME: FCB  7
-             FCC  "TSTDOLP"
+TSTDOLPNAME:
+            FCB   7
+            FCC   "TSTDOLP"
 
 ; ------------------------------------------------------------
 ; TSTQDOLP - unit test for ?DO/LOOP, normal (non-skip) case.
 ; Same "?DO I + LOOP" structure and I-sum verification as
 ; TSTDOLP, confirming ?DO behaves like DO when index != limit.
 ; ------------------------------------------------------------
-TSTQDOLP: LDD  CODEHERE
-          STD  TSTCSAV
-          LDD  #TSTCBUF
-          STD  CODEHERE
+TSTQDOLP:   LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-          JSR  QDO
+            JSR   QDO
 
-          LDD  #IWORD
-          PSHU D
-          JSR  CCALL
+            LDD   #IWORD
+            PSHU  D
+            JSR   CCALL
 
-          LDD  #PLUS
-          PSHU D
-          JSR  CCALL
+            LDD   #PLUS
+            PSHU  D
+            JSR   CCALL
 
-          JSR  LOOP
+            JSR   LOOP
 
-          LDD  #OPRTS
-          PSHU D
-          JSR  CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-          LDD  TSTCSAV
-          STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          LDD  #0
-          PSHU D
-          LDD  #5
-          PSHU D
-          LDD  #0
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  TSTCBUF
+            JSR   TSTCBUF
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          PULU D
-          CMPD #10
-          BNE  QLFAIL
-          PULU D
-          CMPD #TSTGUARD
-          BNE  QLFAIL
+            PULU  D
+            CMPD  #10
+            BNE   QLFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   QLFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #-4
-          BNE  QLFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   QLFAIL
 
-          LDD  #TRUEV
-          BRA  QLDONE
-QLFAIL:   LDD  #FALSEV
-QLDONE:   LDX  #TSTQDOLPNAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   QLDONE
+QLFAIL:     LDD   #FALSEV
+QLDONE:     LDX   #TSTQDOLPNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTQDOLPNAME: FCB  8
-              FCC  "TSTQDOLP"
+TSTQDOLPNAME:
+            FCB   8
+            FCC   "TSTQDOLP"
 
 ; ------------------------------------------------------------
 ; TSTQDOLPEQ - unit test for ?DO/LOOP, limit=index case - the
@@ -6418,71 +6508,72 @@ TSTQDOLPNAME: FCB  8
 ; the body never runs, the seed should come back completely
 ; unchanged (0, not 10).
 ; ------------------------------------------------------------
-TSTQDOLPEQ: LDD  CODEHERE
-            STD  TSTCSAV
-            LDD  #TSTCBUF
-            STD  CODEHERE
+TSTQDOLPEQ: LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-            JSR  QDO
+            JSR   QDO
 
-            LDD  #IWORD
-            PSHU D
-            JSR  CCALL
+            LDD   #IWORD
+            PSHU  D
+            JSR   CCALL
 
-            LDD  #PLUS
-            PSHU D
-            JSR  CCALL
+            LDD   #PLUS
+            PSHU  D
+            JSR   CCALL
 
-            JSR  LOOP
+            JSR   LOOP
 
-            LDD  #OPRTS
-            PSHU D
-            JSR  CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-            LDD  TSTCSAV
-            STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-            STU  TSTU0
+            STU   TSTU0
 
-            LDD  #TSTGUARD
-            PSHU D
-            LDD  #0
-            PSHU D
-            LDD  #5
-            PSHU D
-            LDD  #5
-            PSHU D
-            STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            STU   TSTUB4
 
-            JSR  TSTCBUF
+            JSR   TSTCBUF
 
-            STU  TSTUAF
+            STU   TSTUAF
 
-            PULU D
-            CMPD #0
-            BNE  QEFAIL
-            PULU D
-            CMPD #TSTGUARD
-            BNE  QEFAIL
+            PULU  D
+            CMPD  #0
+            BNE   QEFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   QEFAIL
 
-            LDD  TSTUB4
-            SUBD TSTUAF
-            CMPD #-4
-            BNE  QEFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   QEFAIL
 
-            LDD  #TRUEV
-            BRA  QEDONE
-QEFAIL:     LDD  #FALSEV
-QEDONE:     LDX  #TSTQDOLPEQNAME
-            PSHU X
-            PSHU D
-            JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   QEDONE
+QEFAIL:     LDD   #FALSEV
+QEDONE:     LDX   #TSTQDOLPEQNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-            LDU  TSTU0
+            LDU   TSTU0
             RTS
 
-TSTQDOLPEQNAME: FCB  10
-                FCC  "TSTQDOLPEQ"
+TSTQDOLPEQNAME:
+            FCB   10
+            FCC   "TSTQDOLPEQ"
 
 ; ------------------------------------------------------------
 ; TSTPLOOP - unit test for DO/+LOOP. Compiles
@@ -6494,75 +6585,76 @@ TSTQDOLPEQNAME: FCB  10
 ; code - crosses-sign OR lands-exactly, checked separately).
 ; Visits I=0,3,6,9, exits when 9+3=12 crosses past 10. Sum=18.
 ; ------------------------------------------------------------
-TSTPLOOP: LDD  CODEHERE
-          STD  TSTCSAV
-          LDD  #TSTCBUF
-          STD  CODEHERE
+TSTPLOOP:   LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-          JSR  DO
+            JSR   DO
 
-          LDD  #IWORD
-          PSHU D
-          JSR  CCALL
+            LDD   #IWORD
+            PSHU  D
+            JSR   CCALL
 
-          LDD  #PLUS
-          PSHU D
-          JSR  CCALL
+            LDD   #PLUS
+            PSHU  D
+            JSR   CCALL
 
-          LDD  #3
-          PSHU D
-          JSR  LITERALW
+            LDD   #3
+            PSHU  D
+            JSR   LITERALW
 
-          JSR  PLUSLOOP
+            JSR   PLUSLOOP
 
-          LDD  #OPRTS
-          PSHU D
-          JSR  CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-          LDD  TSTCSAV
-          STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          LDD  #0
-          PSHU D
-          LDD  #10
-          PSHU D
-          LDD  #0
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            LDD   #10
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  TSTCBUF
+            JSR   TSTCBUF
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          PULU D
-          CMPD #18
-          BNE  POFAIL
-          PULU D
-          CMPD #TSTGUARD
-          BNE  POFAIL
+            PULU  D
+            CMPD  #18
+            BNE   POFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   POFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #-4
-          BNE  POFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   POFAIL
 
-          LDD  #TRUEV
-          BRA  PODONE
-POFAIL:   LDD  #FALSEV
-PODONE:   LDX  #TSTPLOOPNAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   PODONE
+POFAIL:     LDD   #FALSEV
+PODONE:     LDX   #TSTPLOOPNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTPLOOPNAME: FCB  8
-              FCC  "TSTPLOOP"
+TSTPLOOPNAME:
+            FCB   8
+            FCC   "TSTPLOOP"
 
 ; ------------------------------------------------------------
 ; TSTJIDX - unit test for J. Compiles a doubly-nested DO loop:
@@ -6577,98 +6669,99 @@ TSTPLOOPNAME: FCB  8
 ; nesting depth or wrong index read would produce a different
 ; sum, not just "some accumulation happened."
 ; ------------------------------------------------------------
-TSTJIDX: LDD   CODEHERE
-         STD   TSTCSAV
-         LDD   #TSTCBUF
-         STD   CODEHERE
+TSTJIDX:    LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-         JSR   DO
+            JSR   DO
 
-         LDD   #2
-         PSHU  D
-         JSR   LITERALW
-         LDD   #0
-         PSHU  D
-         JSR   LITERALW
+            LDD   #2
+            PSHU  D
+            JSR   LITERALW
+            LDD   #0
+            PSHU  D
+            JSR   LITERALW
 
-         JSR   DO
+            JSR   DO
 
-         LDD   #JWORD
-         PSHU  D
-         JSR   CCALL
+            LDD   #JWORD
+            PSHU  D
+            JSR   CCALL
 
-         LDD   #10
-         PSHU  D
-         JSR   LITERALW
+            LDD   #10
+            PSHU  D
+            JSR   LITERALW
 
-         LDD   #STAR
-         PSHU  D
-         JSR   CCALL
+            LDD   #STAR
+            PSHU  D
+            JSR   CCALL
 
-         LDD   #IWORD
-         PSHU  D
-         JSR   CCALL
+            LDD   #IWORD
+            PSHU  D
+            JSR   CCALL
 
-         LDD   #PLUS
-         PSHU  D
-         JSR   CCALL
+            LDD   #PLUS
+            PSHU  D
+            JSR   CCALL
 
-         LDD   #PLUS
-         PSHU  D
-         JSR   CCALL
+            LDD   #PLUS
+            PSHU  D
+            JSR   CCALL
 
-         JSR   LOOP
+            JSR   LOOP
 
-         JSR   LOOP
+            JSR   LOOP
 
-         LDD   #OPRTS
-         PSHU  D
-         JSR   CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-         LDD   TSTCSAV
-         STD   CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-         STU   TSTU0
+            STU   TSTU0
 
-         LDD   #TSTGUARD
-         PSHU  D
-         LDD   #0
-         PSHU  D
-         LDD   #3
-         PSHU  D
-         LDD   #0
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            LDD   #3
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            STU   TSTUB4
 
-         JSR   TSTCBUF
+            JSR   TSTCBUF
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         PULU  D
-         CMPD  #63
-         BNE   JIFAIL
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   JIFAIL
+            PULU  D
+            CMPD  #63
+            BNE   JIFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   JIFAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #-4
-         BNE   JIFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   JIFAIL
 
-         LDD   #TRUEV
-         BRA   JIDONE
-JIFAIL:  LDD   #FALSEV
-JIDONE:  LDX   #TSTJIDXNAME
-         PSHU  X
-         PSHU  D
-         JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   JIDONE
+JIFAIL:     LDD   #FALSEV
+JIDONE:     LDX   #TSTJIDXNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU   TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTJIDXNAME: FCB  7
-             FCC  "TSTJIDX"
+TSTJIDXNAME:
+            FCB   7
+            FCC   "TSTJIDX"
 
 ; ------------------------------------------------------------
 ; TSTLEAVE - unit test for LEAVE. Compiles
@@ -6684,91 +6777,92 @@ TSTJIDXNAME: FCB  7
 ; immediately) and not the full 0..9 (which would indicate
 ; LEAVE didn't work at all).
 ; ------------------------------------------------------------
-TSTLEAVE: LDD  CODEHERE
-          STD  TSTCSAV
-          LDD  #TSTCBUF
-          STD  CODEHERE
+TSTLEAVE:   LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-          JSR  DO
+            JSR   DO
 
-          LDD  #IWORD
-          PSHU D
-          JSR  CCALL
+            LDD   #IWORD
+            PSHU  D
+            JSR   CCALL
 
-          LDD  #DUP
-          PSHU D
-          JSR  CCALL
+            LDD   #DUP
+            PSHU  D
+            JSR   CCALL
 
-          LDD  #3
-          PSHU D
-          JSR  LITERALW
+            LDD   #3
+            PSHU  D
+            JSR   LITERALW
 
-          LDD  #EQUALW
-          PSHU D
-          JSR  CCALL
+            LDD   #EQUALW
+            PSHU  D
+            JSR   CCALL
 
-          JSR  IF
+            JSR   IF
 
-          LDD  #LEAVE
-          PSHU D
-          JSR  CCALL
+            LDD   #LEAVE
+            PSHU  D
+            JSR   CCALL
 
-          JSR  THEN
+            JSR   THEN
 
-          LDD  #PLUS
-          PSHU D
-          JSR  CCALL
+            LDD   #PLUS
+            PSHU  D
+            JSR   CCALL
 
-          JSR  LOOP
+            JSR   LOOP
 
-          LDD  #OPRTS
-          PSHU D
-          JSR  CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-          LDD  TSTCSAV
-          STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          LDD  #0
-          PSHU D
-          LDD  #10
-          PSHU D
-          LDD  #0
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            LDD   #10
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  TSTCBUF
+            JSR   TSTCBUF
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          PULU D
-          CMPD #6
-          BNE  LVFAIL
-          PULU D
-          CMPD #TSTGUARD
-          BNE  LVFAIL
+            PULU  D
+            CMPD  #6
+            BNE   LVFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   LVFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #-4
-          BNE  LVFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   LVFAIL
 
-          LDD  #TRUEV
-          BRA  LVDONE
-LVFAIL:   LDD  #FALSEV
-LVDONE:   LDX  #TSTLEAVENAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   LVDONE
+LVFAIL:     LDD   #FALSEV
+LVDONE:     LDX   #TSTLEAVENAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTLEAVENAME: FCB  8
-              FCC  "TSTLEAVE"
+TSTLEAVENAME:
+            FCB   8
+            FCC   "TSTLEAVE"
 
 ; ------------------------------------------------------------
 ; TSTEXIT - unit test for EXIT. Compiles
@@ -6788,100 +6882,101 @@ TSTLEAVENAME: FCB  8
 ; immediately when reached - the following + never runs for
 ; I=3, so sum=0+1+2=3, not 6.
 ; ------------------------------------------------------------
-TSTEXIT: LDD   CSP
-         STD   TSTCSPS
-         LDD   CODEHERE
-         STD   TSTCSAV
-         LDD   #TSTCBUF
-         STD   CODEHERE
+TSTEXIT:    LDD   CSP
+            STD   TSTCSPS
+            LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-         TFR   U,D
-         STD   CSP
+            TFR   U,D
+            STD   CSP
 
-         JSR   DO
+            JSR   DO
 
-         LDD   #IWORD
-         PSHU  D
-         JSR   CCALL
+            LDD   #IWORD
+            PSHU  D
+            JSR   CCALL
 
-         LDD   #3
-         PSHU  D
-         JSR   LITERALW
+            LDD   #3
+            PSHU  D
+            JSR   LITERALW
 
-         LDD   #EQUALW
-         PSHU  D
-         JSR   CCALL
+            LDD   #EQUALW
+            PSHU  D
+            JSR   CCALL
 
-         JSR   IF
+            JSR   IF
 
-         LDD   #UNLOOP
-         PSHU  D
-         JSR   CCALL
+            LDD   #UNLOOP
+            PSHU  D
+            JSR   CCALL
 
-         JSR   EXIT
+            JSR   EXIT
 
-         JSR   THEN
+            JSR   THEN
 
-         LDD   #IWORD
-         PSHU  D
-         JSR   CCALL
+            LDD   #IWORD
+            PSHU  D
+            JSR   CCALL
 
-         LDD   #PLUS
-         PSHU  D
-         JSR   CCALL
+            LDD   #PLUS
+            PSHU  D
+            JSR   CCALL
 
-         JSR   LOOP
+            JSR   LOOP
 
-         LDD   #OPRTS
-         PSHU  D
-         JSR   CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-         LDD   TSTCSAV
-         STD   CODEHERE
-         LDD   TSTCSPS
-         STD   CSP
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTCSPS
+            STD   CSP
 
-         STU   TSTU0
+            STU   TSTU0
 
-         LDD   #TSTGUARD
-         PSHU  D
-         LDD   #0
-         PSHU  D
-         LDD   #10
-         PSHU  D
-         LDD   #0
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            LDD   #10
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            STU   TSTUB4
 
-         JSR   TSTCBUF
+            JSR   TSTCBUF
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         PULU  D
-         CMPD  #3
-         BNE   EXFAIL
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   EXFAIL
+            PULU  D
+            CMPD  #3
+            BNE   EXFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   EXFAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #-4
-         BNE   EXFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   EXFAIL
 
-         LDD   #TRUEV
-         BRA   EXDONE
-EXFAIL:  LDD   #FALSEV
-EXDONE:  LDX   #TSTEXITNAME
-         PSHU  X
-         PSHU  D
-         JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   EXDONE
+EXFAIL:     LDD   #FALSEV
+EXDONE:     LDX   #TSTEXITNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU   TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTEXITNAME: FCB  7
-             FCC  "TSTEXIT"
+TSTEXITNAME:
+            FCB   7
+            FCC   "TSTEXIT"
 
 ; ------------------------------------------------------------
 ; TSTUNLOOP - unit test for UNLOOP. UNLOOP discards the 3-cell
@@ -6895,41 +6990,42 @@ TSTEXITNAME: FCB  7
 ; addresses and crash the run.) Scratch: TSTUB4/TSTUAF hold the
 ; S values here, TSTSCR holds U.
 ; ------------------------------------------------------------
-TSTUNLOOP: STU  TSTU0
+TSTUNLOOP:  STU   TSTU0
 
-           LDD  #TSTVAL1
-           PSHS D               ; fake frame: LEAVE flag
-           LDD  #TSTVAL2
-           PSHS D               ;             limit
-           LDD  #TSTVAL1
-           PSHS D               ;             index
-           STS  TSTUB4          ; S with the fake frame in place
-           STU  TSTSCR          ; U before
+            LDD   #TSTVAL1
+            PSHS  D                 ; fake frame: LEAVE flag
+            LDD   #TSTVAL2
+            PSHS  D                 ;             limit
+            LDD   #TSTVAL1
+            PSHS  D                 ;             index
+            STS   TSTUB4            ; S with the fake frame in place
+            STU   TSTSCR            ; U before
 
-           JSR  UNLOOP
+            JSR   UNLOOP
 
-           STS  TSTUAF          ; S after
+            STS   TSTUAF            ; S after
 
-           LDD  TSTUAF
-           SUBD TSTUB4
-           CMPD #6
-           BNE  UOFAIL
-           CMPU TSTSCR
-           BNE  UOFAIL
+            LDD   TSTUAF
+            SUBD  TSTUB4
+            CMPD  #6
+            BNE   UOFAIL
+            CMPU  TSTSCR
+            BNE   UOFAIL
 
-           LDD  #TRUEV
-           BRA  UODONE
-UOFAIL:    LDD  #FALSEV
-UODONE:    LDX  #TSTUNLOOPNAME
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   UODONE
+UOFAIL:     LDD   #FALSEV
+UODONE:     LDX   #TSTUNLOOPNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTUNLOOPNAME: FCB  9
-               FCC  "TSTUNLOOP"
+TSTUNLOOPNAME:
+            FCB   9
+            FCC   "TSTUNLOOP"
 
 ; ------------------------------------------------------------
 ; TSTCASE1 - unit test for CASE/OF/ENDOF/ENDCASE, matching
@@ -6944,77 +7040,78 @@ TSTUNLOOPNAME: FCB  9
 ; patches every pending ENDOF branch to the true end and
 ; compiles a final fallback DROP for the no-match case.
 ; ------------------------------------------------------------
-TSTCASE1: LDD  CODEHERE
-          STD  TSTCSAV
-          LDD  #TSTCBUF
-          STD  CODEHERE
+TSTCASE1:   LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-          JSR  CASEW
+            JSR   CASEW
 
-          LDD  #1
-          PSHU D
-          JSR  LITERALW
-          JSR  OF
-          LDD  #111
-          PSHU D
-          JSR  LITERALW
-          JSR  ENDOF
+            LDD   #1
+            PSHU  D
+            JSR   LITERALW
+            JSR   OF
+            LDD   #111
+            PSHU  D
+            JSR   LITERALW
+            JSR   ENDOF
 
-          LDD  #2
-          PSHU D
-          JSR  LITERALW
-          JSR  OF
-          LDD  #222
-          PSHU D
-          JSR  LITERALW
-          JSR  ENDOF
+            LDD   #2
+            PSHU  D
+            JSR   LITERALW
+            JSR   OF
+            LDD   #222
+            PSHU  D
+            JSR   LITERALW
+            JSR   ENDOF
 
-          JSR  ENDCASE
+            JSR   ENDCASE
 
-          LDD  #OPRTS
-          PSHU D
-          JSR  CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-          LDD  TSTCSAV
-          STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          LDD  #2
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #2
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  TSTCBUF
+            JSR   TSTCBUF
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          PULU D
-          CMPD #222
-          BNE  C1FAIL
-          PULU D
-          CMPD #TSTGUARD
-          BNE  C1FAIL
+            PULU  D
+            CMPD  #222
+            BNE   C1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   C1FAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #0
-          BNE  C1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   C1FAIL
 
-          LDD  #TRUEV
-          BRA  C1DONE
-C1FAIL:   LDD  #FALSEV
-C1DONE:   LDX  #TSTCASE1NAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   C1DONE
+C1FAIL:     LDD   #FALSEV
+C1DONE:     LDX   #TSTCASE1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTCASE1NAME: FCB  9
-              FCC  "TSTCASE1"
+TSTCASE1NAME:
+            FCB   9
+            FCC   "TSTCASE1"
 
 ; ------------------------------------------------------------
 ; TSTCASE2 - unit test for CASE/OF/ENDOF/ENDCASE, no-match
@@ -7025,74 +7122,75 @@ TSTCASE1NAME: FCB  9
 ; fallback DROP, consuming the selector with nothing pushed in
 ; its place.
 ; ------------------------------------------------------------
-TSTCASE2: LDD  CODEHERE
-          STD  TSTCSAV
-          LDD  #TSTCBUF
-          STD  CODEHERE
+TSTCASE2:   LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-          JSR  CASEW
+            JSR   CASEW
 
-          LDD  #1
-          PSHU D
-          JSR  LITERALW
-          JSR  OF
-          LDD  #111
-          PSHU D
-          JSR  LITERALW
-          JSR  ENDOF
+            LDD   #1
+            PSHU  D
+            JSR   LITERALW
+            JSR   OF
+            LDD   #111
+            PSHU  D
+            JSR   LITERALW
+            JSR   ENDOF
 
-          LDD  #2
-          PSHU D
-          JSR  LITERALW
-          JSR  OF
-          LDD  #222
-          PSHU D
-          JSR  LITERALW
-          JSR  ENDOF
+            LDD   #2
+            PSHU  D
+            JSR   LITERALW
+            JSR   OF
+            LDD   #222
+            PSHU  D
+            JSR   LITERALW
+            JSR   ENDOF
 
-          JSR  ENDCASE
+            JSR   ENDCASE
 
-          LDD  #OPRTS
-          PSHU D
-          JSR  CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-          LDD  TSTCSAV
-          STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          LDD  #99
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #99
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  TSTCBUF
+            JSR   TSTCBUF
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          PULU D
-          CMPD #TSTGUARD
-          BNE  C2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   C2FAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #-2
-          BNE  C2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   C2FAIL
 
-          LDD  #TRUEV
-          BRA  C2DONE
-C2FAIL:   LDD  #FALSEV
-C2DONE:   LDX  #TSTCASE2NAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   C2DONE
+C2FAIL:     LDD   #FALSEV
+C2DONE:     LDX   #TSTCASE2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTCASE2NAME: FCB  9
-              FCC  "TSTCASE2"
+TSTCASE2NAME:
+            FCB   9
+            FCC   "TSTCASE2"
 
 ; ------------------------------------------------------------
 ; TSTTHENZ - unit test for THEN, tag-mismatch case. Pushes a
@@ -7106,126 +7204,129 @@ TSTCASE2NAME: FCB  9
 ; sections: verify the thrown code and CATCH's own depth-
 ; restoration contract, not the unspecified i*x values.
 ; ------------------------------------------------------------
-TSTTHENZ: STU  TSTU0
+TSTTHENZ:   STU   TSTU0
 
-          LDD  #0
-          PSHU D
-          LDD  #0
-          PSHU D
-          LDX  #THEN
-          PSHU X
-          STU  TSTUB4
+            LDD   #0
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            LDX   #THEN
+            PSHU  X
+            STU   TSTUB4
 
-          JSR  CATCH
+            JSR   CATCH
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          PULU D
-          CMPD #-22
-          BNE  T3FAIL
+            PULU  D
+            CMPD  #-22
+            BNE   T3FAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #0
-          BNE  T3FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   T3FAIL
 
-          LDD  #TRUEV
-          BRA  T3DONE
-T3FAIL:   LDD  #FALSEV
-T3DONE:   LDX  #TSTTHENZNAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   T3DONE
+T3FAIL:     LDD   #FALSEV
+T3DONE:     LDX   #TSTTHENZNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTTHENZNAME: FCB  8
-              FCC  "TSTTHENZ"
+TSTTHENZNAME:
+            FCB   8
+            FCC   "TSTTHENZ"
 
 ; ------------------------------------------------------------
 ; TSTUNTILZ - unit test for UNTIL, tag-mismatch case. Same
 ; pattern as TSTTHENZ - wrong value in place of TAGBACK.
 ; ------------------------------------------------------------
-TSTUNTILZ: STU  TSTU0
+TSTUNTILZ:  STU   TSTU0
 
-           LDD  #0
-           PSHU D
-           LDD  #0
-           PSHU D
-           LDX  #UNTIL
-           PSHU X
-           STU  TSTUB4
+            LDD   #0
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            LDX   #UNTIL
+            PSHU  X
+            STU   TSTUB4
 
-           JSR  CATCH
+            JSR   CATCH
 
-           STU  TSTUAF
+            STU   TSTUAF
 
-           PULU D
-           CMPD #-22
-           BNE  U3FAIL
+            PULU  D
+            CMPD  #-22
+            BNE   U3FAIL
 
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #0
-           BNE  U3FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   U3FAIL
 
-           LDD  #TRUEV
-           BRA  U3DONE
-U3FAIL:    LDD  #FALSEV
-U3DONE:    LDX  #TSTUNTLZNAME
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   U3DONE
+U3FAIL:     LDD   #FALSEV
+U3DONE:     LDX   #TSTUNTLZNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTUNTLZNAME: FCB  9
-              FCC  "TSTUNTILZ"
+TSTUNTLZNAME:
+            FCB   9
+            FCC   "TSTUNTILZ"
 
 ; ------------------------------------------------------------
 ; TSTENDOFZ - unit test for ENDOF, tag-mismatch case. Same
 ; pattern - wrong value in place of TAGOF.
 ; ------------------------------------------------------------
-TSTENDOFZ: STU  TSTU0
+TSTENDOFZ:  STU   TSTU0
 
-           LDD  #0
-           PSHU D
-           LDD  #0
-           PSHU D
-           LDX  #ENDOF
-           PSHU X
-           STU  TSTUB4
+            LDD   #0
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            LDX   #ENDOF
+            PSHU  X
+            STU   TSTUB4
 
-           JSR  CATCH
+            JSR   CATCH
 
-           STU  TSTUAF
+            STU   TSTUAF
 
-           PULU D
-           CMPD #-22
-           BNE  EOFAIL
+            PULU  D
+            CMPD  #-22
+            BNE   EOFAIL
 
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #0
-           BNE  EOFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   EOFAIL
 
-           LDD  #TRUEV
-           BRA  EODONE
-EOFAIL:    LDD  #FALSEV
-EODONE:    LDX  #TSTENDFZNAME
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   EODONE
+EOFAIL:     LDD   #FALSEV
+EODONE:     LDX   #TSTENDFZNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTENDFZNAME: FCB  9
-              FCC  "TSTENDOFZ"
+TSTENDFZNAME:
+            FCB   9
+            FCC   "TSTENDOFZ"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTDEFWORDS - defining-words tests (glossary section 3.9, 17
@@ -7268,36 +7369,37 @@ TSTENDFZNAME: FCB  9
 ; Bare CREATE's own direct-execution behavior isn't meant to be
 ; relied upon before a DOES> patches it.
 ; ------------------------------------------------------------
-TSTDEFWORDS: JSR CRW
-           LDX   #TSTDEFMSG
-           PSHU  X
-           LDD   #8
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+TSTDEFWORDS:
+            JSR   CRW
+            LDX   #TSTDEFMSG
+            PSHU  X
+            LDD   #8
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-8  ; >>>>
+            IFEQ  TSTSELECTOR-8     ; >>>>
 
-           JSR   TSTVAR
-           JSR   TSTCONST
-           JSR   TSTCOLON
-           JSR   TSTCRDOES
-           JSR   TST2VAR
-           JSR   TST2CONST
-           JSR   TSTBUFC
-           JSR   TSTVALTO
-           JSR   TSTDEFER1
-           JSR   TSTDEFER2
-           JSR   TSTISOF
-           JSR   TSTMARKER
+            JSR   TSTVAR
+            JSR   TSTCONST
+            JSR   TSTCOLON
+            JSR   TSTCRDOES
+            JSR   TST2VAR
+            JSR   TST2CONST
+            JSR   TSTBUFC
+            JSR   TSTVALTO
+            JSR   TSTDEFER1
+            JSR   TSTDEFER2
+            JSR   TSTISOF
+            JSR   TSTMARKER
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTDEFMSG: FCC "DefWords"
+TSTDEFMSG:  FCC   "DefWords"
 
-           IFEQ TSTSELECTOR-8  ; >>>>
+            IFEQ  TSTSELECTOR-8     ; >>>>
 
 ; ------------------------------------------------------------
 ; Defining-words test harness (glossary section 3.9). Every
@@ -7332,109 +7434,109 @@ TSTDEFMSG: FCC "DefWords"
 ; there) and that the cell there was correctly initialized to
 ; zero - VARIABLE's own documented behavior, not assumed.
 ; ------------------------------------------------------------
-TSTVAR:  LDD   CODEHERE
-         STD   TSTCSAV
-         LDD   DPHERE
-         STD   TSTDSAV
-         LDD   VARHERE
-         STD   TSTVSAV
-         LDD   SRCADDR
-         STD   TSTSASAV
-         LDD   SRCLEN
-         STD   TSTSLSAV
-         LDD   TOIN
-         STD   TSTTISAV
-         LDD   LATEST
-         STD   TSTLSAV
+TSTVAR:     LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   DPHERE
+            STD   TSTDSAV
+            LDD   VARHERE
+            STD   TSTVSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   LATEST
+            STD   TSTLSAV
 
-         LDA   #'T'
-         STA   TSTNAMEB
-         LDA   #'E'
-         STA   TSTNAMEB+1
-         LDA   #'S'
-         STA   TSTNAMEB+2
-         LDA   #'T'
-         STA   TSTNAMEB+3
-         LDA   #'W'
-         STA   TSTNAMEB+4
-         LDA   #'D'
-         STA   TSTNAMEB+5
+            LDA   #'T'
+            STA   TSTNAMEB
+            LDA   #'E'
+            STA   TSTNAMEB+1
+            LDA   #'S'
+            STA   TSTNAMEB+2
+            LDA   #'T'
+            STA   TSTNAMEB+3
+            LDA   #'W'
+            STA   TSTNAMEB+4
+            LDA   #'D'
+            STA   TSTNAMEB+5
 
-         LDD   #TSTCBUF
-         STD   CODEHERE
-         LDD   #TSTDBUF
-         STD   DPHERE
-         LDD   #TSTVBUF
-         STD   VARHERE
-         LDD   #TSTNAMEB
-         STD   SRCADDR
-         LDD   #6
-         STD   SRCLEN
-         LDD   #0
-         STD   TOIN
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTDBUF
+            STD   DPHERE
+            LDD   #TSTVBUF
+            STD   VARHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #6
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-         LDD   CODEHERE
-         STD   TSTWCFA
+            LDD   CODEHERE
+            STD   TSTWCFA
 
-         JSR   VARIABLE
+            JSR   VARIABLE
 
-         LDD   TSTCSAV
-         STD   CODEHERE
-         LDD   TSTDSAV
-         STD   DPHERE
-         LDD   TSTVSAV
-         STD   VARHERE
-         LDD   TSTSASAV
-         STD   SRCADDR
-         LDD   TSTSLSAV
-         STD   SRCLEN
-         LDD   TSTTISAV
-         STD   TOIN
-         LDD   TSTLSAV
-         STD   LATEST
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTDSAV
+            STD   DPHERE
+            LDD   TSTVSAV
+            STD   VARHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTLSAV
+            STD   LATEST
 
-         STU   TSTU0
+            STU   TSTU0
 
-         LDD   #TSTGUARD
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-         LDX   TSTWCFA
-         JSR   ,X
+            LDX   TSTWCFA
+            JSR   ,X
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         PULU  D
-         CMPD  #TSTVBUF
-         BNE   VRFAIL
+            PULU  D
+            CMPD  #TSTVBUF
+            BNE   VRFAIL
 
-         LDX   TSTVBUF
-         LDD   ,X
-         CMPD  #0
-         BNE   VRFAIL
+            LDX   TSTVBUF
+            LDD   ,X
+            CMPD  #0
+            BNE   VRFAIL
 
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   VRFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   VRFAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #2
-         BNE   VRFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   VRFAIL
 
-         LDD   #TRUEV
-         BRA   VRDONE
-VRFAIL:  LDD   #FALSEV
-VRDONE:  LDX   #TSTVARNAME
-         PSHU  X
-         PSHU  D
-         JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   VRDONE
+VRFAIL:     LDD   #FALSEV
+VRDONE:     LDX   #TSTVARNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU   TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTVARNAME: FCB  6
-            FCC  "TSTVAR"
+TSTVARNAME: FCB   6
+            FCC   "TSTVAR"
 
 ; ------------------------------------------------------------
 ; TSTCONST - unit test for CONSTANT. Compiles "5 CONSTANT
@@ -7445,105 +7547,106 @@ TSTVARNAME: FCB  6
 ; it compiles a raw address to ATSIGN (@) there directly via
 ; CODECOMMA, not CREATE's own placeholder mechanism.
 ; ------------------------------------------------------------
-TSTCONST: LDD  CODEHERE
-          STD  TSTCSAV
-          LDD  DPHERE
-          STD  TSTDSAV
-          LDD  VARHERE
-          STD  TSTVSAV
-          LDD  SRCADDR
-          STD  TSTSASAV
-          LDD  SRCLEN
-          STD  TSTSLSAV
-          LDD  TOIN
-          STD  TSTTISAV
-          LDD  LATEST
-          STD  TSTLSAV
+TSTCONST:   LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   DPHERE
+            STD   TSTDSAV
+            LDD   VARHERE
+            STD   TSTVSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   LATEST
+            STD   TSTLSAV
 
-          LDA  #'T'
-          STA  TSTNAMEB
-          LDA  #'E'
-          STA  TSTNAMEB+1
-          LDA  #'S'
-          STA  TSTNAMEB+2
-          LDA  #'T'
-          STA  TSTNAMEB+3
-          LDA  #'W'
-          STA  TSTNAMEB+4
-          LDA  #'D'
-          STA  TSTNAMEB+5
+            LDA   #'T'
+            STA   TSTNAMEB
+            LDA   #'E'
+            STA   TSTNAMEB+1
+            LDA   #'S'
+            STA   TSTNAMEB+2
+            LDA   #'T'
+            STA   TSTNAMEB+3
+            LDA   #'W'
+            STA   TSTNAMEB+4
+            LDA   #'D'
+            STA   TSTNAMEB+5
 
-          LDD  #TSTCBUF
-          STD  CODEHERE
-          LDD  #TSTDBUF
-          STD  DPHERE
-          LDD  #TSTVBUF
-          STD  VARHERE
-          LDD  #TSTNAMEB
-          STD  SRCADDR
-          LDD  #6
-          STD  SRCLEN
-          LDD  #0
-          STD  TOIN
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTDBUF
+            STD   DPHERE
+            LDD   #TSTVBUF
+            STD   VARHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #6
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-          LDD  CODEHERE
-          STD  TSTWCFA
+            LDD   CODEHERE
+            STD   TSTWCFA
 
-          LDD  #5
-          PSHU D
-          JSR  CONSTANT
+            LDD   #5
+            PSHU  D
+            JSR   CONSTANT
 
-          LDD  TSTCSAV
-          STD  CODEHERE
-          LDD  TSTDSAV
-          STD  DPHERE
-          LDD  TSTVSAV
-          STD  VARHERE
-          LDD  TSTSASAV
-          STD  SRCADDR
-          LDD  TSTSLSAV
-          STD  SRCLEN
-          LDD  TSTTISAV
-          STD  TOIN
-          LDD  TSTLSAV
-          STD  LATEST
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTDSAV
+            STD   DPHERE
+            LDD   TSTVSAV
+            STD   VARHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTLSAV
+            STD   LATEST
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-          LDX  TSTWCFA
-          JSR  ,X
+            LDX   TSTWCFA
+            JSR   ,X
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          PULU D
-          CMPD #5
-          BNE  CNFAIL
-          PULU D
-          CMPD #TSTGUARD
-          BNE  CNFAIL
+            PULU  D
+            CMPD  #5
+            BNE   CNFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   CNFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #2
-          BNE  CNFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   CNFAIL
 
-          LDD  #TRUEV
-          BRA  CNDONE
-CNFAIL:   LDD  #FALSEV
-CNDONE:   LDX  #TSTCONSTNAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   CNDONE
+CNFAIL:     LDD   #FALSEV
+CNDONE:     LDX   #TSTCONSTNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTCONSTNAME: FCB  8
-              FCC  "TSTCONST"
+TSTCONSTNAME:
+            FCB   8
+            FCC   "TSTCONST"
 
 ; ------------------------------------------------------------
 ; TSTCOLON - unit test for : and ; together. Compiles
@@ -7556,124 +7659,125 @@ TSTCONSTNAME: FCB  8
 ; the header's own SMUDGE bit is correctly clear after SEMI -
 ; not just that execution happened to work.
 ; ------------------------------------------------------------
-TSTCOLON: LDD  CODEHERE
-          STD  TSTCSAV
-          LDD  DPHERE
-          STD  TSTDSAV
-          LDD  VARHERE
-          STD  TSTVSAV
-          LDD  SRCADDR
-          STD  TSTSASAV
-          LDD  SRCLEN
-          STD  TSTSLSAV
-          LDD  TOIN
-          STD  TSTTISAV
-          LDD  LATEST
-          STD  TSTLSAV
-          LDD  CSP
-          STD  TSTCSPS
-          LDD  STATE
-          STD  TSTSTSAV
+TSTCOLON:   LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   DPHERE
+            STD   TSTDSAV
+            LDD   VARHERE
+            STD   TSTVSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   LATEST
+            STD   TSTLSAV
+            LDD   CSP
+            STD   TSTCSPS
+            LDD   STATE
+            STD   TSTSTSAV
 
-          LDA  #'T'
-          STA  TSTNAMEB
-          LDA  #'E'
-          STA  TSTNAMEB+1
-          LDA  #'S'
-          STA  TSTNAMEB+2
-          LDA  #'T'
-          STA  TSTNAMEB+3
-          LDA  #'W'
-          STA  TSTNAMEB+4
-          LDA  #'D'
-          STA  TSTNAMEB+5
+            LDA   #'T'
+            STA   TSTNAMEB
+            LDA   #'E'
+            STA   TSTNAMEB+1
+            LDA   #'S'
+            STA   TSTNAMEB+2
+            LDA   #'T'
+            STA   TSTNAMEB+3
+            LDA   #'W'
+            STA   TSTNAMEB+4
+            LDA   #'D'
+            STA   TSTNAMEB+5
 
-          LDD  #TSTCBUF
-          STD  CODEHERE
-          LDD  #TSTDBUF
-          STD  DPHERE
-          LDD  #TSTVBUF
-          STD  VARHERE
-          LDD  #TSTNAMEB
-          STD  SRCADDR
-          LDD  #6
-          STD  SRCLEN
-          LDD  #0
-          STD  TOIN
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTDBUF
+            STD   DPHERE
+            LDD   #TSTVBUF
+            STD   VARHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #6
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-          LDD  CODEHERE
-          STD  TSTWCFA
+            LDD   CODEHERE
+            STD   TSTWCFA
 
-          JSR  COLON
+            JSR   COLON
 
-          LDD  #111
-          PSHU D
-          JSR  LITERALW
+            LDD   #111
+            PSHU  D
+            JSR   LITERALW
 
-          JSR  SEMI
+            JSR   SEMI
 
-          LDA  TSTDBUF
-          ANDA #$40
-          STA  TSTSMFLG
+            LDA   TSTDBUF
+            ANDA  #$40
+            STA   TSTSMFLG
 
-          LDD  TSTCSAV
-          STD  CODEHERE
-          LDD  TSTDSAV
-          STD  DPHERE
-          LDD  TSTVSAV
-          STD  VARHERE
-          LDD  TSTSASAV
-          STD  SRCADDR
-          LDD  TSTSLSAV
-          STD  SRCLEN
-          LDD  TSTTISAV
-          STD  TOIN
-          LDD  TSTLSAV
-          STD  LATEST
-          LDD  TSTCSPS
-          STD  CSP
-          LDD  TSTSTSAV
-          STD  STATE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTDSAV
+            STD   DPHERE
+            LDD   TSTVSAV
+            STD   VARHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTLSAV
+            STD   LATEST
+            LDD   TSTCSPS
+            STD   CSP
+            LDD   TSTSTSAV
+            STD   STATE
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-          LDX  TSTWCFA
-          JSR  ,X
+            LDX   TSTWCFA
+            JSR   ,X
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          PULU D
-          CMPD #111
-          BNE  CLFAIL
-          PULU D
-          CMPD #TSTGUARD
-          BNE  CLFAIL
+            PULU  D
+            CMPD  #111
+            BNE   CLFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   CLFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #2
-          BNE  CLFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   CLFAIL
 
-          TST  TSTSMFLG
-          BNE  CLFAIL
+            TST   TSTSMFLG
+            BNE   CLFAIL
 
-          LDD  #TRUEV
-          BRA  CLDONE
-CLFAIL:   LDD  #FALSEV
-CLDONE:   LDX  #TSTCOLONNAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   CLDONE
+CLFAIL:     LDD   #FALSEV
+CLDONE:     LDX   #TSTCOLONNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTCOLONNAME: FCB  8
-              FCC  "TSTCOLON"
+TSTCOLONNAME:
+            FCB   8
+            FCC   "TSTCOLON"
 
 ; ------------------------------------------------------------
 ; TSTCRDOES - unit test for CREATE/DOES> together. Compiles the
@@ -7697,137 +7801,138 @@ TSTCOLONNAME: FCB  8
 ; second (correctly resuming here afterward) - no extra
 ; scaffolding needed, confirmed correct rather than assumed.
 ; ------------------------------------------------------------
-TSTCRDOES: LDD  CODEHERE
-           STD  TSTCSAV
-           LDD  DPHERE
-           STD  TSTDSAV
-           LDD  VARHERE
-           STD  TSTVSAV
-           LDD  SRCADDR
-           STD  TSTSASAV
-           LDD  SRCLEN
-           STD  TSTSLSAV
-           LDD  TOIN
-           STD  TSTTISAV
-           LDD  LATEST
-           STD  TSTLSAV
+TSTCRDOES:  LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   DPHERE
+            STD   TSTDSAV
+            LDD   VARHERE
+            STD   TSTVSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   LATEST
+            STD   TSTLSAV
 
-           LDA  #'T'
-           STA  TSTNAMEB
-           LDA  #'E'
-           STA  TSTNAMEB+1
-           LDA  #'S'
-           STA  TSTNAMEB+2
-           LDA  #'T'
-           STA  TSTNAMEB+3
-           LDA  #'W'
-           STA  TSTNAMEB+4
-           LDA  #'D'
-           STA  TSTNAMEB+5
+            LDA   #'T'
+            STA   TSTNAMEB
+            LDA   #'E'
+            STA   TSTNAMEB+1
+            LDA   #'S'
+            STA   TSTNAMEB+2
+            LDA   #'T'
+            STA   TSTNAMEB+3
+            LDA   #'W'
+            STA   TSTNAMEB+4
+            LDA   #'D'
+            STA   TSTNAMEB+5
 
-           LDD  #TSTCBUF
-           STD  CODEHERE
-           LDD  #TSTDBUF
-           STD  DPHERE
-           LDD  #TSTVBUF
-           STD  VARHERE
-           LDD  #TSTNAMEB
-           STD  SRCADDR
-           LDD  #6
-           STD  SRCLEN
-           LDD  #0
-           STD  TOIN
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTDBUF
+            STD   DPHERE
+            LDD   #TSTVBUF
+            STD   VARHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #6
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-           LDD  CODEHERE
-           STD  TSTWCFA
+            LDD   CODEHERE
+            STD   TSTWCFA
 
-           JSR  CREATE
+            JSR   CREATE
 
-           LDD  #5
-           PSHU D
-           JSR  COMMA
+            LDD   #5
+            PSHU  D
+            JSR   COMMA
 
-           LDD  CODEHERE
-           STD  TSTDOESA
+            LDD   CODEHERE
+            STD   TSTDOESA
 
-           JSR  DOESGT
+            JSR   DOESGT
 
-           LDD  #ATSIGN
-           PSHU D
-           JSR  CCALL
+            LDD   #ATSIGN
+            PSHU  D
+            JSR   CCALL
 
-           LDD  #ONEPLUS
-           PSHU D
-           JSR  CCALL
+            LDD   #ONEPLUS
+            PSHU  D
+            JSR   CCALL
 
-           LDD  #OPRTS
-           PSHU D
-           JSR  CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-           LDD  TSTCSAV
-           STD  CODEHERE
-           LDD  TSTDSAV
-           STD  DPHERE
-           LDD  TSTVSAV
-           STD  VARHERE
-           LDD  TSTSASAV
-           STD  SRCADDR
-           LDD  TSTSLSAV
-           STD  SRCLEN
-           LDD  TSTTISAV
-           STD  TOIN
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTDSAV
+            STD   DPHERE
+            LDD   TSTVSAV
+            STD   VARHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
 
-           LDX  TSTDOESA  ; BUG FIX: was preceded by restoring LATEST
-                          ; to its real value here - but SETDOES
-                          ; (confirmed by reading its own code) reads
-                          ; LATEST directly to find which header to
-                          ; patch, so restoring it first meant SETDOES
-                          ; patched the real, wrong word instead of
-                          ; TESTWD, leaving TESTWD stuck on its
-                          ; original DOESRT0 placeholder. LATEST now
-                          ; stays pointed at TESTWD (this test's own
-                          ; fake header) until right after this call.
-           JSR  ,X
+            LDX   TSTDOESA          ; BUG FIX: was preceded by restoring LATEST
+                                    ; to its real value here - but SETDOES
+                                    ; (confirmed by reading its own code) reads
+                                    ; LATEST directly to find which header to
+                                    ; patch, so restoring it first meant SETDOES
+                                    ; patched the real, wrong word instead of
+                                    ; TESTWD, leaving TESTWD stuck on its
+                                    ; original DOESRT0 placeholder. LATEST now
+                                    ; stays pointed at TESTWD (this test's own
+                                    ; fake header) until right after this call.
+            JSR   ,X
 
-           LDD  TSTLSAV
-           STD  LATEST
+            LDD   TSTLSAV
+            STD   LATEST
 
-           STU  TSTU0
+            STU   TSTU0
 
-           LDD  #TSTGUARD
-           PSHU D
-           STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-           LDX  TSTWCFA
-           JSR  ,X
+            LDX   TSTWCFA
+            JSR   ,X
 
-           STU  TSTUAF
+            STU   TSTUAF
 
-           PULU D
-           CMPD #6
-           BNE  CDFAIL
-           PULU D
-           CMPD #TSTGUARD
-           BNE  CDFAIL
+            PULU  D
+            CMPD  #6
+            BNE   CDFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   CDFAIL
 
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #2
-           BNE  CDFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   CDFAIL
 
-           LDD  #TRUEV
-           BRA  CDDONE
-CDFAIL:    LDD  #FALSEV
-CDDONE:    LDX  #TSTCRDOESNAME
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   CDDONE
+CDFAIL:     LDD   #FALSEV
+CDDONE:     LDX   #TSTCRDOESNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTCRDOESNAME: FCB  9
-               FCC  "TSTCRDOES"
+TSTCRDOESNAME:
+            FCB   9
+            FCC   "TSTCRDOES"
 
 ; ------------------------------------------------------------
 ; TST2VAR - unit test for 2VARIABLE. Compiles "2VARIABLE
@@ -7835,112 +7940,113 @@ TSTCRDOESNAME: FCB  9
 ; pushes its own PFA address (TSTVBUF) and that BOTH cells there
 ; were correctly initialized to zero.
 ; ------------------------------------------------------------
-TST2VAR: LDD   CODEHERE
-         STD   TSTCSAV
-         LDD   DPHERE
-         STD   TSTDSAV
-         LDD   VARHERE
-         STD   TSTVSAV
-         LDD   SRCADDR
-         STD   TSTSASAV
-         LDD   SRCLEN
-         STD   TSTSLSAV
-         LDD   TOIN
-         STD   TSTTISAV
-         LDD   LATEST
-         STD   TSTLSAV
+TST2VAR:    LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   DPHERE
+            STD   TSTDSAV
+            LDD   VARHERE
+            STD   TSTVSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   LATEST
+            STD   TSTLSAV
 
-         LDA   #'T'
-         STA   TSTNAMEB
-         LDA   #'E'
-         STA   TSTNAMEB+1
-         LDA   #'S'
-         STA   TSTNAMEB+2
-         LDA   #'T'
-         STA   TSTNAMEB+3
-         LDA   #'W'
-         STA   TSTNAMEB+4
-         LDA   #'D'
-         STA   TSTNAMEB+5
+            LDA   #'T'
+            STA   TSTNAMEB
+            LDA   #'E'
+            STA   TSTNAMEB+1
+            LDA   #'S'
+            STA   TSTNAMEB+2
+            LDA   #'T'
+            STA   TSTNAMEB+3
+            LDA   #'W'
+            STA   TSTNAMEB+4
+            LDA   #'D'
+            STA   TSTNAMEB+5
 
-         LDD   #TSTCBUF
-         STD   CODEHERE
-         LDD   #TSTDBUF
-         STD   DPHERE
-         LDD   #TSTVBUF
-         STD   VARHERE
-         LDD   #TSTNAMEB
-         STD   SRCADDR
-         LDD   #6
-         STD   SRCLEN
-         LDD   #0
-         STD   TOIN
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTDBUF
+            STD   DPHERE
+            LDD   #TSTVBUF
+            STD   VARHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #6
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-         LDD   CODEHERE
-         STD   TSTWCFA
+            LDD   CODEHERE
+            STD   TSTWCFA
 
-         JSR   TWOVARIABLE
+            JSR   TWOVARIABLE
 
-         LDD   TSTCSAV
-         STD   CODEHERE
-         LDD   TSTDSAV
-         STD   DPHERE
-         LDD   TSTVSAV
-         STD   VARHERE
-         LDD   TSTSASAV
-         STD   SRCADDR
-         LDD   TSTSLSAV
-         STD   SRCLEN
-         LDD   TSTTISAV
-         STD   TOIN
-         LDD   TSTLSAV
-         STD   LATEST
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTDSAV
+            STD   DPHERE
+            LDD   TSTVSAV
+            STD   VARHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTLSAV
+            STD   LATEST
 
-         STU   TSTU0
+            STU   TSTU0
 
-         LDD   #TSTGUARD
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-         LDX   TSTWCFA
-         JSR   ,X
+            LDX   TSTWCFA
+            JSR   ,X
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         PULU  D
-         CMPD  #TSTVBUF
-         BNE   T2VFAIL
+            PULU  D
+            CMPD  #TSTVBUF
+            BNE   T2VFAIL
 
-         LDX   TSTVBUF
-         LDD   ,X
-         CMPD  #0
-         BNE   T2VFAIL
-         LDD   2,X
-         CMPD  #0
-         BNE   T2VFAIL
+            LDX   TSTVBUF
+            LDD   ,X
+            CMPD  #0
+            BNE   T2VFAIL
+            LDD   2,X
+            CMPD  #0
+            BNE   T2VFAIL
 
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   T2VFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   T2VFAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #2
-         BNE   T2VFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   T2VFAIL
 
-         LDD   #TRUEV
-         BRA   T2VDONE
-T2VFAIL:  LDD   #FALSEV
-T2VDONE:  LDX   #TST2VARNAME
-          PSHU  X
-          PSHU  D
-          JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   T2VDONE
+T2VFAIL:    LDD   #FALSEV
+T2VDONE:    LDX   #TST2VARNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU   TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TST2VARNAME: FCB  7
-             FCC  "TST2VAR"
+TST2VARNAME:
+            FCB   7
+            FCC   "TST2VAR"
 
 ; ------------------------------------------------------------
 ; TST2CONST - unit test for 2CONSTANT. Compiles
@@ -7950,110 +8056,111 @@ TST2VARNAME: FCB  7
 ; cells correctly ordered (200 on top/popped first, 100 deeper -
 ; matching 2@'s own documented behavior), not their own address.
 ; ------------------------------------------------------------
-TST2CONST: LDD  CODEHERE
-           STD  TSTCSAV
-           LDD  DPHERE
-           STD  TSTDSAV
-           LDD  VARHERE
-           STD  TSTVSAV
-           LDD  SRCADDR
-           STD  TSTSASAV
-           LDD  SRCLEN
-           STD  TSTSLSAV
-           LDD  TOIN
-           STD  TSTTISAV
-           LDD  LATEST
-           STD  TSTLSAV
+TST2CONST:  LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   DPHERE
+            STD   TSTDSAV
+            LDD   VARHERE
+            STD   TSTVSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   LATEST
+            STD   TSTLSAV
 
-           LDA  #'T'
-           STA  TSTNAMEB
-           LDA  #'E'
-           STA  TSTNAMEB+1
-           LDA  #'S'
-           STA  TSTNAMEB+2
-           LDA  #'T'
-           STA  TSTNAMEB+3
-           LDA  #'W'
-           STA  TSTNAMEB+4
-           LDA  #'D'
-           STA  TSTNAMEB+5
+            LDA   #'T'
+            STA   TSTNAMEB
+            LDA   #'E'
+            STA   TSTNAMEB+1
+            LDA   #'S'
+            STA   TSTNAMEB+2
+            LDA   #'T'
+            STA   TSTNAMEB+3
+            LDA   #'W'
+            STA   TSTNAMEB+4
+            LDA   #'D'
+            STA   TSTNAMEB+5
 
-           LDD  #TSTCBUF
-           STD  CODEHERE
-           LDD  #TSTDBUF
-           STD  DPHERE
-           LDD  #TSTVBUF
-           STD  VARHERE
-           LDD  #TSTNAMEB
-           STD  SRCADDR
-           LDD  #6
-           STD  SRCLEN
-           LDD  #0
-           STD  TOIN
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTDBUF
+            STD   DPHERE
+            LDD   #TSTVBUF
+            STD   VARHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #6
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-           LDD  CODEHERE
-           STD  TSTWCFA
+            LDD   CODEHERE
+            STD   TSTWCFA
 
-           LDD  #100
-           PSHU D
-           LDD  #200
-           PSHU D
-           JSR  TWOCONSTANT
+            LDD   #100
+            PSHU  D
+            LDD   #200
+            PSHU  D
+            JSR   TWOCONSTANT
 
-           LDD  TSTCSAV
-           STD  CODEHERE
-           LDD  TSTDSAV
-           STD  DPHERE
-           LDD  TSTVSAV
-           STD  VARHERE
-           LDD  TSTSASAV
-           STD  SRCADDR
-           LDD  TSTSLSAV
-           STD  SRCLEN
-           LDD  TSTTISAV
-           STD  TOIN
-           LDD  TSTLSAV
-           STD  LATEST
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTDSAV
+            STD   DPHERE
+            LDD   TSTVSAV
+            STD   VARHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTLSAV
+            STD   LATEST
 
-           STU  TSTU0
+            STU   TSTU0
 
-           LDD  #TSTGUARD
-           PSHU D
-           STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-           LDX  TSTWCFA
-           JSR  ,X
+            LDX   TSTWCFA
+            JSR   ,X
 
-           STU  TSTUAF
+            STU   TSTUAF
 
-           PULU D
-           CMPD #200
-           BNE  T2CFAIL
-           PULU D
-           CMPD #100
-           BNE  T2CFAIL
-           PULU D
-           CMPD #TSTGUARD
-           BNE  T2CFAIL
+            PULU  D
+            CMPD  #200
+            BNE   T2CFAIL
+            PULU  D
+            CMPD  #100
+            BNE   T2CFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   T2CFAIL
 
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #4
-           BNE  T2CFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #4
+            BNE   T2CFAIL
 
-           LDD  #TRUEV
-           BRA  T2CDONE
-T2CFAIL:   LDD  #FALSEV
-T2CDONE:   LDX  #TST2CONSTNAME
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   T2CDONE
+T2CFAIL:    LDD   #FALSEV
+T2CDONE:    LDX   #TST2CONSTNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TST2CONSTNAME: FCB  9
-               FCC  "TST2CONST"
+TST2CONSTNAME:
+            FCB   9
+            FCC   "TST2CONST"
 
 ; ------------------------------------------------------------
 ; TSTBUFC - unit test for BUFFER:. Compiles "10 BUFFER: TESTWD"
@@ -8066,114 +8173,115 @@ TST2CONSTNAME: FCB  9
 ; requested 10 bytes - not just that some space was reserved.
 ; Contents are documented uninitialized, so not checked.
 ; ------------------------------------------------------------
-TSTBUFC: LDD   CODEHERE
-         STD   TSTCSAV
-         LDD   DPHERE
-         STD   TSTDSAV
-         LDD   VARHERE
-         STD   TSTVSAV
-         LDD   SRCADDR
-         STD   TSTSASAV
-         LDD   SRCLEN
-         STD   TSTSLSAV
-         LDD   TOIN
-         STD   TSTTISAV
-         LDD   LATEST
-         STD   TSTLSAV
+TSTBUFC:    LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   DPHERE
+            STD   TSTDSAV
+            LDD   VARHERE
+            STD   TSTVSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   LATEST
+            STD   TSTLSAV
 
-         LDA   #'T'
-         STA   TSTNAMEB
-         LDA   #'E'
-         STA   TSTNAMEB+1
-         LDA   #'S'
-         STA   TSTNAMEB+2
-         LDA   #'T'
-         STA   TSTNAMEB+3
-         LDA   #'W'
-         STA   TSTNAMEB+4
-         LDA   #'D'
-         STA   TSTNAMEB+5
+            LDA   #'T'
+            STA   TSTNAMEB
+            LDA   #'E'
+            STA   TSTNAMEB+1
+            LDA   #'S'
+            STA   TSTNAMEB+2
+            LDA   #'T'
+            STA   TSTNAMEB+3
+            LDA   #'W'
+            STA   TSTNAMEB+4
+            LDA   #'D'
+            STA   TSTNAMEB+5
 
-         LDD   #TSTCBUF
-         STD   CODEHERE
-         LDD   #TSTDBUF
-         STD   DPHERE
-         LDD   #TSTVBUF
-         STD   VARHERE
-         LDD   #TSTNAMEB
-         STD   SRCADDR
-         LDD   #6
-         STD   SRCLEN
-         LDD   #0
-         STD   TOIN
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTDBUF
+            STD   DPHERE
+            LDD   #TSTVBUF
+            STD   VARHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #6
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-         LDD   CODEHERE
-         STD   TSTWCFA
+            LDD   CODEHERE
+            STD   TSTWCFA
 
-         LDD   #10
-         PSHU  D
-         JSR   BUFFERCOLON
+            LDD   #10
+            PSHU  D
+            JSR   BUFFERCOLON
 
-         LDD   VARHERE
-         SUBD  #TSTVBUF
-         STD   TSTSCR
+            LDD   VARHERE
+            SUBD  #TSTVBUF
+            STD   TSTSCR
 
-         LDD   TSTCSAV
-         STD   CODEHERE
-         LDD   TSTDSAV
-         STD   DPHERE
-         LDD   TSTVSAV
-         STD   VARHERE
-         LDD   TSTSASAV
-         STD   SRCADDR
-         LDD   TSTSLSAV
-         STD   SRCLEN
-         LDD   TSTTISAV
-         STD   TOIN
-         LDD   TSTLSAV
-         STD   LATEST
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTDSAV
+            STD   DPHERE
+            LDD   TSTVSAV
+            STD   VARHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTLSAV
+            STD   LATEST
 
-         STU   TSTU0
+            STU   TSTU0
 
-         LDD   #TSTGUARD
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-         LDX   TSTWCFA
-         JSR   ,X
+            LDX   TSTWCFA
+            JSR   ,X
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         PULU  D
-         CMPD  #TSTVBUF
-         BNE   BFFAIL
+            PULU  D
+            CMPD  #TSTVBUF
+            BNE   BFFAIL
 
-         LDD   TSTSCR
-         CMPD  #10
-         BNE   BFFAIL
+            LDD   TSTSCR
+            CMPD  #10
+            BNE   BFFAIL
 
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   BFFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   BFFAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #2
-         BNE   BFFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   BFFAIL
 
-         LDD   #TRUEV
-         BRA   BFDONE
-BFFAIL:  LDD   #FALSEV
-BFDONE:  LDX   #TSTBUFCNAME
-         PSHU  X
-         PSHU  D
-         JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   BFDONE
+BFFAIL:     LDD   #FALSEV
+BFDONE:     LDX   #TSTBUFCNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU   TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTBUFCNAME: FCB  7
-             FCC  "TSTBUFC"
+TSTBUFCNAME:
+            FCB   7
+            FCC   "TSTBUFC"
 
 ; ------------------------------------------------------------
 ; TSTVALTO - unit test for VALUE and TO together. Compiles
@@ -8187,172 +8295,173 @@ TSTBUFCNAME: FCB  7
 ; code: TOIMMED's direct store path only runs when STATE=0) -
 ; not left to chance.
 ; ------------------------------------------------------------
-TSTVALTO: LDD  CODEHERE
-          STD  TSTCSAV
-          LDD  DPHERE
-          STD  TSTDSAV
-          LDD  VARHERE
-          STD  TSTVSAV
-          LDD  SRCADDR
-          STD  TSTSASAV
-          LDD  SRCLEN
-          STD  TSTSLSAV
-          LDD  TOIN
-          STD  TSTTISAV
-          LDD  STATE
-          STD  TSTSTSAV
-          LDD  LATEST
-          STD  TSTLSAV
+TSTVALTO:   LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   DPHERE
+            STD   TSTDSAV
+            LDD   VARHERE
+            STD   TSTVSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   STATE
+            STD   TSTSTSAV
+            LDD   LATEST
+            STD   TSTLSAV
 
-          LDA  #'T'
-          STA  TSTNAMEB
-          LDA  #'E'
-          STA  TSTNAMEB+1
-          LDA  #'S'
-          STA  TSTNAMEB+2
-          LDA  #'T'
-          STA  TSTNAMEB+3
-          LDA  #'W'
-          STA  TSTNAMEB+4
-          LDA  #'D'
-          STA  TSTNAMEB+5
+            LDA   #'T'
+            STA   TSTNAMEB
+            LDA   #'E'
+            STA   TSTNAMEB+1
+            LDA   #'S'
+            STA   TSTNAMEB+2
+            LDA   #'T'
+            STA   TSTNAMEB+3
+            LDA   #'W'
+            STA   TSTNAMEB+4
+            LDA   #'D'
+            STA   TSTNAMEB+5
 
-          LDD  #TSTCBUF
-          STD  CODEHERE
-          LDD  #TSTDBUF
-          STD  DPHERE
-          LDD  #TSTVBUF
-          STD  VARHERE
-          LDD  #TSTNAMEB
-          STD  SRCADDR
-          LDD  #6
-          STD  SRCLEN
-          LDD  #0
-          STD  TOIN
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTDBUF
+            STD   DPHERE
+            LDD   #TSTVBUF
+            STD   VARHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #6
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-          LDD  CODEHERE
-          STD  TSTWCFA
+            LDD   CODEHERE
+            STD   TSTWCFA
 
-          LDD  #42
-          PSHU D
-          JSR  VALUEW
+            LDD   #42
+            PSHU  D
+            JSR   VALUEW
 
-          LDD  TSTCSAV
-          STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-          LDX  TSTWCFA
-          JSR  ,X
+            LDX   TSTWCFA
+            JSR   ,X
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          PULU D
-          CMPD #42
-          LBNE  VTFAIL  ; was BNE - out of short-branch range, since
-                        ; VTFAIL sits past this test's entire second
-                        ; round (the TO reassignment and re-check)
-          PULU D
-          CMPD #TSTGUARD
-          LBNE  VTFAIL  ; was BNE - same reason
+            PULU  D
+            CMPD  #42
+            LBNE  VTFAIL            ; was BNE - out of short-branch range, since
+                                    ; VTFAIL sits past this test's entire second
+                                    ; round (the TO reassignment and re-check)
+            PULU  D
+            CMPD  #TSTGUARD
+            LBNE  VTFAIL            ; was BNE - same reason
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #2
-          LBNE  VTFAIL  ; was BNE - same reason
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            LBNE  VTFAIL            ; was BNE - same reason
 
-          LDD  #TSTCBUF2  ; BUG FIX: was TSTCBUF - WORD writes its
-                           ; parsed-token output directly at CODEHERE
-                           ; (see TSTCBUF2's own comment), which would
-                           ; silently overwrite TESTWD's own already-
-                           ; compiled trampoline still sitting at
-                           ; TSTCBUF, corrupting the CFA TSTWCFA points
-                           ; to before this test's second execution.
-                           ; Confirmed via MAME: a crash jumping into
-                           ; invalid memory at TSTCBUF's own address,
-                           ; landing on WORD's own leftover length byte
-                           ; instead of the trampoline's real opcode.
-          STD  CODEHERE
-          LDA  #'T'
-          STA  TSTNAMEB
-          LDA  #'E'
-          STA  TSTNAMEB+1
-          LDA  #'S'
-          STA  TSTNAMEB+2
-          LDA  #'T'
-          STA  TSTNAMEB+3
-          LDA  #'W'
-          STA  TSTNAMEB+4
-          LDA  #'D'
-          STA  TSTNAMEB+5
-          LDD  #TSTNAMEB
-          STD  SRCADDR
-          LDD  #6
-          STD  SRCLEN
-          LDD  #0
-          STD  TOIN
-          LDD  #0
-          STD  STATE
+            LDD   #TSTCBUF2         ; BUG FIX: was TSTCBUF - WORD writes its
+                                    ; parsed-token output directly at CODEHERE
+                                    ; (see TSTCBUF2's own comment), which would
+                                    ; silently overwrite TESTWD's own already-
+                                    ; compiled trampoline still sitting at
+                                    ; TSTCBUF, corrupting the CFA TSTWCFA points
+                                    ; to before this test's second execution.
+                                    ; Confirmed via MAME: a crash jumping into
+                                    ; invalid memory at TSTCBUF's own address,
+                                    ; landing on WORD's own leftover length byte
+                                    ; instead of the trampoline's real opcode.
+            STD   CODEHERE
+            LDA   #'T'
+            STA   TSTNAMEB
+            LDA   #'E'
+            STA   TSTNAMEB+1
+            LDA   #'S'
+            STA   TSTNAMEB+2
+            LDA   #'T'
+            STA   TSTNAMEB+3
+            LDA   #'W'
+            STA   TSTNAMEB+4
+            LDA   #'D'
+            STA   TSTNAMEB+5
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #6
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
+            LDD   #0
+            STD   STATE
 
-          LDD  #99
-          PSHU D
-          JSR  TOW
+            LDD   #99
+            PSHU  D
+            JSR   TOW
 
-          LDD  TSTCSAV
-          STD  CODEHERE
-          LDD  TSTDSAV
-          STD  DPHERE
-          LDD  TSTVSAV
-          STD  VARHERE
-          LDD  TSTSASAV
-          STD  SRCADDR
-          LDD  TSTSLSAV
-          STD  SRCLEN
-          LDD  TSTTISAV
-          STD  TOIN
-          LDD  TSTSTSAV
-          STD  STATE
-          LDD  TSTLSAV
-          STD  LATEST
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTDSAV
+            STD   DPHERE
+            LDD   TSTVSAV
+            STD   VARHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTSTSAV
+            STD   STATE
+            LDD   TSTLSAV
+            STD   LATEST
 
-          LDD  #TSTGUARD
-          PSHU D
-          STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-          LDX  TSTWCFA
-          JSR  ,X
+            LDX   TSTWCFA
+            JSR   ,X
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          PULU D
-          CMPD #99
-          BNE  VTFAIL
-          PULU D
-          CMPD #TSTGUARD
-          BNE  VTFAIL
+            PULU  D
+            CMPD  #99
+            BNE   VTFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   VTFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #2
-          BNE  VTFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   VTFAIL
 
-          LDD  #TRUEV
-          BRA  VTDONE
-VTFAIL:   LDD  #FALSEV
-VTDONE:   LDX  #TSTVALTONAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   VTDONE
+VTFAIL:     LDD   #FALSEV
+VTDONE:     LDX   #TSTVALTONAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTVALTONAME: FCB  8
-              FCC  "TSTVALTO"
+TSTVALTONAME:
+            FCB   8
+            FCC   "TSTVALTO"
 
 ; ------------------------------------------------------------
 ; TSTDEFER1 - unit test for DEFER, default-action case. Compiles
@@ -8362,99 +8471,100 @@ TSTVALTONAME: FCB  8
 ; that CATCH's own depth-restoration contract holds - same
 ; pattern as the divide-by-zero tests in earlier sections.
 ; ------------------------------------------------------------
-TSTDEFER1: LDD  CODEHERE
-           STD  TSTCSAV
-           LDD  DPHERE
-           STD  TSTDSAV
-           LDD  VARHERE
-           STD  TSTVSAV
-           LDD  SRCADDR
-           STD  TSTSASAV
-           LDD  SRCLEN
-           STD  TSTSLSAV
-           LDD  TOIN
-           STD  TSTTISAV
-           LDD  LATEST
-           STD  TSTLSAV
+TSTDEFER1:  LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   DPHERE
+            STD   TSTDSAV
+            LDD   VARHERE
+            STD   TSTVSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   LATEST
+            STD   TSTLSAV
 
-           LDA  #'T'
-           STA  TSTNAMEB
-           LDA  #'E'
-           STA  TSTNAMEB+1
-           LDA  #'S'
-           STA  TSTNAMEB+2
-           LDA  #'T'
-           STA  TSTNAMEB+3
-           LDA  #'W'
-           STA  TSTNAMEB+4
-           LDA  #'D'
-           STA  TSTNAMEB+5
+            LDA   #'T'
+            STA   TSTNAMEB
+            LDA   #'E'
+            STA   TSTNAMEB+1
+            LDA   #'S'
+            STA   TSTNAMEB+2
+            LDA   #'T'
+            STA   TSTNAMEB+3
+            LDA   #'W'
+            STA   TSTNAMEB+4
+            LDA   #'D'
+            STA   TSTNAMEB+5
 
-           LDD  #TSTCBUF
-           STD  CODEHERE
-           LDD  #TSTDBUF
-           STD  DPHERE
-           LDD  #TSTVBUF
-           STD  VARHERE
-           LDD  #TSTNAMEB
-           STD  SRCADDR
-           LDD  #6
-           STD  SRCLEN
-           LDD  #0
-           STD  TOIN
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTDBUF
+            STD   DPHERE
+            LDD   #TSTVBUF
+            STD   VARHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #6
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-           LDD  CODEHERE
-           STD  TSTWCFA
+            LDD   CODEHERE
+            STD   TSTWCFA
 
-           JSR  DEFERW
+            JSR   DEFERW
 
-           LDD  TSTCSAV
-           STD  CODEHERE
-           LDD  TSTDSAV
-           STD  DPHERE
-           LDD  TSTVSAV
-           STD  VARHERE
-           LDD  TSTSASAV
-           STD  SRCADDR
-           LDD  TSTSLSAV
-           STD  SRCLEN
-           LDD  TSTTISAV
-           STD  TOIN
-           LDD  TSTLSAV
-           STD  LATEST
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTDSAV
+            STD   DPHERE
+            LDD   TSTVSAV
+            STD   VARHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTLSAV
+            STD   LATEST
 
-           STU  TSTU0
+            STU   TSTU0
 
-           LDX  TSTWCFA
-           PSHU X
-           STU  TSTUB4
+            LDX   TSTWCFA
+            PSHU  X
+            STU   TSTUB4
 
-           JSR  CATCH
+            JSR   CATCH
 
-           STU  TSTUAF
+            STU   TSTUAF
 
-           PULU D
-           CMPD #-21
-           BNE  DF1FAIL
+            PULU  D
+            CMPD  #-21
+            BNE   DF1FAIL
 
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #0
-           BNE  DF1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   DF1FAIL
 
-           LDD  #TRUEV
-           BRA  DF1DONE
-DF1FAIL:   LDD  #FALSEV
-DF1DONE:   LDX  #TSTDEF1NAME
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   DF1DONE
+DF1FAIL:    LDD   #FALSEV
+DF1DONE:    LDX   #TSTDEF1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDEF1NAME: FCB  9
-             FCC  "TSTDEFER1"
+TSTDEF1NAME:
+            FCB   9
+            FCC   "TSTDEFER1"
 
 ; ------------------------------------------------------------
 ; TSTDEFER2 - unit test for DEFER together with DEFER!/DEFER@.
@@ -8464,122 +8574,123 @@ TSTDEF1NAME: FCB  9
 ; needed), executes TESTWD (should now behave like DUP), then
 ; reads the target back via DEFER@ to confirm it matches.
 ; ------------------------------------------------------------
-TSTDEFER2: LDD  CODEHERE
-           STD  TSTCSAV
-           LDD  DPHERE
-           STD  TSTDSAV
-           LDD  VARHERE
-           STD  TSTVSAV
-           LDD  SRCADDR
-           STD  TSTSASAV
-           LDD  SRCLEN
-           STD  TSTSLSAV
-           LDD  TOIN
-           STD  TSTTISAV
-           LDD  LATEST
-           STD  TSTLSAV
+TSTDEFER2:  LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   DPHERE
+            STD   TSTDSAV
+            LDD   VARHERE
+            STD   TSTVSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   LATEST
+            STD   TSTLSAV
 
-           LDA  #'T'
-           STA  TSTNAMEB
-           LDA  #'E'
-           STA  TSTNAMEB+1
-           LDA  #'S'
-           STA  TSTNAMEB+2
-           LDA  #'T'
-           STA  TSTNAMEB+3
-           LDA  #'W'
-           STA  TSTNAMEB+4
-           LDA  #'D'
-           STA  TSTNAMEB+5
+            LDA   #'T'
+            STA   TSTNAMEB
+            LDA   #'E'
+            STA   TSTNAMEB+1
+            LDA   #'S'
+            STA   TSTNAMEB+2
+            LDA   #'T'
+            STA   TSTNAMEB+3
+            LDA   #'W'
+            STA   TSTNAMEB+4
+            LDA   #'D'
+            STA   TSTNAMEB+5
 
-           LDD  #TSTCBUF
-           STD  CODEHERE
-           LDD  #TSTDBUF
-           STD  DPHERE
-           LDD  #TSTVBUF
-           STD  VARHERE
-           LDD  #TSTNAMEB
-           STD  SRCADDR
-           LDD  #6
-           STD  SRCLEN
-           LDD  #0
-           STD  TOIN
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTDBUF
+            STD   DPHERE
+            LDD   #TSTVBUF
+            STD   VARHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #6
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-           LDD  CODEHERE
-           STD  TSTWCFA
+            LDD   CODEHERE
+            STD   TSTWCFA
 
-           JSR  DEFERW
+            JSR   DEFERW
 
-           LDD  TSTCSAV
-           STD  CODEHERE
-           LDD  TSTDSAV
-           STD  DPHERE
-           LDD  TSTVSAV
-           STD  VARHERE
-           LDD  TSTSASAV
-           STD  SRCADDR
-           LDD  TSTSLSAV
-           STD  SRCLEN
-           LDD  TSTTISAV
-           STD  TOIN
-           LDD  TSTLSAV
-           STD  LATEST
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTDSAV
+            STD   DPHERE
+            LDD   TSTVSAV
+            STD   VARHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTLSAV
+            STD   LATEST
 
-           LDD  #DUP
-           PSHU D
-           LDX  TSTWCFA
-           PSHU X
-           JSR  DEFERSTORE
+            LDD   #DUP
+            PSHU  D
+            LDX   TSTWCFA
+            PSHU  X
+            JSR   DEFERSTORE
 
-           STU  TSTU0
+            STU   TSTU0
 
-           LDD  #TSTGUARD
-           PSHU D
-           LDD  #TSTVAL1
-           PSHU D
-           STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-           LDX  TSTWCFA
-           JSR  ,X
+            LDX   TSTWCFA
+            JSR   ,X
 
-           STU  TSTUAF
+            STU   TSTUAF
 
-           PULU D
-           CMPD #TSTVAL1
-           BNE  DF2FAIL
-           PULU D
-           CMPD #TSTVAL1
-           BNE  DF2FAIL
-           PULU D
-           CMPD #TSTGUARD
-           BNE  DF2FAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   DF2FAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   DF2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DF2FAIL
 
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #2
-           BNE  DF2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   DF2FAIL
 
-           LDX  TSTWCFA
-           PSHU X
-           JSR  DEFERFETCH
+            LDX   TSTWCFA
+            PSHU  X
+            JSR   DEFERFETCH
 
-           PULU D
-           CMPD #DUP
-           BNE  DF2FAIL
+            PULU  D
+            CMPD  #DUP
+            BNE   DF2FAIL
 
-           LDD  #TRUEV
-           BRA  DF2DONE
-DF2FAIL:   LDD  #FALSEV
-DF2DONE:   LDX  #TSTDEF2NAME
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   DF2DONE
+DF2FAIL:    LDD   #FALSEV
+DF2DONE:    LDX   #TSTDEF2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTDEF2NAME: FCB  9
-             FCC  "TSTDEFER2"
+TSTDEF2NAME:
+            FCB   9
+            FCC   "TSTDEFER2"
 
 ; ------------------------------------------------------------
 ; TSTISOF - unit test for IS and ACTION-OF together. Compiles
@@ -8592,189 +8703,190 @@ TSTDEF2NAME: FCB  9
 ; and ACTION-OF, since both are documented to behave differently
 ; by STATE, same reasoning as TSTVALTO's own TO test.
 ; ------------------------------------------------------------
-TSTISOF: LDD   CODEHERE
-         STD   TSTCSAV
-         LDD   DPHERE
-         STD   TSTDSAV
-         LDD   VARHERE
-         STD   TSTVSAV
-         LDD   SRCADDR
-         STD   TSTSASAV
-         LDD   SRCLEN
-         STD   TSTSLSAV
-         LDD   TOIN
-         STD   TSTTISAV
-         LDD   STATE
-         STD   TSTSTSAV
-         LDD   LATEST
-         STD   TSTLSAV
+TSTISOF:    LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   DPHERE
+            STD   TSTDSAV
+            LDD   VARHERE
+            STD   TSTVSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   STATE
+            STD   TSTSTSAV
+            LDD   LATEST
+            STD   TSTLSAV
 
-         LDA   #'T'
-         STA   TSTNAMEB
-         LDA   #'E'
-         STA   TSTNAMEB+1
-         LDA   #'S'
-         STA   TSTNAMEB+2
-         LDA   #'T'
-         STA   TSTNAMEB+3
-         LDA   #'W'
-         STA   TSTNAMEB+4
-         LDA   #'D'
-         STA   TSTNAMEB+5
+            LDA   #'T'
+            STA   TSTNAMEB
+            LDA   #'E'
+            STA   TSTNAMEB+1
+            LDA   #'S'
+            STA   TSTNAMEB+2
+            LDA   #'T'
+            STA   TSTNAMEB+3
+            LDA   #'W'
+            STA   TSTNAMEB+4
+            LDA   #'D'
+            STA   TSTNAMEB+5
 
-         LDD   #TSTCBUF
-         STD   CODEHERE
-         LDD   #TSTDBUF
-         STD   DPHERE
-         LDD   #TSTVBUF
-         STD   VARHERE
-         LDD   #TSTNAMEB
-         STD   SRCADDR
-         LDD   #6
-         STD   SRCLEN
-         LDD   #0
-         STD   TOIN
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTDBUF
+            STD   DPHERE
+            LDD   #TSTVBUF
+            STD   VARHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #6
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-         LDD   CODEHERE
-         STD   TSTWCFA
+            LDD   CODEHERE
+            STD   TSTWCFA
 
-         JSR   DEFERW
+            JSR   DEFERW
 
-         LDD   TSTCSAV
-         STD   CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-         LDA   #'T'
-         STA   TSTNAMEB
-         LDA   #'E'
-         STA   TSTNAMEB+1
-         LDA   #'S'
-         STA   TSTNAMEB+2
-         LDA   #'T'
-         STA   TSTNAMEB+3
-         LDA   #'W'
-         STA   TSTNAMEB+4
-         LDA   #'D'
-         STA   TSTNAMEB+5
-         LDD   #TSTNAMEB
-         STD   SRCADDR
-         LDD   #6
-         STD   SRCLEN
-         LDD   #0
-         STD   TOIN
-         LDD   #0
-         STD   STATE
+            LDA   #'T'
+            STA   TSTNAMEB
+            LDA   #'E'
+            STA   TSTNAMEB+1
+            LDA   #'S'
+            STA   TSTNAMEB+2
+            LDA   #'T'
+            STA   TSTNAMEB+3
+            LDA   #'W'
+            STA   TSTNAMEB+4
+            LDA   #'D'
+            STA   TSTNAMEB+5
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #6
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
+            LDD   #0
+            STD   STATE
 
-         LDD   #TSTCBUF2  ; BUG FIX: this redirect was missing entirely
-                          ; - WORD writes its parsed-token output
-                          ; directly at CODEHERE regardless of STATE
-                          ; (see TSTCBUF2's own comment), so without
-                          ; this, ISW's own internal name-parse would
-                          ; write into the real, unredirected CODEHERE -
-                          ; unsafe during boot-time testing, before
-                          ; COLD has set it to anything meaningful. Not
-                          ; TSTCBUF specifically here (unlike TSTVALTO's
-                          ; TO-phase fix), since nothing in this phase
-                          ; needs TSTCBUF's own contents preserved yet -
-                          ; but using the same dedicated buffer
-                          ; throughout keeps every phase's redirect
-                          ; consistent and safe regardless of order.
-         STD   CODEHERE
+            LDD   #TSTCBUF2         ; BUG FIX: this redirect was missing entirely
+                                    ; - WORD writes its parsed-token output
+                                    ; directly at CODEHERE regardless of STATE
+                                    ; (see TSTCBUF2's own comment), so without
+                                    ; this, ISW's own internal name-parse would
+                                    ; write into the real, unredirected CODEHERE -
+                                    ; unsafe during boot-time testing, before
+                                    ; COLD has set it to anything meaningful. Not
+                                    ; TSTCBUF specifically here (unlike TSTVALTO's
+                                    ; TO-phase fix), since nothing in this phase
+                                    ; needs TSTCBUF's own contents preserved yet -
+                                    ; but using the same dedicated buffer
+                                    ; throughout keeps every phase's redirect
+                                    ; consistent and safe regardless of order.
+            STD   CODEHERE
 
-         LDD   #DUP
-         PSHU  D
-         JSR   ISW
+            LDD   #DUP
+            PSHU  D
+            JSR   ISW
 
-         STU   TSTU0
+            STU   TSTU0
 
-         LDD   #TSTGUARD
-         PSHU  D
-         LDD   #TSTVAL1
-         PSHU  D
-         STU   TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-         LDX   TSTWCFA
-         JSR   ,X
+            LDX   TSTWCFA
+            JSR   ,X
 
-         STU   TSTUAF
+            STU   TSTUAF
 
-         PULU  D
-         CMPD  #TSTVAL1
-         LBNE   ISFAIL  ; was BNE - out of short-branch range, since
-                        ; ISFAIL sits past this test's entire second
-                        ; phase (the ACTION-OF lookup and re-check)
-         PULU  D
-         CMPD  #TSTVAL1
-         BNE   ISFAIL
-         PULU  D
-         CMPD  #TSTGUARD
-         BNE   ISFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            LBNE  ISFAIL            ; was BNE - out of short-branch range, since
+                                    ; ISFAIL sits past this test's entire second
+                                    ; phase (the ACTION-OF lookup and re-check)
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   ISFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   ISFAIL
 
-         LDD   TSTUB4
-         SUBD  TSTUAF
-         CMPD  #2
-         BNE   ISFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   ISFAIL
 
-         LDA   #'T'
-         STA   TSTNAMEB
-         LDA   #'E'
-         STA   TSTNAMEB+1
-         LDA   #'S'
-         STA   TSTNAMEB+2
-         LDA   #'T'
-         STA   TSTNAMEB+3
-         LDA   #'W'
-         STA   TSTNAMEB+4
-         LDA   #'D'
-         STA   TSTNAMEB+5
-         LDD   #TSTNAMEB
-         STD   SRCADDR
-         LDD   #6
-         STD   SRCLEN
-         LDD   #0
-         STD   TOIN
+            LDA   #'T'
+            STA   TSTNAMEB
+            LDA   #'E'
+            STA   TSTNAMEB+1
+            LDA   #'S'
+            STA   TSTNAMEB+2
+            LDA   #'T'
+            STA   TSTNAMEB+3
+            LDA   #'W'
+            STA   TSTNAMEB+4
+            LDA   #'D'
+            STA   TSTNAMEB+5
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #6
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-         LDD   #TSTCBUF2  ; BUG FIX: same missing redirect as before
-                          ; ISW above - ACTIONOF's own internal WORD
-                          ; call needs somewhere safe to write its
-                          ; parsed-token output too.
-         STD   CODEHERE
+            LDD   #TSTCBUF2         ; BUG FIX: same missing redirect as before
+                                    ; ISW above - ACTIONOF's own internal WORD
+                                    ; call needs somewhere safe to write its
+                                    ; parsed-token output too.
+            STD   CODEHERE
 
-         JSR   ACTIONOF
+            JSR   ACTIONOF
 
-         LDD   TSTCSAV
-         STD   CODEHERE
-         LDD   TSTDSAV
-         STD   DPHERE
-         LDD   TSTVSAV
-         STD   VARHERE
-         LDD   TSTSASAV
-         STD   SRCADDR
-         LDD   TSTSLSAV
-         STD   SRCLEN
-         LDD   TSTTISAV
-         STD   TOIN
-         LDD   TSTSTSAV
-         STD   STATE
-         LDD   TSTLSAV
-         STD   LATEST
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTDSAV
+            STD   DPHERE
+            LDD   TSTVSAV
+            STD   VARHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTSTSAV
+            STD   STATE
+            LDD   TSTLSAV
+            STD   LATEST
 
-         PULU  D
-         CMPD  #DUP
-         BNE   ISFAIL
+            PULU  D
+            CMPD  #DUP
+            BNE   ISFAIL
 
-         LDD   #TRUEV
-         BRA   ISDONE
-ISFAIL:  LDD   #FALSEV
-ISDONE:  LDX   #TSTISOFNAME
-         PSHU  X
-         PSHU  D
-         JSR   TSTREPORT
+            LDD   #TRUEV
+            BRA   ISDONE
+ISFAIL:     LDD   #FALSEV
+ISDONE:     LDX   #TSTISOFNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU   TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTISOFNAME: FCB  7
-             FCC  "TSTISOF"
+TSTISOFNAME:
+            FCB   7
+            FCC   "TSTISOF"
 
 ; ------------------------------------------------------------
 ; TSTMARKER - unit test for MARKER. Compiles "MARKER TESTWD"
@@ -8800,157 +8912,158 @@ TSTISOFNAME: FCB  7
 ; second. Getting this order backwards would have corrupted the
 ; real dictionary pointers with scratch addresses.
 ; ------------------------------------------------------------
-TSTMARKER: LDD  CODEHERE
-           STD  TSTCSAV
-           LDD  DPHERE
-           STD  TSTDSAV
-           LDD  VARHERE
-           STD  TSTVSAV
-           LDD  SRCADDR
-           STD  TSTSASAV
-           LDD  SRCLEN
-           STD  TSTSLSAV
-           LDD  TOIN
-           STD  TSTTISAV
-           LDD  LATEST
-           STD  TSTLSAV
+TSTMARKER:  LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   DPHERE
+            STD   TSTDSAV
+            LDD   VARHERE
+            STD   TSTVSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   LATEST
+            STD   TSTLSAV
 
-           LDA  #'T'
-           STA  TSTNAMEB
-           LDA  #'E'
-           STA  TSTNAMEB+1
-           LDA  #'S'
-           STA  TSTNAMEB+2
-           LDA  #'T'
-           STA  TSTNAMEB+3
-           LDA  #'W'
-           STA  TSTNAMEB+4
-           LDA  #'D'
-           STA  TSTNAMEB+5
+            LDA   #'T'
+            STA   TSTNAMEB
+            LDA   #'E'
+            STA   TSTNAMEB+1
+            LDA   #'S'
+            STA   TSTNAMEB+2
+            LDA   #'T'
+            STA   TSTNAMEB+3
+            LDA   #'W'
+            STA   TSTNAMEB+4
+            LDA   #'D'
+            STA   TSTNAMEB+5
 
-           LDD  #TSTCBUF
-           STD  CODEHERE
-           LDD  #TSTDBUF
-           STD  DPHERE
-           LDD  #TSTVBUF
-           STD  VARHERE
-           LDD  #TSTNAMEB
-           STD  SRCADDR
-           LDD  #6
-           STD  SRCLEN
-           LDD  #0
-           STD  TOIN
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTDBUF
+            STD   DPHERE
+            LDD   #TSTVBUF
+            STD   VARHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #6
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-           LDD  CODEHERE
-           STD  TSTWCFA
+            LDD   CODEHERE
+            STD   TSTWCFA
 
-           JSR  MARKERW
+            JSR   MARKERW
 
-           LDD  SRCLEN
-           STD  TSTSLSAV
-           LDD  TOIN
-           STD  TSTTISAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
 
-           STU  TSTU0
+            STU   TSTU0
 
-           LDD  #TSTGUARD
-           PSHU D
-           STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-           LDD  CODEHERE
-           ADDD #30
-           STD  CODEHERE
-           LDD  DPHERE
-           ADDD #30
-           STD  DPHERE
-           LDD  VARHERE
-           ADDD #30
-           STD  VARHERE
-           LDD  #TSTFHDR
-           STD  LATEST
+            LDD   CODEHERE
+            ADDD  #30
+            STD   CODEHERE
+            LDD   DPHERE
+            ADDD  #30
+            STD   DPHERE
+            LDD   VARHERE
+            ADDD  #30
+            STD   VARHERE
+            LDD   #TSTFHDR
+            STD   LATEST
 
-           LDX  TSTWCFA
-           JSR  ,X
+            LDX   TSTWCFA
+            JSR   ,X
 
-           STU  TSTUAF
+            STU   TSTUAF
 
-           LDD  CODEHERE
-           STD  TSTCSAV2
-           LDD  DPHERE
-           STD  TSTDSAV2
-           LDD  VARHERE
-           STD  TSTVSAV2
-           LDD  LATEST
-           STD  TSTLSAV2
+            LDD   CODEHERE
+            STD   TSTCSAV2
+            LDD   DPHERE
+            STD   TSTDSAV2
+            LDD   VARHERE
+            STD   TSTVSAV2
+            LDD   LATEST
+            STD   TSTLSAV2
 
-           LDD  TSTCSAV
-           STD  CODEHERE
-           LDD  TSTDSAV
-           STD  DPHERE
-           LDD  TSTVSAV
-           STD  VARHERE
-           LDD  TSTSASAV
-           STD  SRCADDR
-           LDD  TSTSLSAV
-           STD  SRCLEN
-           LDD  TSTTISAV
-           STD  TOIN
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTDSAV
+            STD   DPHERE
+            LDD   TSTVSAV
+            STD   VARHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
 
-           PULU D
-           CMPD #TSTGUARD
-           BNE  MKFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   MKFAIL
 
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #0
-           BNE  MKFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   MKFAIL
 
-           LDD  TSTCSAV2  ; BUG FIX: was compared against TSTMKCOD, a
-           CMPD #TSTCBUF  ; captured snapshot of CODEHERE right AFTER
-                          ; MARKERW finished building its own header -
-                          ; wrong target. MARKER's own documented
-                          ; behavior is "forgets itself too" - traced
-                          ; MARKERW's own code and confirmed its
-                          ; snapshot (MKDP/MKCODE/MKVAR/MKLATEST) is
-                          ; taken at its very start, before HEADER or
-                          ; any compiling runs at all - so DOMARKER
-                          ; correctly restores to the state BEFORE the
-                          ; marker word itself was created (TSTCBUF
-                          ; directly), not the state right after. The
-                          ; real dictionary/compile mechanism was
-                          ; already working correctly; only this
-                          ; test's own comparison target was wrong.
-           BNE  MKFAIL
-           LDD  TSTDSAV2
-           CMPD #TSTDBUF
-           BNE  MKFAIL
-           LDD  TSTVSAV2
-           CMPD #TSTVBUF
-           BNE  MKFAIL
-           LDD  TSTLSAV2
-           CMPD TSTLSAV
-           BNE  MKFAIL
+            LDD   TSTCSAV2          ; BUG FIX: was compared against TSTMKCOD, a
+            CMPD  #TSTCBUF          ; captured snapshot of CODEHERE right AFTER
+                                    ; MARKERW finished building its own header -
+                                    ; wrong target. MARKER's own documented
+                                    ; behavior is "forgets itself too" - traced
+                                    ; MARKERW's own code and confirmed its
+                                    ; snapshot (MKDP/MKCODE/MKVAR/MKLATEST) is
+                                    ; taken at its very start, before HEADER or
+                                    ; any compiling runs at all - so DOMARKER
+                                    ; correctly restores to the state BEFORE the
+                                    ; marker word itself was created (TSTCBUF
+                                    ; directly), not the state right after. The
+                                    ; real dictionary/compile mechanism was
+                                    ; already working correctly; only this
+                                    ; test's own comparison target was wrong.
+            BNE   MKFAIL
+            LDD   TSTDSAV2
+            CMPD  #TSTDBUF
+            BNE   MKFAIL
+            LDD   TSTVSAV2
+            CMPD  #TSTVBUF
+            BNE   MKFAIL
+            LDD   TSTLSAV2
+            CMPD  TSTLSAV
+            BNE   MKFAIL
 
-           LDD  TSTLSAV
-           STD  LATEST
+            LDD   TSTLSAV
+            STD   LATEST
 
-           LDD  #TRUEV
-           BRA  MKDONE
-MKFAIL:    LDD  TSTLSAV
-           STD  LATEST
-           LDD  #FALSEV
-MKDONE:    LDX  #TSTMARKERNAME
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   MKDONE
+MKFAIL:     LDD   TSTLSAV
+            STD   LATEST
+            LDD   #FALSEV
+MKDONE:     LDX   #TSTMARKERNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTMARKERNAME: FCB  9
-               FCC  "TSTMARKER"
+TSTMARKERNAME:
+            FCB   9
+            FCC   "TSTMARKER"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTCOMPWORDS - compiling-words tests (glossary section 3.10,
@@ -8987,43 +9100,44 @@ TSTMARKERNAME: FCB  9
 ; ABORT itself uses (still deliberately untested, per section
 ; 3.1's own reasoning).
 ; ------------------------------------------------------------
-TSTCOMPWORDS: JSR CRW
-           LDX   #TSTCWMSG
-           PSHU  X
-           LDD   #9
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+TSTCOMPWORDS:
+            JSR   CRW
+            LDX   #TSTCWMSG
+            PSHU  X
+            LDD   #9
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-9  ; >>>>
+            IFEQ  TSTSELECTOR-9     ; >>>>
 
-           JSR   TSTIMMED
-           JSR   TSTSTATE
-           JSR   TSTBRACKETS
-           JSR   TSTTICK1
-           JSR   TSTTICK2
-           JSR   TSTCOMPCOMMA
-           JSR   TSTLITERAL
-           JSR   TSTBRACKTICK1
-           JSR   TSTBRACKTICK2
-           JSR   TSTPOSTPONE1
-           JSR   TSTPOSTPONE2
-           JSR   TSTXCOMPILE1
-           JSR   TSTXCOMPILE2
-           JSR   TSTTOBODY
-           JSR   TSTEXECUTE
-           JSR   TSTSLITERAL1
-           JSR   TSTSLITERAL2
-           JSR   TSTABORTQ1
-           JSR   TSTABORTQ2
+            JSR   TSTIMMED
+            JSR   TSTSTATE
+            JSR   TSTBRACKETS
+            JSR   TSTTICK1
+            JSR   TSTTICK2
+            JSR   TSTCOMPCOMMA
+            JSR   TSTLITERAL
+            JSR   TSTBRACKTICK1
+            JSR   TSTBRACKTICK2
+            JSR   TSTPOSTPONE1
+            JSR   TSTPOSTPONE2
+            JSR   TSTXCOMPILE1
+            JSR   TSTXCOMPILE2
+            JSR   TSTTOBODY
+            JSR   TSTEXECUTE
+            JSR   TSTSLITERAL1
+            JSR   TSTSLITERAL2
+            JSR   TSTABORTQ1
+            JSR   TSTABORTQ2
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTCWMSG: FCC "CompWords"
+TSTCWMSG:   FCC   "CompWords"
 
-           IFEQ TSTSELECTOR-9  ; >>>>
+            IFEQ  TSTSELECTOR-9     ; >>>>
 
 ; ------------------------------------------------------------
 ; Compiling-words test harness (glossary section 3.10). Reuses
@@ -9049,105 +9163,107 @@ TSTCWMSG: FCC "CompWords"
 ; confirmed a memory-only operation with no data-stack effect,
 ; so the guard check is the whole verification beyond that.
 ; ------------------------------------------------------------
-TSTIMMED: LDD  LATEST
-          STD  TSTLSAV
+TSTIMMED:   LDD   LATEST
+            STD   TSTLSAV
 
-          LDA  #3
-          STA  TSTFHDR
-          LDA  #'F'
-          STA  TSTFHDR+1
-          LDA  #'O'
-          STA  TSTFHDR+2
-          LDA  #'O'
-          STA  TSTFHDR+3
-          LDD  #0
-          STD  TSTFHDR+4
-          LDD  #DUP
-          STD  TSTFHDR+6
+            LDA   #3
+            STA   TSTFHDR
+            LDA   #'F'
+            STA   TSTFHDR+1
+            LDA   #'O'
+            STA   TSTFHDR+2
+            LDA   #'O'
+            STA   TSTFHDR+3
+            LDD   #0
+            STD   TSTFHDR+4
+            LDD   #DUP
+            STD   TSTFHDR+6
 
-          LDD  #TSTFHDR
-          STD  LATEST
+            LDD   #TSTFHDR
+            STD   LATEST
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  IMMEDIATE
+            JSR   IMMEDIATE
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          LDA  TSTFHDR
-          CMPA #$83
-          BNE  IMFAIL
+            LDA   TSTFHDR
+            CMPA  #$83
+            BNE   IMFAIL
 
-          PULU D
-          CMPD #TSTGUARD
-          BNE  IMFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   IMFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #0
-          BNE  IMFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   IMFAIL
 
-          LDD  #TRUEV
-          BRA  IMDONE
-IMFAIL:   LDD  #FALSEV
-IMDONE:   LDX  #TSTIMMEDNAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   IMDONE
+IMFAIL:     LDD   #FALSEV
+IMDONE:     LDX   #TSTIMMEDNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDD  TSTLSAV
-          STD  LATEST
+            LDD   TSTLSAV
+            STD   LATEST
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTIMMEDNAME: FCB  8
-              FCC  "TSTIMMED"
+TSTIMMEDNAME:
+            FCB   8
+            FCC   "TSTIMMED"
 
 ; ------------------------------------------------------------
 ; TSTSTATE - unit test for STATE. Verifies it pushes the address
 ; of the real STATE variable (a plain variable, per its own
 ; documented "( -- addr )" effect - not its current value).
 ; ------------------------------------------------------------
-TSTSTATE: STU  TSTU0
+TSTSTATE:   STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  STATEW
+            JSR   STATEW
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          PULU D
-          CMPD #STATE
-          BNE  STFAIL2
-          PULU D
-          CMPD #TSTGUARD
-          BNE  STFAIL2
+            PULU  D
+            CMPD  #STATE
+            BNE   STFAIL2
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   STFAIL2
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #2
-          BNE  STFAIL2
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   STFAIL2
 
-          LDD  #TRUEV
-          BRA  STDONE2
-STFAIL2:  LDD  #FALSEV
-STDONE2:  LDX  #TSTSTATENAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   STDONE2
+STFAIL2:    LDD   #FALSEV
+STDONE2:    LDX   #TSTSTATENAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTSTATENAME: FCB  8
-              FCC  "TSTSTATE"
+TSTSTATENAME:
+            FCB   8
+            FCC   "TSTSTATE"
 
 ; ------------------------------------------------------------
 ; TSTBRACKETS - unit test for [ and ] together. Verifies ]
@@ -9155,54 +9271,56 @@ TSTSTATENAME: FCB  8
 ; (interpreting) - both memory-only operations, no data-stack
 ; effect.
 ; ------------------------------------------------------------
-TSTBRACKETS: LDD  STATE
-             STD  TSTSTSAV
+TSTBRACKETS:
+            LDD   STATE
+            STD   TSTSTSAV
 
-             STU  TSTU0
+            STU   TSTU0
 
-             LDD  #TSTGUARD
-             PSHU D
-             STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-             JSR  RBRACKET
+            JSR   RBRACKET
 
-             LDD  STATE
-             CMPD #-1
-             BNE  BKFAIL
+            LDD   STATE
+            CMPD  #-1
+            BNE   BKFAIL
 
-             JSR  LBRACKET
+            JSR   LBRACKET
 
-             STU  TSTUAF
+            STU   TSTUAF
 
-             LDD  STATE
-             CMPD #0
-             BNE  BKFAIL
+            LDD   STATE
+            CMPD  #0
+            BNE   BKFAIL
 
-             PULU D
-             CMPD #TSTGUARD
-             BNE  BKFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   BKFAIL
 
-             LDD  TSTUB4
-             SUBD TSTUAF
-             CMPD #0
-             BNE  BKFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   BKFAIL
 
-             LDD  #TRUEV
-             BRA  BKDONE
-BKFAIL:      LDD  #FALSEV
-BKDONE:      LDX  #TSTBRACKETSNAME
-             PSHU X
-             PSHU D
-             JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   BKDONE
+BKFAIL:     LDD   #FALSEV
+BKDONE:     LDX   #TSTBRACKETSNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-             LDD  TSTSTSAV
-             STD  STATE
+            LDD   TSTSTSAV
+            STD   STATE
 
-             LDU  TSTU0
-             RTS
+            LDU   TSTU0
+            RTS
 
-TSTBRACKETSNAME: FCB  11
-                 FCC  "TSTBRACKETS"
+TSTBRACKETSNAME:
+            FCB   11
+            FCC   "TSTBRACKETS"
 
 ; ------------------------------------------------------------
 ; TSTTICK1 - unit test for ' (tick), found case. Builds a fake
@@ -9214,94 +9332,95 @@ TSTBRACKETSNAME: FCB  11
 ; earlier applies to any word that calls WORD, not just the
 ; defining words that originally surfaced it).
 ; ------------------------------------------------------------
-TSTTICK1: LDD  CODEHERE
-          STD  TSTCSAV
-          LDD  LATEST
-          STD  TSTLSAV
-          LDD  SRCADDR
-          STD  TSTSASAV
-          LDD  SRCLEN
-          STD  TSTSLSAV
-          LDD  TOIN
-          STD  TSTTISAV
+TSTTICK1:   LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   LATEST
+            STD   TSTLSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
 
-          LDA  #3
-          STA  TSTFHDR
-          LDA  #'F'
-          STA  TSTFHDR+1
-          LDA  #'O'
-          STA  TSTFHDR+2
-          LDA  #'O'
-          STA  TSTFHDR+3
-          LDD  #0
-          STD  TSTFHDR+4
-          LDD  #DUP
-          STD  TSTFHDR+6
+            LDA   #3
+            STA   TSTFHDR
+            LDA   #'F'
+            STA   TSTFHDR+1
+            LDA   #'O'
+            STA   TSTFHDR+2
+            LDA   #'O'
+            STA   TSTFHDR+3
+            LDD   #0
+            STD   TSTFHDR+4
+            LDD   #DUP
+            STD   TSTFHDR+6
 
-          LDA  #'F'
-          STA  TSTNAMEB
-          LDA  #'O'
-          STA  TSTNAMEB+1
-          LDA  #'O'
-          STA  TSTNAMEB+2
+            LDA   #'F'
+            STA   TSTNAMEB
+            LDA   #'O'
+            STA   TSTNAMEB+1
+            LDA   #'O'
+            STA   TSTNAMEB+2
 
-          LDD  #TSTCBUF
-          STD  CODEHERE
-          LDD  #TSTFHDR
-          STD  LATEST
-          LDD  #TSTNAMEB
-          STD  SRCADDR
-          LDD  #3
-          STD  SRCLEN
-          LDD  #0
-          STD  TOIN
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTFHDR
+            STD   LATEST
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #3
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  TICK
+            JSR   TICK
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          LDD  TSTCSAV
-          STD  CODEHERE
-          LDD  TSTLSAV
-          STD  LATEST
-          LDD  TSTSASAV
-          STD  SRCADDR
-          LDD  TSTSLSAV
-          STD  SRCLEN
-          LDD  TSTTISAV
-          STD  TOIN
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTLSAV
+            STD   LATEST
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
 
-          PULU D
-          CMPD #DUP
-          BNE  TK1FAIL
-          PULU D
-          CMPD #TSTGUARD
-          BNE  TK1FAIL
+            PULU  D
+            CMPD  #DUP
+            BNE   TK1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   TK1FAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #2
-          BNE  TK1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   TK1FAIL
 
-          LDD  #TRUEV
-          BRA  TK1DONE
-TK1FAIL:  LDD  #FALSEV
-TK1DONE:  LDX  #TSTTICK1NAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   TK1DONE
+TK1FAIL:    LDD   #FALSEV
+TK1DONE:    LDX   #TSTTICK1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTTICK1NAME: FCB  8
-              FCC  "TSTTICK1"
+TSTTICK1NAME:
+            FCB   8
+            FCC   "TSTTICK1"
 
 ; ------------------------------------------------------------
 ; TSTTICK2 - unit test for ' (tick), not-found case. Redirects
@@ -9309,78 +9428,79 @@ TSTTICK1NAME: FCB  8
 ; sentinel used throughout this ROM), so FIND has nothing to
 ; match. Verifies -13 via CATCH.
 ; ------------------------------------------------------------
-TSTTICK2: LDD  CODEHERE
-          STD  TSTCSAV
-          LDD  LATEST
-          STD  TSTLSAV
-          LDD  SRCADDR
-          STD  TSTSASAV
-          LDD  SRCLEN
-          STD  TSTSLSAV
-          LDD  TOIN
-          STD  TSTTISAV
+TSTTICK2:   LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   LATEST
+            STD   TSTLSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
 
-          LDA  #'F'
-          STA  TSTNAMEB
-          LDA  #'O'
-          STA  TSTNAMEB+1
-          LDA  #'O'
-          STA  TSTNAMEB+2
+            LDA   #'F'
+            STA   TSTNAMEB
+            LDA   #'O'
+            STA   TSTNAMEB+1
+            LDA   #'O'
+            STA   TSTNAMEB+2
 
-          LDD  #TSTCBUF
-          STD  CODEHERE
-          LDD  #0
-          STD  LATEST
-          LDD  #TSTNAMEB
-          STD  SRCADDR
-          LDD  #3
-          STD  SRCLEN
-          LDD  #0
-          STD  TOIN
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #0
+            STD   LATEST
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #3
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDX  #TICK
-          PSHU X
-          STU  TSTUB4
+            LDX   #TICK
+            PSHU  X
+            STU   TSTUB4
 
-          JSR  CATCH
+            JSR   CATCH
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          LDD  TSTCSAV
-          STD  CODEHERE
-          LDD  TSTLSAV
-          STD  LATEST
-          LDD  TSTSASAV
-          STD  SRCADDR
-          LDD  TSTSLSAV
-          STD  SRCLEN
-          LDD  TSTTISAV
-          STD  TOIN
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTLSAV
+            STD   LATEST
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
 
-          PULU D
-          CMPD #-13
-          BNE  TK2FAIL
+            PULU  D
+            CMPD  #-13
+            BNE   TK2FAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #0
-          BNE  TK2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   TK2FAIL
 
-          LDD  #TRUEV
-          BRA  TK2DONE
-TK2FAIL:  LDD  #FALSEV
-TK2DONE:  LDX  #TSTTICK2NAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   TK2DONE
+TK2FAIL:    LDD   #FALSEV
+TK2DONE:    LDX   #TSTTICK2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTTICK2NAME: FCB  8
-              FCC  "TSTTICK2"
+TSTTICK2NAME:
+            FCB   8
+            FCC   "TSTTICK2"
 
 ; ------------------------------------------------------------
 ; TSTCOMPCOMMA - unit test for COMPILE,. Compiles a call to
@@ -9388,64 +9508,65 @@ TSTTICK2NAME: FCB  8
 ; known value to confirm it genuinely behaves like DUP - not
 ; just that some bytes were written.
 ; ------------------------------------------------------------
-TSTCOMPCOMMA: LDD  CODEHERE
-              STD  TSTCSAV
+TSTCOMPCOMMA:
+            LDD   CODEHERE
+            STD   TSTCSAV
 
-              LDD  #TSTCBUF
-              STD  CODEHERE
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-              LDD  #DUP
-              PSHU D
-              JSR  COMPILECOMMA
+            LDD   #DUP
+            PSHU  D
+            JSR   COMPILECOMMA
 
-              LDD  #OPRTS
-              PSHU D
-              JSR  CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-              LDD  TSTCSAV
-              STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-              STU  TSTU0
+            STU   TSTU0
 
-              LDD  #TSTGUARD
-              PSHU D
-              LDD  #TSTVAL1
-              PSHU D
-              STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            STU   TSTUB4
 
-              LDX  #TSTCBUF
-              JSR  ,X
+            LDX   #TSTCBUF
+            JSR   ,X
 
-              STU  TSTUAF
+            STU   TSTUAF
 
-              PULU D
-              CMPD #TSTVAL1
-              BNE  CCFAIL
-              PULU D
-              CMPD #TSTVAL1
-              BNE  CCFAIL
-              PULU D
-              CMPD #TSTGUARD
-              BNE  CCFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   CCFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   CCFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   CCFAIL
 
-              LDD  TSTUB4
-              SUBD TSTUAF
-              CMPD #2
-              BNE  CCFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   CCFAIL
 
-              LDD  #TRUEV
-              BRA  CCDONE
-CCFAIL:       LDD  #FALSEV
-CCDONE:       LDX  #TSTCCNAME
-              PSHU X
-              PSHU D
-              JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   CCDONE
+CCFAIL:     LDD   #FALSEV
+CCDONE:     LDX   #TSTCCNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-              LDU  TSTU0
-              RTS
+            LDU   TSTU0
+            RTS
 
-TSTCCNAME: FCB  12
-           FCC  "TSTCOMPCOMMA"
+TSTCCNAME:  FCB   12
+            FCC   "TSTCOMPCOMMA"
 
 ; ------------------------------------------------------------
 ; TSTLITERAL - unit test for LITERAL. Already used extensively
@@ -9454,59 +9575,59 @@ TSTCCNAME: FCB  12
 ; section's own coverage. Compiles a known value as a literal,
 ; then executes the result to confirm it genuinely pushes it.
 ; ------------------------------------------------------------
-TSTLITERAL: LDD  CODEHERE
-            STD  TSTCSAV
+TSTLITERAL: LDD   CODEHERE
+            STD   TSTCSAV
 
-            LDD  #TSTCBUF
-            STD  CODEHERE
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-            LDD  #TSTVAL1
-            PSHU D
-            JSR  LITERALW
+            LDD   #TSTVAL1
+            PSHU  D
+            JSR   LITERALW
 
-            LDD  #OPRTS
-            PSHU D
-            JSR  CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-            LDD  TSTCSAV
-            STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-            STU  TSTU0
+            STU   TSTU0
 
-            LDD  #TSTGUARD
-            PSHU D
-            STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-            LDX  #TSTCBUF
-            JSR  ,X
+            LDX   #TSTCBUF
+            JSR   ,X
 
-            STU  TSTUAF
+            STU   TSTUAF
 
-            PULU D
-            CMPD #TSTVAL1
-            BNE  LIFAIL
-            PULU D
-            CMPD #TSTGUARD
-            BNE  LIFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   LIFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   LIFAIL
 
-            LDD  TSTUB4
-            SUBD TSTUAF
-            CMPD #2
-            BNE  LIFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   LIFAIL
 
-            LDD  #TRUEV
-            BRA  LIDONE
-LIFAIL:     LDD  #FALSEV
-LIDONE:     LDX  #TSTLITNAME
-            PSHU X
-            PSHU D
-            JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   LIDONE
+LIFAIL:     LDD   #FALSEV
+LIDONE:     LDX   #TSTLITNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-            LDU  TSTU0
+            LDU   TSTU0
             RTS
 
-TSTLITNAME: FCB  10
-            FCC  "TSTLITERAL"
+TSTLITNAME: FCB   10
+            FCC   "TSTLITERAL"
 
 ; ------------------------------------------------------------
 ; TSTBRACKTICK1 - unit test for ['], compiling-state case.
@@ -9516,190 +9637,192 @@ TSTLITNAME: FCB  10
 ; its xt via ['], then executes the result to confirm it
 ; genuinely pushes DUP's own xt.
 ; ------------------------------------------------------------
-TSTBRACKTICK1: LDD  CODEHERE
-               STD  TSTCSAV
-               LDD  LATEST
-               STD  TSTLSAV
-               LDD  SRCADDR
-               STD  TSTSASAV
-               LDD  SRCLEN
-               STD  TSTSLSAV
-               LDD  TOIN
-               STD  TSTTISAV
-               LDD  STATE
-               STD  TSTSTSAV
+TSTBRACKTICK1:
+            LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   LATEST
+            STD   TSTLSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   STATE
+            STD   TSTSTSAV
 
-               LDA  #3
-               STA  TSTFHDR
-               LDA  #'F'
-               STA  TSTFHDR+1
-               LDA  #'O'
-               STA  TSTFHDR+2
-               LDA  #'O'
-               STA  TSTFHDR+3
-               LDD  #0
-               STD  TSTFHDR+4
-               LDD  #DUP
-               STD  TSTFHDR+6
+            LDA   #3
+            STA   TSTFHDR
+            LDA   #'F'
+            STA   TSTFHDR+1
+            LDA   #'O'
+            STA   TSTFHDR+2
+            LDA   #'O'
+            STA   TSTFHDR+3
+            LDD   #0
+            STD   TSTFHDR+4
+            LDD   #DUP
+            STD   TSTFHDR+6
 
-               LDA  #'F'
-               STA  TSTNAMEB
-               LDA  #'O'
-               STA  TSTNAMEB+1
-               LDA  #'O'
-               STA  TSTNAMEB+2
+            LDA   #'F'
+            STA   TSTNAMEB
+            LDA   #'O'
+            STA   TSTNAMEB+1
+            LDA   #'O'
+            STA   TSTNAMEB+2
 
-               LDD  #TSTCBUF
-               STD  CODEHERE
-               LDD  #TSTFHDR
-               STD  LATEST
-               LDD  #TSTNAMEB
-               STD  SRCADDR
-               LDD  #3
-               STD  SRCLEN
-               LDD  #0
-               STD  TOIN
-               LDD  #-1
-               STD  STATE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTFHDR
+            STD   LATEST
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #3
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
+            LDD   #-1
+            STD   STATE
 
-               JSR  BRACKTICK
+            JSR   BRACKTICK
 
-               LDD  #OPRTS
-               PSHU D
-               JSR  CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-               LDD  TSTCSAV
-               STD  CODEHERE
-               LDD  TSTLSAV
-               STD  LATEST
-               LDD  TSTSASAV
-               STD  SRCADDR
-               LDD  TSTSLSAV
-               STD  SRCLEN
-               LDD  TSTTISAV
-               STD  TOIN
-               LDD  TSTSTSAV
-               STD  STATE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTLSAV
+            STD   LATEST
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTSTSAV
+            STD   STATE
 
-               STU  TSTU0
+            STU   TSTU0
 
-               LDD  #TSTGUARD
-               PSHU D
-               STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-               LDX  #TSTCBUF
-               JSR  ,X
+            LDX   #TSTCBUF
+            JSR   ,X
 
-               STU  TSTUAF
+            STU   TSTUAF
 
-               PULU D
-               CMPD #DUP
-               BNE  BT1FAIL
-               PULU D
-               CMPD #TSTGUARD
-               BNE  BT1FAIL
+            PULU  D
+            CMPD  #DUP
+            BNE   BT1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   BT1FAIL
 
-               LDD  TSTUB4
-               SUBD TSTUAF
-               CMPD #2
-               BNE  BT1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   BT1FAIL
 
-               LDD  #TRUEV
-               BRA  BT1DONE
-BT1FAIL:       LDD  #FALSEV
-BT1DONE:       LDX  #TSTBT1NAME
-               PSHU X
-               PSHU D
-               JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   BT1DONE
+BT1FAIL:    LDD   #FALSEV
+BT1DONE:    LDX   #TSTBT1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-               LDU  TSTU0
-               RTS
+            LDU   TSTU0
+            RTS
 
-TSTBT1NAME: FCB  13
-            FCC  "TSTBRACKTICK1"
+TSTBT1NAME: FCB   13
+            FCC   "TSTBRACKTICK1"
 
 ; ------------------------------------------------------------
 ; TSTBRACKTICK2 - unit test for ['], interpreting-state case.
 ; STATE=0, verifies -14 via CATCH.
 ; ------------------------------------------------------------
-TSTBRACKTICK2: LDD  CODEHERE
-               STD  TSTCSAV
-               LDD  LATEST
-               STD  TSTLSAV
-               LDD  SRCADDR
-               STD  TSTSASAV
-               LDD  SRCLEN
-               STD  TSTSLSAV
-               LDD  TOIN
-               STD  TSTTISAV
-               LDD  STATE
-               STD  TSTSTSAV
+TSTBRACKTICK2:
+            LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   LATEST
+            STD   TSTLSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   STATE
+            STD   TSTSTSAV
 
-               LDA  #'F'
-               STA  TSTNAMEB
-               LDA  #'O'
-               STA  TSTNAMEB+1
-               LDA  #'O'
-               STA  TSTNAMEB+2
+            LDA   #'F'
+            STA   TSTNAMEB
+            LDA   #'O'
+            STA   TSTNAMEB+1
+            LDA   #'O'
+            STA   TSTNAMEB+2
 
-               LDD  #TSTCBUF
-               STD  CODEHERE
-               LDD  #TSTFHDR
-               STD  LATEST
-               LDD  #TSTNAMEB
-               STD  SRCADDR
-               LDD  #3
-               STD  SRCLEN
-               LDD  #0
-               STD  TOIN
-               LDD  #0
-               STD  STATE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTFHDR
+            STD   LATEST
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #3
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
+            LDD   #0
+            STD   STATE
 
-               STU  TSTU0
+            STU   TSTU0
 
-               LDX  #BRACKTICK
-               PSHU X
-               STU  TSTUB4
+            LDX   #BRACKTICK
+            PSHU  X
+            STU   TSTUB4
 
-               JSR  CATCH
+            JSR   CATCH
 
-               STU  TSTUAF
+            STU   TSTUAF
 
-               LDD  TSTCSAV
-               STD  CODEHERE
-               LDD  TSTLSAV
-               STD  LATEST
-               LDD  TSTSASAV
-               STD  SRCADDR
-               LDD  TSTSLSAV
-               STD  SRCLEN
-               LDD  TSTTISAV
-               STD  TOIN
-               LDD  TSTSTSAV
-               STD  STATE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTLSAV
+            STD   LATEST
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTSTSAV
+            STD   STATE
 
-               PULU D
-               CMPD #-14
-               BNE  BT2FAIL
+            PULU  D
+            CMPD  #-14
+            BNE   BT2FAIL
 
-               LDD  TSTUB4
-               SUBD TSTUAF
-               CMPD #0
-               BNE  BT2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   BT2FAIL
 
-               LDD  #TRUEV
-               BRA  BT2DONE
-BT2FAIL:       LDD  #FALSEV
-BT2DONE:       LDX  #TSTBT2NAME
-               PSHU X
-               PSHU D
-               JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   BT2DONE
+BT2FAIL:    LDD   #FALSEV
+BT2DONE:    LDX   #TSTBT2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-               LDU  TSTU0
-               RTS
+            LDU   TSTU0
+            RTS
 
-TSTBT2NAME: FCB  13
-            FCC  "TSTBRACKTICK2"
+TSTBT2NAME: FCB   13
+            FCC   "TSTBRACKTICK2"
 
 ; ------------------------------------------------------------
 ; TSTPOSTPONE1 - unit test for POSTPONE, normal (non-immediate)
@@ -9718,115 +9841,116 @@ TSTBT2NAME: FCB  13
 ; compiled byte sequence directly - still a meaningful,
 ; unambiguous check of POSTPONE's own documented mechanism.
 ; ------------------------------------------------------------
-TSTPOSTPONE1: LDD  CODEHERE
-              STD  TSTCSAV
-              LDD  LATEST
-              STD  TSTLSAV
-              LDD  SRCADDR
-              STD  TSTSASAV
-              LDD  SRCLEN
-              STD  TSTSLSAV
-              LDD  TOIN
-              STD  TSTTISAV
-              LDD  STATE
-              STD  TSTSTSAV
+TSTPOSTPONE1:
+            LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   LATEST
+            STD   TSTLSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   STATE
+            STD   TSTSTSAV
 
-              LDA  #3
-              STA  TSTFHDR
-              LDA  #'F'
-              STA  TSTFHDR+1
-              LDA  #'O'
-              STA  TSTFHDR+2
-              LDA  #'O'
-              STA  TSTFHDR+3
-              LDD  #0
-              STD  TSTFHDR+4
-              LDD  #DUP
-              STD  TSTFHDR+6
+            LDA   #3
+            STA   TSTFHDR
+            LDA   #'F'
+            STA   TSTFHDR+1
+            LDA   #'O'
+            STA   TSTFHDR+2
+            LDA   #'O'
+            STA   TSTFHDR+3
+            LDD   #0
+            STD   TSTFHDR+4
+            LDD   #DUP
+            STD   TSTFHDR+6
 
-              LDA  #'F'
-              STA  TSTNAMEB
-              LDA  #'O'
-              STA  TSTNAMEB+1
-              LDA  #'O'
-              STA  TSTNAMEB+2
+            LDA   #'F'
+            STA   TSTNAMEB
+            LDA   #'O'
+            STA   TSTNAMEB+1
+            LDA   #'O'
+            STA   TSTNAMEB+2
 
-              LDD  #TSTCBUF
-              STD  CODEHERE
-              LDD  #TSTFHDR
-              STD  LATEST
-              LDD  #TSTNAMEB
-              STD  SRCADDR
-              LDD  #3
-              STD  SRCLEN
-              LDD  #0
-              STD  TOIN
-              LDD  #-1
-              STD  STATE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTFHDR
+            STD   LATEST
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #3
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
+            LDD   #-1
+            STD   STATE
 
-              STU  TSTU0
+            STU   TSTU0
 
-              LDD  #TSTGUARD
-              PSHU D
-              STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-              JSR  POSTPONEW
+            JSR   POSTPONEW
 
-              STU  TSTUAF
+            STU   TSTUAF
 
-              LDD  TSTCSAV
-              STD  CODEHERE
-              LDD  TSTLSAV
-              STD  LATEST
-              LDD  TSTSASAV
-              STD  SRCADDR
-              LDD  TSTSLSAV
-              STD  SRCLEN
-              LDD  TSTTISAV
-              STD  TOIN
-              LDD  TSTSTSAV
-              STD  STATE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTLSAV
+            STD   LATEST
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTSTSAV
+            STD   STATE
 
-              PULU D
-              CMPD #TSTGUARD
-              BNE  PP1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   PP1FAIL
 
-              LDD  TSTUB4
-              SUBD TSTUAF
-              CMPD #0
-              BNE  PP1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   PP1FAIL
 
-              LDX  #TSTCBUF
+            LDX   #TSTCBUF
 
-              LDA  ,X
-              CMPA #OPJSR
-              BNE  PP1FAIL
-              LDD  1,X
-              CMPD #LIT
-              BNE  PP1FAIL
-              LDD  3,X
-              CMPD #DUP
-              BNE  PP1FAIL
-              LDA  5,X
-              CMPA #OPJSR
-              BNE  PP1FAIL
-              LDD  6,X
-              CMPD #COMPILECOMMA
-              BNE  PP1FAIL
+            LDA   ,X
+            CMPA  #OPJSR
+            BNE   PP1FAIL
+            LDD   1,X
+            CMPD  #LIT
+            BNE   PP1FAIL
+            LDD   3,X
+            CMPD  #DUP
+            BNE   PP1FAIL
+            LDA   5,X
+            CMPA  #OPJSR
+            BNE   PP1FAIL
+            LDD   6,X
+            CMPD  #COMPILECOMMA
+            BNE   PP1FAIL
 
-              LDD  #TRUEV
-              BRA  PP1DONE
-PP1FAIL:      LDD  #FALSEV
-PP1DONE:      LDX  #TSTPP1NAME
-              PSHU X
-              PSHU D
-              JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   PP1DONE
+PP1FAIL:    LDD   #FALSEV
+PP1DONE:    LDX   #TSTPP1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-              LDU  TSTU0
-              RTS
+            LDU   TSTU0
+            RTS
 
-TSTPP1NAME: FCB  12
-            FCC  "TSTPOSTPONE1"
+TSTPP1NAME: FCB   12
+            FCC   "TSTPOSTPONE1"
 
 ; ------------------------------------------------------------
 ; TSTPOSTPONE2 - unit test for POSTPONE, immediate word case.
@@ -9837,106 +9961,107 @@ TSTPP1NAME: FCB  12
 ; compiles a direct call to it - simpler to verify than the
 ; normal-word case, no second level involved.
 ; ------------------------------------------------------------
-TSTPOSTPONE2: LDD  CODEHERE
-              STD  TSTCSAV
-              LDD  LATEST
-              STD  TSTLSAV
-              LDD  SRCADDR
-              STD  TSTSASAV
-              LDD  SRCLEN
-              STD  TSTSLSAV
-              LDD  TOIN
-              STD  TSTTISAV
-              LDD  STATE
-              STD  TSTSTSAV
+TSTPOSTPONE2:
+            LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   LATEST
+            STD   TSTLSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   STATE
+            STD   TSTSTSAV
 
-              LDA  #$83
-              STA  TSTFHDR
-              LDA  #'F'
-              STA  TSTFHDR+1
-              LDA  #'O'
-              STA  TSTFHDR+2
-              LDA  #'O'
-              STA  TSTFHDR+3
-              LDD  #0
-              STD  TSTFHDR+4
-              LDD  #SPACEW
-              STD  TSTFHDR+6
+            LDA   #$83
+            STA   TSTFHDR
+            LDA   #'F'
+            STA   TSTFHDR+1
+            LDA   #'O'
+            STA   TSTFHDR+2
+            LDA   #'O'
+            STA   TSTFHDR+3
+            LDD   #0
+            STD   TSTFHDR+4
+            LDD   #SPACEW
+            STD   TSTFHDR+6
 
-              LDA  #'F'
-              STA  TSTNAMEB
-              LDA  #'O'
-              STA  TSTNAMEB+1
-              LDA  #'O'
-              STA  TSTNAMEB+2
+            LDA   #'F'
+            STA   TSTNAMEB
+            LDA   #'O'
+            STA   TSTNAMEB+1
+            LDA   #'O'
+            STA   TSTNAMEB+2
 
-              LDD  #TSTCBUF
-              STD  CODEHERE
-              LDD  #TSTFHDR
-              STD  LATEST
-              LDD  #TSTNAMEB
-              STD  SRCADDR
-              LDD  #3
-              STD  SRCLEN
-              LDD  #0
-              STD  TOIN
-              LDD  #-1
-              STD  STATE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTFHDR
+            STD   LATEST
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #3
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
+            LDD   #-1
+            STD   STATE
 
-              STU  TSTU0
+            STU   TSTU0
 
-              LDD  #TSTGUARD
-              PSHU D
-              STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-              JSR  POSTPONEW
+            JSR   POSTPONEW
 
-              STU  TSTUAF
+            STU   TSTUAF
 
-              LDD  TSTCSAV
-              STD  CODEHERE
-              LDD  TSTLSAV
-              STD  LATEST
-              LDD  TSTSASAV
-              STD  SRCADDR
-              LDD  TSTSLSAV
-              STD  SRCLEN
-              LDD  TSTTISAV
-              STD  TOIN
-              LDD  TSTSTSAV
-              STD  STATE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTLSAV
+            STD   LATEST
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTSTSAV
+            STD   STATE
 
-              PULU D
-              CMPD #TSTGUARD
-              BNE  PP2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   PP2FAIL
 
-              LDD  TSTUB4
-              SUBD TSTUAF
-              CMPD #0
-              BNE  PP2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   PP2FAIL
 
-              LDX  #TSTCBUF
+            LDX   #TSTCBUF
 
-              LDA  ,X
-              CMPA #OPJSR
-              BNE  PP2FAIL
-              LDD  1,X
-              CMPD #SPACEW
-              BNE  PP2FAIL
+            LDA   ,X
+            CMPA  #OPJSR
+            BNE   PP2FAIL
+            LDD   1,X
+            CMPD  #SPACEW
+            BNE   PP2FAIL
 
-              LDD  #TRUEV
-              BRA  PP2DONE
-PP2FAIL:      LDD  #FALSEV
-PP2DONE:      LDX  #TSTPP2NAME
-              PSHU X
-              PSHU D
-              JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   PP2DONE
+PP2FAIL:    LDD   #FALSEV
+PP2DONE:    LDX   #TSTPP2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-              LDU  TSTU0
-              RTS
+            LDU   TSTU0
+            RTS
 
-TSTPP2NAME: FCB  12
-            FCC  "TSTPOSTPONE2"
+TSTPP2NAME: FCB   12
+            FCC   "TSTPOSTPONE2"
 
 ; ------------------------------------------------------------
 ; TSTXCOMPILE1 - unit test for [COMPILE], normal (non-immediate)
@@ -9956,106 +10081,107 @@ TSTPP2NAME: FCB  12
 ; user-defined IMMEDIATE word, and IF, which is the ordinary case
 ; this implementation handles correctly either way).
 ; ------------------------------------------------------------
-TSTXCOMPILE1: LDD  CODEHERE
-              STD  TSTCSAV
-              LDD  LATEST
-              STD  TSTLSAV
-              LDD  SRCADDR
-              STD  TSTSASAV
-              LDD  SRCLEN
-              STD  TSTSLSAV
-              LDD  TOIN
-              STD  TSTTISAV
-              LDD  STATE
-              STD  TSTSTSAV
+TSTXCOMPILE1:
+            LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   LATEST
+            STD   TSTLSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   STATE
+            STD   TSTSTSAV
 
-              LDA  #3
-              STA  TSTFHDR
-              LDA  #'F'
-              STA  TSTFHDR+1
-              LDA  #'O'
-              STA  TSTFHDR+2
-              LDA  #'O'
-              STA  TSTFHDR+3
-              LDD  #0
-              STD  TSTFHDR+4
-              LDD  #DUP
-              STD  TSTFHDR+6
+            LDA   #3
+            STA   TSTFHDR
+            LDA   #'F'
+            STA   TSTFHDR+1
+            LDA   #'O'
+            STA   TSTFHDR+2
+            LDA   #'O'
+            STA   TSTFHDR+3
+            LDD   #0
+            STD   TSTFHDR+4
+            LDD   #DUP
+            STD   TSTFHDR+6
 
-              LDA  #'F'
-              STA  TSTNAMEB
-              LDA  #'O'
-              STA  TSTNAMEB+1
-              LDA  #'O'
-              STA  TSTNAMEB+2
+            LDA   #'F'
+            STA   TSTNAMEB
+            LDA   #'O'
+            STA   TSTNAMEB+1
+            LDA   #'O'
+            STA   TSTNAMEB+2
 
-              LDD  #TSTCBUF
-              STD  CODEHERE
-              LDD  #TSTFHDR
-              STD  LATEST
-              LDD  #TSTNAMEB
-              STD  SRCADDR
-              LDD  #3
-              STD  SRCLEN
-              LDD  #0
-              STD  TOIN
-              LDD  #-1
-              STD  STATE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTFHDR
+            STD   LATEST
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #3
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
+            LDD   #-1
+            STD   STATE
 
-              STU  TSTU0
+            STU   TSTU0
 
-              LDD  #TSTGUARD
-              PSHU D
-              STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-              JSR  XCOMPILE
+            JSR   XCOMPILE
 
-              STU  TSTUAF
+            STU   TSTUAF
 
-              LDD  TSTCSAV
-              STD  CODEHERE
-              LDD  TSTLSAV
-              STD  LATEST
-              LDD  TSTSASAV
-              STD  SRCADDR
-              LDD  TSTSLSAV
-              STD  SRCLEN
-              LDD  TSTTISAV
-              STD  TOIN
-              LDD  TSTSTSAV
-              STD  STATE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTLSAV
+            STD   LATEST
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTSTSAV
+            STD   STATE
 
-              PULU D
-              CMPD #TSTGUARD
-              BNE  XC1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   XC1FAIL
 
-              LDD  TSTUB4
-              SUBD TSTUAF
-              CMPD #0
-              BNE  XC1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   XC1FAIL
 
-              LDX  #TSTCBUF
+            LDX   #TSTCBUF
 
-              LDA  ,X
-              CMPA #OPJSR
-              BNE  XC1FAIL
-              LDD  1,X
-              CMPD #DUP
-              BNE  XC1FAIL
+            LDA   ,X
+            CMPA  #OPJSR
+            BNE   XC1FAIL
+            LDD   1,X
+            CMPD  #DUP
+            BNE   XC1FAIL
 
-              LDD  #TRUEV
-              BRA  XC1DONE
-XC1FAIL:      LDD  #FALSEV
-XC1DONE:      LDX  #TSTXC1NAME
-              PSHU X
-              PSHU D
-              JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   XC1DONE
+XC1FAIL:    LDD   #FALSEV
+XC1DONE:    LDX   #TSTXC1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-              LDU  TSTU0
-              RTS
+            LDU   TSTU0
+            RTS
 
-TSTXC1NAME: FCB  13
-            FCC  "TSTXCOMPILE1"
+TSTXC1NAME: FCB   13
+            FCC   "TSTXCOMPILE1"
 
 ; ------------------------------------------------------------
 ; TSTXCOMPILE2 - unit test for [COMPILE], immediate word case.
@@ -10065,106 +10191,107 @@ TSTXC1NAME: FCB  13
 ; word above - i.e. that it genuinely ignores FIND's immediate
 ; flag entirely, unlike POSTPONE.
 ; ------------------------------------------------------------
-TSTXCOMPILE2: LDD  CODEHERE
-              STD  TSTCSAV
-              LDD  LATEST
-              STD  TSTLSAV
-              LDD  SRCADDR
-              STD  TSTSASAV
-              LDD  SRCLEN
-              STD  TSTSLSAV
-              LDD  TOIN
-              STD  TSTTISAV
-              LDD  STATE
-              STD  TSTSTSAV
+TSTXCOMPILE2:
+            LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   LATEST
+            STD   TSTLSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   STATE
+            STD   TSTSTSAV
 
-              LDA  #$83
-              STA  TSTFHDR
-              LDA  #'F'
-              STA  TSTFHDR+1
-              LDA  #'O'
-              STA  TSTFHDR+2
-              LDA  #'O'
-              STA  TSTFHDR+3
-              LDD  #0
-              STD  TSTFHDR+4
-              LDD  #SPACEW
-              STD  TSTFHDR+6
+            LDA   #$83
+            STA   TSTFHDR
+            LDA   #'F'
+            STA   TSTFHDR+1
+            LDA   #'O'
+            STA   TSTFHDR+2
+            LDA   #'O'
+            STA   TSTFHDR+3
+            LDD   #0
+            STD   TSTFHDR+4
+            LDD   #SPACEW
+            STD   TSTFHDR+6
 
-              LDA  #'F'
-              STA  TSTNAMEB
-              LDA  #'O'
-              STA  TSTNAMEB+1
-              LDA  #'O'
-              STA  TSTNAMEB+2
+            LDA   #'F'
+            STA   TSTNAMEB
+            LDA   #'O'
+            STA   TSTNAMEB+1
+            LDA   #'O'
+            STA   TSTNAMEB+2
 
-              LDD  #TSTCBUF
-              STD  CODEHERE
-              LDD  #TSTFHDR
-              STD  LATEST
-              LDD  #TSTNAMEB
-              STD  SRCADDR
-              LDD  #3
-              STD  SRCLEN
-              LDD  #0
-              STD  TOIN
-              LDD  #-1
-              STD  STATE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTFHDR
+            STD   LATEST
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #3
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
+            LDD   #-1
+            STD   STATE
 
-              STU  TSTU0
+            STU   TSTU0
 
-              LDD  #TSTGUARD
-              PSHU D
-              STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-              JSR  XCOMPILE
+            JSR   XCOMPILE
 
-              STU  TSTUAF
+            STU   TSTUAF
 
-              LDD  TSTCSAV
-              STD  CODEHERE
-              LDD  TSTLSAV
-              STD  LATEST
-              LDD  TSTSASAV
-              STD  SRCADDR
-              LDD  TSTSLSAV
-              STD  SRCLEN
-              LDD  TSTTISAV
-              STD  TOIN
-              LDD  TSTSTSAV
-              STD  STATE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTLSAV
+            STD   LATEST
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTSTSAV
+            STD   STATE
 
-              PULU D
-              CMPD #TSTGUARD
-              BNE  XC2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   XC2FAIL
 
-              LDD  TSTUB4
-              SUBD TSTUAF
-              CMPD #0
-              BNE  XC2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   XC2FAIL
 
-              LDX  #TSTCBUF
+            LDX   #TSTCBUF
 
-              LDA  ,X
-              CMPA #OPJSR
-              BNE  XC2FAIL
-              LDD  1,X
-              CMPD #SPACEW
-              BNE  XC2FAIL
+            LDA   ,X
+            CMPA  #OPJSR
+            BNE   XC2FAIL
+            LDD   1,X
+            CMPD  #SPACEW
+            BNE   XC2FAIL
 
-              LDD  #TRUEV
-              BRA  XC2DONE
-XC2FAIL:      LDD  #FALSEV
-XC2DONE:      LDX  #TSTXC2NAME
-              PSHU X
-              PSHU D
-              JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   XC2DONE
+XC2FAIL:    LDD   #FALSEV
+XC2DONE:    LDX   #TSTXC2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-              LDU  TSTU0
-              RTS
+            LDU   TSTU0
+            RTS
 
-TSTXC2NAME: FCB  13
-            FCC  "TSTXCOMPILE2"
+TSTXC2NAME: FCB   13
+            FCC   "TSTXCOMPILE2"
 
 ; ------------------------------------------------------------
 ; TSTTOBODY - unit test for >BODY. Already used extensively as
@@ -10189,94 +10316,95 @@ TSTXC2NAME: FCB  13
 ; known value there first and verifies TOBODY returns exactly
 ; that.
 ; ------------------------------------------------------------
-TSTTOBODY: LDD  #TSTVAL1
-           STD  TSTCBUF+5
+TSTTOBODY:  LDD   #TSTVAL1
+            STD   TSTCBUF+5
 
-           STU  TSTU0
+            STU   TSTU0
 
-           LDD  #TSTGUARD
-           PSHU D
-           LDD  #TSTCBUF
-           PSHU D
-           STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            STU   TSTUB4
 
-           JSR  TOBODY
+            JSR   TOBODY
 
-           STU  TSTUAF
+            STU   TSTUAF
 
-           PULU D
-           CMPD #TSTVAL1
-           BNE  TBFAIL
-           PULU D
-           CMPD #TSTGUARD
-           BNE  TBFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   TBFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   TBFAIL
 
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #0
-           BNE  TBFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   TBFAIL
 
-           LDD  #TRUEV
-           BRA  TBDONE
-TBFAIL:    LDD  #FALSEV
-TBDONE:    LDX  #TSTTBNAME
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   TBDONE
+TBFAIL:     LDD   #FALSEV
+TBDONE:     LDX   #TSTTBNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTTBNAME: FCB  9
-           FCC  "TSTTOBODY"
+TSTTBNAME:  FCB   9
+            FCC   "TSTTOBODY"
 
 ; ------------------------------------------------------------
 ; TSTEXECUTE - unit test for EXECUTE. Executes DUP via its own
 ; xt with a known value, confirming it genuinely behaves like
 ; DUP - not just that the call returned.
 ; ------------------------------------------------------------
-TSTEXECUTE: STU  TSTU0
+TSTEXECUTE: STU   TSTU0
 
-            LDD  #TSTGUARD
-            PSHU D
-            LDD  #TSTVAL1
-            PSHU D
-            LDD  #DUP
-            PSHU D
-            STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #DUP
+            PSHU  D
+            STU   TSTUB4
 
-            JSR  EXECUTE
+            JSR   EXECUTE
 
-            STU  TSTUAF
+            STU   TSTUAF
 
-            PULU D
-            CMPD #TSTVAL1
-            BNE  XQFAIL
-            PULU D
-            CMPD #TSTVAL1
-            BNE  XQFAIL
-            PULU D
-            CMPD #TSTGUARD
-            BNE  XQFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   XQFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   XQFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   XQFAIL
 
-            LDD  TSTUB4
-            SUBD TSTUAF
-            CMPD #0
-            BNE  XQFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   XQFAIL
 
-            LDD  #TRUEV
-            BRA  XQDONE
-XQFAIL:     LDD  #FALSEV
-XQDONE:    LDX  #TSTEXECNAME
-            PSHU X
-            PSHU D
-            JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   XQDONE
+XQFAIL:     LDD   #FALSEV
+XQDONE:     LDX   #TSTEXECNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-            LDU  TSTU0
+            LDU   TSTU0
             RTS
 
-TSTEXECNAME: FCB  10
-             FCC  "TSTEXECUTE"
+TSTEXECNAME:
+            FCB   10
+            FCC   "TSTEXECUTE"
 
 ; ------------------------------------------------------------
 ; TSTSLITERAL1 - unit test for SLITERAL, compiling-state case.
@@ -10287,138 +10415,140 @@ TSTEXECNAME: FCB  10
 ; returned address, not just that some address and a length of
 ; 2 came back.
 ; ------------------------------------------------------------
-TSTSLITERAL1: LDD  CODEHERE
-              STD  TSTCSAV
-              LDD  STATE
-              STD  TSTSTSAV
+TSTSLITERAL1:
+            LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   STATE
+            STD   TSTSTSAV
 
-              LDA  #'A'
-              STA  TSTNAMEB
-              LDA  #'B'
-              STA  TSTNAMEB+1
+            LDA   #'A'
+            STA   TSTNAMEB
+            LDA   #'B'
+            STA   TSTNAMEB+1
 
-              LDD  #TSTCBUF
-              STD  CODEHERE
-              LDD  #-1
-              STD  STATE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #-1
+            STD   STATE
 
-              LDD  #TSTNAMEB
-              PSHU D
-              LDD  #2
-              PSHU D
-              JSR  SLITERALW
+            LDD   #TSTNAMEB
+            PSHU  D
+            LDD   #2
+            PSHU  D
+            JSR   SLITERALW
 
-              LDD  #OPRTS
-              PSHU D
-              JSR  CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-              LDD  TSTCSAV
-              STD  CODEHERE
-              LDD  TSTSTSAV
-              STD  STATE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTSTSAV
+            STD   STATE
 
-              STU  TSTU0
+            STU   TSTU0
 
-              LDD  #TSTGUARD
-              PSHU D
-              STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-              LDX  #TSTCBUF
-              JSR  ,X
+            LDX   #TSTCBUF
+            JSR   ,X
 
-              STU  TSTUAF
+            STU   TSTUAF
 
-              PULU D
-              CMPD #2
-              BNE  SL1FAIL
+            PULU  D
+            CMPD  #2
+            BNE   SL1FAIL
 
-              PULU D
-              TFR  D,X
-              LDA  ,X
-              CMPA #'A'
-              BNE  SL1FAIL
-              LDA  1,X
-              CMPA #'B'
-              BNE  SL1FAIL
+            PULU  D
+            TFR   D,X
+            LDA   ,X
+            CMPA  #'A'
+            BNE   SL1FAIL
+            LDA   1,X
+            CMPA  #'B'
+            BNE   SL1FAIL
 
-              PULU D
-              CMPD #TSTGUARD
-              BNE  SL1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SL1FAIL
 
-              LDD  TSTUB4
-              SUBD TSTUAF
-              CMPD #4
-              BNE  SL1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #4
+            BNE   SL1FAIL
 
-              LDD  #TRUEV
-              BRA  SL1DONE
-SL1FAIL:      LDD  #FALSEV
-SL1DONE:      LDX  #TSTSL1NAME
-              PSHU X
-              PSHU D
-              JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   SL1DONE
+SL1FAIL:    LDD   #FALSEV
+SL1DONE:    LDX   #TSTSL1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-              LDU  TSTU0
-              RTS
+            LDU   TSTU0
+            RTS
 
-TSTSL1NAME: FCB  12
-            FCC  "TSTSLITERAL1"
+TSTSL1NAME: FCB   12
+            FCC   "TSTSLITERAL1"
 
 ; ------------------------------------------------------------
 ; TSTSLITERAL2 - unit test for SLITERAL, interpreting-state
 ; case. STATE=0, verifies -14 via CATCH.
 ; ------------------------------------------------------------
-TSTSLITERAL2: LDD  CODEHERE
-              STD  TSTCSAV
-              LDD  STATE
-              STD  TSTSTSAV
+TSTSLITERAL2:
+            LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   STATE
+            STD   TSTSTSAV
 
-              LDD  #TSTCBUF
-              STD  CODEHERE
-              LDD  #0
-              STD  STATE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #0
+            STD   STATE
 
-              STU  TSTU0
+            STU   TSTU0
 
-              LDD  #TSTNAMEB
-              PSHU D
-              LDD  #2
-              PSHU D
-              LDX  #SLITERALW
-              PSHU X
-              STU  TSTUB4
+            LDD   #TSTNAMEB
+            PSHU  D
+            LDD   #2
+            PSHU  D
+            LDX   #SLITERALW
+            PSHU  X
+            STU   TSTUB4
 
-              JSR  CATCH
+            JSR   CATCH
 
-              STU  TSTUAF
+            STU   TSTUAF
 
-              LDD  TSTCSAV
-              STD  CODEHERE
-              LDD  TSTSTSAV
-              STD  STATE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTSTSAV
+            STD   STATE
 
-              PULU D
-              CMPD #-14
-              BNE  SL2FAIL
+            PULU  D
+            CMPD  #-14
+            BNE   SL2FAIL
 
-              LDD  TSTUB4
-              SUBD TSTUAF
-              CMPD #0
-              BNE  SL2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   SL2FAIL
 
-              LDD  #TRUEV
-              BRA  SL2DONE
-SL2FAIL:      LDD  #FALSEV
-SL2DONE:      LDX  #TSTSL2NAME
-              PSHU X
-              PSHU D
-              JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   SL2DONE
+SL2FAIL:    LDD   #FALSEV
+SL2DONE:    LDX   #TSTSL2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-              LDU  TSTU0
-              RTS
+            LDU   TSTU0
+            RTS
 
-TSTSL2NAME: FCB  12
-            FCC  "TSTSLITERAL2"
+TSTSL2NAME: FCB   12
+            FCC   "TSTSLITERAL2"
 
 ; ------------------------------------------------------------
 ; TSTABORTQ1 - unit test for ABORT", false-flag case. Compile-
@@ -10430,87 +10560,87 @@ TSTSL2NAME: FCB  12
 ; matching its own documented "on false flag: does nothing
 ; further".
 ; ------------------------------------------------------------
-TSTABORTQ1: LDD  CODEHERE
-            STD  TSTCSAV
-            LDD  SRCADDR
-            STD  TSTSASAV
-            LDD  SRCLEN
-            STD  TSTSLSAV
-            LDD  TOIN
-            STD  TSTTISAV
-            LDD  STATE
-            STD  TSTSTSAV
+TSTABORTQ1: LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   STATE
+            STD   TSTSTSAV
 
-            LDA  #'H'
-            STA  TSTNAMEB
-            LDA  #'I'
-            STA  TSTNAMEB+1
-            LDA  #34
-            STA  TSTNAMEB+2
+            LDA   #'H'
+            STA   TSTNAMEB
+            LDA   #'I'
+            STA   TSTNAMEB+1
+            LDA   #34
+            STA   TSTNAMEB+2
 
-            LDD  #TSTCBUF
-            STD  CODEHERE
-            LDD  #TSTNAMEB
-            STD  SRCADDR
-            LDD  #3
-            STD  SRCLEN
-            LDD  #0
-            STD  TOIN
-            LDD  #-1
-            STD  STATE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #3
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
+            LDD   #-1
+            STD   STATE
 
-            JSR  ABORTQUOTE
+            JSR   ABORTQUOTE
 
-            LDD  #OPRTS
-            PSHU D
-            JSR  CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-            LDD  TSTCSAV
-            STD  CODEHERE
-            LDD  TSTSASAV
-            STD  SRCADDR
-            LDD  TSTSLSAV
-            STD  SRCLEN
-            LDD  TSTTISAV
-            STD  TOIN
-            LDD  TSTSTSAV
-            STD  STATE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTSTSAV
+            STD   STATE
 
-            STU  TSTU0
+            STU   TSTU0
 
-            LDD  #TSTGUARD
-            PSHU D
-            LDD  #FALSEV
-            PSHU D
-            STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #FALSEV
+            PSHU  D
+            STU   TSTUB4
 
-            LDX  #TSTCBUF
-            JSR  ,X
+            LDX   #TSTCBUF
+            JSR   ,X
 
-            STU  TSTUAF
+            STU   TSTUAF
 
-            PULU D
-            CMPD #TSTGUARD
-            BNE  AQ1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   AQ1FAIL
 
-            LDD  TSTUB4
-            SUBD TSTUAF
-            CMPD #-2
-            BNE  AQ1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   AQ1FAIL
 
-            LDD  #TRUEV
-            BRA  AQ1DONE
-AQ1FAIL:    LDD  #FALSEV
-AQ1DONE:    LDX  #TSTAQ1NAME
-            PSHU X
-            PSHU D
-            JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   AQ1DONE
+AQ1FAIL:    LDD   #FALSEV
+AQ1DONE:    LDX   #TSTAQ1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-            LDU  TSTU0
+            LDU   TSTU0
             RTS
 
-TSTAQ1NAME: FCB  10
-            FCC  "TSTABORTQ1"
+TSTAQ1NAME: FCB   10
+            FCC   "TSTABORTQ1"
 
 ; ------------------------------------------------------------
 ; TSTABORTQ2 - unit test for ABORT", true-flag case. Same
@@ -10522,88 +10652,88 @@ TSTAQ1NAME: FCB  10
 ; this case is safe to test directly, unlike plain ABORT would
 ; be.
 ; ------------------------------------------------------------
-TSTABORTQ2: LDD  CODEHERE
-            STD  TSTCSAV
-            LDD  SRCADDR
-            STD  TSTSASAV
-            LDD  SRCLEN
-            STD  TSTSLSAV
-            LDD  TOIN
-            STD  TSTTISAV
-            LDD  STATE
-            STD  TSTSTSAV
+TSTABORTQ2: LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   STATE
+            STD   TSTSTSAV
 
-            LDA  #'H'
-            STA  TSTNAMEB
-            LDA  #'I'
-            STA  TSTNAMEB+1
-            LDA  #34
-            STA  TSTNAMEB+2
+            LDA   #'H'
+            STA   TSTNAMEB
+            LDA   #'I'
+            STA   TSTNAMEB+1
+            LDA   #34
+            STA   TSTNAMEB+2
 
-            LDD  #TSTCBUF
-            STD  CODEHERE
-            LDD  #TSTNAMEB
-            STD  SRCADDR
-            LDD  #3
-            STD  SRCLEN
-            LDD  #0
-            STD  TOIN
-            LDD  #-1
-            STD  STATE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #3
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
+            LDD   #-1
+            STD   STATE
 
-            JSR  ABORTQUOTE
+            JSR   ABORTQUOTE
 
-            LDD  #OPRTS
-            PSHU D
-            JSR  CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-            LDD  TSTCSAV
-            STD  CODEHERE
-            LDD  TSTSASAV
-            STD  SRCADDR
-            LDD  TSTSLSAV
-            STD  SRCLEN
-            LDD  TSTTISAV
-            STD  TOIN
-            LDD  TSTSTSAV
-            STD  STATE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTSTSAV
+            STD   STATE
 
-            STU  TSTU0
+            STU   TSTU0
 
-            LDD  #TRUEV
-            PSHU D
-            LDX  #TSTCBUF
-            PSHU X
-            STU  TSTUB4
+            LDD   #TRUEV
+            PSHU  D
+            LDX   #TSTCBUF
+            PSHU  X
+            STU   TSTUB4
 
-            JSR  CATCH
+            JSR   CATCH
 
-            STU  TSTUAF
+            STU   TSTUAF
 
-            PULU D
-            CMPD #-2
-            BNE  AQ2FAIL
+            PULU  D
+            CMPD  #-2
+            BNE   AQ2FAIL
 
-            LDD  TSTUB4
-            SUBD TSTUAF
-            CMPD #0
-            BNE  AQ2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   AQ2FAIL
 
-            LDD  #TRUEV
-            BRA  AQ2DONE
-AQ2FAIL:    LDD  #FALSEV
-AQ2DONE:    LDX  #TSTAQ2NAME
-            PSHU X
-            PSHU D
-            JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   AQ2DONE
+AQ2FAIL:    LDD   #FALSEV
+AQ2DONE:    LDX   #TSTAQ2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-            LDU  TSTU0
+            LDU   TSTU0
             RTS
 
-TSTAQ2NAME: FCB  10
-            FCC  "TSTABORTQ2"
+TSTAQ2NAME: FCB   10
+            FCC   "TSTABORTQ2"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTMEMORY - memory tests (glossary section 3.11, 22 words, 16
@@ -10621,40 +10751,40 @@ TSTAQ2NAME: FCB  10
 ; independently simulated in Python before writing the test, not
 ; a trivial non-overlapping case alone (TSTMOVE1).
 ; ------------------------------------------------------------
-TSTMEMORY: JSR CRW
-           LDX   #TSTMEMMSG
-           PSHU  X
-           LDD   #6
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+TSTMEMORY:  JSR   CRW
+            LDX   #TSTMEMMSG
+            PSHU  X
+            LDD   #6
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-10  ; >>>>
+            IFEQ  TSTSELECTOR-10    ; >>>>
 
-           JSR   TSTFETCHSTORE
-           JSR   TSTCFETCHSTORE
-           JSR   TSTPLUSSTORE
-           JSR   TST2FETCHSTORE
-           JSR   TSTCODEHERE
-           JSR   TSTVARHERE
-           JSR   TSTPAD
-           JSR   TSTUNUSED
-           JSR   TSTVUNUSED
-           JSR   TSTFILL
-           JSR   TSTERASE
-           JSR   TSTCMOVE
-           JSR   TSTCMOVEGT
-           JSR   TSTMOVE1
-           JSR   TSTMOVE2
-           JSR   TSTMOVE3
+            JSR   TSTFETCHSTORE
+            JSR   TSTCFETCHSTORE
+            JSR   TSTPLUSSTORE
+            JSR   TST2FETCHSTORE
+            JSR   TSTCODEHERE
+            JSR   TSTVARHERE
+            JSR   TSTPAD
+            JSR   TSTUNUSED
+            JSR   TSTVUNUSED
+            JSR   TSTFILL
+            JSR   TSTERASE
+            JSR   TSTCMOVE
+            JSR   TSTCMOVEGT
+            JSR   TSTMOVE1
+            JSR   TSTMOVE2
+            JSR   TSTMOVE3
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTMEMMSG: FCC "Memory"
+TSTMEMMSG:  FCC   "Memory"
 
-           IFEQ TSTSELECTOR-10  ; >>>>
+            IFEQ  TSTSELECTOR-10    ; >>>>
 
 ; ------------------------------------------------------------
 ; Memory test harness (glossary section 3.11). Mostly simpler,
@@ -10678,50 +10808,51 @@ TSTMEMMSG: FCC "Memory"
 ; meaningfully tested as a round trip). Stores a known value at
 ; scratch, fetches it back, verifies the match.
 ; ------------------------------------------------------------
-TSTFETCHSTORE: STU  TSTU0
+TSTFETCHSTORE:
+            STU   TSTU0
 
-               LDD  #TSTGUARD
-               PSHU D
-               LDD  #TSTVAL1
-               PSHU D
-               LDD  #TSTCBUF
-               PSHU D
-               STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            STU   TSTUB4
 
-               JSR  STOREW
+            JSR   STOREW
 
-               LDD  #TSTCBUF
-               PSHU D
+            LDD   #TSTCBUF
+            PSHU  D
 
-               JSR  ATSIGN
+            JSR   ATSIGN
 
-               STU  TSTUAF
+            STU   TSTUAF
 
-               PULU D
-               CMPD #TSTVAL1
-               BNE  FSFAIL
-               PULU D
-               CMPD #TSTGUARD
-               BNE  FSFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   FSFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   FSFAIL
 
-               LDD  TSTUB4
-               SUBD TSTUAF
-               CMPD #-2
-               BNE  FSFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   FSFAIL
 
-               LDD  #TRUEV
-               BRA  FSDONE
-FSFAIL:        LDD  #FALSEV
-FSDONE:        LDX  #TSTFSNAME
-               PSHU X
-               PSHU D
-               JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   FSDONE
+FSFAIL:     LDD   #FALSEV
+FSDONE:     LDX   #TSTFSNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-               LDU  TSTU0
-               RTS
+            LDU   TSTU0
+            RTS
 
-TSTFSNAME: FCB  13
-           FCC  "TSTFETCHSTORE"
+TSTFSNAME:  FCB   13
+            FCC   "TSTFETCHSTORE"
 
 ; ------------------------------------------------------------
 ; TSTCFETCHSTORE - unit test for C@ and C! together. Pre-fills
@@ -10744,106 +10875,108 @@ TSTFSNAME: FCB  13
 ; already correct; only this test's own arithmetic about which
 ; byte ends up where was wrong.
 ; ------------------------------------------------------------
-TSTCFETCHSTORE: LDD  #$FFFF
-                STD  TSTCBUF
+TSTCFETCHSTORE:
+            LDD   #$FFFF
+            STD   TSTCBUF
 
-                STU  TSTU0
+            STU   TSTU0
 
-                LDD  #TSTGUARD
-                PSHU D
-                LDD  #$34
-                PSHU D
-                LDD  #TSTCBUF
-                PSHU D
-                STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #$34
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            STU   TSTUB4
 
-                JSR  CSTOREW
+            JSR   CSTOREW
 
-                LDD  TSTCBUF
-                CMPD #$34FF
-                BNE  CFFAIL
+            LDD   TSTCBUF
+            CMPD  #$34FF
+            BNE   CFFAIL
 
-                LDD  #TSTCBUF
-                PSHU D
+            LDD   #TSTCBUF
+            PSHU  D
 
-                JSR  CFETCH
+            JSR   CFETCH
 
-                STU  TSTUAF
+            STU   TSTUAF
 
-                PULU D
-                CMPD #$0034
-                BNE  CFFAIL
-                PULU D
-                CMPD #TSTGUARD
-                BNE  CFFAIL
+            PULU  D
+            CMPD  #$0034
+            BNE   CFFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   CFFAIL
 
-                LDD  TSTUB4
-                SUBD TSTUAF
-                CMPD #-2
-                BNE  CFFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   CFFAIL
 
-                LDD  #TRUEV
-                BRA  CFDONE
-CFFAIL:         LDD  #FALSEV
-CFDONE:         LDX  #TSTCFNAME
-                PSHU X
-                PSHU D
-                JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   CFDONE
+CFFAIL:     LDD   #FALSEV
+CFDONE:     LDX   #TSTCFNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-                LDU  TSTU0
-                RTS
+            LDU   TSTU0
+            RTS
 
-TSTCFNAME: FCB  14
-           FCC  "TSTCFETCHSTORE"
+TSTCFNAME:  FCB   14
+            FCC   "TSTCFETCHSTORE"
 
 ; ------------------------------------------------------------
 ; TSTPLUSSTORE - unit test for +!. Pre-initializes the cell to a
 ; known value, adds a known delta, and verifies the sum landed
 ; correctly.
 ; ------------------------------------------------------------
-TSTPLUSSTORE: LDD  #TSTVAL1
-              STD  TSTCBUF
+TSTPLUSSTORE:
+            LDD   #TSTVAL1
+            STD   TSTCBUF
 
-              STU  TSTU0
+            STU   TSTU0
 
-              LDD  #TSTGUARD
-              PSHU D
-              LDD  #100
-              PSHU D
-              LDD  #TSTCBUF
-              PSHU D
-              STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #100
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            STU   TSTUB4
 
-              JSR  PLUSSTORE
+            JSR   PLUSSTORE
 
-              STU  TSTUAF
+            STU   TSTUAF
 
-              LDD  TSTCBUF
-              CMPD #TSTVAL1+100
-              BNE  PSFAIL
+            LDD   TSTCBUF
+            CMPD  #TSTVAL1+100
+            BNE   PSFAIL
 
-              PULU D
-              CMPD #TSTGUARD
-              BNE  PSFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   PSFAIL
 
-              LDD  TSTUB4
-              SUBD TSTUAF
-              CMPD #-4
-              BNE  PSFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   PSFAIL
 
-              LDD  #TRUEV
-              BRA  PSDONE
-PSFAIL:       LDD  #FALSEV
-PSDONE:       LDX  #TSTPSNAME
-              PSHU X
-              PSHU D
-              JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   PSDONE
+PSFAIL:     LDD   #FALSEV
+PSDONE:     LDX   #TSTPSNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-              LDU  TSTU0
-              RTS
+            LDU   TSTU0
+            RTS
 
-TSTPSNAME: FCB  12
-           FCC  "TSTPLUSSTORE"
+TSTPSNAME:  FCB   12
+            FCC   "TSTPLUSSTORE"
 
 ; ------------------------------------------------------------
 ; TST2FETCHSTORE - unit test for 2@ and 2! together. Stores a
@@ -10853,62 +10986,63 @@ TSTPSNAME: FCB  12
 ; (Corrected: this test used to expect x1 at the lower address,
 ; the reverse of the standard - ANS Annex F section 18 caught it.)
 ; ------------------------------------------------------------
-TST2FETCHSTORE: STU  TSTU0
+TST2FETCHSTORE:
+            STU   TSTU0
 
-                LDD  #TSTGUARD
-                PSHU D
-                LDD  #TSTVAL1
-                PSHU D
-                LDD  #TSTVAL2
-                PSHU D
-                LDD  #TSTCBUF
-                PSHU D
-                STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            STU   TSTUB4
 
-                JSR  DSTORE
+            JSR   DSTORE
 
-                LDD  #TSTCBUF
-                PSHU D
+            LDD   #TSTCBUF
+            PSHU  D
 
-                JSR  DFETCH
+            JSR   DFETCH
 
-                STU  TSTUAF
+            STU   TSTUAF
 
-                PULU D
-                CMPD #TSTVAL2
-                BNE  DFFAIL
-                PULU D
-                CMPD #TSTVAL1
-                BNE  DFFAIL
-                PULU D
-                CMPD #TSTGUARD
-                BNE  DFFAIL
+            PULU  D
+            CMPD  #TSTVAL2
+            BNE   DFFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   DFFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DFFAIL
 
-                LDD  TSTUB4
-                SUBD TSTUAF
-                CMPD #-2
-                BNE  DFFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   DFFAIL
 
-                LDD  TSTCBUF
-                CMPD #TSTVAL2
-                BNE  DFFAIL
-                LDD  TSTCBUF+2
-                CMPD #TSTVAL1
-                BNE  DFFAIL
+            LDD   TSTCBUF
+            CMPD  #TSTVAL2
+            BNE   DFFAIL
+            LDD   TSTCBUF+2
+            CMPD  #TSTVAL1
+            BNE   DFFAIL
 
-                LDD  #TRUEV
-                BRA  DFDONE
-DFFAIL:         LDD  #FALSEV
-DFDONE:         LDX  #TSTDFNAME
-                PSHU X
-                PSHU D
-                JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   DFDONE
+DFFAIL:     LDD   #FALSEV
+DFDONE:     LDX   #TSTDFNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-                LDU  TSTU0
-                RTS
+            LDU   TSTU0
+            RTS
 
-TSTDFNAME: FCB  14
-           FCC  "TST2FETCHSTORE"
+TSTDFNAME:  FCB   14
+            FCC   "TST2FETCHSTORE"
 
 ; ------------------------------------------------------------
 ; TSTCODEHERE - combined unit test for , C, ALLOT, and HERE
@@ -10921,278 +11055,279 @@ TSTDFNAME: FCB  14
 ; "reserve (or release, if negative)"), and a final HERE
 ; confirms the cumulative result.
 ; ------------------------------------------------------------
-TSTCODEHERE: LDD  CODEHERE
-             STD  TSTCSAV
+TSTCODEHERE:
+            LDD   CODEHERE
+            STD   TSTCSAV
 
-             LDD  #TSTCBUF
-             STD  CODEHERE
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-             STU  TSTU0
+            STU   TSTU0
 
-             LDD  #TSTGUARD
-             PSHU D
-             STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-             JSR  HEREW
-             PULU D
-             CMPD #TSTCBUF
-             BNE  CHFAIL
+            JSR   HEREW
+            PULU  D
+            CMPD  #TSTCBUF
+            BNE   CHFAIL
 
-             LDD  #TSTVAL1
-             PSHU D
-             JSR  COMMA
-             LDD  TSTCBUF
-             CMPD #TSTVAL1
-             BNE  CHFAIL
-             LDD  CODEHERE
-             CMPD #TSTCBUF+2
-             BNE  CHFAIL
+            LDD   #TSTVAL1
+            PSHU  D
+            JSR   COMMA
+            LDD   TSTCBUF
+            CMPD  #TSTVAL1
+            BNE   CHFAIL
+            LDD   CODEHERE
+            CMPD  #TSTCBUF+2
+            BNE   CHFAIL
 
-             LDD  #$56
-             PSHU D
-             JSR  CCOMMA
-             LDA  TSTCBUF+2
-             CMPA #$56
-             BNE  CHFAIL
-             LDD  CODEHERE
-             CMPD #TSTCBUF+3
-             BNE  CHFAIL
+            LDD   #$56
+            PSHU  D
+            JSR   CCOMMA
+            LDA   TSTCBUF+2
+            CMPA  #$56
+            BNE   CHFAIL
+            LDD   CODEHERE
+            CMPD  #TSTCBUF+3
+            BNE   CHFAIL
 
-             LDD  #10
-             PSHU D
-             JSR  ALLOT
-             LDD  CODEHERE
-             CMPD #TSTCBUF+13
-             BNE  CHFAIL
+            LDD   #10
+            PSHU  D
+            JSR   ALLOT
+            LDD   CODEHERE
+            CMPD  #TSTCBUF+13
+            BNE   CHFAIL
 
-             LDD  #-4
-             PSHU D
-             JSR  ALLOT
-             LDD  CODEHERE
-             CMPD #TSTCBUF+9
-             BNE  CHFAIL
+            LDD   #-4
+            PSHU  D
+            JSR   ALLOT
+            LDD   CODEHERE
+            CMPD  #TSTCBUF+9
+            BNE   CHFAIL
 
-             JSR  HEREW
-             PULU D
-             CMPD #TSTCBUF+9
-             BNE  CHFAIL
+            JSR   HEREW
+            PULU  D
+            CMPD  #TSTCBUF+9
+            BNE   CHFAIL
 
-             STU  TSTUAF
+            STU   TSTUAF
 
-             PULU D
-             CMPD #TSTGUARD
-             BNE  CHFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   CHFAIL
 
-             LDD  TSTUB4
-             SUBD TSTUAF
-             CMPD #0
-             BNE  CHFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   CHFAIL
 
-             LDD  #TRUEV
-             BRA  CHDONE
-CHFAIL:      LDD  #FALSEV
-CHDONE:      LDX  #TSTCHNAME
-             PSHU X
-             PSHU D
-             JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   CHDONE
+CHFAIL:     LDD   #FALSEV
+CHDONE:     LDX   #TSTCHNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-             LDD  TSTCSAV
-             STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-             LDU  TSTU0
-             RTS
+            LDU   TSTU0
+            RTS
 
-TSTCHNAME: FCB  11
-           FCC  "TSTCODEHERE"
+TSTCHNAME:  FCB   11
+            FCC   "TSTCODEHERE"
 
 ; ------------------------------------------------------------
 ; TSTVARHERE - combined unit test for V, VC, VALLOT, and VHERE
 ; together - same structure as TSTCODEHERE, but for the
 ; mutable/variable region (VARHERE) instead.
 ; ------------------------------------------------------------
-TSTVARHERE: LDD  VARHERE
-            STD  TSTVSAV
+TSTVARHERE: LDD   VARHERE
+            STD   TSTVSAV
 
-            LDD  #TSTVBUF
-            STD  VARHERE
+            LDD   #TSTVBUF
+            STD   VARHERE
 
-            STU  TSTU0
+            STU   TSTU0
 
-            LDD  #TSTGUARD
-            PSHU D
-            STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-            JSR  VHEREW
-            PULU D
-            CMPD #TSTVBUF
-            BNE  VHFAIL
+            JSR   VHEREW
+            PULU  D
+            CMPD  #TSTVBUF
+            BNE   VHFAIL
 
-            LDD  #TSTVAL1
-            PSHU D
-            JSR  VCOMMA
-            LDD  TSTVBUF
-            CMPD #TSTVAL1
-            BNE  VHFAIL
-            LDD  VARHERE
-            CMPD #TSTVBUF+2
-            BNE  VHFAIL
+            LDD   #TSTVAL1
+            PSHU  D
+            JSR   VCOMMA
+            LDD   TSTVBUF
+            CMPD  #TSTVAL1
+            BNE   VHFAIL
+            LDD   VARHERE
+            CMPD  #TSTVBUF+2
+            BNE   VHFAIL
 
-            LDD  #$56
-            PSHU D
-            JSR  VCCOMMA
-            LDA  TSTVBUF+2
-            CMPA #$56
-            BNE  VHFAIL
-            LDD  VARHERE
-            CMPD #TSTVBUF+3
-            BNE  VHFAIL
+            LDD   #$56
+            PSHU  D
+            JSR   VCCOMMA
+            LDA   TSTVBUF+2
+            CMPA  #$56
+            BNE   VHFAIL
+            LDD   VARHERE
+            CMPD  #TSTVBUF+3
+            BNE   VHFAIL
 
-            LDD  #10
-            PSHU D
-            JSR  VALLOT
-            LDD  VARHERE
-            CMPD #TSTVBUF+13
-            BNE  VHFAIL
+            LDD   #10
+            PSHU  D
+            JSR   VALLOT
+            LDD   VARHERE
+            CMPD  #TSTVBUF+13
+            BNE   VHFAIL
 
-            LDD  #-4
-            PSHU D
-            JSR  VALLOT
-            LDD  VARHERE
-            CMPD #TSTVBUF+9
-            BNE  VHFAIL
+            LDD   #-4
+            PSHU  D
+            JSR   VALLOT
+            LDD   VARHERE
+            CMPD  #TSTVBUF+9
+            BNE   VHFAIL
 
-            JSR  VHEREW
-            PULU D
-            CMPD #TSTVBUF+9
-            BNE  VHFAIL
+            JSR   VHEREW
+            PULU  D
+            CMPD  #TSTVBUF+9
+            BNE   VHFAIL
 
-            STU  TSTUAF
+            STU   TSTUAF
 
-            PULU D
-            CMPD #TSTGUARD
-            BNE  VHFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   VHFAIL
 
-            LDD  TSTUB4
-            SUBD TSTUAF
-            CMPD #0
-            BNE  VHFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   VHFAIL
 
-            LDD  #TRUEV
-            BRA  VHDONE
-VHFAIL:     LDD  #FALSEV
-VHDONE:     LDX  #TSTVHNAME
-            PSHU X
-            PSHU D
-            JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   VHDONE
+VHFAIL:     LDD   #FALSEV
+VHDONE:     LDX   #TSTVHNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-            LDD  TSTVSAV
-            STD  VARHERE
+            LDD   TSTVSAV
+            STD   VARHERE
 
-            LDU  TSTU0
+            LDU   TSTU0
             RTS
 
-TSTVHNAME: FCB  10
-           FCC  "TSTVARHERE"
+TSTVHNAME:  FCB   10
+            FCC   "TSTVARHERE"
 
 ; ------------------------------------------------------------
 ; TSTPAD - unit test for PAD. Redirects CODEHERE, verifies PAD
 ; reports CODEHERE+PADOFFSET, using the same symbolic constant
 ; PADW's own code uses rather than a hardcoded number.
 ; ------------------------------------------------------------
-TSTPAD: LDD  CODEHERE
-        STD  TSTCSAV
+TSTPAD:     LDD   CODEHERE
+            STD   TSTCSAV
 
-        LDD  #TSTCBUF
-        STD  CODEHERE
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-        STU  TSTU0
+            STU   TSTU0
 
-        LDD  #TSTGUARD
-        PSHU D
-        STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-        JSR  PADW
+            JSR   PADW
 
-        STU  TSTUAF
+            STU   TSTUAF
 
-        PULU D
-        CMPD #TSTCBUF+PADOFFSET
-        BNE  PAFAIL
-        PULU D
-        CMPD #TSTGUARD
-        BNE  PAFAIL
+            PULU  D
+            CMPD  #TSTCBUF+PADOFFSET
+            BNE   PAFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   PAFAIL
 
-        LDD  TSTUB4
-        SUBD TSTUAF
-        CMPD #2
-        BNE  PAFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   PAFAIL
 
-        LDD  #TRUEV
-        BRA  PADONE
-PAFAIL: LDD  #FALSEV
-PADONE: LDX  #TSTPADNAME
-        PSHU X
-        PSHU D
-        JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   PADONE
+PAFAIL:     LDD   #FALSEV
+PADONE:     LDX   #TSTPADNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-        LDD  TSTCSAV
-        STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-        LDU  TSTU0
-        RTS
+            LDU   TSTU0
+            RTS
 
-TSTPADNAME: FCB  6
-            FCC  "TSTPAD"
+TSTPADNAME: FCB   6
+            FCC   "TSTPAD"
 
 ; ------------------------------------------------------------
 ; TSTUNUSED - unit test for UNUSED. Redirects CODEHERE, verifies
 ; UNUSED reports CODETOP-CODEHERE, using the same symbolic
 ; constant UNUSEDW's own code uses.
 ; ------------------------------------------------------------
-TSTUNUSED: LDD  CODEHERE
-           STD  TSTCSAV
+TSTUNUSED:  LDD   CODEHERE
+            STD   TSTCSAV
 
-           LDD  #TSTCBUF
-           STD  CODEHERE
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-           STU  TSTU0
+            STU   TSTU0
 
-           LDD  #TSTGUARD
-           PSHU D
-           STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-           JSR  UNUSEDW
+            JSR   UNUSEDW
 
-           STU  TSTUAF
+            STU   TSTUAF
 
-           PULU D
-           CMPD #CODETOP-TSTCBUF
-           BNE  UNFAIL
-           PULU D
-           CMPD #TSTGUARD
-           BNE  UNFAIL
+            PULU  D
+            CMPD  #CODETOP-TSTCBUF
+            BNE   UNFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   UNFAIL
 
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #2
-           BNE  UNFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   UNFAIL
 
-           LDD  #TRUEV
-           BRA  UNDONE
-UNFAIL:    LDD  #FALSEV
-UNDONE:    LDX  #TSTUNNAME
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   UNDONE
+UNFAIL:     LDD   #FALSEV
+UNDONE:     LDX   #TSTUNNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDD  TSTCSAV
-           STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTUNNAME: FCB  9
-           FCC  "TSTUNUSED"
+TSTUNNAME:  FCB   9
+            FCC   "TSTUNUSED"
 
 ; ------------------------------------------------------------
 ; TSTVUNUSED - unit test for VUNUSED. Redirects VARHERE, verifies
@@ -11202,159 +11337,159 @@ TSTUNNAME: FCB  9
 ; fixed earlier in a prior session, not something to re-litigate
 ; here, just confirm holds).
 ; ------------------------------------------------------------
-TSTVUNUSED: LDD  VARHERE
-            STD  TSTVSAV
+TSTVUNUSED: LDD   VARHERE
+            STD   TSTVSAV
 
-            LDD  #TSTVBUF
-            STD  VARHERE
+            LDD   #TSTVBUF
+            STD   VARHERE
 
-            STU  TSTU0
+            STU   TSTU0
 
-            LDD  #TSTGUARD
-            PSHU D
-            STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-            JSR  VUNUSEDW
+            JSR   VUNUSEDW
 
-            STU  TSTUAF
+            STU   TSTUAF
 
-            PULU D
-            CMPD #APPVARSEND-TSTVBUF
-            BNE  VUFAIL
-            PULU D
-            CMPD #TSTGUARD
-            BNE  VUFAIL
+            PULU  D
+            CMPD  #APPVARSEND-TSTVBUF
+            BNE   VUFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   VUFAIL
 
-            LDD  TSTUB4
-            SUBD TSTUAF
-            CMPD #2
-            BNE  VUFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   VUFAIL
 
-            LDD  #TRUEV
-            BRA  VUDONE
-VUFAIL:     LDD  #FALSEV
-VUDONE:     LDX  #TSTVUNNAME
-            PSHU X
-            PSHU D
-            JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   VUDONE
+VUFAIL:     LDD   #FALSEV
+VUDONE:     LDX   #TSTVUNNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-            LDD  TSTVSAV
-            STD  VARHERE
+            LDD   TSTVSAV
+            STD   VARHERE
 
-            LDU  TSTU0
+            LDU   TSTU0
             RTS
 
-TSTVUNNAME: FCB  10
-            FCC  "TSTVUNUSED"
+TSTVUNNAME: FCB   10
+            FCC   "TSTVUNUSED"
 
 ; ------------------------------------------------------------
 ; TSTFILL - unit test for FILL. Fills 5 scratch bytes with a
 ; known character, then verifies every one of the 5 bytes
 ; individually - not just spot-checking the first and last.
 ; ------------------------------------------------------------
-TSTFILL: STU  TSTU0
+TSTFILL:    STU   TSTU0
 
-         LDD  #TSTGUARD
-         PSHU D
-         LDD  #TSTCBUF
-         PSHU D
-         LDD  #5
-         PSHU D
-         LDD  #$41
-         PSHU D
-         STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            LDD   #$41
+            PSHU  D
+            STU   TSTUB4
 
-         JSR  FILLW
+            JSR   FILLW
 
-         STU  TSTUAF
+            STU   TSTUAF
 
-         LDX  #TSTCBUF
-         LDB  #5
-FILVLP:  LDA  ,X+
-         CMPA #$41
-         BNE  FLFAIL
-         DECB
-         BNE  FILVLP
+            LDX   #TSTCBUF
+            LDB   #5
+FILVLP:     LDA   ,X+
+            CMPA  #$41
+            BNE   FLFAIL
+            DECB
+            BNE   FILVLP
 
-         PULU D
-         CMPD #TSTGUARD
-         BNE  FLFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   FLFAIL
 
-         LDD  TSTUB4
-         SUBD TSTUAF
-         CMPD #-6
-         BNE  FLFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-6
+            BNE   FLFAIL
 
-         LDD  #TRUEV
-         BRA  FLDONE
-FLFAIL:  LDD  #FALSEV
-FLDONE:  LDX  #TSTFLNAME
-         PSHU X
-         PSHU D
-         JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   FLDONE
+FLFAIL:     LDD   #FALSEV
+FLDONE:     LDX   #TSTFLNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU  TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTFLNAME: FCB  7
-           FCC  "TSTFILL"
+TSTFLNAME:  FCB   7
+            FCC   "TSTFILL"
 
 ; ------------------------------------------------------------
 ; TSTERASE - unit test for ERASE. Pre-fills scratch with a
 ; nonzero pattern first (so a no-op couldn't accidentally pass),
 ; erases it, and verifies every byte is genuinely zero.
 ; ------------------------------------------------------------
-TSTERASE: LDX  #TSTCBUF
-          LDB  #5
-ERSETLP:  LDA  #$FF
-          STA  ,X+
-          DECB
-          BNE  ERSETLP
+TSTERASE:   LDX   #TSTCBUF
+            LDB   #5
+ERSETLP:    LDA   #$FF
+            STA   ,X+
+            DECB
+            BNE   ERSETLP
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          LDD  #TSTCBUF
-          PSHU D
-          LDD  #5
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  ERASEW
+            JSR   ERASEW
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          LDX  #TSTCBUF
-          LDB  #5
-ERSVLP:   LDA  ,X+
-          CMPA #0
-          BNE  ERFAIL
-          DECB
-          BNE  ERSVLP
+            LDX   #TSTCBUF
+            LDB   #5
+ERSVLP:     LDA   ,X+
+            CMPA  #0
+            BNE   ERFAIL
+            DECB
+            BNE   ERSVLP
 
-          PULU D
-          CMPD #TSTGUARD
-          BNE  ERFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   ERFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #-4
-          BNE  ERFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   ERFAIL
 
-          LDD  #TRUEV
-          BRA  ERDONE
-ERFAIL:   LDD  #FALSEV
-ERDONE:   LDX  #TSTERNAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   ERDONE
+ERFAIL:     LDD   #FALSEV
+ERDONE:     LDX   #TSTERNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTERNAME: FCB  8
-           FCC  "TSTERASE"
+TSTERNAME:  FCB   8
+            FCC   "TSTERASE"
 
 ; ------------------------------------------------------------
 ; TSTCMOVE - unit test for CMOVE. Non-overlapping regions (well
@@ -11364,210 +11499,210 @@ TSTERNAME: FCB  8
 ; tests stick to the simple, well-defined case; see TSTMOVE2/
 ; TSTMOVE3 below for the overlap-specific verification.
 ; ------------------------------------------------------------
-TSTCMOVE: LDA  #'A'
-          STA  TSTCBUF
-          LDA  #'B'
-          STA  TSTCBUF+1
-          LDA  #'C'
-          STA  TSTCBUF+2
-          LDA  #'D'
-          STA  TSTCBUF+3
-          LDA  #'E'
-          STA  TSTCBUF+4
+TSTCMOVE:   LDA   #'A'
+            STA   TSTCBUF
+            LDA   #'B'
+            STA   TSTCBUF+1
+            LDA   #'C'
+            STA   TSTCBUF+2
+            LDA   #'D'
+            STA   TSTCBUF+3
+            LDA   #'E'
+            STA   TSTCBUF+4
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          LDD  #TSTCBUF
-          PSHU D
-          LDD  #TSTCBUF+10
-          PSHU D
-          LDD  #5
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #TSTCBUF+10
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  CMOVEW
+            JSR   CMOVEW
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          LDA  TSTCBUF+10
-          CMPA #'A'
-          BNE  CVFAIL
-          LDA  TSTCBUF+11
-          CMPA #'B'
-          BNE  CVFAIL
-          LDA  TSTCBUF+12
-          CMPA #'C'
-          BNE  CVFAIL
-          LDA  TSTCBUF+13
-          CMPA #'D'
-          BNE  CVFAIL
-          LDA  TSTCBUF+14
-          CMPA #'E'
-          BNE  CVFAIL
+            LDA   TSTCBUF+10
+            CMPA  #'A'
+            BNE   CVFAIL
+            LDA   TSTCBUF+11
+            CMPA  #'B'
+            BNE   CVFAIL
+            LDA   TSTCBUF+12
+            CMPA  #'C'
+            BNE   CVFAIL
+            LDA   TSTCBUF+13
+            CMPA  #'D'
+            BNE   CVFAIL
+            LDA   TSTCBUF+14
+            CMPA  #'E'
+            BNE   CVFAIL
 
-          PULU D
-          CMPD #TSTGUARD
-          BNE  CVFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   CVFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #-6
-          BNE  CVFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-6
+            BNE   CVFAIL
 
-          LDD  #TRUEV
-          BRA  CVDONE
-CVFAIL:   LDD  #FALSEV
-CVDONE:   LDX  #TSTCMNAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   CVDONE
+CVFAIL:     LDD   #FALSEV
+CVDONE:     LDX   #TSTCMNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTCMNAME: FCB  8
-           FCC  "TSTCMOVE"
+TSTCMNAME:  FCB   8
+            FCC   "TSTCMOVE"
 
 ; ------------------------------------------------------------
 ; TSTCMOVEGT - unit test for CMOVE>. Non-overlapping regions,
 ; same reasoning as TSTCMOVE.
 ; ------------------------------------------------------------
-TSTCMOVEGT: LDA  #'A'
-            STA  TSTCBUF
-            LDA  #'B'
-            STA  TSTCBUF+1
-            LDA  #'C'
-            STA  TSTCBUF+2
-            LDA  #'D'
-            STA  TSTCBUF+3
-            LDA  #'E'
-            STA  TSTCBUF+4
+TSTCMOVEGT: LDA   #'A'
+            STA   TSTCBUF
+            LDA   #'B'
+            STA   TSTCBUF+1
+            LDA   #'C'
+            STA   TSTCBUF+2
+            LDA   #'D'
+            STA   TSTCBUF+3
+            LDA   #'E'
+            STA   TSTCBUF+4
 
-            STU  TSTU0
+            STU   TSTU0
 
-            LDD  #TSTGUARD
-            PSHU D
-            LDD  #TSTCBUF
-            PSHU D
-            LDD  #TSTCBUF+10
-            PSHU D
-            LDD  #5
-            PSHU D
-            STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #TSTCBUF+10
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            STU   TSTUB4
 
-            JSR  CMOVEGT
+            JSR   CMOVEGT
 
-            STU  TSTUAF
+            STU   TSTUAF
 
-            LDA  TSTCBUF+10
-            CMPA #'A'
-            BNE  CXFAIL
-            LDA  TSTCBUF+11
-            CMPA #'B'
-            BNE  CXFAIL
-            LDA  TSTCBUF+12
-            CMPA #'C'
-            BNE  CXFAIL
-            LDA  TSTCBUF+13
-            CMPA #'D'
-            BNE  CXFAIL
-            LDA  TSTCBUF+14
-            CMPA #'E'
-            BNE  CXFAIL
+            LDA   TSTCBUF+10
+            CMPA  #'A'
+            BNE   CXFAIL
+            LDA   TSTCBUF+11
+            CMPA  #'B'
+            BNE   CXFAIL
+            LDA   TSTCBUF+12
+            CMPA  #'C'
+            BNE   CXFAIL
+            LDA   TSTCBUF+13
+            CMPA  #'D'
+            BNE   CXFAIL
+            LDA   TSTCBUF+14
+            CMPA  #'E'
+            BNE   CXFAIL
 
-            PULU D
-            CMPD #TSTGUARD
-            BNE  CXFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   CXFAIL
 
-            LDD  TSTUB4
-            SUBD TSTUAF
-            CMPD #-6
-            BNE  CXFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-6
+            BNE   CXFAIL
 
-            LDD  #TRUEV
-            BRA  CXDONE
-CXFAIL:     LDD  #FALSEV
-CXDONE:     LDX  #TSTCGNAME
-            PSHU X
-            PSHU D
-            JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   CXDONE
+CXFAIL:     LDD   #FALSEV
+CXDONE:     LDX   #TSTCGNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-            LDU  TSTU0
+            LDU   TSTU0
             RTS
 
-TSTCGNAME: FCB  10
-           FCC  "TSTCMOVEGT"
+TSTCGNAME:  FCB   10
+            FCC   "TSTCMOVEGT"
 
 ; ------------------------------------------------------------
 ; TSTMOVE1 - unit test for MOVE, non-overlapping sanity case.
 ; ------------------------------------------------------------
-TSTMOVE1: LDA  #'A'
-          STA  TSTCBUF
-          LDA  #'B'
-          STA  TSTCBUF+1
-          LDA  #'C'
-          STA  TSTCBUF+2
-          LDA  #'D'
-          STA  TSTCBUF+3
-          LDA  #'E'
-          STA  TSTCBUF+4
+TSTMOVE1:   LDA   #'A'
+            STA   TSTCBUF
+            LDA   #'B'
+            STA   TSTCBUF+1
+            LDA   #'C'
+            STA   TSTCBUF+2
+            LDA   #'D'
+            STA   TSTCBUF+3
+            LDA   #'E'
+            STA   TSTCBUF+4
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          LDD  #TSTCBUF
-          PSHU D
-          LDD  #TSTCBUF+20
-          PSHU D
-          LDD  #5
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #TSTCBUF+20
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  MOVEW
+            JSR   MOVEW
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          LDA  TSTCBUF+20
-          CMPA #'A'
-          BNE  MV1FAIL
-          LDA  TSTCBUF+21
-          CMPA #'B'
-          BNE  MV1FAIL
-          LDA  TSTCBUF+22
-          CMPA #'C'
-          BNE  MV1FAIL
-          LDA  TSTCBUF+23
-          CMPA #'D'
-          BNE  MV1FAIL
-          LDA  TSTCBUF+24
-          CMPA #'E'
-          BNE  MV1FAIL
+            LDA   TSTCBUF+20
+            CMPA  #'A'
+            BNE   MV1FAIL
+            LDA   TSTCBUF+21
+            CMPA  #'B'
+            BNE   MV1FAIL
+            LDA   TSTCBUF+22
+            CMPA  #'C'
+            BNE   MV1FAIL
+            LDA   TSTCBUF+23
+            CMPA  #'D'
+            BNE   MV1FAIL
+            LDA   TSTCBUF+24
+            CMPA  #'E'
+            BNE   MV1FAIL
 
-          PULU D
-          CMPD #TSTGUARD
-          BNE  MV1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   MV1FAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #-6
-          BNE  MV1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-6
+            BNE   MV1FAIL
 
-          LDD  #TRUEV
-          BRA  MV1DONE
-MV1FAIL:  LDD  #FALSEV
-MV1DONE:  LDX  #TSTMV1NAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   MV1DONE
+MV1FAIL:    LDD   #FALSEV
+MV1DONE:    LDX   #TSTMV1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTMV1NAME: FCB  8
-            FCC  "TSTMOVE1"
+TSTMV1NAME: FCB   8
+            FCC   "TSTMOVE1"
 
 ; ------------------------------------------------------------
 ; TSTMOVE2 - unit test for MOVE, overlapping case with dst >
@@ -11580,81 +11715,81 @@ TSTMV1NAME: FCB  8
 ; hand-derived and independently simulated in Python before
 ; writing this test, not guessed: "ABABCDE" across bytes 0-6.
 ; ------------------------------------------------------------
-TSTMOVE2: LDA  #'A'
-          STA  TSTCBUF
-          LDA  #'B'
-          STA  TSTCBUF+1
-          LDA  #'C'
-          STA  TSTCBUF+2
-          LDA  #'D'
-          STA  TSTCBUF+3
-          LDA  #'E'
-          STA  TSTCBUF+4
-          LDA  #'X'
-          STA  TSTCBUF+5
-          LDA  #'X'
-          STA  TSTCBUF+6
+TSTMOVE2:   LDA   #'A'
+            STA   TSTCBUF
+            LDA   #'B'
+            STA   TSTCBUF+1
+            LDA   #'C'
+            STA   TSTCBUF+2
+            LDA   #'D'
+            STA   TSTCBUF+3
+            LDA   #'E'
+            STA   TSTCBUF+4
+            LDA   #'X'
+            STA   TSTCBUF+5
+            LDA   #'X'
+            STA   TSTCBUF+6
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          LDD  #TSTCBUF
-          PSHU D
-          LDD  #TSTCBUF+2
-          PSHU D
-          LDD  #5
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #TSTCBUF+2
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  MOVEW
+            JSR   MOVEW
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          LDA  TSTCBUF
-          CMPA #'A'
-          BNE  MV2FAIL
-          LDA  TSTCBUF+1
-          CMPA #'B'
-          BNE  MV2FAIL
-          LDA  TSTCBUF+2
-          CMPA #'A'
-          BNE  MV2FAIL
-          LDA  TSTCBUF+3
-          CMPA #'B'
-          BNE  MV2FAIL
-          LDA  TSTCBUF+4
-          CMPA #'C'
-          BNE  MV2FAIL
-          LDA  TSTCBUF+5
-          CMPA #'D'
-          BNE  MV2FAIL
-          LDA  TSTCBUF+6
-          CMPA #'E'
-          BNE  MV2FAIL
+            LDA   TSTCBUF
+            CMPA  #'A'
+            BNE   MV2FAIL
+            LDA   TSTCBUF+1
+            CMPA  #'B'
+            BNE   MV2FAIL
+            LDA   TSTCBUF+2
+            CMPA  #'A'
+            BNE   MV2FAIL
+            LDA   TSTCBUF+3
+            CMPA  #'B'
+            BNE   MV2FAIL
+            LDA   TSTCBUF+4
+            CMPA  #'C'
+            BNE   MV2FAIL
+            LDA   TSTCBUF+5
+            CMPA  #'D'
+            BNE   MV2FAIL
+            LDA   TSTCBUF+6
+            CMPA  #'E'
+            BNE   MV2FAIL
 
-          PULU D
-          CMPD #TSTGUARD
-          BNE  MV2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   MV2FAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #-6
-          BNE  MV2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-6
+            BNE   MV2FAIL
 
-          LDD  #TRUEV
-          BRA  MV2DONE
-MV2FAIL:  LDD  #FALSEV
-MV2DONE:  LDX  #TSTMV2NAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   MV2DONE
+MV2FAIL:    LDD   #FALSEV
+MV2DONE:    LDX   #TSTMV2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTMV2NAME: FCB  8
-            FCC  "TSTMOVE2"
+TSTMV2NAME: FCB   8
+            FCC   "TSTMOVE2"
 
 ; ------------------------------------------------------------
 ; TSTMOVE3 - unit test for MOVE, overlapping case with dst <
@@ -11666,83 +11801,83 @@ TSTMV2NAME: FCB  8
 ; "ABCDEDE" across bytes 0-6 (bytes 5-6 untouched, outside the
 ; destination range).
 ; ------------------------------------------------------------
-TSTMOVE3: LDA  #'X'
-          STA  TSTCBUF
-          LDA  #'X'
-          STA  TSTCBUF+1
-          LDA  #'A'
-          STA  TSTCBUF+2
-          LDA  #'B'
-          STA  TSTCBUF+3
-          LDA  #'C'
-          STA  TSTCBUF+4
-          LDA  #'D'
-          STA  TSTCBUF+5
-          LDA  #'E'
-          STA  TSTCBUF+6
+TSTMOVE3:   LDA   #'X'
+            STA   TSTCBUF
+            LDA   #'X'
+            STA   TSTCBUF+1
+            LDA   #'A'
+            STA   TSTCBUF+2
+            LDA   #'B'
+            STA   TSTCBUF+3
+            LDA   #'C'
+            STA   TSTCBUF+4
+            LDA   #'D'
+            STA   TSTCBUF+5
+            LDA   #'E'
+            STA   TSTCBUF+6
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          LDD  #TSTCBUF+2
-          PSHU D
-          LDD  #TSTCBUF
-          PSHU D
-          LDD  #5
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF+2
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  MOVEW
+            JSR   MOVEW
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          LDA  TSTCBUF
-          CMPA #'A'
-          BNE  MV3FAIL
-          LDA  TSTCBUF+1
-          CMPA #'B'
-          BNE  MV3FAIL
-          LDA  TSTCBUF+2
-          CMPA #'C'
-          BNE  MV3FAIL
-          LDA  TSTCBUF+3
-          CMPA #'D'
-          BNE  MV3FAIL
-          LDA  TSTCBUF+4
-          CMPA #'E'
-          BNE  MV3FAIL
-          LDA  TSTCBUF+5
-          CMPA #'D'
-          BNE  MV3FAIL
-          LDA  TSTCBUF+6
-          CMPA #'E'
-          BNE  MV3FAIL
+            LDA   TSTCBUF
+            CMPA  #'A'
+            BNE   MV3FAIL
+            LDA   TSTCBUF+1
+            CMPA  #'B'
+            BNE   MV3FAIL
+            LDA   TSTCBUF+2
+            CMPA  #'C'
+            BNE   MV3FAIL
+            LDA   TSTCBUF+3
+            CMPA  #'D'
+            BNE   MV3FAIL
+            LDA   TSTCBUF+4
+            CMPA  #'E'
+            BNE   MV3FAIL
+            LDA   TSTCBUF+5
+            CMPA  #'D'
+            BNE   MV3FAIL
+            LDA   TSTCBUF+6
+            CMPA  #'E'
+            BNE   MV3FAIL
 
-          PULU D
-          CMPD #TSTGUARD
-          BNE  MV3FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   MV3FAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #-6
-          BNE  MV3FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-6
+            BNE   MV3FAIL
 
-          LDD  #TRUEV
-          BRA  MV3DONE
-MV3FAIL:  LDD  #FALSEV
-MV3DONE:  LDX  #TSTMV3NAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   MV3DONE
+MV3FAIL:    LDD   #FALSEV
+MV3DONE:    LDX   #TSTMV3NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTMV3NAME: FCB  8
-            FCC  "TSTMOVE3"
+TSTMV3NAME: FCB   8
+            FCC   "TSTMOVE3"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTSTRPARSE - strings & parsing tests (glossary section 3.12,
@@ -11774,43 +11909,44 @@ TSTMV3NAME: FCB  8
 ; wrapper, caught by the standard collision check before
 ; insertion.
 ; ------------------------------------------------------------
-TSTSTRPARSE: JSR CRW
-           LDX   #TSTSTRPMSG
-           PSHU  X
-           LDD   #8
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+TSTSTRPARSE:
+            JSR   CRW
+            LDX   #TSTSTRPMSG
+            PSHU  X
+            LDD   #8
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-11  ; >>>>
+            IFEQ  TSTSELECTOR-11    ; >>>>
 
-           JSR   TSTCOUNT
-           JSR   TSTCHARW
-           JSR   TSTBRACKCHAR1
-           JSR   TSTBRACKCHAR2
-           JSR   TSTPARSE
-           JSR   TSTPARSENAME
-           JSR   TSTSQUOTE1
-           JSR   TSTSQUOTE2
-           JSR   TSTDOTQUOTE
-           JSR   TSTSCOMPARE
-           JSR   TSTSEARCH1
-           JSR   TSTSEARCH2
-           JSR   TSTDASHTRAILING
-           JSR   TSTSLASHSTRING
-           JSR   TSTREPLSUBS1
-           JSR   TSTREPLSUBS2
-           JSR   TSTSNAME1
-           JSR   TSTSNAME2
-           JSR   TSTUNESCAPE
+            JSR   TSTCOUNT
+            JSR   TSTCHARW
+            JSR   TSTBRACKCHAR1
+            JSR   TSTBRACKCHAR2
+            JSR   TSTPARSE
+            JSR   TSTPARSENAME
+            JSR   TSTSQUOTE1
+            JSR   TSTSQUOTE2
+            JSR   TSTDOTQUOTE
+            JSR   TSTSCOMPARE
+            JSR   TSTSEARCH1
+            JSR   TSTSEARCH2
+            JSR   TSTDASHTRAILING
+            JSR   TSTSLASHSTRING
+            JSR   TSTREPLSUBS1
+            JSR   TSTREPLSUBS2
+            JSR   TSTSNAME1
+            JSR   TSTSNAME2
+            JSR   TSTUNESCAPE
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTSTRPMSG: FCC "StrParse"
+TSTSTRPMSG: FCC   "StrParse"
 
-           IFEQ TSTSELECTOR-11  ; >>>>
+            IFEQ  TSTSELECTOR-11    ; >>>>
 
 ; ------------------------------------------------------------
 ; Strings & Parsing test harness (glossary section 3.12). Reuses
@@ -11836,59 +11972,59 @@ TSTSTRPMSG: FCC "StrParse"
 ; scratch, verifies the returned (addr len) correctly skips the
 ; count byte and reports its value.
 ; ------------------------------------------------------------
-TSTCOUNT: LDA  #5
-          STA  TSTCBUF
-          LDA  #'H'
-          STA  TSTCBUF+1
-          LDA  #'E'
-          STA  TSTCBUF+2
-          LDA  #'L'
-          STA  TSTCBUF+3
-          LDA  #'L'
-          STA  TSTCBUF+4
-          LDA  #'O'
-          STA  TSTCBUF+5
+TSTCOUNT:   LDA   #5
+            STA   TSTCBUF
+            LDA   #'H'
+            STA   TSTCBUF+1
+            LDA   #'E'
+            STA   TSTCBUF+2
+            LDA   #'L'
+            STA   TSTCBUF+3
+            LDA   #'L'
+            STA   TSTCBUF+4
+            LDA   #'O'
+            STA   TSTCBUF+5
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          LDD  #TSTCBUF
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  COUNT
+            JSR   COUNT
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          PULU D
-          CMPD #5
-          BNE  CTFAIL
-          PULU D
-          CMPD #TSTCBUF+1
-          BNE  CTFAIL
-          PULU D
-          CMPD #TSTGUARD
-          BNE  CTFAIL
+            PULU  D
+            CMPD  #5
+            BNE   CTFAIL
+            PULU  D
+            CMPD  #TSTCBUF+1
+            BNE   CTFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   CTFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #2
-          BNE  CTFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   CTFAIL
 
-          LDD  #TRUEV
-          BRA  CTDONE
-CTFAIL:   LDD  #FALSEV
-CTDONE:   LDX  #TSTCTNAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   CTDONE
+CTFAIL:     LDD   #FALSEV
+CTDONE:     LDX   #TSTCTNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTCTNAME: FCB  8
-           FCC  "TSTCOUNT"
+TSTCTNAME:  FCB   8
+            FCC   "TSTCOUNT"
 
 ; ------------------------------------------------------------
 ; TSTCHARW - unit test for CHAR. Redirects CODEHERE (WORD's own
@@ -11897,79 +12033,79 @@ TSTCTNAME: FCB  8
 ; space-delimited fake source ("AB CD"), and verifies it returns
 ; 'A' - the first character of the first word.
 ; ------------------------------------------------------------
-TSTCHARW: LDD  CODEHERE
-          STD  TSTCSAV
-          LDD  SRCADDR
-          STD  TSTSASAV
-          LDD  SRCLEN
-          STD  TSTSLSAV
-          LDD  TOIN
-          STD  TSTTISAV
+TSTCHARW:   LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
 
-          LDA  #'A'
-          STA  TSTNAMEB
-          LDA  #'B'
-          STA  TSTNAMEB+1
-          LDA  #32
-          STA  TSTNAMEB+2
-          LDA  #'C'
-          STA  TSTNAMEB+3
-          LDA  #'D'
-          STA  TSTNAMEB+4
+            LDA   #'A'
+            STA   TSTNAMEB
+            LDA   #'B'
+            STA   TSTNAMEB+1
+            LDA   #32
+            STA   TSTNAMEB+2
+            LDA   #'C'
+            STA   TSTNAMEB+3
+            LDA   #'D'
+            STA   TSTNAMEB+4
 
-          LDD  #TSTCBUF
-          STD  CODEHERE
-          LDD  #TSTNAMEB
-          STD  SRCADDR
-          LDD  #5
-          STD  SRCLEN
-          LDD  #0
-          STD  TOIN
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #5
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  CHARW
+            JSR   CHARW
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          LDD  TSTCSAV
-          STD  CODEHERE
-          LDD  TSTSASAV
-          STD  SRCADDR
-          LDD  TSTSLSAV
-          STD  SRCLEN
-          LDD  TSTTISAV
-          STD  TOIN
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
 
-          PULU D
-          CMPD #'A'
-          BNE  CWFAIL
-          PULU D
-          CMPD #TSTGUARD
-          BNE  CWFAIL
+            PULU  D
+            CMPD  #'A'
+            BNE   CWFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   CWFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #2
-          BNE  CWFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   CWFAIL
 
-          LDD  #TRUEV
-          BRA  CWDONE
-CWFAIL:   LDD  #FALSEV
-CWDONE:   LDX  #TSTCWNAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   CWDONE
+CWFAIL:     LDD   #FALSEV
+CWDONE:     LDX   #TSTCWNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTCWNAME: FCB  8
-           FCC  "TSTCHARW"
+TSTCWNAME:  FCB   8
+            FCC   "TSTCHARW"
 
 ; ------------------------------------------------------------
 ; TSTBRACKCHAR1 - unit test for [CHAR], compiling-state case.
@@ -11977,165 +12113,167 @@ TSTCWNAME: FCB  8
 ; Compiles the character as a literal, then executes the result
 ; to confirm it genuinely pushes 'A'.
 ; ------------------------------------------------------------
-TSTBRACKCHAR1: LDD  CODEHERE
-               STD  TSTCSAV
-               LDD  SRCADDR
-               STD  TSTSASAV
-               LDD  SRCLEN
-               STD  TSTSLSAV
-               LDD  TOIN
-               STD  TSTTISAV
-               LDD  STATE
-               STD  TSTSTSAV
+TSTBRACKCHAR1:
+            LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   STATE
+            STD   TSTSTSAV
 
-               LDA  #'A'
-               STA  TSTNAMEB
-               LDA  #'B'
-               STA  TSTNAMEB+1
-               LDA  #32
-               STA  TSTNAMEB+2
+            LDA   #'A'
+            STA   TSTNAMEB
+            LDA   #'B'
+            STA   TSTNAMEB+1
+            LDA   #32
+            STA   TSTNAMEB+2
 
-               LDD  #TSTCBUF
-               STD  CODEHERE
-               LDD  #TSTNAMEB
-               STD  SRCADDR
-               LDD  #3
-               STD  SRCLEN
-               LDD  #0
-               STD  TOIN
-               LDD  #-1
-               STD  STATE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #3
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
+            LDD   #-1
+            STD   STATE
 
-               JSR  BRACKCHAR
+            JSR   BRACKCHAR
 
-               LDD  #OPRTS
-               PSHU D
-               JSR  CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-               LDD  TSTCSAV
-               STD  CODEHERE
-               LDD  TSTSASAV
-               STD  SRCADDR
-               LDD  TSTSLSAV
-               STD  SRCLEN
-               LDD  TSTTISAV
-               STD  TOIN
-               LDD  TSTSTSAV
-               STD  STATE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTSTSAV
+            STD   STATE
 
-               STU  TSTU0
+            STU   TSTU0
 
-               LDD  #TSTGUARD
-               PSHU D
-               STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-               LDX  #TSTCBUF
-               JSR  ,X
+            LDX   #TSTCBUF
+            JSR   ,X
 
-               STU  TSTUAF
+            STU   TSTUAF
 
-               PULU D
-               CMPD #'A'
-               BNE  BC1FAIL
-               PULU D
-               CMPD #TSTGUARD
-               BNE  BC1FAIL
+            PULU  D
+            CMPD  #'A'
+            BNE   BC1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   BC1FAIL
 
-               LDD  TSTUB4
-               SUBD TSTUAF
-               CMPD #2
-               BNE  BC1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   BC1FAIL
 
-               LDD  #TRUEV
-               BRA  BC1DONE
-BC1FAIL:       LDD  #FALSEV
-BC1DONE:       LDX  #TSTBC1NAME
-               PSHU X
-               PSHU D
-               JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   BC1DONE
+BC1FAIL:    LDD   #FALSEV
+BC1DONE:    LDX   #TSTBC1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-               LDU  TSTU0
-               RTS
+            LDU   TSTU0
+            RTS
 
-TSTBC1NAME: FCB  13
-            FCC  "TSTBRACKCHAR1"
+TSTBC1NAME: FCB   13
+            FCC   "TSTBRACKCHAR1"
 
 ; ------------------------------------------------------------
 ; TSTBRACKCHAR2 - unit test for [CHAR], interpreting-state case.
 ; STATE=0, verifies -14 via CATCH.
 ; ------------------------------------------------------------
-TSTBRACKCHAR2: LDD  CODEHERE
-               STD  TSTCSAV
-               LDD  SRCADDR
-               STD  TSTSASAV
-               LDD  SRCLEN
-               STD  TSTSLSAV
-               LDD  TOIN
-               STD  TSTTISAV
-               LDD  STATE
-               STD  TSTSTSAV
+TSTBRACKCHAR2:
+            LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   STATE
+            STD   TSTSTSAV
 
-               LDA  #'A'
-               STA  TSTNAMEB
-               LDA  #'B'
-               STA  TSTNAMEB+1
-               LDA  #32
-               STA  TSTNAMEB+2
+            LDA   #'A'
+            STA   TSTNAMEB
+            LDA   #'B'
+            STA   TSTNAMEB+1
+            LDA   #32
+            STA   TSTNAMEB+2
 
-               LDD  #TSTCBUF
-               STD  CODEHERE
-               LDD  #TSTNAMEB
-               STD  SRCADDR
-               LDD  #3
-               STD  SRCLEN
-               LDD  #0
-               STD  TOIN
-               LDD  #0
-               STD  STATE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #3
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
+            LDD   #0
+            STD   STATE
 
-               STU  TSTU0
+            STU   TSTU0
 
-               LDX  #BRACKCHAR
-               PSHU X
-               STU  TSTUB4
+            LDX   #BRACKCHAR
+            PSHU  X
+            STU   TSTUB4
 
-               JSR  CATCH
+            JSR   CATCH
 
-               STU  TSTUAF
+            STU   TSTUAF
 
-               LDD  TSTCSAV
-               STD  CODEHERE
-               LDD  TSTSASAV
-               STD  SRCADDR
-               LDD  TSTSLSAV
-               STD  SRCLEN
-               LDD  TSTTISAV
-               STD  TOIN
-               LDD  TSTSTSAV
-               STD  STATE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTSTSAV
+            STD   STATE
 
-               PULU D
-               CMPD #-14
-               BNE  BC2FAIL
+            PULU  D
+            CMPD  #-14
+            BNE   BC2FAIL
 
-               LDD  TSTUB4
-               SUBD TSTUAF
-               CMPD #0
-               BNE  BC2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   BC2FAIL
 
-               LDD  #TRUEV
-               BRA  BC2DONE
-BC2FAIL:       LDD  #FALSEV
-BC2DONE:       LDX  #TSTBC2NAME
-               PSHU X
-               PSHU D
-               JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   BC2DONE
+BC2FAIL:    LDD   #FALSEV
+BC2DONE:    LDX   #TSTBC2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-               LDU  TSTU0
-               RTS
+            LDU   TSTU0
+            RTS
 
-TSTBC2NAME: FCB  13
-            FCC  "TSTBRACKCHAR2"
+TSTBC2NAME: FCB   13
+            FCC   "TSTBRACKCHAR2"
 
 ; ------------------------------------------------------------
 ; TSTPARSE - unit test for PARSE. Uses a fake source starting
@@ -12145,74 +12283,74 @@ TSTBC2NAME: FCB  13
 ; comma should be hit immediately, returning a zero-length token
 ; right where TOIN started, not skipped over to find "XY".
 ; ------------------------------------------------------------
-TSTPARSE: LDD  SRCADDR
-          STD  TSTSASAV
-          LDD  SRCLEN
-          STD  TSTSLSAV
-          LDD  TOIN
-          STD  TSTTISAV
+TSTPARSE:   LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
 
-          LDA  #','
-          STA  TSTNAMEB
-          LDA  #'X'
-          STA  TSTNAMEB+1
-          LDA  #'Y'
-          STA  TSTNAMEB+2
+            LDA   #','
+            STA   TSTNAMEB
+            LDA   #'X'
+            STA   TSTNAMEB+1
+            LDA   #'Y'
+            STA   TSTNAMEB+2
 
-          LDD  #TSTNAMEB
-          STD  SRCADDR
-          LDD  #3
-          STD  SRCLEN
-          LDD  #0
-          STD  TOIN
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #3
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          LDD  #','
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #','
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  PARSEW
+            JSR   PARSEW
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          LDD  TSTSASAV
-          STD  SRCADDR
-          LDD  TSTSLSAV
-          STD  SRCLEN
-          LDD  TSTTISAV
-          STD  TOIN
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
 
-          PULU D
-          CMPD #0
-          BNE  PRFAIL
-          PULU D
-          CMPD #TSTNAMEB
-          BNE  PRFAIL
-          PULU D
-          CMPD #TSTGUARD
-          BNE  PRFAIL
+            PULU  D
+            CMPD  #0
+            BNE   PRFAIL
+            PULU  D
+            CMPD  #TSTNAMEB
+            BNE   PRFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   PRFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #2
-          BNE  PRFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   PRFAIL
 
-          LDD  #TRUEV
-          BRA  PRDONE
-PRFAIL:   LDD  #FALSEV
-PRDONE:   LDX  #TSTPRNAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   PRDONE
+PRFAIL:     LDD   #FALSEV
+PRDONE:     LDX   #TSTPRNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTPRNAME: FCB  8
-           FCC  "TSTPARSE"
+TSTPRNAME:  FCB   8
+            FCC   "TSTPARSE"
 
 ; ------------------------------------------------------------
 ; TSTPARSENAME - unit test for PARSE-NAME. Fake source with 2
@@ -12221,80 +12359,81 @@ TSTPRNAME: FCB  8
 ; confirming the two aren't accidentally sharing one code path
 ; that only happens to work for one of them.
 ; ------------------------------------------------------------
-TSTPARSENAME: LDD  SRCADDR
-              STD  TSTSASAV
-              LDD  SRCLEN
-              STD  TSTSLSAV
-              LDD  TOIN
-              STD  TSTTISAV
+TSTPARSENAME:
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
 
-              LDA  #32
-              STA  TSTNAMEB
-              LDA  #32
-              STA  TSTNAMEB+1
-              LDA  #'A'
-              STA  TSTNAMEB+2
-              LDA  #'B'
-              STA  TSTNAMEB+3
-              LDA  #32
-              STA  TSTNAMEB+4
-              LDA  #'C'
-              STA  TSTNAMEB+5
-              LDA  #'D'
-              STA  TSTNAMEB+6
+            LDA   #32
+            STA   TSTNAMEB
+            LDA   #32
+            STA   TSTNAMEB+1
+            LDA   #'A'
+            STA   TSTNAMEB+2
+            LDA   #'B'
+            STA   TSTNAMEB+3
+            LDA   #32
+            STA   TSTNAMEB+4
+            LDA   #'C'
+            STA   TSTNAMEB+5
+            LDA   #'D'
+            STA   TSTNAMEB+6
 
-              LDD  #TSTNAMEB
-              STD  SRCADDR
-              LDD  #7
-              STD  SRCLEN
-              LDD  #0
-              STD  TOIN
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #7
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-              STU  TSTU0
+            STU   TSTU0
 
-              LDD  #TSTGUARD
-              PSHU D
-              STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-              JSR  PARSENAME
+            JSR   PARSENAME
 
-              STU  TSTUAF
+            STU   TSTUAF
 
-              LDD  TSTSASAV
-              STD  SRCADDR
-              LDD  TSTSLSAV
-              STD  SRCLEN
-              LDD  TSTTISAV
-              STD  TOIN
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
 
-              PULU D
-              CMPD #2
-              BNE  PZFAIL
-              PULU D
-              CMPD #TSTNAMEB+2
-              BNE  PZFAIL
-              PULU D
-              CMPD #TSTGUARD
-              BNE  PZFAIL
+            PULU  D
+            CMPD  #2
+            BNE   PZFAIL
+            PULU  D
+            CMPD  #TSTNAMEB+2
+            BNE   PZFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   PZFAIL
 
-              LDD  TSTUB4
-              SUBD TSTUAF
-              CMPD #4
-              BNE  PZFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #4
+            BNE   PZFAIL
 
-              LDD  #TRUEV
-              BRA  PZDONE
-PZFAIL:       LDD  #FALSEV
-PZDONE:       LDX  #TSTPNNAME
-              PSHU X
-              PSHU D
-              JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   PZDONE
+PZFAIL:     LDD   #FALSEV
+PZDONE:     LDX   #TSTPNNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-              LDU  TSTU0
-              RTS
+            LDU   TSTU0
+            RTS
 
-TSTPNNAME: FCB  12
-           FCC  "TSTPARSENAME"
+TSTPNNAME:  FCB   12
+            FCC   "TSTPARSENAME"
 
 ; ------------------------------------------------------------
 ; TSTSQUOTE1 - unit test for S", compiling-state case. Compiles
@@ -12302,98 +12441,98 @@ TSTPNNAME: FCB  12
 ; confirm it genuinely pushes (addr len) with the correct
 ; content at addr - not just that the call returned two numbers.
 ; ------------------------------------------------------------
-TSTSQUOTE1: LDD  CODEHERE
-            STD  TSTCSAV
-            LDD  SRCADDR
-            STD  TSTSASAV
-            LDD  SRCLEN
-            STD  TSTSLSAV
-            LDD  TOIN
-            STD  TSTTISAV
-            LDD  STATE
-            STD  TSTSTSAV
+TSTSQUOTE1: LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   STATE
+            STD   TSTSTSAV
 
-            LDA  #'H'
-            STA  TSTNAMEB
-            LDA  #'I'
-            STA  TSTNAMEB+1
-            LDA  #34
-            STA  TSTNAMEB+2
+            LDA   #'H'
+            STA   TSTNAMEB
+            LDA   #'I'
+            STA   TSTNAMEB+1
+            LDA   #34
+            STA   TSTNAMEB+2
 
-            LDD  #TSTCBUF
-            STD  CODEHERE
-            LDD  #TSTNAMEB
-            STD  SRCADDR
-            LDD  #3
-            STD  SRCLEN
-            LDD  #0
-            STD  TOIN
-            LDD  #-1
-            STD  STATE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #3
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
+            LDD   #-1
+            STD   STATE
 
-            JSR  SQUOTE
+            JSR   SQUOTE
 
-            LDD  #OPRTS
-            PSHU D
-            JSR  CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-            LDD  TSTCSAV
-            STD  CODEHERE
-            LDD  TSTSASAV
-            STD  SRCADDR
-            LDD  TSTSLSAV
-            STD  SRCLEN
-            LDD  TSTTISAV
-            STD  TOIN
-            LDD  TSTSTSAV
-            STD  STATE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTSTSAV
+            STD   STATE
 
-            STU  TSTU0
+            STU   TSTU0
 
-            LDD  #TSTGUARD
-            PSHU D
-            STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-            LDX  #TSTCBUF
-            JSR  ,X
+            LDX   #TSTCBUF
+            JSR   ,X
 
-            STU  TSTUAF
+            STU   TSTUAF
 
-            PULU D
-            CMPD #2
-            BNE  SQ1FAIL
+            PULU  D
+            CMPD  #2
+            BNE   SQ1FAIL
 
-            PULU D
-            TFR  D,X
-            LDA  ,X
-            CMPA #'H'
-            BNE  SQ1FAIL
-            LDA  1,X
-            CMPA #'I'
-            BNE  SQ1FAIL
+            PULU  D
+            TFR   D,X
+            LDA   ,X
+            CMPA  #'H'
+            BNE   SQ1FAIL
+            LDA   1,X
+            CMPA  #'I'
+            BNE   SQ1FAIL
 
-            PULU D
-            CMPD #TSTGUARD
-            BNE  SQ1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SQ1FAIL
 
-            LDD  TSTUB4
-            SUBD TSTUAF
-            CMPD #4
-            BNE  SQ1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #4
+            BNE   SQ1FAIL
 
-            LDD  #TRUEV
-            BRA  SQ1DONE
-SQ1FAIL:    LDD  #FALSEV
-SQ1DONE:    LDX  #TSTSQ1NAME
-            PSHU X
-            PSHU D
-            JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   SQ1DONE
+SQ1FAIL:    LDD   #FALSEV
+SQ1DONE:    LDX   #TSTSQ1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-            LDU  TSTU0
+            LDU   TSTU0
             RTS
 
-TSTSQ1NAME: FCB  10
-            FCC  "TSTSQUOTE1"
+TSTSQ1NAME: FCB   10
+            FCC   "TSTSQUOTE1"
 
 ; ------------------------------------------------------------
 ; TSTSQUOTE2 - unit test for S", interpreting-state case.
@@ -12404,94 +12543,94 @@ TSTSQ1NAME: FCB  10
 ; verifies the returned (addr len) content, plus that addr
 ; genuinely landed at PAD's current, redirected address.
 ; ------------------------------------------------------------
-TSTSQUOTE2: LDD  CODEHERE
-            STD  TSTCSAV
-            LDD  SRCADDR
-            STD  TSTSASAV
-            LDD  SRCLEN
-            STD  TSTSLSAV
-            LDD  TOIN
-            STD  TSTTISAV
-            LDD  STATE
-            STD  TSTSTSAV
+TSTSQUOTE2: LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   STATE
+            STD   TSTSTSAV
 
-            LDA  #'H'
-            STA  TSTNAMEB
-            LDA  #'I'
-            STA  TSTNAMEB+1
-            LDA  #34
-            STA  TSTNAMEB+2
+            LDA   #'H'
+            STA   TSTNAMEB
+            LDA   #'I'
+            STA   TSTNAMEB+1
+            LDA   #34
+            STA   TSTNAMEB+2
 
-            LDD  #TSTCBUF
-            STD  CODEHERE
-            LDD  #TSTNAMEB
-            STD  SRCADDR
-            LDD  #3
-            STD  SRCLEN
-            LDD  #0
-            STD  TOIN
-            LDD  #0
-            STD  STATE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #3
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
+            LDD   #0
+            STD   STATE
 
-            STU  TSTU0
+            STU   TSTU0
 
-            LDD  #TSTGUARD
-            PSHU D
-            STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-            JSR  SQUOTE
+            JSR   SQUOTE
 
-            STU  TSTUAF
+            STU   TSTUAF
 
-            LDD  TSTCSAV
-            STD  CODEHERE
-            LDD  TSTSASAV
-            STD  SRCADDR
-            LDD  TSTSLSAV
-            STD  SRCLEN
-            LDD  TSTTISAV
-            STD  TOIN
-            LDD  TSTSTSAV
-            STD  STATE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTSTSAV
+            STD   STATE
 
-            PULU D
-            CMPD #2
-            BNE  SQ2FAIL
+            PULU  D
+            CMPD  #2
+            BNE   SQ2FAIL
 
-            PULU D
-            CMPD #TSTCBUF+PADOFFSET
-            BNE  SQ2FAIL
+            PULU  D
+            CMPD  #TSTCBUF+PADOFFSET
+            BNE   SQ2FAIL
 
-            TFR  D,X
-            LDA  ,X
-            CMPA #'H'
-            BNE  SQ2FAIL
-            LDA  1,X
-            CMPA #'I'
-            BNE  SQ2FAIL
+            TFR   D,X
+            LDA   ,X
+            CMPA  #'H'
+            BNE   SQ2FAIL
+            LDA   1,X
+            CMPA  #'I'
+            BNE   SQ2FAIL
 
-            PULU D
-            CMPD #TSTGUARD
-            BNE  SQ2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SQ2FAIL
 
-            LDD  TSTUB4
-            SUBD TSTUAF
-            CMPD #4
-            BNE  SQ2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #4
+            BNE   SQ2FAIL
 
-            LDD  #TRUEV
-            BRA  SQ2DONE
-SQ2FAIL:    LDD  #FALSEV
-SQ2DONE:    LDX  #TSTSQ2NAME
-            PSHU X
-            PSHU D
-            JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   SQ2DONE
+SQ2FAIL:    LDD   #FALSEV
+SQ2DONE:    LDX   #TSTSQ2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-            LDU  TSTU0
+            LDU   TSTU0
             RTS
 
-TSTSQ2NAME: FCB  10
-            FCC  "TSTSQUOTE2"
+TSTSQ2NAME: FCB   10
+            FCC   "TSTSQUOTE2"
 
 ; ------------------------------------------------------------
 ; TSTDOTQUOTE - unit test for .". No STATE check at all in its
@@ -12509,107 +12648,108 @@ TSTSQ2NAME: FCB  10
 ; SERIALPOLL=0, with a narrower EMITCH-based check (last
 ; character only, plus the stack-depth check) for SERIALPOLL=1.
 ; ------------------------------------------------------------
-TSTDOTQUOTE: LDD  CODEHERE
-             STD  TSTCSAV
-             LDD  SRCADDR
-             STD  TSTSASAV
-             LDD  SRCLEN
-             STD  TSTSLSAV
-             LDD  TOIN
-             STD  TSTTISAV
+TSTDOTQUOTE:
+            LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
 
-             LDA  #'H'
-             STA  TSTNAMEB
-             LDA  #'I'
-             STA  TSTNAMEB+1
-             LDA  #34
-             STA  TSTNAMEB+2
+            LDA   #'H'
+            STA   TSTNAMEB
+            LDA   #'I'
+            STA   TSTNAMEB+1
+            LDA   #34
+            STA   TSTNAMEB+2
 
-             LDD  #TSTCBUF
-             STD  CODEHERE
-             LDD  #TSTNAMEB
-             STD  SRCADDR
-             LDD  #3
-             STD  SRCLEN
-             LDD  #0
-             STD  TOIN
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #3
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-             JSR  DOTQUOTE
+            JSR   DOTQUOTE
 
-             LDD  #OPRTS
-             PSHU D
-             JSR  CCOMMA
+            LDD   #OPRTS
+            PSHU  D
+            JSR   CCOMMA
 
-             LDD  TSTCSAV
-             STD  CODEHERE
-             LDD  TSTSASAV
-             STD  SRCADDR
-             LDD  TSTSLSAV
-             STD  SRCLEN
-             LDD  TSTTISAV
-             STD  TOIN
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
 
-             IFEQ SERIALPOLL  ; >>>>
-             LDA  OUTHEAD
-             STA  TSTOHSAV
-             ENDC ; <<<<
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   OUTHEAD
+            STA   TSTOHSAV
+            ENDC                    ; <<<<
 
-             STU  TSTU0
+            STU   TSTU0
 
-             LDD  #TSTGUARD
-             PSHU D
-             STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-             LDX  #TSTCBUF
-             JSR  ,X
+            LDX   #TSTCBUF
+            JSR   ,X
 
-             STU  TSTUAF
+            STU   TSTUAF
 
-             IFEQ SERIALPOLL  ; >>>>
-             LDA  TSTOHSAV
-             ADDA #2
-             ANDA #OUTBUFSZ-1
-             CMPA OUTHEAD
-             BNE  DXFAIL
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   TSTOHSAV
+            ADDA  #2
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            BNE   DXFAIL
 
-             LDX  #OUTBUF
-             LDB  TSTOHSAV
-             LDA  B,X
-             CMPA #'H'
-             BNE  DXFAIL
-             INCB
-             ANDB #OUTBUFSZ-1
-             LDA  B,X
-             CMPA #'I'
-             BNE  DXFAIL
-             ELSE  ; <<<<>>>>
-             LDA  EMITCH
-             CMPA #'I'
-             BNE  DXFAIL
-             ENDC  ; <<<<<<<<<<
+            LDX   #OUTBUF
+            LDB   TSTOHSAV
+            LDA   B,X
+            CMPA  #'H'
+            BNE   DXFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'I'
+            BNE   DXFAIL
+            ELSE                    ; <<<<>>>>
+            LDA   EMITCH
+            CMPA  #'I'
+            BNE   DXFAIL
+            ENDC                    ; <<<<<<<<<<
 
-             PULU D
-             CMPD #TSTGUARD
-             BNE  DXFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DXFAIL
 
-             LDD  TSTUB4
-             SUBD TSTUAF
-             CMPD #0
-             BNE  DXFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   DXFAIL
 
-             LDD  #TRUEV
-             BRA  DXDONE
-DXFAIL:      LDD  #FALSEV
-DXDONE:      LDX  #TSTDQNAME
-             PSHU X
-             PSHU D
-             JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   DXDONE
+DXFAIL:     LDD   #FALSEV
+DXDONE:     LDX   #TSTDQNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-             LDU  TSTU0
-             RTS
+            LDU   TSTU0
+            RTS
 
-TSTDQNAME: FCB  11
-           FCC  "TSTDOTQUOTE"
+TSTDQNAME:  FCB   11
+            FCC   "TSTDOTQUOTE"
 
 ; ------------------------------------------------------------
 ; TSTSCOMPARE - unit test for COMPARE. Four sequential sub-cases
@@ -12621,97 +12761,98 @@ TSTDQNAME: FCB  11
 ; strings, which alone wouldn't exercise the tie-break path at
 ; all.
 ; ------------------------------------------------------------
-TSTSCOMPARE: LDA  #'A'
-            STA  TSTCBUF
-            LDA  #'B'
-            STA  TSTCBUF+1
-            LDA  #'A'
-            STA  TSTCBUF+2
-            LDA  #'C'
-            STA  TSTCBUF+3
+TSTSCOMPARE:
+            LDA   #'A'
+            STA   TSTCBUF
+            LDA   #'B'
+            STA   TSTCBUF+1
+            LDA   #'A'
+            STA   TSTCBUF+2
+            LDA   #'C'
+            STA   TSTCBUF+3
 
-            STU  TSTU0
+            STU   TSTU0
 
-            LDD  #TSTGUARD
-            PSHU D
-            STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-            LDD  #TSTCBUF
-            PSHU D
-            LDD  #2
-            PSHU D
-            LDD  #TSTCBUF+2
-            PSHU D
-            LDD  #2
-            PSHU D
-            JSR  COMPAREW
-            PULU D
-            CMPD #-1
-            BNE  CQFAIL
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #2
+            PSHU  D
+            LDD   #TSTCBUF+2
+            PSHU  D
+            LDD   #2
+            PSHU  D
+            JSR   COMPAREW
+            PULU  D
+            CMPD  #-1
+            BNE   CQFAIL
 
-            LDD  #TSTCBUF
-            PSHU D
-            LDD  #2
-            PSHU D
-            LDD  #TSTCBUF
-            PSHU D
-            LDD  #2
-            PSHU D
-            JSR  COMPAREW
-            PULU D
-            CMPD #0
-            BNE  CQFAIL
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #2
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #2
+            PSHU  D
+            JSR   COMPAREW
+            PULU  D
+            CMPD  #0
+            BNE   CQFAIL
 
-            LDD  #TSTCBUF+2
-            PSHU D
-            LDD  #2
-            PSHU D
-            LDD  #TSTCBUF
-            PSHU D
-            LDD  #2
-            PSHU D
-            JSR  COMPAREW
-            PULU D
-            CMPD #1
-            BNE  CQFAIL
+            LDD   #TSTCBUF+2
+            PSHU  D
+            LDD   #2
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #2
+            PSHU  D
+            JSR   COMPAREW
+            PULU  D
+            CMPD  #1
+            BNE   CQFAIL
 
-            LDD  #TSTCBUF
-            PSHU D
-            LDD  #2
-            PSHU D
-            LDD  #TSTCBUF
-            PSHU D
-            LDD  #3
-            PSHU D
-            JSR  COMPAREW
-            PULU D
-            CMPD #-1
-            BNE  CQFAIL
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #2
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #3
+            PSHU  D
+            JSR   COMPAREW
+            PULU  D
+            CMPD  #-1
+            BNE   CQFAIL
 
-            STU  TSTUAF
+            STU   TSTUAF
 
-            PULU D
-            CMPD #TSTGUARD
-            BNE  CQFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   CQFAIL
 
-            LDD  TSTUB4
-            SUBD TSTUAF
-            CMPD #0
-            BNE  CQFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   CQFAIL
 
-            LDD  #TRUEV
-            BRA  CQDONE
-CQFAIL:     LDD  #FALSEV
-CQDONE:     LDX  #TSTCQNAME
-            PSHU X
-            PSHU D
-            JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   CQDONE
+CQFAIL:     LDD   #FALSEV
+CQDONE:     LDX   #TSTCQNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-            LDU  TSTU0
+            LDU   TSTU0
             RTS
 
-TSTCQNAME: FCB  11
-           FCC  "TSTSCOMPARE"
+TSTCQNAME:  FCB   11
+            FCC   "TSTSCOMPARE"
 
 ; ------------------------------------------------------------
 ; TSTSEARCH1 - unit test for SEARCH, found case. Haystack
@@ -12719,154 +12860,154 @@ TSTCQNAME: FCB  11
 ; exactly at the match position (not just that flag is true),
 ; len3 equals the needle's own length, and flag is true.
 ; ------------------------------------------------------------
-TSTSEARCH1: LDA  #'H'
-            STA  TSTCBUF
-            LDA  #'E'
-            STA  TSTCBUF+1
-            LDA  #'L'
-            STA  TSTCBUF+2
-            LDA  #'L'
-            STA  TSTCBUF+3
-            LDA  #'O'
-            STA  TSTCBUF+4
-            LDA  #'W'
-            STA  TSTCBUF+5
-            LDA  #'O'
-            STA  TSTCBUF+6
-            LDA  #'R'
-            STA  TSTCBUF+7
-            LDA  #'L'
-            STA  TSTCBUF+8
-            LDA  #'D'
-            STA  TSTCBUF+9
+TSTSEARCH1: LDA   #'H'
+            STA   TSTCBUF
+            LDA   #'E'
+            STA   TSTCBUF+1
+            LDA   #'L'
+            STA   TSTCBUF+2
+            LDA   #'L'
+            STA   TSTCBUF+3
+            LDA   #'O'
+            STA   TSTCBUF+4
+            LDA   #'W'
+            STA   TSTCBUF+5
+            LDA   #'O'
+            STA   TSTCBUF+6
+            LDA   #'R'
+            STA   TSTCBUF+7
+            LDA   #'L'
+            STA   TSTCBUF+8
+            LDA   #'D'
+            STA   TSTCBUF+9
 
-            LDA  #'W'
-            STA  TSTCBUF+20
-            LDA  #'O'
-            STA  TSTCBUF+21
-            LDA  #'R'
-            STA  TSTCBUF+22
+            LDA   #'W'
+            STA   TSTCBUF+20
+            LDA   #'O'
+            STA   TSTCBUF+21
+            LDA   #'R'
+            STA   TSTCBUF+22
 
-            STU  TSTU0
+            STU   TSTU0
 
-            LDD  #TSTGUARD
-            PSHU D
-            LDD  #TSTCBUF
-            PSHU D
-            LDD  #10
-            PSHU D
-            LDD  #TSTCBUF+20
-            PSHU D
-            LDD  #3
-            PSHU D
-            STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #10
+            PSHU  D
+            LDD   #TSTCBUF+20
+            PSHU  D
+            LDD   #3
+            PSHU  D
+            STU   TSTUB4
 
-            JSR  SEARCHW
+            JSR   SEARCHW
 
-            STU  TSTUAF
+            STU   TSTUAF
 
-            PULU D
-            CMPD #TRUEV
-            BNE  SR1FAIL
-            PULU D
-            CMPD #3
-            BNE  SR1FAIL
-            PULU D
-            CMPD #TSTCBUF+5
-            BNE  SR1FAIL
-            PULU D
-            CMPD #TSTGUARD
-            BNE  SR1FAIL
+            PULU  D
+            CMPD  #TRUEV
+            BNE   SR1FAIL
+            PULU  D
+            CMPD  #3
+            BNE   SR1FAIL
+            PULU  D
+            CMPD  #TSTCBUF+5
+            BNE   SR1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SR1FAIL
 
-            LDD  TSTUB4
-            SUBD TSTUAF
-            CMPD #-2
-            BNE  SR1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   SR1FAIL
 
-            LDD  #TRUEV
-            BRA  SR1DONE
-SR1FAIL:    LDD  #FALSEV
-SR1DONE:    LDX  #TSTSR1NAME
-            PSHU X
-            PSHU D
-            JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   SR1DONE
+SR1FAIL:    LDD   #FALSEV
+SR1DONE:    LDX   #TSTSR1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-            LDU  TSTU0
+            LDU   TSTU0
             RTS
 
-TSTSR1NAME: FCB  10
-            FCC  "TSTSEARCH1"
+TSTSR1NAME: FCB   10
+            FCC   "TSTSEARCH1"
 
 ; ------------------------------------------------------------
 ; TSTSEARCH2 - unit test for SEARCH, not-found case. Verifies
 ; addr3/len3 fall back to the original haystack (addr1/len1)
 ; unchanged, and flag is false.
 ; ------------------------------------------------------------
-TSTSEARCH2: LDA  #'H'
-            STA  TSTCBUF
-            LDA  #'E'
-            STA  TSTCBUF+1
-            LDA  #'L'
-            STA  TSTCBUF+2
-            LDA  #'L'
-            STA  TSTCBUF+3
-            LDA  #'O'
-            STA  TSTCBUF+4
+TSTSEARCH2: LDA   #'H'
+            STA   TSTCBUF
+            LDA   #'E'
+            STA   TSTCBUF+1
+            LDA   #'L'
+            STA   TSTCBUF+2
+            LDA   #'L'
+            STA   TSTCBUF+3
+            LDA   #'O'
+            STA   TSTCBUF+4
 
-            LDA  #'X'
-            STA  TSTCBUF+20
-            LDA  #'Y'
-            STA  TSTCBUF+21
+            LDA   #'X'
+            STA   TSTCBUF+20
+            LDA   #'Y'
+            STA   TSTCBUF+21
 
-            STU  TSTU0
+            STU   TSTU0
 
-            LDD  #TSTGUARD
-            PSHU D
-            LDD  #TSTCBUF
-            PSHU D
-            LDD  #5
-            PSHU D
-            LDD  #TSTCBUF+20
-            PSHU D
-            LDD  #2
-            PSHU D
-            STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            LDD   #TSTCBUF+20
+            PSHU  D
+            LDD   #2
+            PSHU  D
+            STU   TSTUB4
 
-            JSR  SEARCHW
+            JSR   SEARCHW
 
-            STU  TSTUAF
+            STU   TSTUAF
 
-            PULU D
-            CMPD #FALSEV
-            BNE  SR2FAIL
-            PULU D
-            CMPD #5
-            BNE  SR2FAIL
-            PULU D
-            CMPD #TSTCBUF
-            BNE  SR2FAIL
-            PULU D
-            CMPD #TSTGUARD
-            BNE  SR2FAIL
+            PULU  D
+            CMPD  #FALSEV
+            BNE   SR2FAIL
+            PULU  D
+            CMPD  #5
+            BNE   SR2FAIL
+            PULU  D
+            CMPD  #TSTCBUF
+            BNE   SR2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SR2FAIL
 
-            LDD  TSTUB4
-            SUBD TSTUAF
-            CMPD #-2
-            BNE  SR2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   SR2FAIL
 
-            LDD  #TRUEV
-            BRA  SR2DONE
-SR2FAIL:    LDD  #FALSEV
-SR2DONE:    LDX  #TSTSR2NAME
-            PSHU X
-            PSHU D
-            JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   SR2DONE
+SR2FAIL:    LDD   #FALSEV
+SR2DONE:    LDX   #TSTSR2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-            LDU  TSTU0
+            LDU   TSTU0
             RTS
 
-TSTSR2NAME: FCB  10
-            FCC  "TSTSEARCH2"
+TSTSR2NAME: FCB   10
+            FCC   "TSTSEARCH2"
 
 ; ------------------------------------------------------------
 ; TSTDASHTRAILING - unit test for -TRAILING. "AB   " (2 letters,
@@ -12874,120 +13015,122 @@ TSTSR2NAME: FCB  10
 ; confirmed via its own code that it's a peek-and-modify-top
 ; operation on the stack, not a pop-then-push of a new addr.
 ; ------------------------------------------------------------
-TSTDASHTRAILING: LDA  #'A'
-                 STA  TSTCBUF
-                 LDA  #'B'
-                 STA  TSTCBUF+1
-                 LDA  #32
-                 STA  TSTCBUF+2
-                 LDA  #32
-                 STA  TSTCBUF+3
-                 LDA  #32
-                 STA  TSTCBUF+4
+TSTDASHTRAILING:
+            LDA   #'A'
+            STA   TSTCBUF
+            LDA   #'B'
+            STA   TSTCBUF+1
+            LDA   #32
+            STA   TSTCBUF+2
+            LDA   #32
+            STA   TSTCBUF+3
+            LDA   #32
+            STA   TSTCBUF+4
 
-                 STU  TSTU0
+            STU   TSTU0
 
-                 LDD  #TSTGUARD
-                 PSHU D
-                 LDD  #TSTCBUF
-                 PSHU D
-                 LDD  #5
-                 PSHU D
-                 STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            STU   TSTUB4
 
-                 JSR  DASHTRAILING
+            JSR   DASHTRAILING
 
-                 STU  TSTUAF
+            STU   TSTUAF
 
-                 PULU D
-                 CMPD #2
-                 BNE  DTFAIL2
-                 PULU D
-                 CMPD #TSTCBUF
-                 BNE  DTFAIL2
-                 PULU D
-                 CMPD #TSTGUARD
-                 BNE  DTFAIL2
+            PULU  D
+            CMPD  #2
+            BNE   DTFAIL2
+            PULU  D
+            CMPD  #TSTCBUF
+            BNE   DTFAIL2
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DTFAIL2
 
-                 LDD  TSTUB4
-                 SUBD TSTUAF
-                 CMPD #0
-                 BNE  DTFAIL2
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   DTFAIL2
 
-                 LDD  #TRUEV
-                 BRA  DTDONE2
-DTFAIL2:         LDD  #FALSEV
-DTDONE2:         LDX  #TSTDTNAME
-                 PSHU X
-                 PSHU D
-                 JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   DTDONE2
+DTFAIL2:    LDD   #FALSEV
+DTDONE2:    LDX   #TSTDTNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-                 LDU  TSTU0
-                 RTS
+            LDU   TSTU0
+            RTS
 
-TSTDTNAME: FCB  15
-           FCC  "TSTDASHTRAILING"
+TSTDTNAME:  FCB   15
+            FCC   "TSTDASHTRAILING"
 
 ; ------------------------------------------------------------
 ; TSTSLASHSTRING - unit test for /STRING. "HELLO" trimmed by 2
 ; from the front - verifies both the advanced address and the
 ; reduced length.
 ; ------------------------------------------------------------
-TSTSLASHSTRING: LDA  #'H'
-                STA  TSTCBUF
-                LDA  #'E'
-                STA  TSTCBUF+1
-                LDA  #'L'
-                STA  TSTCBUF+2
-                LDA  #'L'
-                STA  TSTCBUF+3
-                LDA  #'O'
-                STA  TSTCBUF+4
+TSTSLASHSTRING:
+            LDA   #'H'
+            STA   TSTCBUF
+            LDA   #'E'
+            STA   TSTCBUF+1
+            LDA   #'L'
+            STA   TSTCBUF+2
+            LDA   #'L'
+            STA   TSTCBUF+3
+            LDA   #'O'
+            STA   TSTCBUF+4
 
-                STU  TSTU0
+            STU   TSTU0
 
-                LDD  #TSTGUARD
-                PSHU D
-                LDD  #TSTCBUF
-                PSHU D
-                LDD  #5
-                PSHU D
-                LDD  #2
-                PSHU D
-                STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            LDD   #2
+            PSHU  D
+            STU   TSTUB4
 
-                JSR  SLASHSTRING
+            JSR   SLASHSTRING
 
-                STU  TSTUAF
+            STU   TSTUAF
 
-                PULU D
-                CMPD #3
-                BNE  SLSFAIL
-                PULU D
-                CMPD #TSTCBUF+2
-                BNE  SLSFAIL
-                PULU D
-                CMPD #TSTGUARD
-                BNE  SLSFAIL
+            PULU  D
+            CMPD  #3
+            BNE   SLSFAIL
+            PULU  D
+            CMPD  #TSTCBUF+2
+            BNE   SLSFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SLSFAIL
 
-                LDD  TSTUB4
-                SUBD TSTUAF
-                CMPD #-2
-                BNE  SLSFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   SLSFAIL
 
-                LDD  #TRUEV
-                BRA  SLSDONE
-SLSFAIL:        LDD  #FALSEV
-SLSDONE:        LDX  #TSTSLSNAME
-                PSHU X
-                PSHU D
-                JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   SLSDONE
+SLSFAIL:    LDD   #FALSEV
+SLSDONE:    LDX   #TSTSLSNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-                LDU  TSTU0
-                RTS
+            LDU   TSTU0
+            RTS
 
-TSTSLSNAME: FCB  14
-            FCC  "TSTSLASHSTRING"
+TSTSLSNAME: FCB   14
+            FCC   "TSTSLASHSTRING"
 
 ; ------------------------------------------------------------
 ; TSTREPLSUBS1 - unit test for REPLACES and SUBSTITUTE together
@@ -13004,116 +13147,117 @@ TSTSLSNAME: FCB  14
 ; (unpaired trailing '%'), tested separately for clearer failure
 ; diagnosis.
 ; ------------------------------------------------------------
-TSTREPLSUBS1: LDA  #'Z'
-              STA  TSTCBUF
+TSTREPLSUBS1:
+            LDA   #'Z'
+            STA   TSTCBUF
 
-              LDA  #'X'
-              STA  TSTCBUF+10
+            LDA   #'X'
+            STA   TSTCBUF+10
 
-              LDA  #'%'
-              STA  TSTCBUF+20
-              LDA  #'%'
-              STA  TSTCBUF+21
-              LDA  #'A'
-              STA  TSTCBUF+22
-              LDA  #'%'
-              STA  TSTCBUF+23
-              LDA  #'X'
-              STA  TSTCBUF+24
-              LDA  #'%'
-              STA  TSTCBUF+25
-              LDA  #'B'
-              STA  TSTCBUF+26
-              LDA  #'%'
-              STA  TSTCBUF+27
-              LDA  #'Y'
-              STA  TSTCBUF+28
-              LDA  #'%'
-              STA  TSTCBUF+29
+            LDA   #'%'
+            STA   TSTCBUF+20
+            LDA   #'%'
+            STA   TSTCBUF+21
+            LDA   #'A'
+            STA   TSTCBUF+22
+            LDA   #'%'
+            STA   TSTCBUF+23
+            LDA   #'X'
+            STA   TSTCBUF+24
+            LDA   #'%'
+            STA   TSTCBUF+25
+            LDA   #'B'
+            STA   TSTCBUF+26
+            LDA   #'%'
+            STA   TSTCBUF+27
+            LDA   #'Y'
+            STA   TSTCBUF+28
+            LDA   #'%'
+            STA   TSTCBUF+29
 
-              STU  TSTU0
+            STU   TSTU0
 
-              LDD  #TSTGUARD
-              PSHU D
-              STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-              LDD  #TSTCBUF
-              PSHU D
-              LDD  #1
-              PSHU D
-              LDD  #TSTCBUF+10
-              PSHU D
-              LDD  #1
-              PSHU D
-              JSR  REPLACESW
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #1
+            PSHU  D
+            LDD   #TSTCBUF+10
+            PSHU  D
+            LDD   #1
+            PSHU  D
+            JSR   REPLACESW
 
-              LDD  #TSTCBUF+20
-              PSHU D
-              LDD  #10
-              PSHU D
-              LDD  #TSTCBUF+40
-              PSHU D
-              LDD  #20
-              PSHU D
-              JSR  SUBSTITUTEW
+            LDD   #TSTCBUF+20
+            PSHU  D
+            LDD   #10
+            PSHU  D
+            LDD   #TSTCBUF+40
+            PSHU  D
+            LDD   #20
+            PSHU  D
+            JSR   SUBSTITUTEW
 
-              STU  TSTUAF
+            STU   TSTUAF
 
-              PULU D
-              CMPD #1
-              BNE  RS1FAIL
-              PULU D
-              CMPD #7
-              BNE  RS1FAIL
-              PULU D
-              CMPD #TSTCBUF+40
-              BNE  RS1FAIL
+            PULU  D
+            CMPD  #1
+            BNE   RS1FAIL
+            PULU  D
+            CMPD  #7
+            BNE   RS1FAIL
+            PULU  D
+            CMPD  #TSTCBUF+40
+            BNE   RS1FAIL
 
-              LDX  #TSTCBUF+40
-              LDA  ,X
-              CMPA #'%'
-              BNE  RS1FAIL
-              LDA  1,X
-              CMPA #'A'
-              BNE  RS1FAIL
-              LDA  2,X
-              CMPA #'Z'
-              BNE  RS1FAIL
-              LDA  3,X
-              CMPA #'B'
-              BNE  RS1FAIL
-              LDA  4,X
-              CMPA #'%'
-              BNE  RS1FAIL
-              LDA  5,X
-              CMPA #'Y'
-              BNE  RS1FAIL
-              LDA  6,X
-              CMPA #'%'
-              BNE  RS1FAIL
+            LDX   #TSTCBUF+40
+            LDA   ,X
+            CMPA  #'%'
+            BNE   RS1FAIL
+            LDA   1,X
+            CMPA  #'A'
+            BNE   RS1FAIL
+            LDA   2,X
+            CMPA  #'Z'
+            BNE   RS1FAIL
+            LDA   3,X
+            CMPA  #'B'
+            BNE   RS1FAIL
+            LDA   4,X
+            CMPA  #'%'
+            BNE   RS1FAIL
+            LDA   5,X
+            CMPA  #'Y'
+            BNE   RS1FAIL
+            LDA   6,X
+            CMPA  #'%'
+            BNE   RS1FAIL
 
-              PULU D
-              CMPD #TSTGUARD
-              BNE  RS1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   RS1FAIL
 
-              LDD  TSTUB4
-              SUBD TSTUAF
-              CMPD #6
-              BNE  RS1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #6
+            BNE   RS1FAIL
 
-              LDD  #TRUEV
-              BRA  RS1DONE
-RS1FAIL:      LDD  #FALSEV
-RS1DONE:      LDX  #TSTRS1NAME
-              PSHU X
-              PSHU D
-              JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   RS1DONE
+RS1FAIL:    LDD   #FALSEV
+RS1DONE:    LDX   #TSTRS1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-              LDU  TSTU0
-              RTS
+            LDU   TSTU0
+            RTS
 
-TSTRS1NAME: FCB  12
-            FCC  "TSTREPLSUBS1"
+TSTRS1NAME: FCB   12
+            FCC   "TSTREPLSUBS1"
 
 ; ------------------------------------------------------------
 ; TSTREPLSUBS2 - unit test for SUBSTITUTE's fourth documented
@@ -13126,100 +13270,101 @@ TSTRS1NAME: FCB  12
 ; test registers its own pair fresh rather than relying on any
 ; prior test's own registration still being active.
 ; ------------------------------------------------------------
-TSTREPLSUBS2: LDA  #'Z'
-              STA  TSTCBUF
+TSTREPLSUBS2:
+            LDA   #'Z'
+            STA   TSTCBUF
 
-              LDA  #'X'
-              STA  TSTCBUF+10
+            LDA   #'X'
+            STA   TSTCBUF+10
 
-              LDA  #'A'
-              STA  TSTCBUF+20
-              LDA  #'B'
-              STA  TSTCBUF+21
-              LDA  #'%'
-              STA  TSTCBUF+22
-              LDA  #'C'
-              STA  TSTCBUF+23
-              LDA  #'D'
-              STA  TSTCBUF+24
+            LDA   #'A'
+            STA   TSTCBUF+20
+            LDA   #'B'
+            STA   TSTCBUF+21
+            LDA   #'%'
+            STA   TSTCBUF+22
+            LDA   #'C'
+            STA   TSTCBUF+23
+            LDA   #'D'
+            STA   TSTCBUF+24
 
-              STU  TSTU0
+            STU   TSTU0
 
-              LDD  #TSTGUARD
-              PSHU D
-              STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-              LDD  #TSTCBUF
-              PSHU D
-              LDD  #1
-              PSHU D
-              LDD  #TSTCBUF+10
-              PSHU D
-              LDD  #1
-              PSHU D
-              JSR  REPLACESW
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #1
+            PSHU  D
+            LDD   #TSTCBUF+10
+            PSHU  D
+            LDD   #1
+            PSHU  D
+            JSR   REPLACESW
 
-              LDD  #TSTCBUF+20
-              PSHU D
-              LDD  #5
-              PSHU D
-              LDD  #TSTCBUF+40
-              PSHU D
-              LDD  #20
-              PSHU D
-              JSR  SUBSTITUTEW
+            LDD   #TSTCBUF+20
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            LDD   #TSTCBUF+40
+            PSHU  D
+            LDD   #20
+            PSHU  D
+            JSR   SUBSTITUTEW
 
-              STU  TSTUAF
+            STU   TSTUAF
 
-              PULU D
-              CMPD #0
-              BNE  RS2FAIL
-              PULU D
-              CMPD #5
-              BNE  RS2FAIL
-              PULU D
-              CMPD #TSTCBUF+40
-              BNE  RS2FAIL
+            PULU  D
+            CMPD  #0
+            BNE   RS2FAIL
+            PULU  D
+            CMPD  #5
+            BNE   RS2FAIL
+            PULU  D
+            CMPD  #TSTCBUF+40
+            BNE   RS2FAIL
 
-              LDX  #TSTCBUF+40
-              LDA  ,X
-              CMPA #'A'
-              BNE  RS2FAIL
-              LDA  1,X
-              CMPA #'B'
-              BNE  RS2FAIL
-              LDA  2,X
-              CMPA #'%'
-              BNE  RS2FAIL
-              LDA  3,X
-              CMPA #'C'
-              BNE  RS2FAIL
-              LDA  4,X
-              CMPA #'D'
-              BNE  RS2FAIL
+            LDX   #TSTCBUF+40
+            LDA   ,X
+            CMPA  #'A'
+            BNE   RS2FAIL
+            LDA   1,X
+            CMPA  #'B'
+            BNE   RS2FAIL
+            LDA   2,X
+            CMPA  #'%'
+            BNE   RS2FAIL
+            LDA   3,X
+            CMPA  #'C'
+            BNE   RS2FAIL
+            LDA   4,X
+            CMPA  #'D'
+            BNE   RS2FAIL
 
-              PULU D
-              CMPD #TSTGUARD
-              BNE  RS2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   RS2FAIL
 
-              LDD  TSTUB4
-              SUBD TSTUAF
-              CMPD #6
-              BNE  RS2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #6
+            BNE   RS2FAIL
 
-              LDD  #TRUEV
-              BRA  RS2DONE
-RS2FAIL:      LDD  #FALSEV
-RS2DONE:      LDX  #TSTRS2NAME
-              PSHU X
-              PSHU D
-              JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   RS2DONE
+RS2FAIL:    LDD   #FALSEV
+RS2DONE:    LDX   #TSTRS2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-              LDU  TSTU0
-              RTS
+            LDU   TSTU0
+            RTS
 
-TSTRS2NAME: FCB  12
-            FCC  "TSTREPLSUBS2"
+TSTRS2NAME: FCB   12
+            FCC   "TSTREPLSUBS2"
 
 ; ------------------------------------------------------------
 ; TSTSNAME1 - unit test for SNAME, found case. Searches the
@@ -13229,77 +13374,77 @@ TSTRS2NAME: FCB  12
 ; the returned name content matches "DUP" exactly, not just a
 ; nonzero length.
 ; ------------------------------------------------------------
-TSTSNAME1: LDD  LATEST
-           STD  TSTLSAV
+TSTSNAME1:  LDD   LATEST
+            STD   TSTLSAV
 
-           LDD  #BASELATEST  ; BUG FIX: confirmed via a real MAME run -
-           STD  LATEST       ; SNAMEW starts its walk from LATEST
-                              ; (LDD LATEST/STD SNXT), the same real,
-                              ; pre-COLD dependency found and fixed in
-                              ; section 3.17's own TSTEVALUATE. With
-                              ; LATEST=0 (only set by COLD, which
-                              ; hasn't run yet at this whole test
-                              ; framework's own pre-COLD execution
-                              ; point), SNLOOP's own "BEQ SNNOTFOUND"
-                              ; fires immediately, before ever
-                              ; comparing against DUP's own CFA - this
-                              ; test was written in section 3.12,
-                              ; before the LATEST=0 finding existed at
-                              ; all, so it never got the fix applied.
+            LDD   #BASELATEST       ; BUG FIX: confirmed via a real MAME run -
+            STD   LATEST            ; SNAMEW starts its walk from LATEST
+                                    ; (LDD LATEST/STD SNXT), the same real,
+                                    ; pre-COLD dependency found and fixed in
+                                    ; section 3.17's own TSTEVALUATE. With
+                                    ; LATEST=0 (only set by COLD, which
+                                    ; hasn't run yet at this whole test
+                                    ; framework's own pre-COLD execution
+                                    ; point), SNLOOP's own "BEQ SNNOTFOUND"
+                                    ; fires immediately, before ever
+                                    ; comparing against DUP's own CFA - this
+                                    ; test was written in section 3.12,
+                                    ; before the LATEST=0 finding existed at
+                                    ; all, so it never got the fix applied.
 
-           STU  TSTU0
+            STU   TSTU0
 
-           LDD  #TSTGUARD
-           PSHU D
-           LDD  #DUP
-           PSHU D
-           STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #DUP
+            PSHU  D
+            STU   TSTUB4
 
-           JSR  SNAMEW
+            JSR   SNAMEW
 
-           STU  TSTUAF
+            STU   TSTUAF
 
-           PULU D
-           CMPD #3
-           BNE  SN1FAIL
+            PULU  D
+            CMPD  #3
+            BNE   SN1FAIL
 
-           PULU D
-           TFR  D,X
-           LDA  ,X
-           CMPA #'D'
-           BNE  SN1FAIL
-           LDA  1,X
-           CMPA #'U'
-           BNE  SN1FAIL
-           LDA  2,X
-           CMPA #'P'
-           BNE  SN1FAIL
+            PULU  D
+            TFR   D,X
+            LDA   ,X
+            CMPA  #'D'
+            BNE   SN1FAIL
+            LDA   1,X
+            CMPA  #'U'
+            BNE   SN1FAIL
+            LDA   2,X
+            CMPA  #'P'
+            BNE   SN1FAIL
 
-           PULU D
-           CMPD #TSTGUARD
-           BNE  SN1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SN1FAIL
 
-           LDD  TSTLSAV
-           STD  LATEST
+            LDD   TSTLSAV
+            STD   LATEST
 
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #2
-           BNE  SN1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   SN1FAIL
 
-           LDD  #TRUEV
-           BRA  SN1DONE
-SN1FAIL:   LDD  #FALSEV
-SN1DONE:   LDX  #TSTSN1NAME
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   SN1DONE
+SN1FAIL:    LDD   #FALSEV
+SN1DONE:    LDX   #TSTSN1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSN1NAME: FCB  9
-            FCC  "TSTSNAME1"
+TSTSN1NAME: FCB   9
+            FCC   "TSTSNAME1"
 
 ; ------------------------------------------------------------
 ; TSTSNAME2 - unit test for SNAME, not-found case. TSTCBUF (a
@@ -13308,63 +13453,63 @@ TSTSN1NAME: FCB  9
 ; SNAME correctly reports (0 0) rather than a false match or a
 ; crash walking off the end of the chain.
 ; ------------------------------------------------------------
-TSTSNAME2: LDD  LATEST
-           STD  TSTLSAV
+TSTSNAME2:  LDD   LATEST
+            STD   TSTLSAV
 
-           LDD  #BASELATEST  ; BUG FIX: same real, pre-COLD dependency
-           STD  LATEST       ; as TSTSNAME1 above - without this,
-                              ; SNAMEW's own chain walk starts and
-                              ; ends at LATEST=0 immediately, so this
-                              ; test was only ever exercising the
-                              ; degenerate "empty chain" case, not
-                              ; genuinely walking a real, populated
-                              ; chain and finding no match for
-                              ; TSTCBUF's own address - which is what
-                              ; this test actually claims to verify.
+            LDD   #BASELATEST       ; BUG FIX: same real, pre-COLD dependency
+            STD   LATEST            ; as TSTSNAME1 above - without this,
+                                    ; SNAMEW's own chain walk starts and
+                                    ; ends at LATEST=0 immediately, so this
+                                    ; test was only ever exercising the
+                                    ; degenerate "empty chain" case, not
+                                    ; genuinely walking a real, populated
+                                    ; chain and finding no match for
+                                    ; TSTCBUF's own address - which is what
+                                    ; this test actually claims to verify.
 
-           STU  TSTU0
+            STU   TSTU0
 
-           LDD  #TSTGUARD
-           PSHU D
-           LDD  #TSTCBUF
-           PSHU D
-           STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            STU   TSTUB4
 
-           JSR  SNAMEW
+            JSR   SNAMEW
 
-           STU  TSTUAF
+            STU   TSTUAF
 
-           PULU D
-           CMPD #0
-           BNE  SN2FAIL
-           PULU D
-           CMPD #0
-           BNE  SN2FAIL
-           PULU D
-           CMPD #TSTGUARD
-           BNE  SN2FAIL
+            PULU  D
+            CMPD  #0
+            BNE   SN2FAIL
+            PULU  D
+            CMPD  #0
+            BNE   SN2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SN2FAIL
 
-           LDD  TSTLSAV
-           STD  LATEST
+            LDD   TSTLSAV
+            STD   LATEST
 
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #2
-           BNE  SN2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   SN2FAIL
 
-           LDD  #TRUEV
-           BRA  SN2DONE
-SN2FAIL:   LDD  #FALSEV
-SN2DONE:   LDX  #TSTSN2NAME
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   SN2DONE
+SN2FAIL:    LDD   #FALSEV
+SN2DONE:    LDX   #TSTSN2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSN2NAME: FCB  9
-            FCC  "TSTSNAME2"
+TSTSN2NAME: FCB   9
+            FCC   "TSTSNAME2"
 
 ; ------------------------------------------------------------
 ; TSTUNESCAPE - unit test for UNESCAPE. Source "A%B" (3 chars,
@@ -13375,74 +13520,75 @@ TSTSN2NAME: FCB  9
 ; every output character individually and the grown length,
 ; not just that some output was produced.
 ; ------------------------------------------------------------
-TSTUNESCAPE: LDA  #'A'
-             STA  TSTCBUF
-             LDA  #'%'
-             STA  TSTCBUF+1
-             LDA  #'B'
-             STA  TSTCBUF+2
+TSTUNESCAPE:
+            LDA   #'A'
+            STA   TSTCBUF
+            LDA   #'%'
+            STA   TSTCBUF+1
+            LDA   #'B'
+            STA   TSTCBUF+2
 
-             STU  TSTU0
+            STU   TSTU0
 
-             LDD  #TSTGUARD
-             PSHU D
-             LDD  #TSTCBUF
-             PSHU D
-             LDD  #3
-             PSHU D
-             LDD  #TSTCBUF+10
-             PSHU D
-             STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #3
+            PSHU  D
+            LDD   #TSTCBUF+10
+            PSHU  D
+            STU   TSTUB4
 
-             JSR  UNESCAPEW
+            JSR   UNESCAPEW
 
-             STU  TSTUAF
+            STU   TSTUAF
 
-             PULU D
-             CMPD #4
-             BNE  UXFAIL
-             PULU D
-             CMPD #TSTCBUF+10
-             BNE  UXFAIL
+            PULU  D
+            CMPD  #4
+            BNE   UXFAIL
+            PULU  D
+            CMPD  #TSTCBUF+10
+            BNE   UXFAIL
 
-             TFR  D,X
-             LDA  ,X
-             CMPA #'A'
-             BNE  UXFAIL
-             LDA  1,X
-             CMPA #'%'
-             BNE  UXFAIL
-             LDA  2,X
-             CMPA #'%'
-             BNE  UXFAIL
-             LDA  3,X
-             CMPA #'B'
-             BNE  UXFAIL
+            TFR   D,X
+            LDA   ,X
+            CMPA  #'A'
+            BNE   UXFAIL
+            LDA   1,X
+            CMPA  #'%'
+            BNE   UXFAIL
+            LDA   2,X
+            CMPA  #'%'
+            BNE   UXFAIL
+            LDA   3,X
+            CMPA  #'B'
+            BNE   UXFAIL
 
-             PULU D
-             CMPD #TSTGUARD
-             BNE  UXFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   UXFAIL
 
-             LDD  TSTUB4
-             SUBD TSTUAF
-             CMPD #-2
-             BNE  UXFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   UXFAIL
 
-             LDD  #TRUEV
-             BRA  UXDONE
-UXFAIL:      LDD  #FALSEV
-UXDONE:      LDX  #TSTUENAME
-             PSHU X
-             PSHU D
-             JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   UXDONE
+UXFAIL:     LDD   #FALSEV
+UXDONE:     LDX   #TSTUENAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-             LDU  TSTU0
-             RTS
+            LDU   TSTU0
+            RTS
 
-TSTUENAME: FCB  11
-           FCC  "TSTUNESCAPE"
+TSTUENAME:  FCB   11
+            FCC   "TSTUNESCAPE"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTNUMOUT - numeric output tests (glossary section 3.13, 14
@@ -13479,37 +13625,38 @@ TSTUENAME: FCB  11
 ; file before insertion, per the standard practice that caught
 ; the TSTCOMPARE collision in the prior section.
 ; ------------------------------------------------------------
-TSTNUMOUT: JSR CRW
-           LDX   #TSTNUMOUTMSG
-           PSHU  X
-           LDD   #6
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+TSTNUMOUT:  JSR   CRW
+            LDX   #TSTNUMOUTMSG
+            PSHU  X
+            LDD   #6
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-12  ; >>>>
+            IFEQ  TSTSELECTOR-12    ; >>>>
 
-           JSR   TSTLTNUM
-           JSR   TSTHOLD
-           JSR   TSTHOLDS
-           JSR   TSTSIGN
-           JSR   TSTNUMSIGN
-           JSR   TSTNUMSIGNSGT
-           JSR   TSTDOT
-           JSR   TSTUDOT
-           JSR   TSTDOTR
-           JSR   TSTUDOTR
-           JSR   TSTQMARK
-           JSR   TSTDDOT
-           JSR   TSTDDOTR
+            JSR   TSTLTNUM
+            JSR   TSTHOLD
+            JSR   TSTHOLDS
+            JSR   TSTSIGN
+            JSR   TSTNUMSIGN
+            JSR   TSTNUMSIGNSGT
+            JSR   TSTDOT
+            JSR   TSTUDOT
+            JSR   TSTDOTR
+            JSR   TSTUDOTR
+            JSR   TSTQMARK
+            JSR   TSTDDOT
+            JSR   TSTDDOTR
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTNUMOUTMSG: FCC "NumOut"
+TSTNUMOUTMSG:
+            FCC   "NumOut"
 
-           IFEQ TSTSELECTOR-12  ; >>>>
+            IFEQ  TSTSELECTOR-12    ; >>>>
 
 ; ------------------------------------------------------------
 ; Numeric Output test harness (glossary section 3.13). The
@@ -13545,51 +13692,51 @@ TSTNUMOUTMSG: FCC "NumOut"
 ; TSTLTNUM - unit test for <#. No stack effect of its own -
 ; verifies it sets HLD to PAD's current (redirected) address.
 ; ------------------------------------------------------------
-TSTLTNUM: LDD  CODEHERE
-          STD  TSTCSAV
+TSTLTNUM:   LDD   CODEHERE
+            STD   TSTCSAV
 
-          LDD  #TSTCBUF
-          STD  CODEHERE
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  LTNUM
+            JSR   LTNUM
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          LDD  HLD
-          CMPD #TSTCBUF+PADOFFSET
-          BNE  LNFAIL
+            LDD   HLD
+            CMPD  #TSTCBUF+PADOFFSET
+            BNE   LNFAIL
 
-          PULU D
-          CMPD #TSTGUARD
-          BNE  LNFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   LNFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #0
-          BNE  LNFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   LNFAIL
 
-          LDD  #TRUEV
-          BRA  LNDONE
-LNFAIL:   LDD  #FALSEV
-LNDONE:   LDX  #TSTLNNAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   LNDONE
+LNFAIL:     LDD   #FALSEV
+LNDONE:     LDX   #TSTLNNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDD  TSTCSAV
-          STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTLNNAME: FCB  8
-           FCC  "TSTLTNUM"
+TSTLNNAME:  FCB   8
+            FCC   "TSTLTNUM"
 
 ; ------------------------------------------------------------
 ; TSTHOLD - unit test for HOLD. Holds 'A' then 'B' - since HOLD
@@ -13598,63 +13745,63 @@ TSTLNNAME: FCB  8
 ; character ends up at the lower address, so reading forward
 ; from the final HLD should give "BA", not "AB".
 ; ------------------------------------------------------------
-TSTHOLD: LDD  CODEHERE
-         STD  TSTCSAV
+TSTHOLD:    LDD   CODEHERE
+            STD   TSTCSAV
 
-         LDD  #TSTCBUF
-         STD  CODEHERE
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-         STU  TSTU0
+            STU   TSTU0
 
-         LDD  #TSTGUARD
-         PSHU D
-         STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-         JSR  LTNUM
+            JSR   LTNUM
 
-         LDD  #'A'
-         PSHU D
-         JSR  HOLD
+            LDD   #'A'
+            PSHU  D
+            JSR   HOLD
 
-         LDD  #'B'
-         PSHU D
-         JSR  HOLD
+            LDD   #'B'
+            PSHU  D
+            JSR   HOLD
 
-         STU  TSTUAF
+            STU   TSTUAF
 
-         LDX  HLD
-         LDA  ,X
-         CMPA #'B'
-         BNE  HDFAIL
-         LDA  1,X
-         CMPA #'A'
-         BNE  HDFAIL
+            LDX   HLD
+            LDA   ,X
+            CMPA  #'B'
+            BNE   HDFAIL
+            LDA   1,X
+            CMPA  #'A'
+            BNE   HDFAIL
 
-         PULU D
-         CMPD #TSTGUARD
-         BNE  HDFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   HDFAIL
 
-         LDD  TSTUB4
-         SUBD TSTUAF
-         CMPD #0
-         BNE  HDFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   HDFAIL
 
-         LDD  #TRUEV
-         BRA  HDDONE
-HDFAIL:  LDD  #FALSEV
-HDDONE:  LDX  #TSTHDNAME
-         PSHU X
-         PSHU D
-         JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   HDDONE
+HDFAIL:     LDD   #FALSEV
+HDDONE:     LDX   #TSTHDNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDD  TSTCSAV
-         STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-         LDU  TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTHDNAME: FCB  7
-           FCC  "TSTHOLD"
+TSTHDNAME:  FCB   7
+            FCC   "TSTHOLD"
 
 ; ------------------------------------------------------------
 ; TSTHOLDS - unit test for HOLDS. Holds the string "XY" - since
@@ -13664,66 +13811,66 @@ TSTHDNAME: FCB  7
 ; its own documented "depends on HOLD's exact decrement-by-one
 ; behavior".
 ; ------------------------------------------------------------
-TSTHOLDS: LDD  CODEHERE
-          STD  TSTCSAV
+TSTHOLDS:   LDD   CODEHERE
+            STD   TSTCSAV
 
-          LDD  #TSTCBUF
-          STD  CODEHERE
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-          LDA  #'X'
-          STA  TSTNAMEB
-          LDA  #'Y'
-          STA  TSTNAMEB+1
+            LDA   #'X'
+            STA   TSTNAMEB
+            LDA   #'Y'
+            STA   TSTNAMEB+1
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  LTNUM
+            JSR   LTNUM
 
-          LDD  #TSTNAMEB
-          PSHU D
-          LDD  #2
-          PSHU D
-          JSR  HOLDS
+            LDD   #TSTNAMEB
+            PSHU  D
+            LDD   #2
+            PSHU  D
+            JSR   HOLDS
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          LDX  HLD
-          LDA  ,X
-          CMPA #'X'
-          BNE  HOFAIL
-          LDA  1,X
-          CMPA #'Y'
-          BNE  HOFAIL
+            LDX   HLD
+            LDA   ,X
+            CMPA  #'X'
+            BNE   HOFAIL
+            LDA   1,X
+            CMPA  #'Y'
+            BNE   HOFAIL
 
-          PULU D
-          CMPD #TSTGUARD
-          BNE  HOFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   HOFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #0
-          BNE  HOFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   HOFAIL
 
-          LDD  #TRUEV
-          BRA  HODONE
-HOFAIL:   LDD  #FALSEV
-HODONE:   LDX  #TSTHSNAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   HODONE
+HOFAIL:     LDD   #FALSEV
+HODONE:     LDX   #TSTHSNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDD  TSTCSAV
-          STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTHSNAME: FCB  8
-           FCC  "TSTHOLDS"
+TSTHSNAME:  FCB   8
+            FCC   "TSTHOLDS"
 
 ; ------------------------------------------------------------
 ; TSTSIGN - unit test for SIGN. Deliberately poisons the CPU
@@ -13741,70 +13888,70 @@ TSTHSNAME: FCB  8
 ; positive (with flags poisoned toward negative, confirming no
 ; minus sign gets added incorrectly).
 ; ------------------------------------------------------------
-TSTSIGN: LDD  CODEHERE
-         STD  TSTCSAV
+TSTSIGN:    LDD   CODEHERE
+            STD   TSTCSAV
 
-         LDD  #TSTCBUF
-         STD  CODEHERE
+            LDD   #TSTCBUF
+            STD   CODEHERE
 
-         STU  TSTU0
+            STU   TSTU0
 
-         LDD  #TSTGUARD
-         PSHU D
-         STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-         JSR  LTNUM
+            JSR   LTNUM
 
-         LDD  #-5
-         LDX  #1
-         CMPX #0
-         PSHU D
-         JSR  SIGN
+            LDD   #-5
+            LDX   #1
+            CMPX  #0
+            PSHU  D
+            JSR   SIGN
 
-         LDX  HLD
-         LDA  ,X
-         CMPA #'-'
-         BNE  SGFAIL
+            LDX   HLD
+            LDA   ,X
+            CMPA  #'-'
+            BNE   SGFAIL
 
-         JSR  LTNUM
+            JSR   LTNUM
 
-         LDD  #5
-         LDX  #-1
-         CMPX #0
-         PSHU D
-         JSR  SIGN
+            LDD   #5
+            LDX   #-1
+            CMPX  #0
+            PSHU  D
+            JSR   SIGN
 
-         STU  TSTUAF
+            STU   TSTUAF
 
-         LDD  HLD
-         CMPD #TSTCBUF+PADOFFSET
-         BNE  SGFAIL
+            LDD   HLD
+            CMPD  #TSTCBUF+PADOFFSET
+            BNE   SGFAIL
 
-         PULU D
-         CMPD #TSTGUARD
-         BNE  SGFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SGFAIL
 
-         LDD  TSTUB4
-         SUBD TSTUAF
-         CMPD #0
-         BNE  SGFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   SGFAIL
 
-         LDD  #TRUEV
-         BRA  SGDONE
-SGFAIL:  LDD  #FALSEV
-SGDONE:  LDX  #TSTSGNAME
-         PSHU X
-         PSHU D
-         JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   SGDONE
+SGFAIL:     LDD   #FALSEV
+SGDONE:     LDX   #TSTSGNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDD  TSTCSAV
-         STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-         LDU  TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTSGNAME: FCB  7
-           FCC  "TSTSIGN"
+TSTSGNAME:  FCB   7
+            FCC   "TSTSIGN"
 
 ; ------------------------------------------------------------
 ; TSTNUMSIGN - unit test for #. Converts one digit of 25 (base
@@ -13813,84 +13960,84 @@ TSTSGNAME: FCB  7
 ; pictured-output convention) and the returned ud2 is the
 ; quotient (2, 0).
 ; ------------------------------------------------------------
-TSTNUMSIGN: LDD  CODEHERE
-            STD  TSTCSAV
-            LDD  BASE
-            STD  TSTBASAV
+TSTNUMSIGN: LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   BASE
+            STD   TSTBASAV
 
-            LDD  #TSTCBUF
-            STD  CODEHERE
-            LDD  #10
-            STD  BASE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #10
+            STD   BASE
 
-            STU  TSTU0
+            STU   TSTU0
 
-            LDD  #TSTGUARD
-            PSHU D
-            STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-            JSR  LTNUM
+            JSR   LTNUM
 
-            LDD  #25
-            PSHU D
-            LDD  #0
-            PSHU D
-            JSR  NUMSIGN
+            LDD   #25
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            JSR   NUMSIGN
 
-            STU  TSTUAF
+            STU   TSTUAF
 
-            LDD  TSTBASAV
-            STD  BASE
+            LDD   TSTBASAV
+            STD   BASE
 
-            PULU D
-            CMPD #0
-            BNE  NZFAIL
-            PULU D
-            CMPD #2
-            BNE  NZFAIL
+            PULU  D
+            CMPD  #0
+            BNE   NZFAIL
+            PULU  D
+            CMPD  #2
+            BNE   NZFAIL
 
-            LDX  HLD
-            LDA  ,X
-            CMPA #'5'
-            BNE  NZFAIL
+            LDX   HLD
+            LDA   ,X
+            CMPA  #'5'
+            BNE   NZFAIL
 
-            PULU D
-            CMPD #TSTGUARD
-            BNE  NZFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   NZFAIL
 
-            LDD  TSTUB4
-            SUBD TSTUAF
-            CMPD #4  ; BUG FIX: was 0 - mistakenly copied the net-
-                     ; zero reasoning from TSTNUMSIGNSGT (which calls
-                     ; #> to consume ud2 before capturing TSTUAF).
-                     ; This test captures TSTUAF right after NUMSIGN
-                     ; returns, with ud2 (the quotient) still sitting
-                     ; on the stack - confirmed via MAME: the user's
-                     ; own register dump showed D=$0004 at this exact
-                     ; comparison, precisely matching the 2 extra
-                     ; cells (quotient low+high) genuinely present at
-                     ; TSTUAF's own capture point that aren't present
-                     ; at TSTUB4's (captured before NUMSIGN even ran).
-                     ; NUMSIGN itself was never broken; only this
-                     ; test's own expected depth value was wrong.
-            BNE  NZFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #4                ; BUG FIX: was 0 - mistakenly copied the net-
+                                    ; zero reasoning from TSTNUMSIGNSGT (which calls
+                                    ; #> to consume ud2 before capturing TSTUAF).
+                                    ; This test captures TSTUAF right after NUMSIGN
+                                    ; returns, with ud2 (the quotient) still sitting
+                                    ; on the stack - confirmed via MAME: the user's
+                                    ; own register dump showed D=$0004 at this exact
+                                    ; comparison, precisely matching the 2 extra
+                                    ; cells (quotient low+high) genuinely present at
+                                    ; TSTUAF's own capture point that aren't present
+                                    ; at TSTUB4's (captured before NUMSIGN even ran).
+                                    ; NUMSIGN itself was never broken; only this
+                                    ; test's own expected depth value was wrong.
+            BNE   NZFAIL
 
-            LDD  #TRUEV
-            BRA  NZDONE
-NZFAIL:     LDD  #FALSEV
-NZDONE:     LDX  #TSTNSNAME
-            PSHU X
-            PSHU D
-            JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   NZDONE
+NZFAIL:     LDD   #FALSEV
+NZDONE:     LDX   #TSTNSNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-            LDD  TSTCSAV
-            STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-            LDU  TSTU0
+            LDU   TSTU0
             RTS
 
-TSTNSNAME: FCB  10
-           FCC  "TSTNUMSIGN"
+TSTNSNAME:  FCB   10
+            FCC   "TSTNUMSIGN"
 
 ; ------------------------------------------------------------
 ; TSTNUMSIGNSGT - combined unit test for #S and #> (naturally
@@ -13899,83 +14046,84 @@ TSTNSNAME: FCB  10
 ; then #> to get (addr len) - verifies both the string content
 ; ("12345", all 5 digits in correct order) and the length.
 ; ------------------------------------------------------------
-TSTNUMSIGNSGT: LDD  CODEHERE
-               STD  TSTCSAV
-               LDD  BASE
-               STD  TSTBASAV
+TSTNUMSIGNSGT:
+            LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   BASE
+            STD   TSTBASAV
 
-               LDD  #TSTCBUF
-               STD  CODEHERE
-               LDD  #10
-               STD  BASE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #10
+            STD   BASE
 
-               STU  TSTU0
+            STU   TSTU0
 
-               LDD  #TSTGUARD
-               PSHU D
-               STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-               JSR  LTNUM
+            JSR   LTNUM
 
-               LDD  #12345
-               PSHU D
-               LDD  #0
-               PSHU D
-               JSR  NUMSIGNS
-               JSR  NUMGT
+            LDD   #12345
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            JSR   NUMSIGNS
+            JSR   NUMGT
 
-               STU  TSTUAF
+            STU   TSTUAF
 
-               LDD  TSTBASAV
-               STD  BASE
+            LDD   TSTBASAV
+            STD   BASE
 
-               PULU D
-               CMPD #5
-               BNE  NXFAIL
+            PULU  D
+            CMPD  #5
+            BNE   NXFAIL
 
-               PULU D
-               TFR  D,X
-               LDA  ,X
-               CMPA #'1'
-               BNE  NXFAIL
-               LDA  1,X
-               CMPA #'2'
-               BNE  NXFAIL
-               LDA  2,X
-               CMPA #'3'
-               BNE  NXFAIL
-               LDA  3,X
-               CMPA #'4'
-               BNE  NXFAIL
-               LDA  4,X
-               CMPA #'5'
-               BNE  NXFAIL
+            PULU  D
+            TFR   D,X
+            LDA   ,X
+            CMPA  #'1'
+            BNE   NXFAIL
+            LDA   1,X
+            CMPA  #'2'
+            BNE   NXFAIL
+            LDA   2,X
+            CMPA  #'3'
+            BNE   NXFAIL
+            LDA   3,X
+            CMPA  #'4'
+            BNE   NXFAIL
+            LDA   4,X
+            CMPA  #'5'
+            BNE   NXFAIL
 
-               PULU D
-               CMPD #TSTGUARD
-               BNE  NXFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   NXFAIL
 
-               LDD  TSTUB4
-               SUBD TSTUAF
-               CMPD #4
-               BNE  NXFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #4
+            BNE   NXFAIL
 
-               LDD  #TRUEV
-               BRA  NXDONE
-NXFAIL:        LDD  #FALSEV
-NXDONE:        LDX  #TSTNGNAME
-               PSHU X
-               PSHU D
-               JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   NXDONE
+NXFAIL:     LDD   #FALSEV
+NXDONE:     LDX   #TSTNGNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-               LDD  TSTCSAV
-               STD  CODEHERE
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-               LDU  TSTU0
-               RTS
+            LDU   TSTU0
+            RTS
 
-TSTNGNAME: FCB  13
-           FCC  "TSTNUMSIGNSGT"
+TSTNGNAME:  FCB   13
+            FCC   "TSTNUMSIGNSGT"
 
 ; ------------------------------------------------------------
 ; TSTDOT - unit test for . (DOT). Prints -42, expecting "-42 "
@@ -13987,180 +14135,180 @@ TSTNGNAME: FCB  13
 ; consistent with the same trade-off already established for
 ; TSTCR/TSTSPACES/TSTTYPE/TSTDOTQUOTE.
 ; ------------------------------------------------------------
-TSTDOT: LDD  CODEHERE
-        STD  TSTCSAV
-        LDD  BASE
-        STD  TSTBASAV
+TSTDOT:     LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   BASE
+            STD   TSTBASAV
 
-        LDD  #TSTCBUF
-        STD  CODEHERE
-        LDD  #10
-        STD  BASE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #10
+            STD   BASE
 
-        IFEQ SERIALPOLL  ; >>>>
-        LDA  OUTHEAD
-        STA  TSTOHSAV
-        ENDC ; <<<<
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   OUTHEAD
+            STA   TSTOHSAV
+            ENDC                    ; <<<<
 
-        STU  TSTU0
+            STU   TSTU0
 
-        LDD  #TSTGUARD
-        PSHU D
-        LDD  #-42
-        PSHU D
-        STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #-42
+            PSHU  D
+            STU   TSTUB4
 
-        JSR  DOT
+            JSR   DOT
 
-        STU  TSTUAF
+            STU   TSTUAF
 
-        LDD  TSTCSAV
-        STD  CODEHERE
-        LDD  TSTBASAV
-        STD  BASE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTBASAV
+            STD   BASE
 
-        IFEQ SERIALPOLL  ; >>>>
-        LDA  TSTOHSAV
-        ADDA #4
-        ANDA #OUTBUFSZ-1
-        CMPA OUTHEAD
-        BNE  DTFAIL3
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   TSTOHSAV
+            ADDA  #4
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            BNE   DTFAIL3
 
-        LDX  #OUTBUF
-        LDB  TSTOHSAV
-        LDA  B,X
-        CMPA #'-'
-        BNE  DTFAIL3
-        INCB
-        ANDB #OUTBUFSZ-1
-        LDA  B,X
-        CMPA #'4'
-        BNE  DTFAIL3
-        INCB
-        ANDB #OUTBUFSZ-1
-        LDA  B,X
-        CMPA #'2'
-        BNE  DTFAIL3
-        INCB
-        ANDB #OUTBUFSZ-1
-        LDA  B,X
-        CMPA #32
-        BNE  DTFAIL3
-        ELSE  ; <<<<>>>>
-        LDA  EMITCH
-        CMPA #32
-        BNE  DTFAIL3
-        ENDC  ; <<<<<<<<<<
+            LDX   #OUTBUF
+            LDB   TSTOHSAV
+            LDA   B,X
+            CMPA  #'-'
+            BNE   DTFAIL3
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'4'
+            BNE   DTFAIL3
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'2'
+            BNE   DTFAIL3
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #32
+            BNE   DTFAIL3
+            ELSE                    ; <<<<>>>>
+            LDA   EMITCH
+            CMPA  #32
+            BNE   DTFAIL3
+            ENDC                    ; <<<<<<<<<<
 
-        PULU D
-        CMPD #TSTGUARD
-        BNE  DTFAIL3
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DTFAIL3
 
-        LDD  TSTUB4
-        SUBD TSTUAF
-        CMPD #-2
-        BNE  DTFAIL3
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   DTFAIL3
 
-        LDD  #TRUEV
-        BRA  DTDONE3
-DTFAIL3: LDD  #FALSEV
-DTDONE3: LDX  #TSTDTNAME2
-         PSHU X
-         PSHU D
-         JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   DTDONE3
+DTFAIL3:    LDD   #FALSEV
+DTDONE3:    LDX   #TSTDTNAME2
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU  TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTDTNAME2: FCB  6
-            FCC  "TSTDOT"
+TSTDTNAME2: FCB   6
+            FCC   "TSTDOT"
 
 ; ------------------------------------------------------------
 ; TSTUDOT - unit test for U. Prints 42, expecting "42 " (3
 ; chars: two digits, trailing space).
 ; ------------------------------------------------------------
-TSTUDOT: LDD  CODEHERE
-         STD  TSTCSAV
-         LDD  BASE
-         STD  TSTBASAV
+TSTUDOT:    LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   BASE
+            STD   TSTBASAV
 
-         LDD  #TSTCBUF
-         STD  CODEHERE
-         LDD  #10
-         STD  BASE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #10
+            STD   BASE
 
-         IFEQ SERIALPOLL  ; >>>>
-         LDA  OUTHEAD
-         STA  TSTOHSAV
-         ENDC ; <<<<
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   OUTHEAD
+            STA   TSTOHSAV
+            ENDC                    ; <<<<
 
-         STU  TSTU0
+            STU   TSTU0
 
-         LDD  #TSTGUARD
-         PSHU D
-         LDD  #42
-         PSHU D
-         STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #42
+            PSHU  D
+            STU   TSTUB4
 
-         JSR  UDOT
+            JSR   UDOT
 
-         STU  TSTUAF
+            STU   TSTUAF
 
-         LDD  TSTCSAV
-         STD  CODEHERE
-         LDD  TSTBASAV
-         STD  BASE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTBASAV
+            STD   BASE
 
-         IFEQ SERIALPOLL  ; >>>>
-         LDA  TSTOHSAV
-         ADDA #3
-         ANDA #OUTBUFSZ-1
-         CMPA OUTHEAD
-         BNE  UFFAIL
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   TSTOHSAV
+            ADDA  #3
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            BNE   UFFAIL
 
-         LDX  #OUTBUF
-         LDB  TSTOHSAV
-         LDA  B,X
-         CMPA #'4'
-         BNE  UFFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'2'
-         BNE  UFFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #32
-         BNE  UFFAIL
-         ELSE  ; <<<<>>>>
-         LDA  EMITCH
-         CMPA #32
-         BNE  UFFAIL
-         ENDC  ; <<<<<<<<<<
+            LDX   #OUTBUF
+            LDB   TSTOHSAV
+            LDA   B,X
+            CMPA  #'4'
+            BNE   UFFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'2'
+            BNE   UFFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #32
+            BNE   UFFAIL
+            ELSE                    ; <<<<>>>>
+            LDA   EMITCH
+            CMPA  #32
+            BNE   UFFAIL
+            ENDC                    ; <<<<<<<<<<
 
-         PULU D
-         CMPD #TSTGUARD
-         BNE  UFFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   UFFAIL
 
-         LDD  TSTUB4
-         SUBD TSTUAF
-         CMPD #-2
-         BNE  UFFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   UFFAIL
 
-         LDD  #TRUEV
-         BRA  UFDONE
-UFFAIL:  LDD  #FALSEV
-UFDONE:  LDX  #TSTUDNAME
-         PSHU X
-         PSHU D
-         JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   UFDONE
+UFFAIL:     LDD   #FALSEV
+UFDONE:     LDX   #TSTUDNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU  TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTUDNAME: FCB  7
-           FCC  "TSTUDOT"
+TSTUDNAME:  FCB   7
+            FCC   "TSTUDOT"
 
 ; ------------------------------------------------------------
 ; TSTDOTR - unit test for .R. Prints 42 with width 5, expecting
@@ -14168,199 +14316,199 @@ TSTUDNAME: FCB  7
 ; trailing space) - specifically exercising the padding path,
 ; not just a no-padding sanity case.
 ; ------------------------------------------------------------
-TSTDOTR: LDD  CODEHERE
-         STD  TSTCSAV
-         LDD  BASE
-         STD  TSTBASAV
+TSTDOTR:    LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   BASE
+            STD   TSTBASAV
 
-         LDD  #TSTCBUF
-         STD  CODEHERE
-         LDD  #10
-         STD  BASE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #10
+            STD   BASE
 
-         IFEQ SERIALPOLL  ; >>>>
-         LDA  OUTHEAD
-         STA  TSTOHSAV
-         ENDC ; <<<<
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   OUTHEAD
+            STA   TSTOHSAV
+            ENDC                    ; <<<<
 
-         STU  TSTU0
+            STU   TSTU0
 
-         LDD  #TSTGUARD
-         PSHU D
-         LDD  #42
-         PSHU D
-         LDD  #5
-         PSHU D
-         STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #42
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            STU   TSTUB4
 
-         JSR  DOTR
+            JSR   DOTR
 
-         STU  TSTUAF
+            STU   TSTUAF
 
-         LDD  TSTCSAV
-         STD  CODEHERE
-         LDD  TSTBASAV
-         STD  BASE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTBASAV
+            STD   BASE
 
-         IFEQ SERIALPOLL  ; >>>>
-         LDA  TSTOHSAV
-         ADDA #5
-         ANDA #OUTBUFSZ-1
-         CMPA OUTHEAD
-         BNE  DRFAIL
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   TSTOHSAV
+            ADDA  #5
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            BNE   DRFAIL
 
-         LDX  #OUTBUF
-         LDB  TSTOHSAV
-         LDA  B,X
-         CMPA #32
-         BNE  DRFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #32
-         BNE  DRFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #32
-         BNE  DRFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'4'
-         BNE  DRFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'2'
-         BNE  DRFAIL
-         ELSE  ; <<<<>>>>
-         LDA  EMITCH
-         CMPA #'2'
-         BNE  DRFAIL
-         ENDC  ; <<<<<<<<<<
+            LDX   #OUTBUF
+            LDB   TSTOHSAV
+            LDA   B,X
+            CMPA  #32
+            BNE   DRFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #32
+            BNE   DRFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #32
+            BNE   DRFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'4'
+            BNE   DRFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'2'
+            BNE   DRFAIL
+            ELSE                    ; <<<<>>>>
+            LDA   EMITCH
+            CMPA  #'2'
+            BNE   DRFAIL
+            ENDC                    ; <<<<<<<<<<
 
-         PULU D
-         CMPD #TSTGUARD
-         BNE  DRFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DRFAIL
 
-         LDD  TSTUB4
-         SUBD TSTUAF
-         CMPD #-4
-         BNE  DRFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   DRFAIL
 
-         LDD  #TRUEV
-         BRA  DRDONE
-DRFAIL:  LDD  #FALSEV
-DRDONE:  LDX  #TSTDRNAME
-         PSHU X
-         PSHU D
-         JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   DRDONE
+DRFAIL:     LDD   #FALSEV
+DRDONE:     LDX   #TSTDRNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU  TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTDRNAME: FCB  7
-           FCC  "TSTDOTR"
+TSTDRNAME:  FCB   7
+            FCC   "TSTDOTR"
 
 ; ------------------------------------------------------------
 ; TSTUDOTR - unit test for U.R. Prints 42 with width 5,
 ; expecting "   42" - same padding-path reasoning as TSTDOTR.
 ; ------------------------------------------------------------
-TSTUDOTR: LDD  CODEHERE
-          STD  TSTCSAV
-          LDD  BASE
-          STD  TSTBASAV
+TSTUDOTR:   LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   BASE
+            STD   TSTBASAV
 
-          LDD  #TSTCBUF
-          STD  CODEHERE
-          LDD  #10
-          STD  BASE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #10
+            STD   BASE
 
-          IFEQ SERIALPOLL  ; >>>>
-          LDA  OUTHEAD
-          STA  TSTOHSAV
-          ENDC ; <<<<
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   OUTHEAD
+            STA   TSTOHSAV
+            ENDC                    ; <<<<
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          LDD  #42
-          PSHU D
-          LDD  #5
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #42
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  UDOTR
+            JSR   UDOTR
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          LDD  TSTCSAV
-          STD  CODEHERE
-          LDD  TSTBASAV
-          STD  BASE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTBASAV
+            STD   BASE
 
-          IFEQ SERIALPOLL  ; >>>>
-          LDA  TSTOHSAV
-          ADDA #5
-          ANDA #OUTBUFSZ-1
-          CMPA OUTHEAD
-          BNE  URFAIL
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   TSTOHSAV
+            ADDA  #5
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            BNE   URFAIL
 
-          LDX  #OUTBUF
-          LDB  TSTOHSAV
-          LDA  B,X
-          CMPA #32
-          BNE  URFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #32
-          BNE  URFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #32
-          BNE  URFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #'4'
-          BNE  URFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #'2'
-          BNE  URFAIL
-          ELSE  ; <<<<>>>>
-          LDA  EMITCH
-          CMPA #'2'
-          BNE  URFAIL
-          ENDC  ; <<<<<<<<<<
+            LDX   #OUTBUF
+            LDB   TSTOHSAV
+            LDA   B,X
+            CMPA  #32
+            BNE   URFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #32
+            BNE   URFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #32
+            BNE   URFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'4'
+            BNE   URFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'2'
+            BNE   URFAIL
+            ELSE                    ; <<<<>>>>
+            LDA   EMITCH
+            CMPA  #'2'
+            BNE   URFAIL
+            ENDC                    ; <<<<<<<<<<
 
-          PULU D
-          CMPD #TSTGUARD
-          BNE  URFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   URFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #-4
-          BNE  URFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   URFAIL
 
-          LDD  #TRUEV
-          BRA  URDONE
-URFAIL:   LDD  #FALSEV
-URDONE:   LDX  #TSTURNAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   URDONE
+URFAIL:     LDD   #FALSEV
+URDONE:     LDX   #TSTURNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTURNAME: FCB  8
-           FCC  "TSTUDOTR"
+TSTURNAME:  FCB   8
+            FCC   "TSTUDOTR"
 
 ; ------------------------------------------------------------
 ; TSTQMARK - unit test for ?. Stores -7 at a scratch cell
@@ -14368,91 +14516,91 @@ TSTURNAME: FCB  8
 ; region, to avoid conflict), calls ? with its address, expects
 ; "-7 " (fetches and prints signed, via DOT internally).
 ; ------------------------------------------------------------
-TSTQMARK: LDD  CODEHERE
-          STD  TSTCSAV
-          LDD  BASE
-          STD  TSTBASAV
+TSTQMARK:   LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   BASE
+            STD   TSTBASAV
 
-          LDD  #TSTCBUF
-          STD  CODEHERE
-          LDD  #10
-          STD  BASE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #10
+            STD   BASE
 
-          LDD  #-7
-          STD  TSTCBUF+50
+            LDD   #-7
+            STD   TSTCBUF+50
 
-          IFEQ SERIALPOLL  ; >>>>
-          LDA  OUTHEAD
-          STA  TSTOHSAV
-          ENDC ; <<<<
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   OUTHEAD
+            STA   TSTOHSAV
+            ENDC                    ; <<<<
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          LDD  #TSTCBUF+50
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF+50
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  QMARK
+            JSR   QMARK
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          LDD  TSTCSAV
-          STD  CODEHERE
-          LDD  TSTBASAV
-          STD  BASE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTBASAV
+            STD   BASE
 
-          IFEQ SERIALPOLL  ; >>>>
-          LDA  TSTOHSAV
-          ADDA #3
-          ANDA #OUTBUFSZ-1
-          CMPA OUTHEAD
-          BNE  QMFAIL
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   TSTOHSAV
+            ADDA  #3
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            BNE   QMFAIL
 
-          LDX  #OUTBUF
-          LDB  TSTOHSAV
-          LDA  B,X
-          CMPA #'-'
-          BNE  QMFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #'7'
-          BNE  QMFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #32
-          BNE  QMFAIL
-          ELSE  ; <<<<>>>>
-          LDA  EMITCH
-          CMPA #32
-          BNE  QMFAIL
-          ENDC  ; <<<<<<<<<<
+            LDX   #OUTBUF
+            LDB   TSTOHSAV
+            LDA   B,X
+            CMPA  #'-'
+            BNE   QMFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'7'
+            BNE   QMFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #32
+            BNE   QMFAIL
+            ELSE                    ; <<<<>>>>
+            LDA   EMITCH
+            CMPA  #32
+            BNE   QMFAIL
+            ENDC                    ; <<<<<<<<<<
 
-          PULU D
-          CMPD #TSTGUARD
-          BNE  QMFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   QMFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #-2
-          BNE  QMFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   QMFAIL
 
-          LDD  #TRUEV
-          BRA  QMDONE
-QMFAIL:   LDD  #FALSEV
-QMDONE:   LDX  #TSTQMNAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   QMDONE
+QMFAIL:     LDD   #FALSEV
+QMDONE:     LDX   #TSTQMNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTQMNAME: FCB  8
-           FCC  "TSTQMARK"
+TSTQMNAME:  FCB   8
+            FCC   "TSTQMARK"
 
 ; ------------------------------------------------------------
 ; TSTDDOT - unit test for D. Prints d = -100000 (a genuine
@@ -14462,244 +14610,244 @@ TSTQMNAME: FCB  8
 ; (MNEG32), not just a value that happens to fit in one cell).
 ; Expects "-100000 " (8 chars).
 ; ------------------------------------------------------------
-TSTDDOT: LDD  CODEHERE
-         STD  TSTCSAV
-         LDD  BASE
-         STD  TSTBASAV
+TSTDDOT:    LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   BASE
+            STD   TSTBASAV
 
-         LDD  #TSTCBUF
-         STD  CODEHERE
-         LDD  #10
-         STD  BASE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #10
+            STD   BASE
 
-         IFEQ SERIALPOLL  ; >>>>
-         LDA  OUTHEAD
-         STA  TSTOHSAV
-         ENDC ; <<<<
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   OUTHEAD
+            STA   TSTOHSAV
+            ENDC                    ; <<<<
 
-         STU  TSTU0
+            STU   TSTU0
 
-         LDD  #TSTGUARD
-         PSHU D
-         LDD  #$7960
-         PSHU D
-         LDD  #$FFFE
-         PSHU D
-         STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #$7960
+            PSHU  D
+            LDD   #$FFFE
+            PSHU  D
+            STU   TSTUB4
 
-         JSR  DDOT
+            JSR   DDOT
 
-         STU  TSTUAF
+            STU   TSTUAF
 
-         LDD  TSTCSAV
-         STD  CODEHERE
-         LDD  TSTBASAV
-         STD  BASE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTBASAV
+            STD   BASE
 
-         IFEQ SERIALPOLL  ; >>>>
-         LDA  TSTOHSAV
-         ADDA #8
-         ANDA #OUTBUFSZ-1
-         CMPA OUTHEAD
-         BNE  DDFAIL
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   TSTOHSAV
+            ADDA  #8
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            BNE   DDFAIL
 
-         LDX  #OUTBUF
-         LDB  TSTOHSAV
-         LDA  B,X
-         CMPA #'-'
-         BNE  DDFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'1'
-         BNE  DDFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'0'
-         BNE  DDFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'0'
-         BNE  DDFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'0'
-         BNE  DDFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'0'
-         BNE  DDFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'0'
-         BNE  DDFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #32
-         BNE  DDFAIL
-         ELSE  ; <<<<>>>>
-         LDA  EMITCH
-         CMPA #32
-         BNE  DDFAIL
-         ENDC  ; <<<<<<<<<<
+            LDX   #OUTBUF
+            LDB   TSTOHSAV
+            LDA   B,X
+            CMPA  #'-'
+            BNE   DDFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'1'
+            BNE   DDFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'0'
+            BNE   DDFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'0'
+            BNE   DDFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'0'
+            BNE   DDFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'0'
+            BNE   DDFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'0'
+            BNE   DDFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #32
+            BNE   DDFAIL
+            ELSE                    ; <<<<>>>>
+            LDA   EMITCH
+            CMPA  #32
+            BNE   DDFAIL
+            ENDC                    ; <<<<<<<<<<
 
-         PULU D
-         CMPD #TSTGUARD
-         BNE  DDFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DDFAIL
 
-         LDD  TSTUB4
-         SUBD TSTUAF
-         CMPD #-4
-         BNE  DDFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   DDFAIL
 
-         LDD  #TRUEV
-         BRA  DDDONE
-DDFAIL:  LDD  #FALSEV
-DDDONE:  LDX  #TSTDDNAME
-         PSHU X
-         PSHU D
-         JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   DDDONE
+DDFAIL:     LDD   #FALSEV
+DDDONE:     LDX   #TSTDDNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU  TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTDDNAME: FCB  7
-           FCC  "TSTDDOT"
+TSTDDNAME:  FCB   7
+            FCC   "TSTDDOT"
 
 ; ------------------------------------------------------------
 ; TSTDDOTR - unit test for D.R. Same d = -100000 as TSTDDOT,
 ; width 10 - "-100000" is 7 chars, so padding = 3 spaces,
 ; expecting "   -100000" (10 chars total, no trailing space).
 ; ------------------------------------------------------------
-TSTDDOTR: LDD  CODEHERE
-          STD  TSTCSAV
-          LDD  BASE
-          STD  TSTBASAV
+TSTDDOTR:   LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   BASE
+            STD   TSTBASAV
 
-          LDD  #TSTCBUF
-          STD  CODEHERE
-          LDD  #10
-          STD  BASE
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #10
+            STD   BASE
 
-          IFEQ SERIALPOLL  ; >>>>
-          LDA  OUTHEAD
-          STA  TSTOHSAV
-          ENDC ; <<<<
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   OUTHEAD
+            STA   TSTOHSAV
+            ENDC                    ; <<<<
 
-          STU  TSTU0
+            STU   TSTU0
 
-          LDD  #TSTGUARD
-          PSHU D
-          LDD  #$7960
-          PSHU D
-          LDD  #$FFFE
-          PSHU D
-          LDD  #10
-          PSHU D
-          STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #$7960
+            PSHU  D
+            LDD   #$FFFE
+            PSHU  D
+            LDD   #10
+            PSHU  D
+            STU   TSTUB4
 
-          JSR  DDOTR
+            JSR   DDOTR
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          LDD  TSTCSAV
-          STD  CODEHERE
-          LDD  TSTBASAV
-          STD  BASE
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTBASAV
+            STD   BASE
 
-          IFEQ SERIALPOLL  ; >>>>
-          LDA  TSTOHSAV
-          ADDA #10
-          ANDA #OUTBUFSZ-1
-          CMPA OUTHEAD
-          BNE  DRRFAIL
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   TSTOHSAV
+            ADDA  #10
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            BNE   DRRFAIL
 
-          LDX  #OUTBUF
-          LDB  TSTOHSAV
-          LDA  B,X
-          CMPA #32
-          BNE  DRRFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #32
-          BNE  DRRFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #32
-          BNE  DRRFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #'-'
-          BNE  DRRFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #'1'
-          BNE  DRRFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #'0'
-          BNE  DRRFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #'0'
-          BNE  DRRFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #'0'
-          BNE  DRRFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #'0'
-          BNE  DRRFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #'0'
-          BNE  DRRFAIL
-          ELSE  ; <<<<>>>>
-          LDA  EMITCH
-          CMPA #'0'
-          BNE  DRRFAIL
-          ENDC  ; <<<<<<<<<<
+            LDX   #OUTBUF
+            LDB   TSTOHSAV
+            LDA   B,X
+            CMPA  #32
+            BNE   DRRFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #32
+            BNE   DRRFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #32
+            BNE   DRRFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'-'
+            BNE   DRRFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'1'
+            BNE   DRRFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'0'
+            BNE   DRRFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'0'
+            BNE   DRRFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'0'
+            BNE   DRRFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'0'
+            BNE   DRRFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'0'
+            BNE   DRRFAIL
+            ELSE                    ; <<<<>>>>
+            LDA   EMITCH
+            CMPA  #'0'
+            BNE   DRRFAIL
+            ENDC                    ; <<<<<<<<<<
 
-          PULU D
-          CMPD #TSTGUARD
-          BNE  DRRFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   DRRFAIL
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #-6
-          BNE  DRRFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-6
+            BNE   DRRFAIL
 
-          LDD  #TRUEV
-          BRA  DRRDONE
-DRRFAIL:  LDD  #FALSEV
-DRRDONE:  LDX  #TSTDRRNAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   DRRDONE
+DRRFAIL:    LDD   #FALSEV
+DRRDONE:    LDX   #TSTDRRNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTDRRNAME: FCB  8
-            FCC  "TSTDDOTR"
+TSTDRRNAME: FCB   8
+            FCC   "TSTDDOTR"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTBASERADIX - base/radix control tests (glossary section
@@ -14708,25 +14856,26 @@ TSTDRRNAME: FCB  8
 ; separately). No I/O involved, so no SERIALPOLL-conditional
 ; complexity needed here, unlike the printing-heavy sections.
 ; ------------------------------------------------------------
-TSTBASERADIX: JSR CRW
-           LDX   #TSTBRMSG
-           PSHU  X
-           LDD   #9
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+TSTBASERADIX:
+            JSR   CRW
+            LDX   #TSTBRMSG
+            PSHU  X
+            LDD   #9
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-13  ; >>>>
+            IFEQ  TSTSELECTOR-13    ; >>>>
 
-           JSR   TSTBASE
+            JSR   TSTBASE
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTBRMSG: FCC "BaseRadix"
+TSTBRMSG:   FCC   "BaseRadix"
 
-           IFEQ TSTSELECTOR-13  ; >>>>
+            IFEQ  TSTSELECTOR-13    ; >>>>
 
 ; ------------------------------------------------------------
 ; Base/Radix Control test harness (glossary section 3.14). All
@@ -14751,70 +14900,70 @@ TSTBRMSG: FCC "BaseRadix"
 ; through that address reflects DECIMAL's own, most recent
 ; setting (10).
 ; ------------------------------------------------------------
-TSTBASE: LDD  BASE
-         STD  TSTBASAV
+TSTBASE:    LDD   BASE
+            STD   TSTBASAV
 
-         STU  TSTU0
+            STU   TSTU0
 
-         JSR  HEXW
-         LDD  BASE
-         CMPD #16
-         BNE  BSFAIL
+            JSR   HEXW
+            LDD   BASE
+            CMPD  #16
+            BNE   BSFAIL
 
-         JSR  BINARYW
-         LDD  BASE
-         CMPD #2
-         BNE  BSFAIL
+            JSR   BINARYW
+            LDD   BASE
+            CMPD  #2
+            BNE   BSFAIL
 
-         JSR  DECIMAL
-         LDD  BASE
-         CMPD #10
-         BNE  BSFAIL
+            JSR   DECIMAL
+            LDD   BASE
+            CMPD  #10
+            BNE   BSFAIL
 
-         LDD  #TSTGUARD
-         PSHU D
-         STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-         JSR  BASEW
+            JSR   BASEW
 
-         STU  TSTUAF
+            STU   TSTUAF
 
-         PULU D
-         CMPD #BASE
-         BNE  BSFAIL
+            PULU  D
+            CMPD  #BASE
+            BNE   BSFAIL
 
-         TFR  D,X
-         LDD  ,X
-         CMPD #10
-         BNE  BSFAIL
+            TFR   D,X
+            LDD   ,X
+            CMPD  #10
+            BNE   BSFAIL
 
-         PULU D
-         CMPD #TSTGUARD
-         BNE  BSFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   BSFAIL
 
-         LDD  TSTUB4
-         SUBD TSTUAF
-         CMPD #2
-         BNE  BSFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   BSFAIL
 
-         LDD  #TRUEV
-         BRA  BSDONE
-BSFAIL:  LDD  #FALSEV
-BSDONE:  LDX  #TSTBSNAME
-         PSHU X
-         PSHU D
-         JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   BSDONE
+BSFAIL:     LDD   #FALSEV
+BSDONE:     LDX   #TSTBSNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDD  TSTBASAV
-         STD  BASE
+            LDD   TSTBASAV
+            STD   BASE
 
-         LDU  TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTBSNAME: FCB  7
-           FCC  "TSTBASE"
+TSTBSNAME:  FCB   7
+            FCC   "TSTBASE"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTEXCEPTION - exception handling tests (glossary section
@@ -14847,28 +14996,29 @@ TSTBSNAME: FCB  7
 ; calls on both the success and throw paths, rather than only
 ; inferring it from stack-level behavior.
 ; ------------------------------------------------------------
-TSTEXCEPTION: JSR CRW
-           LDX   #TSTEXCMSG
-           PSHU  X
-           LDD   #6
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+TSTEXCEPTION:
+            JSR   CRW
+            LDX   #TSTEXCMSG
+            PSHU  X
+            LDD   #6
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-14  ; >>>>
+            IFEQ  TSTSELECTOR-14    ; >>>>
 
-           JSR   TSTCATCHOK
-           JSR   TSTCATCHTHROW
-           JSR   TSTTHROWZERO
-           JSR   TSTHANDLERSAVE
+            JSR   TSTCATCHOK
+            JSR   TSTCATCHTHROW
+            JSR   TSTTHROWZERO
+            JSR   TSTHANDLERSAVE
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTEXCMSG: FCC "Except"
+TSTEXCMSG:  FCC   "Except"
 
-           IFEQ TSTSELECTOR-14  ; >>>>
+            IFEQ  TSTSELECTOR-14    ; >>>>
 
 ; ------------------------------------------------------------
 ; Exception Handling test harness (glossary section 3.15).
@@ -14897,51 +15047,51 @@ TSTEXCMSG: FCC "Except"
 ; verifies both that DUP's own effect genuinely happened (the
 ; value really was duplicated) and that CATCH itself returns 0.
 ; ------------------------------------------------------------
-TSTCATCHOK: STU  TSTU0
+TSTCATCHOK: STU   TSTU0
 
-            LDD  #TSTGUARD
-            PSHU D
-            LDD  #TSTVAL1
-            PSHU D
-            LDX  #DUP
-            PSHU X
-            STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTVAL1
+            PSHU  D
+            LDX   #DUP
+            PSHU  X
+            STU   TSTUB4
 
-            JSR  CATCH
+            JSR   CATCH
 
-            STU  TSTUAF
+            STU   TSTUAF
 
-            PULU D
-            CMPD #0
-            BNE  COFAIL
-            PULU D
-            CMPD #TSTVAL1
-            BNE  COFAIL
-            PULU D
-            CMPD #TSTVAL1
-            BNE  COFAIL
-            PULU D
-            CMPD #TSTGUARD
-            BNE  COFAIL
+            PULU  D
+            CMPD  #0
+            BNE   COFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   COFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   COFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   COFAIL
 
-            LDD  TSTUB4
-            SUBD TSTUAF
-            CMPD #2
-            BNE  COFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   COFAIL
 
-            LDD  #TRUEV
-            BRA  CODONE
-COFAIL:     LDD  #FALSEV
-CODONE:     LDX  #TSTCONAME
-            PSHU X
-            PSHU D
-            JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   CODONE
+COFAIL:     LDD   #FALSEV
+CODONE:     LDX   #TSTCONAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-            LDU  TSTU0
+            LDU   TSTU0
             RTS
 
-TSTCONAME: FCB  10
-           FCC  "TSTCATCHOK"
+TSTCONAME:  FCB   10
+            FCC   "TSTCATCHOK"
 
 ; ------------------------------------------------------------
 ; TSTTHROWHLP - internal helper, not a dictionary word or a
@@ -14953,14 +15103,15 @@ TSTCONAME: FCB  10
 ; would hit THROW's own uncaught path (JMP ABORT), which this
 ; whole test framework cannot survive.
 ; ------------------------------------------------------------
-TSTTHROWHLP: LDD  #TSTVAL1
-             PSHU D
-             LDD  #TSTVAL2
-             PSHU D
-             LDD  #TSTNEG1
-             PSHU D
-             JSR  THROW
-             RTS
+TSTTHROWHLP:
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #TSTVAL2
+            PSHU  D
+            LDD   #TSTNEG1
+            PSHU  D
+            JSR   THROW
+            RTS
 
 ; ------------------------------------------------------------
 ; TSTCATCHTHROW - unit test for CATCH, exception path, and for
@@ -14973,43 +15124,44 @@ TSTTHROWHLP: LDD  #TSTVAL1
 ; data stack depth... on either path" for real, not just that
 ; the final result happens to look right.
 ; ------------------------------------------------------------
-TSTCATCHTHROW: STU  TSTU0
+TSTCATCHTHROW:
+            STU   TSTU0
 
-               LDD  #TSTGUARD
-               PSHU D
-               LDX  #TSTTHROWHLP
-               PSHU X
-               STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDX   #TSTTHROWHLP
+            PSHU  X
+            STU   TSTUB4
 
-               JSR  CATCH
+            JSR   CATCH
 
-               STU  TSTUAF
+            STU   TSTUAF
 
-               PULU D
-               CMPD #TSTNEG1
-               BNE  CTFAIL2
-               PULU D
-               CMPD #TSTGUARD
-               BNE  CTFAIL2
+            PULU  D
+            CMPD  #TSTNEG1
+            BNE   CTFAIL2
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   CTFAIL2
 
-               LDD  TSTUB4
-               SUBD TSTUAF
-               CMPD #0
-               BNE  CTFAIL2
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   CTFAIL2
 
-               LDD  #TRUEV
-               BRA  CTDONE2
-CTFAIL2:       LDD  #FALSEV
-CTDONE2:       LDX  #TSTCTNAME2
-               PSHU X
-               PSHU D
-               JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   CTDONE2
+CTFAIL2:    LDD   #FALSEV
+CTDONE2:    LDX   #TSTCTNAME2
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-               LDU  TSTU0
-               RTS
+            LDU   TSTU0
+            RTS
 
-TSTCTNAME2: FCB  13
-            FCC  "TSTCATCHTHROW"
+TSTCTNAME2: FCB   13
+            FCC   "TSTCATCHTHROW"
 
 ; ------------------------------------------------------------
 ; TSTTHROWZERO - unit test for THROW(0). Confirmed via its own
@@ -15020,40 +15172,41 @@ TSTCTNAME2: FCB  13
 ; argument and does nothing else - no non-local exit, no stack
 ; disturbance beyond popping the 0 itself.
 ; ------------------------------------------------------------
-TSTTHROWZERO: STU  TSTU0
+TSTTHROWZERO:
+            STU   TSTU0
 
-              LDD  #TSTGUARD
-              PSHU D
-              LDD  #0
-              PSHU D
-              STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            STU   TSTUB4
 
-              JSR  THROW
+            JSR   THROW
 
-              STU  TSTUAF
+            STU   TSTUAF
 
-              PULU D
-              CMPD #TSTGUARD
-              BNE  TVFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   TVFAIL
 
-              LDD  TSTUB4
-              SUBD TSTUAF
-              CMPD #-2
-              BNE  TVFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   TVFAIL
 
-              LDD  #TRUEV
-              BRA  TVDONE
-TVFAIL:       LDD  #FALSEV
-TVDONE:       LDX  #TSTTZNAME
-              PSHU X
-              PSHU D
-              JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   TVDONE
+TVFAIL:     LDD   #FALSEV
+TVDONE:     LDX   #TSTTZNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-              LDU  TSTU0
-              RTS
+            LDU   TSTU0
+            RTS
 
-TSTTZNAME: FCB  12
-           FCC  "TSTTHROWZERO"
+TSTTZNAME:  FCB   12
+            FCC   "TSTTHROWZERO"
 
 ; ------------------------------------------------------------
 ; TSTHANDLERSAVE - unit test verifying CATCH correctly restores
@@ -15064,75 +15217,76 @@ TSTTZNAME: FCB  12
 ; than only inferring it from the stack-level behavior CATCH's
 ; other tests already cover.
 ; ------------------------------------------------------------
-TSTHANDLERSAVE: LDD  HANDLER
-                STD  TSTHANDSAV
+TSTHANDLERSAVE:
+            LDD   HANDLER
+            STD   TSTHANDSAV
 
-                STU  TSTU0
+            STU   TSTU0
 
-                LDD  #TSTGUARD
-                PSHU D
-                STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-                LDD  #TSTVAL1
-                PSHU D
-                LDX  #DUP
-                PSHU X
+            LDD   #TSTVAL1
+            PSHU  D
+            LDX   #DUP
+            PSHU  X
 
-                JSR  CATCH
+            JSR   CATCH
 
-                LDD  HANDLER
-                CMPD TSTHANDSAV
-                BNE  HNFAIL
+            LDD   HANDLER
+            CMPD  TSTHANDSAV
+            BNE   HNFAIL
 
-                PULU D
-                CMPD #0
-                BNE  HNFAIL
-                PULU D
-                CMPD #TSTVAL1
-                BNE  HNFAIL
-                PULU D
-                CMPD #TSTVAL1
-                BNE  HNFAIL
+            PULU  D
+            CMPD  #0
+            BNE   HNFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   HNFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   HNFAIL
 
-                LDX  #TSTTHROWHLP
-                PSHU X
+            LDX   #TSTTHROWHLP
+            PSHU  X
 
-                JSR  CATCH
+            JSR   CATCH
 
-                STU  TSTUAF
+            STU   TSTUAF
 
-                LDD  HANDLER
-                CMPD TSTHANDSAV
-                BNE  HNFAIL
+            LDD   HANDLER
+            CMPD  TSTHANDSAV
+            BNE   HNFAIL
 
-                PULU D
-                CMPD #TSTNEG1
-                BNE  HNFAIL
+            PULU  D
+            CMPD  #TSTNEG1
+            BNE   HNFAIL
 
-                PULU D
-                CMPD #TSTGUARD
-                BNE  HNFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   HNFAIL
 
-                LDD  TSTUB4
-                SUBD TSTUAF
-                CMPD #2
-                BNE  HNFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   HNFAIL
 
-                LDD  #TRUEV
-                BRA  HNDONE
-HNFAIL:         LDD  #FALSEV
-HNDONE:         LDX  #TSTHNNAME
-                PSHU X
-                PSHU D
-                JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   HNDONE
+HNFAIL:     LDD   #FALSEV
+HNDONE:     LDX   #TSTHNNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-                LDU  TSTU0
-                RTS
+            LDU   TSTU0
+            RTS
 
-TSTHNNAME: FCB  14
-           FCC  "TSTHANDLERSAVE"
+TSTHNNAME:  FCB   14
+            FCC   "TSTHANDLERSAVE"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTCOMMENTS - comments tests (glossary section 3.16, 2 words).
@@ -15144,26 +15298,27 @@ TSTHNNAME: FCB  14
 ; directly - the data stack is genuinely unchanged after a
 ; comment, not just that parsing advanced correctly.
 ; ------------------------------------------------------------
-TSTCOMMENTS: JSR CRW
-           LDX   #TSTCOMMSG
-           PSHU  X
-           LDD   #8
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+TSTCOMMENTS:
+            JSR   CRW
+            LDX   #TSTCOMMSG
+            PSHU  X
+            LDD   #8
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-15  ; >>>>
+            IFEQ  TSTSELECTOR-15    ; >>>>
 
-           JSR   TSTLPAREN
-           JSR   TSTBACKSLASH
+            JSR   TSTLPAREN
+            JSR   TSTBACKSLASH
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTCOMMSG: FCC "Comments"
+TSTCOMMSG:  FCC   "Comments"
 
-           IFEQ TSTSELECTOR-15  ; >>>>
+            IFEQ  TSTSELECTOR-15    ; >>>>
 
 ; ------------------------------------------------------------
 ; Comments test harness (glossary section 3.16). Both words
@@ -15192,76 +15347,76 @@ TSTCOMMSG: FCC "Comments"
 ; verify the character just past the paren, with no need to
 ; re-read SRCADDR after the call.
 ; ------------------------------------------------------------
-TSTLPAREN: LDD  SRCADDR
-           STD  TSTSASAV
-           LDD  SRCLEN
-           STD  TSTSLSAV
-           LDD  TOIN
-           STD  TSTTISAV
+TSTLPAREN:  LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
 
-           LDA  #'h'
-           STA  TSTNAMEB
-           LDA  #'i'
-           STA  TSTNAMEB+1
-           LDA  #')'
-           STA  TSTNAMEB+2
-           LDA  #'m'
-           STA  TSTNAMEB+3
+            LDA   #'h'
+            STA   TSTNAMEB
+            LDA   #'i'
+            STA   TSTNAMEB+1
+            LDA   #')'
+            STA   TSTNAMEB+2
+            LDA   #'m'
+            STA   TSTNAMEB+3
 
-           LDD  #TSTNAMEB
-           STD  SRCADDR
-           LDD  #4
-           STD  SRCLEN
-           LDD  #0
-           STD  TOIN
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #4
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
 
-           STU  TSTU0
+            STU   TSTU0
 
-           LDD  #TSTGUARD
-           PSHU D
-           STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-           JSR  LPAREN
+            JSR   LPAREN
 
-           STU  TSTUAF
+            STU   TSTUAF
 
-           LDD  TOIN
-           CMPD #3
-           BNE  LPFAIL
+            LDD   TOIN
+            CMPD  #3
+            BNE   LPFAIL
 
-           LDA  TSTNAMEB+3
-           CMPA #'m'
-           BNE  LPFAIL
+            LDA   TSTNAMEB+3
+            CMPA  #'m'
+            BNE   LPFAIL
 
-           LDD  TSTSASAV
-           STD  SRCADDR
-           LDD  TSTSLSAV
-           STD  SRCLEN
-           LDD  TSTTISAV
-           STD  TOIN
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
 
-           PULU D
-           CMPD #TSTGUARD
-           BNE  LPFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   LPFAIL
 
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #0
-           BNE  LPFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   LPFAIL
 
-           LDD  #TRUEV
-           BRA  LPDONE
-LPFAIL:    LDD  #FALSEV
-LPDONE:    LDX  #TSTLPNAME
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   LPDONE
+LPFAIL:     LDD   #FALSEV
+LPDONE:     LDX   #TSTLPNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTLPNAME: FCB  9
-           FCC  "TSTLPAREN"
+TSTLPNAME:  FCB   9
+            FCC   "TSTLPAREN"
 
 ; ------------------------------------------------------------
 ; TSTBACKSLASH - unit test for \. Fake source with SRCLEN=10,
@@ -15274,59 +15429,60 @@ TSTLPNAME: FCB  9
 ; SRCLEN specifically, rather than relying on the real terminal
 ; input buffer's own length, is what actually exercises that.
 ; ------------------------------------------------------------
-TSTBACKSLASH: LDD  SRCLEN
-              STD  TSTSLSAV
-              LDD  TOIN
-              STD  TSTTISAV
+TSTBACKSLASH:
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
 
-              LDD  #10
-              STD  SRCLEN
-              LDD  #3
-              STD  TOIN
+            LDD   #10
+            STD   SRCLEN
+            LDD   #3
+            STD   TOIN
 
-              STU  TSTU0
+            STU   TSTU0
 
-              LDD  #TSTGUARD
-              PSHU D
-              STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-              JSR  BACKSLASH
+            JSR   BACKSLASH
 
-              STU  TSTUAF
+            STU   TSTUAF
 
-              LDD  TOIN
-              CMPD #10
-              BNE  BLFAIL
+            LDD   TOIN
+            CMPD  #10
+            BNE   BLFAIL
 
-              LDD  TSTSLSAV
-              STD  SRCLEN
-              LDD  TSTTISAV
-              STD  TOIN
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
 
-              PULU D
-              CMPD #TSTGUARD
-              BNE  BLFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   BLFAIL
 
-              LDD  TSTUB4
-              SUBD TSTUAF
-              CMPD #0
-              BNE  BLFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   BLFAIL
 
-              LDD  #TRUEV
-              BRA  BLDONE
-BLFAIL:       LDD  #FALSEV
-BLDONE:       LDX  #TSTBLNAME
-              PSHU X
-              PSHU D
-              JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   BLDONE
+BLFAIL:     LDD   #FALSEV
+BLDONE:     LDX   #TSTBLNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-              LDU  TSTU0
-              RTS
+            LDU   TSTU0
+            RTS
 
-TSTBLNAME: FCB  12
-           FCC  "TSTBACKSLASH"
+TSTBLNAME:  FCB   12
+            FCC   "TSTBACKSLASH"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTENVSYS - environmental & system queries tests (glossary
@@ -15357,32 +15513,33 @@ TSTBLNAME: FCB  12
 ; regression of that specific mechanism would be caught again,
 ; not just assumed fixed from the comment alone.
 ; ------------------------------------------------------------
-TSTENVSYS: JSR CRW
-           LDX   #TSTENVSYSMSG
-           PSHU  X
-           LDD   #6
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+TSTENVSYS:  JSR   CRW
+            LDX   #TSTENVSYSMSG
+            PSHU  X
+            LDD   #6
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-16  ; >>>>
+            IFEQ  TSTSELECTOR-16    ; >>>>
 
-           JSR   TSTENVVARS
-           JSR   TSTSOURCE
-           JSR   TSTSOURCEID
-           JSR   TSTREFILL
-           JSR   TSTEVALUATE
-           JSR   TSTENVQUERY1
-           JSR   TSTENVQUERY2
-           JSR   TSTENVQUERY3
+            JSR   TSTENVVARS
+            JSR   TSTSOURCE
+            JSR   TSTSOURCEID
+            JSR   TSTREFILL
+            JSR   TSTEVALUATE
+            JSR   TSTENVQUERY1
+            JSR   TSTENVQUERY2
+            JSR   TSTENVQUERY3
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTENVSYSMSG: FCC "EnvSys"
+TSTENVSYSMSG:
+            FCC   "EnvSys"
 
-           IFEQ TSTSELECTOR-16  ; >>>>
+            IFEQ  TSTSELECTOR-16    ; >>>>
 
 ; ------------------------------------------------------------
 ; Environmental & System Queries test harness (glossary section
@@ -15423,170 +15580,171 @@ TSTENVSYSMSG: FCC "EnvSys"
 ; BL. The first four are variables (return their own address);
 ; BL is a constant (returns 32 directly).
 ; ------------------------------------------------------------
-TSTENVVARS: STU  TSTU0
+TSTENVVARS: STU   TSTU0
 
-            LDD  #TSTGUARD
-            PSHU D
-            STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-            JSR  TIBW
-            PULU D
-            CMPD #TIBBUF
-            BNE  EVFAIL
+            JSR   TIBW
+            PULU  D
+            CMPD  #TIBBUF
+            BNE   EVFAIL
 
-            JSR  NTIBW
-            PULU D
-            CMPD #NTIB
-            BNE  EVFAIL
+            JSR   NTIBW
+            PULU  D
+            CMPD  #NTIB
+            BNE   EVFAIL
 
-            JSR  TOINW
-            PULU D
-            CMPD #TOIN
-            BNE  EVFAIL
+            JSR   TOINW
+            PULU  D
+            CMPD  #TOIN
+            BNE   EVFAIL
 
-            JSR  SPANW
-            PULU D
-            CMPD #SPAN
-            BNE  EVFAIL
+            JSR   SPANW
+            PULU  D
+            CMPD  #SPAN
+            BNE   EVFAIL
 
-            JSR  BLW
-            PULU D
-            CMPD #32
-            BNE  EVFAIL
+            JSR   BLW
+            PULU  D
+            CMPD  #32
+            BNE   EVFAIL
 
-            STU  TSTUAF
+            STU   TSTUAF
 
-            PULU D
-            CMPD #TSTGUARD
-            BNE  EVFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   EVFAIL
 
-            LDD  TSTUB4
-            SUBD TSTUAF
-            CMPD #0
-            BNE  EVFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   EVFAIL
 
-            LDD  #TRUEV
-            BRA  EVDONE
-EVFAIL:     LDD  #FALSEV
-EVDONE:     LDX  #TSTEVNAME
-            PSHU X
-            PSHU D
-            JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   EVDONE
+EVFAIL:     LDD   #FALSEV
+EVDONE:     LDX   #TSTEVNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-            LDU  TSTU0
+            LDU   TSTU0
             RTS
 
-TSTEVNAME: FCB  10
-           FCC  "TSTENVVARS"
+TSTEVNAME:  FCB   10
+            FCC   "TSTENVVARS"
 
 ; ------------------------------------------------------------
 ; TSTSOURCE - unit test for SOURCE. Redirects SRCADDR/SRCLEN to
 ; known, distinctive values, verifies SOURCE returns exactly
 ; those.
 ; ------------------------------------------------------------
-TSTSOURCE: LDD  SRCADDR
-           STD  TSTSASAV
-           LDD  SRCLEN
-           STD  TSTSLSAV
+TSTSOURCE:  LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
 
-           LDD  #TSTCBUF
-           STD  SRCADDR
-           LDD  #7
-           STD  SRCLEN
+            LDD   #TSTCBUF
+            STD   SRCADDR
+            LDD   #7
+            STD   SRCLEN
 
-           STU  TSTU0
+            STU   TSTU0
 
-           LDD  #TSTGUARD
-           PSHU D
-           STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-           JSR  SOURCEW
+            JSR   SOURCEW
 
-           STU  TSTUAF
+            STU   TSTUAF
 
-           LDD  TSTSASAV
-           STD  SRCADDR
-           LDD  TSTSLSAV
-           STD  SRCLEN
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
 
-           PULU D
-           CMPD #7
-           BNE  SOFAIL
-           PULU D
-           CMPD #TSTCBUF
-           BNE  SOFAIL
-           PULU D
-           CMPD #TSTGUARD
-           BNE  SOFAIL
+            PULU  D
+            CMPD  #7
+            BNE   SOFAIL
+            PULU  D
+            CMPD  #TSTCBUF
+            BNE   SOFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SOFAIL
 
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #4
-           BNE  SOFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #4
+            BNE   SOFAIL
 
-           LDD  #TRUEV
-           BRA  SODONE
-SOFAIL:    LDD  #FALSEV
-SODONE:    LDX  #TSTSONAME
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   SODONE
+SOFAIL:     LDD   #FALSEV
+SODONE:     LDX   #TSTSONAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTSONAME: FCB  9
-           FCC  "TSTSOURCE"
+TSTSONAME:  FCB   9
+            FCC   "TSTSOURCE"
 
 ; ------------------------------------------------------------
 ; TSTSOURCEID - unit test for SOURCE-ID. Redirects SRCID to a
 ; known, distinctive value, verifies SOURCE-ID returns exactly
 ; that.
 ; ------------------------------------------------------------
-TSTSOURCEID: LDD  SRCID
-             STD  TSTSISAV
+TSTSOURCEID:
+            LDD   SRCID
+            STD   TSTSISAV
 
-             LDD  #-1
-             STD  SRCID
+            LDD   #-1
+            STD   SRCID
 
-             STU  TSTU0
+            STU   TSTU0
 
-             LDD  #TSTGUARD
-             PSHU D
-             STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-             JSR  SOURCEID
+            JSR   SOURCEID
 
-             STU  TSTUAF
+            STU   TSTUAF
 
-             LDD  TSTSISAV
-             STD  SRCID
+            LDD   TSTSISAV
+            STD   SRCID
 
-             PULU D
-             CMPD #-1
-             BNE  SIFAIL
-             PULU D
-             CMPD #TSTGUARD
-             BNE  SIFAIL
+            PULU  D
+            CMPD  #-1
+            BNE   SIFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SIFAIL
 
-             LDD  TSTUB4
-             SUBD TSTUAF
-             CMPD #2
-             BNE  SIFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   SIFAIL
 
-             LDD  #TRUEV
-             BRA  SIDONE
-SIFAIL:      LDD  #FALSEV
-SIDONE:      LDX  #TSTSINAME
-             PSHU X
-             PSHU D
-             JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   SIDONE
+SIFAIL:     LDD   #FALSEV
+SIDONE:     LDX   #TSTSINAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-             LDU  TSTU0
-             RTS
+            LDU   TSTU0
+            RTS
 
-TSTSINAME: FCB  11
-           FCC  "TSTSOURCEID"
+TSTSINAME:  FCB   11
+            FCC   "TSTSOURCEID"
 
 ; ------------------------------------------------------------
 ; TSTREFILL - unit test for REFILL, string-source path only.
@@ -15601,50 +15759,50 @@ TSTSINAME: FCB  11
 ; false, matching its own documented "fails (false) if the
 ; current source is a string, per ANS".
 ; ------------------------------------------------------------
-TSTREFILL: LDD  SRCID
-           STD  TSTSISAV
+TSTREFILL:  LDD   SRCID
+            STD   TSTSISAV
 
-           LDD  #-1
-           STD  SRCID
+            LDD   #-1
+            STD   SRCID
 
-           STU  TSTU0
+            STU   TSTU0
 
-           LDD  #TSTGUARD
-           PSHU D
-           STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-           JSR  REFILLW
+            JSR   REFILLW
 
-           STU  TSTUAF
+            STU   TSTUAF
 
-           LDD  TSTSISAV
-           STD  SRCID
+            LDD   TSTSISAV
+            STD   SRCID
 
-           PULU D
-           CMPD #FALSEV
-           BNE  RFFAIL2
-           PULU D
-           CMPD #TSTGUARD
-           BNE  RFFAIL2
+            PULU  D
+            CMPD  #FALSEV
+            BNE   RFFAIL2
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   RFFAIL2
 
-           LDD  TSTUB4
-           SUBD TSTUAF
-           CMPD #2
-           BNE  RFFAIL2
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   RFFAIL2
 
-           LDD  #TRUEV
-           BRA  RFDONE2
-RFFAIL2:   LDD  #FALSEV
-RFDONE2:   LDX  #TSTRFNAME2
-           PSHU X
-           PSHU D
-           JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   RFDONE2
+RFFAIL2:    LDD   #FALSEV
+RFDONE2:    LDX   #TSTRFNAME2
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-           LDU  TSTU0
-           RTS
+            LDU   TSTU0
+            RTS
 
-TSTRFNAME2: FCB  9
-            FCC  "TSTREFILL"
+TSTRFNAME2: FCB   9
+            FCC   "TSTREFILL"
 
 ; ------------------------------------------------------------
 ; TSTEVALUATE - unit test for EVALUATE. Evaluates the string
@@ -15658,156 +15816,157 @@ TSTRFNAME2: FCB  9
 ; 3.13's own established lesson, so "1"/"2" parse as decimal
 ; regardless of what BASE happened to hold at test time.
 ; ------------------------------------------------------------
-TSTEVALUATE: LDD  SRCADDR
-             STD  TSTSASAV
-             LDD  SRCLEN
-             STD  TSTSLSAV
-             LDD  SRCID
-             STD  TSTSISAV
-             LDD  TOIN
-             STD  TSTTISAV
-             LDD  BASE
-             STD  TSTBASAV
-             LDD  LATEST
-             STD  TSTLSAV
-             LDD  CODEHERE
-             STD  TSTCSAV
+TSTEVALUATE:
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   SRCID
+            STD   TSTSISAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   BASE
+            STD   TSTBASAV
+            LDD   LATEST
+            STD   TSTLSAV
+            LDD   CODEHERE
+            STD   TSTCSAV
 
-             LDD  #10
-             STD  BASE
-             LDD  #BASELATEST  ; BUG FIX: confirmed via MAME - LATEST,
-             STD  LATEST       ; like BASE, is only set by COLD (right
-                                ; alongside "BASE=10", in the very same
-                                ; init block), which hasn't run yet at
-                                ; this whole test framework's own,
-                                ; pre-COLD execution point. With
-                                ; LATEST=0, FIND reports every word,
-                                ; including the real "+" this test
-                                ; evaluates, as not found - INTERPRET
-                                ; then falls through trying to parse
-                                ; "+" as a number, fails that too, and
-                                ; throws an error this test never
-                                ; catches, landing at THUNCAU's own
-                                ; JMP ABORT - which resets the return
-                                ; stack, explaining exactly why the
-                                ; user's own test run terminated
-                                ; without ever reaching TSTENVQUERY1/2/
-                                ; 3. The same class of gap as section
-                                ; 3.13's own BASE=0 finding, just for a
-                                ; different variable this section's
-                                ; own EVALUATE test was the first to
-                                ; genuinely depend on.
+            LDD   #10
+            STD   BASE
+            LDD   #BASELATEST       ; BUG FIX: confirmed via MAME - LATEST,
+            STD   LATEST            ; like BASE, is only set by COLD (right
+                                    ; alongside "BASE=10", in the very same
+                                    ; init block), which hasn't run yet at
+                                    ; this whole test framework's own,
+                                    ; pre-COLD execution point. With
+                                    ; LATEST=0, FIND reports every word,
+                                    ; including the real "+" this test
+                                    ; evaluates, as not found - INTERPRET
+                                    ; then falls through trying to parse
+                                    ; "+" as a number, fails that too, and
+                                    ; throws an error this test never
+                                    ; catches, landing at THUNCAU's own
+                                    ; JMP ABORT - which resets the return
+                                    ; stack, explaining exactly why the
+                                    ; user's own test run terminated
+                                    ; without ever reaching TSTENVQUERY1/2/
+                                    ; 3. The same class of gap as section
+                                    ; 3.13's own BASE=0 finding, just for a
+                                    ; different variable this section's
+                                    ; own EVALUATE test was the first to
+                                    ; genuinely depend on.
 
-             LDD  #TSTCBUF2  ; SECOND BUG FIX: the LATEST fix above
-             STD  CODEHERE   ; alone didn't resolve this - confirmed
-                                ; via a second MAME run (the failure
-                                ; persisted, with the terminal output
-                                ; varying between runs, a strong sign
-                                ; of memory corruption rather than a
-                                ; single deterministic missing-value
-                                ; problem). Root cause: CODEHERE, like
-                                ; BASE and LATEST, is only set by COLD
-                                ; and was never redirected by this
-                                ; test at all - unlike every other
-                                ; test in this whole session involving
-                                ; WORD (which EVALUATE's own internal
-                                ; JSR INTERPRET calls repeatedly, once
-                                ; per token). With CODEHERE=0
-                                ; (unredirected), WORD's own write of
-                                ; each parsed token's [len][text]
-                                ; landed straight at address $0000 -
-                                ; which is STATE's own address (offset
-                                ; $00, the very first bytes of
-                                ; GLOBALS, confirmed by re-reading its
-                                ; own RMB declaration directly). Even
-                                ; a single-character token like "1"
-                                ; overwrites STATE with a nonzero
-                                ; value, flipping INTERPRET into
-                                ; thinking it's compiling rather than
-                                ; interpreting mid-parse - explaining
-                                ; both the sequence's own termination
-                                ; and why the visible output varied
-                                ; between runs (the exact corruption
-                                ; pattern depends on residual memory
-                                ; state from whatever ran immediately
-                                ; before). Redirected to TSTCBUF2, not
-                                ; TSTCBUF, specifically because TSTCBUF
-                                ; already holds this test's own source
-                                ; string ("1 2 +") - redirecting to the
-                                ; same buffer would let WORD overwrite
-                                ; the very source text still being
-                                ; parsed.
+            LDD   #TSTCBUF2         ; SECOND BUG FIX: the LATEST fix above
+            STD   CODEHERE          ; alone didn't resolve this - confirmed
+                                    ; via a second MAME run (the failure
+                                    ; persisted, with the terminal output
+                                    ; varying between runs, a strong sign
+                                    ; of memory corruption rather than a
+                                    ; single deterministic missing-value
+                                    ; problem). Root cause: CODEHERE, like
+                                    ; BASE and LATEST, is only set by COLD
+                                    ; and was never redirected by this
+                                    ; test at all - unlike every other
+                                    ; test in this whole session involving
+                                    ; WORD (which EVALUATE's own internal
+                                    ; JSR INTERPRET calls repeatedly, once
+                                    ; per token). With CODEHERE=0
+                                    ; (unredirected), WORD's own write of
+                                    ; each parsed token's [len][text]
+                                    ; landed straight at address $0000 -
+                                    ; which is STATE's own address (offset
+                                    ; $00, the very first bytes of
+                                    ; GLOBALS, confirmed by re-reading its
+                                    ; own RMB declaration directly). Even
+                                    ; a single-character token like "1"
+                                    ; overwrites STATE with a nonzero
+                                    ; value, flipping INTERPRET into
+                                    ; thinking it's compiling rather than
+                                    ; interpreting mid-parse - explaining
+                                    ; both the sequence's own termination
+                                    ; and why the visible output varied
+                                    ; between runs (the exact corruption
+                                    ; pattern depends on residual memory
+                                    ; state from whatever ran immediately
+                                    ; before). Redirected to TSTCBUF2, not
+                                    ; TSTCBUF, specifically because TSTCBUF
+                                    ; already holds this test's own source
+                                    ; string ("1 2 +") - redirecting to the
+                                    ; same buffer would let WORD overwrite
+                                    ; the very source text still being
+                                    ; parsed.
 
-             LDA  #'1'
-             STA  TSTCBUF
-             LDA  #32
-             STA  TSTCBUF+1
-             LDA  #'2'
-             STA  TSTCBUF+2
-             LDA  #32
-             STA  TSTCBUF+3
-             LDA  #'+'
-             STA  TSTCBUF+4
+            LDA   #'1'
+            STA   TSTCBUF
+            LDA   #32
+            STA   TSTCBUF+1
+            LDA   #'2'
+            STA   TSTCBUF+2
+            LDA   #32
+            STA   TSTCBUF+3
+            LDA   #'+'
+            STA   TSTCBUF+4
 
-             STU  TSTU0
+            STU   TSTU0
 
-             LDD  #TSTGUARD
-             PSHU D
-             LDD  #TSTCBUF
-             PSHU D
-             LDD  #5
-             PSHU D
-             STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            STU   TSTUB4
 
-             JSR  EVALUATEW
+            JSR   EVALUATEW
 
-             STU  TSTUAF
+            STU   TSTUAF
 
-             LDD  SRCADDR
-             CMPD TSTSASAV
-             BNE  ELFAIL
-             LDD  SRCLEN
-             CMPD TSTSLSAV
-             BNE  ELFAIL
-             LDD  SRCID
-             CMPD TSTSISAV
-             BNE  ELFAIL
-             LDD  TOIN
-             CMPD TSTTISAV
-             BNE  ELFAIL
+            LDD   SRCADDR
+            CMPD  TSTSASAV
+            BNE   ELFAIL
+            LDD   SRCLEN
+            CMPD  TSTSLSAV
+            BNE   ELFAIL
+            LDD   SRCID
+            CMPD  TSTSISAV
+            BNE   ELFAIL
+            LDD   TOIN
+            CMPD  TSTTISAV
+            BNE   ELFAIL
 
-             LDD  TSTBASAV
-             STD  BASE
-             LDD  TSTLSAV
-             STD  LATEST
-             LDD  TSTCSAV
-             STD  CODEHERE
+            LDD   TSTBASAV
+            STD   BASE
+            LDD   TSTLSAV
+            STD   LATEST
+            LDD   TSTCSAV
+            STD   CODEHERE
 
-             PULU D
-             CMPD #3
-             BNE  ELFAIL
-             PULU D
-             CMPD #TSTGUARD
-             BNE  ELFAIL
+            PULU  D
+            CMPD  #3
+            BNE   ELFAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   ELFAIL
 
-             LDD  TSTUB4
-             SUBD TSTUAF
-             CMPD #-2
-             BNE  ELFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   ELFAIL
 
-             LDD  #TRUEV
-             BRA  ELDONE
-ELFAIL:      LDD  #FALSEV
-ELDONE:      LDX  #TSTELNAME
-             PSHU X
-             PSHU D
-             JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   ELDONE
+ELFAIL:     LDD   #FALSEV
+ELDONE:     LDX   #TSTELNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-             LDU  TSTU0
-             RTS
+            LDU   TSTU0
+            RTS
 
-TSTELNAME: FCB  11
-           FCC  "TSTEVALUATE"
+TSTELNAME:  FCB   11
+            FCC   "TSTEVALUATE"
 
 ; ------------------------------------------------------------
 ; TSTENVQUERY1 - unit test for ENVIRONMENT?, verifying the exact
@@ -15820,104 +15979,105 @@ TSTELNAME: FCB  11
 ; regression of that specific mechanism would be caught, not
 ; just assumed still fixed from the comment alone.
 ; ------------------------------------------------------------
-TSTENVQUERY1: LDA  #'/'
-              STA  TSTCBUF
-              LDA  #'C'
-              STA  TSTCBUF+1
-              LDA  #'O'
-              STA  TSTCBUF+2
-              LDA  #'U'
-              STA  TSTCBUF+3
-              LDA  #'N'
-              STA  TSTCBUF+4
-              LDA  #'T'
-              STA  TSTCBUF+5
-              LDA  #'E'
-              STA  TSTCBUF+6
-              LDA  #'D'
-              STA  TSTCBUF+7
-              LDA  #'-'
-              STA  TSTCBUF+8
-              LDA  #'S'
-              STA  TSTCBUF+9
-              LDA  #'T'
-              STA  TSTCBUF+10
-              LDA  #'R'
-              STA  TSTCBUF+11
-              LDA  #'I'
-              STA  TSTCBUF+12
-              LDA  #'N'
-              STA  TSTCBUF+13
-              LDA  #'G'
-              STA  TSTCBUF+14
+TSTENVQUERY1:
+            LDA   #'/'
+            STA   TSTCBUF
+            LDA   #'C'
+            STA   TSTCBUF+1
+            LDA   #'O'
+            STA   TSTCBUF+2
+            LDA   #'U'
+            STA   TSTCBUF+3
+            LDA   #'N'
+            STA   TSTCBUF+4
+            LDA   #'T'
+            STA   TSTCBUF+5
+            LDA   #'E'
+            STA   TSTCBUF+6
+            LDA   #'D'
+            STA   TSTCBUF+7
+            LDA   #'-'
+            STA   TSTCBUF+8
+            LDA   #'S'
+            STA   TSTCBUF+9
+            LDA   #'T'
+            STA   TSTCBUF+10
+            LDA   #'R'
+            STA   TSTCBUF+11
+            LDA   #'I'
+            STA   TSTCBUF+12
+            LDA   #'N'
+            STA   TSTCBUF+13
+            LDA   #'G'
+            STA   TSTCBUF+14
 
-              LDA  #'M'
-              STA  TSTCBUF+20
-              LDA  #'A'
-              STA  TSTCBUF+21
-              LDA  #'X'
-              STA  TSTCBUF+22
-              LDA  #'-'
-              STA  TSTCBUF+23
-              LDA  #'N'
-              STA  TSTCBUF+24
+            LDA   #'M'
+            STA   TSTCBUF+20
+            LDA   #'A'
+            STA   TSTCBUF+21
+            LDA   #'X'
+            STA   TSTCBUF+22
+            LDA   #'-'
+            STA   TSTCBUF+23
+            LDA   #'N'
+            STA   TSTCBUF+24
 
-              STU  TSTU0
+            STU   TSTU0
 
-              LDD  #TSTGUARD
-              PSHU D
-              STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-              LDD  #TSTCBUF
-              PSHU D
-              LDD  #15
-              PSHU D
-              JSR  ENVQUERY
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #15
+            PSHU  D
+            JSR   ENVQUERY
 
-              PULU D
-              CMPD #TRUEV
-              BNE  EN1FAIL
-              PULU D
-              CMPD #255
-              BNE  EN1FAIL
+            PULU  D
+            CMPD  #TRUEV
+            BNE   EN1FAIL
+            PULU  D
+            CMPD  #255
+            BNE   EN1FAIL
 
-              LDD  #TSTCBUF+20
-              PSHU D
-              LDD  #5
-              PSHU D
-              JSR  ENVQUERY
+            LDD   #TSTCBUF+20
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            JSR   ENVQUERY
 
-              STU  TSTUAF
+            STU   TSTUAF
 
-              PULU D
-              CMPD #TRUEV
-              BNE  EN1FAIL
-              PULU D
-              CMPD #32767
-              BNE  EN1FAIL
+            PULU  D
+            CMPD  #TRUEV
+            BNE   EN1FAIL
+            PULU  D
+            CMPD  #32767
+            BNE   EN1FAIL
 
-              PULU D
-              CMPD #TSTGUARD
-              BNE  EN1FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   EN1FAIL
 
-              LDD  TSTUB4
-              SUBD TSTUAF
-              CMPD #4
-              BNE  EN1FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #4
+            BNE   EN1FAIL
 
-              LDD  #TRUEV
-              BRA  EN1DONE
-EN1FAIL:       LDD  #FALSEV
-EN1DONE:       LDX  #TSTEN1NAME
-              PSHU X
-              PSHU D
-              JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   EN1DONE
+EN1FAIL:    LDD   #FALSEV
+EN1DONE:    LDX   #TSTEN1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-              LDU  TSTU0
-              RTS
+            LDU   TSTU0
+            RTS
 
-TSTEN1NAME: FCB  12
-           FCC  "TSTENVQUERY1"
+TSTEN1NAME: FCB   12
+            FCC   "TSTENVQUERY1"
 
 ; ------------------------------------------------------------
 ; TSTENVQUERY2 - unit test for ENVIRONMENT?, double-cell case.
@@ -15926,63 +16086,64 @@ TSTEN1NAME: FCB  12
 ; separate double-cell table path (ENVTABLE2/ENV2START), not
 ; just the single-cell one TSTENVQUERY1 already covers.
 ; ------------------------------------------------------------
-TSTENVQUERY2: LDA  #'M'
-              STA  TSTCBUF
-              LDA  #'A'
-              STA  TSTCBUF+1
-              LDA  #'X'
-              STA  TSTCBUF+2
-              LDA  #'-'
-              STA  TSTCBUF+3
-              LDA  #'D'
-              STA  TSTCBUF+4
+TSTENVQUERY2:
+            LDA   #'M'
+            STA   TSTCBUF
+            LDA   #'A'
+            STA   TSTCBUF+1
+            LDA   #'X'
+            STA   TSTCBUF+2
+            LDA   #'-'
+            STA   TSTCBUF+3
+            LDA   #'D'
+            STA   TSTCBUF+4
 
-              STU  TSTU0
+            STU   TSTU0
 
-              LDD  #TSTGUARD
-              PSHU D
-              STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-              LDD  #TSTCBUF
-              PSHU D
-              LDD  #5
-              PSHU D
-              JSR  ENVQUERY
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            JSR   ENVQUERY
 
-              STU  TSTUAF
+            STU   TSTUAF
 
-              PULU D
-              CMPD #TRUEV
-              BNE  EW2FAIL
-              PULU D
-              CMPD #$7FFF
-              BNE  EW2FAIL
-              PULU D
-              CMPD #$FFFF
-              BNE  EW2FAIL
+            PULU  D
+            CMPD  #TRUEV
+            BNE   EW2FAIL
+            PULU  D
+            CMPD  #$7FFF
+            BNE   EW2FAIL
+            PULU  D
+            CMPD  #$FFFF
+            BNE   EW2FAIL
 
-              PULU D
-              CMPD #TSTGUARD
-              BNE  EW2FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   EW2FAIL
 
-              LDD  TSTUB4
-              SUBD TSTUAF
-              CMPD #6
-              BNE  EW2FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #6
+            BNE   EW2FAIL
 
-              LDD  #TRUEV
-              BRA  EW2DONE
-EW2FAIL:      LDD  #FALSEV
-EW2DONE:      LDX  #TSTEW2NAME
-              PSHU X
-              PSHU D
-              JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   EW2DONE
+EW2FAIL:    LDD   #FALSEV
+EW2DONE:    LDX   #TSTEW2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-              LDU  TSTU0
-              RTS
+            LDU   TSTU0
+            RTS
 
-TSTEW2NAME: FCB  12
-            FCC  "TSTENVQUERY2"
+TSTEW2NAME: FCB   12
+            FCC   "TSTENVQUERY2"
 
 ; ------------------------------------------------------------
 ; TSTENVQUERY3 - unit test for ENVIRONMENT?, unsupported string
@@ -15990,54 +16151,55 @@ TSTEW2NAME: FCB  12
 ; verifies false is reported, matching the documented "-- false"
 ; result for an unrecognized string.
 ; ------------------------------------------------------------
-TSTENVQUERY3: LDA  #'Z'
-              STA  TSTCBUF
-              STA  TSTCBUF+1
-              STA  TSTCBUF+2
-              STA  TSTCBUF+3
-              STA  TSTCBUF+4
+TSTENVQUERY3:
+            LDA   #'Z'
+            STA   TSTCBUF
+            STA   TSTCBUF+1
+            STA   TSTCBUF+2
+            STA   TSTCBUF+3
+            STA   TSTCBUF+4
 
-              STU  TSTU0
+            STU   TSTU0
 
-              LDD  #TSTGUARD
-              PSHU D
-              STU  TSTUB4
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
 
-              LDD  #TSTCBUF
-              PSHU D
-              LDD  #5
-              PSHU D
-              JSR  ENVQUERY
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            JSR   ENVQUERY
 
-              STU  TSTUAF
+            STU   TSTUAF
 
-              PULU D
-              CMPD #FALSEV
-              BNE  EW3FAIL
-              PULU D
-              CMPD #TSTGUARD
-              BNE  EW3FAIL
+            PULU  D
+            CMPD  #FALSEV
+            BNE   EW3FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   EW3FAIL
 
-              LDD  TSTUB4
-              SUBD TSTUAF
-              CMPD #2
-              BNE  EW3FAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #2
+            BNE   EW3FAIL
 
-              LDD  #TRUEV
-              BRA  EW3DONE
-EW3FAIL:      LDD  #FALSEV
-EW3DONE:      LDX  #TSTEW3NAME
-              PSHU X
-              PSHU D
-              JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   EW3DONE
+EW3FAIL:    LDD   #FALSEV
+EW3DONE:    LDX   #TSTEW3NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-              LDU  TSTU0
-              RTS
+            LDU   TSTU0
+            RTS
 
-TSTEW3NAME: FCB  12
-            FCC  "TSTENVQUERY3"
+TSTEW3NAME: FCB   12
+            FCC   "TSTENVQUERY3"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
 ; TSTTOOLS - tools word set tests (glossary section 3.18, 3
@@ -16054,27 +16216,28 @@ TSTEW3NAME: FCB  12
 ; advance, so this section's own test verifies the core,
 ; documented "non-destructive" guarantee directly instead.
 ; ------------------------------------------------------------
-TSTTOOLS: JSR CRW
-           LDX   #TSTTOOLSMSG
-           PSHU  X
-           LDD   #5
-           PSHU  D
-           JSR   TYPE
-           JSR   CRW
+TSTTOOLS:   JSR   CRW
+            LDX   #TSTTOOLSMSG
+            PSHU  X
+            LDD   #5
+            PSHU  D
+            JSR   TYPE
+            JSR   CRW
 
-           IFEQ TSTSELECTOR-17  ; >>>>
+            IFEQ  TSTSELECTOR-17    ; >>>>
 
-           JSR   TSTDOTS
-           JSR   TSTWORDS
-           JSR   TSTDUMP
+            JSR   TSTDOTS
+            JSR   TSTWORDS
+            JSR   TSTDUMP
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
-           RTS
+            RTS
 
-TSTTOOLSMSG: FCC "Tools"
+TSTTOOLSMSG:
+            FCC   "Tools"
 
-           IFEQ TSTSELECTOR-17  ; >>>>
+            IFEQ  TSTSELECTOR-17    ; >>>>
 
 ; ------------------------------------------------------------
 ; Tools test harness (glossary section 3.18). WORDS depends
@@ -16121,101 +16284,101 @@ TSTTOOLSMSG: FCC "Tools"
 ; test's own output from whatever the rest of the real stack
 ; contributes afterward.
 ; ------------------------------------------------------------
-TSTDOTS: LDD  BASE
-         STD  TSTBASAV
+TSTDOTS:    LDD   BASE
+            STD   TSTBASAV
 
-         LDD  #10
-         STD  BASE      ; BUG FIX: confirmed via MAME - the same
-                          ; BASE=0 infinite loop already found and
-                          ; fixed in section 3.13. .S internally calls
-                          ; DOT for each stack item, which calls
-                          ; NUMSIGN/UDDIGIT - the same restoring-
-                          ; division mechanism that degrades into an
-                          ; unconditional shift when BASE=0 (only set
-                          ; by COLD, which hasn't run yet at this
-                          ; whole test framework's own pre-COLD
-                          ; execution point), so the value being
-                          ; converted never genuinely decreases.
-                          ; Forgot to apply this section 3.13 lesson
-                          ; to this specific test when first writing
-                          ; it. WORDS and DUMP were checked and
-                          ; confirmed NOT to need this same fix: WORDS
-                          ; does no numeric conversion at all (just
-                          ; TYPEs name text), and DUMP's own hex
-                          ; conversion (HEXDIGIT/HEXBYTE) is a fixed,
-                          ; hardcoded base-16 converter, confirmed via
-                          ; its own code to never reference BASE at
-                          ; all - genuinely independent of it, not
-                          ; just assumed safe.
+            LDD   #10
+            STD   BASE              ; BUG FIX: confirmed via MAME - the same
+                                    ; BASE=0 infinite loop already found and
+                                    ; fixed in section 3.13. .S internally calls
+                                    ; DOT for each stack item, which calls
+                                    ; NUMSIGN/UDDIGIT - the same restoring-
+                                    ; division mechanism that degrades into an
+                                    ; unconditional shift when BASE=0 (only set
+                                    ; by COLD, which hasn't run yet at this
+                                    ; whole test framework's own pre-COLD
+                                    ; execution point), so the value being
+                                    ; converted never genuinely decreases.
+                                    ; Forgot to apply this section 3.13 lesson
+                                    ; to this specific test when first writing
+                                    ; it. WORDS and DUMP were checked and
+                                    ; confirmed NOT to need this same fix: WORDS
+                                    ; does no numeric conversion at all (just
+                                    ; TYPEs name text), and DUMP's own hex
+                                    ; conversion (HEXDIGIT/HEXBYTE) is a fixed,
+                                    ; hardcoded base-16 converter, confirmed via
+                                    ; its own code to never reference BASE at
+                                    ; all - genuinely independent of it, not
+                                    ; just assumed safe.
 
-         STU  TSTU0
+            STU   TSTU0
 
-         IFEQ SERIALPOLL  ; >>>>
-         LDA  OUTHEAD
-         STA  TSTOHSAV
-         ENDC ; <<<<
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   OUTHEAD
+            STA   TSTOHSAV
+            ENDC                    ; <<<<
 
-         LDD  #TSTVAL1
-         PSHU D
-         LDD  #7
-         PSHU D
-         STU  TSTUB4
+            LDD   #TSTVAL1
+            PSHU  D
+            LDD   #7
+            PSHU  D
+            STU   TSTUB4
 
-         JSR  DOTS
+            JSR   DOTS
 
-         STU  TSTUAF
+            STU   TSTUAF
 
-         IFEQ SERIALPOLL  ; >>>>
-         LDA  TSTOHSAV
-         ADDA #2
-         ANDA #OUTBUFSZ-1
-         CMPA OUTHEAD
-         BNE  DYFAIL
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   TSTOHSAV
+            ADDA  #2
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            BNE   DYFAIL
 
-         LDX  #OUTBUF
-         LDB  TSTOHSAV
-         LDA  B,X
-         CMPA #'7'
-         BNE  DYFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #32
-         BNE  DYFAIL
-         ELSE  ; <<<<>>>>
-         LDA  EMITCH
-         CMPA #0
-         BEQ  DYFAIL
-         ENDC  ; <<<<<<<<<<
+            LDX   #OUTBUF
+            LDB   TSTOHSAV
+            LDA   B,X
+            CMPA  #'7'
+            BNE   DYFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #32
+            BNE   DYFAIL
+            ELSE                    ; <<<<>>>>
+            LDA   EMITCH
+            CMPA  #0
+            BEQ   DYFAIL
+            ENDC                    ; <<<<<<<<<<
 
-         LDD  TSTBASAV
-         STD  BASE
+            LDD   TSTBASAV
+            STD   BASE
 
-         LDD  TSTUAF
-         SUBD TSTUB4
-         CMPD #0
-         BNE  DYFAIL
+            LDD   TSTUAF
+            SUBD  TSTUB4
+            CMPD  #0
+            BNE   DYFAIL
 
-         PULU D
-         CMPD #7
-         BNE  DYFAIL
-         PULU D
-         CMPD #TSTVAL1
-         BNE  DYFAIL
+            PULU  D
+            CMPD  #7
+            BNE   DYFAIL
+            PULU  D
+            CMPD  #TSTVAL1
+            BNE   DYFAIL
 
-         LDD  #TRUEV
-         BRA  DYDONE
-DYFAIL:  LDD  #FALSEV
-DYDONE:  LDX  #TSTDSNAME
-         PSHU X
-         PSHU D
-         JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   DYDONE
+DYFAIL:     LDD   #FALSEV
+DYDONE:     LDX   #TSTDSNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU  TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTDSNAME: FCB  7
-           FCC  "TSTDOTS"
+TSTDSNAME:  FCB   7
+            FCC   "TSTDOTS"
 
 ; ------------------------------------------------------------
 ; TSTWORDS - unit test for WORDS. Builds two small, linked fake
@@ -16228,120 +16391,120 @@ TSTDSNAME: FCB  7
 ; last character (LF, from the trailing CR) is checkable via
 ; EMITCH.
 ; ------------------------------------------------------------
-TSTWORDS: LDD  LATEST
-          STD  TSTLSAV
+TSTWORDS:   LDD   LATEST
+            STD   TSTLSAV
 
-          LDA  #2
-          STA  TSTCBUF
-          LDA  #'A'
-          STA  TSTCBUF+1
-          LDA  #'B'
-          STA  TSTCBUF+2
-          LDD  #0
-          STD  TSTCBUF+3
-          LDD  #DUP
-          STD  TSTCBUF+5
+            LDA   #2
+            STA   TSTCBUF
+            LDA   #'A'
+            STA   TSTCBUF+1
+            LDA   #'B'
+            STA   TSTCBUF+2
+            LDD   #0
+            STD   TSTCBUF+3
+            LDD   #DUP
+            STD   TSTCBUF+5
 
-          LDA  #2
-          STA  TSTCBUF+10
-          LDA  #'C'
-          STA  TSTCBUF+11
-          LDA  #'D'
-          STA  TSTCBUF+12
-          LDD  #TSTCBUF
-          STD  TSTCBUF+13
-          LDD  #DUP
-          STD  TSTCBUF+15
+            LDA   #2
+            STA   TSTCBUF+10
+            LDA   #'C'
+            STA   TSTCBUF+11
+            LDA   #'D'
+            STA   TSTCBUF+12
+            LDD   #TSTCBUF
+            STD   TSTCBUF+13
+            LDD   #DUP
+            STD   TSTCBUF+15
 
-          LDD  #TSTCBUF+10
-          STD  LATEST
+            LDD   #TSTCBUF+10
+            STD   LATEST
 
-          IFEQ SERIALPOLL  ; >>>>
-          LDA  OUTHEAD
-          STA  TSTOHSAV
-          ENDC ; <<<<
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   OUTHEAD
+            STA   TSTOHSAV
+            ENDC                    ; <<<<
 
-          STU  TSTU0
-          STU  TSTUB4
+            STU   TSTU0
+            STU   TSTUB4
 
-          JSR  WORDSW
+            JSR   WORDSW
 
-          STU  TSTUAF
+            STU   TSTUAF
 
-          LDD  TSTLSAV
-          STD  LATEST
+            LDD   TSTLSAV
+            STD   LATEST
 
-          IFEQ SERIALPOLL  ; >>>>
-          LDA  TSTOHSAV
-          ADDA #8
-          ANDA #OUTBUFSZ-1
-          CMPA OUTHEAD
-          BNE  WOFAIL
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   TSTOHSAV
+            ADDA  #8
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            BNE   WOFAIL
 
-          LDX  #OUTBUF
-          LDB  TSTOHSAV
-          LDA  B,X
-          CMPA #'C'
-          BNE  WOFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #'D'
-          BNE  WOFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #32
-          BNE  WOFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #'A'
-          BNE  WOFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #'B'
-          BNE  WOFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #32
-          BNE  WOFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #13
-          BNE  WOFAIL
-          INCB
-          ANDB #OUTBUFSZ-1
-          LDA  B,X
-          CMPA #10
-          BNE  WOFAIL
-          ELSE  ; <<<<>>>>
-          LDA  EMITCH
-          CMPA #10
-          BNE  WOFAIL
-          ENDC  ; <<<<<<<<<<
+            LDX   #OUTBUF
+            LDB   TSTOHSAV
+            LDA   B,X
+            CMPA  #'C'
+            BNE   WOFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'D'
+            BNE   WOFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #32
+            BNE   WOFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'A'
+            BNE   WOFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'B'
+            BNE   WOFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #32
+            BNE   WOFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #13
+            BNE   WOFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #10
+            BNE   WOFAIL
+            ELSE                    ; <<<<>>>>
+            LDA   EMITCH
+            CMPA  #10
+            BNE   WOFAIL
+            ENDC                    ; <<<<<<<<<<
 
-          LDD  TSTUB4
-          SUBD TSTUAF
-          CMPD #0
-          BNE  WOFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   WOFAIL
 
-          LDD  #TRUEV
-          BRA  WODONE
-WOFAIL:   LDD  #FALSEV
-WODONE:   LDX  #TSTWONAME
-          PSHU X
-          PSHU D
-          JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   WODONE
+WOFAIL:     LDD   #FALSEV
+WODONE:     LDX   #TSTWONAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-          LDU  TSTU0
-          RTS
+            LDU   TSTU0
+            RTS
 
-TSTWONAME: FCB  8
-           FCC  "TSTWORDS"
+TSTWONAME:  FCB   8
+            FCC   "TSTWORDS"
 
 ; ------------------------------------------------------------
 ; TSTDUMP - unit test for DUMP. Dumps 5 bytes ("ABCDE") -
@@ -16360,138 +16523,138 @@ TSTWONAME: FCB  8
 ; only the last character (LF, from the trailing CR) is
 ; checkable via EMITCH.
 ; ------------------------------------------------------------
-TSTDUMP: LDA  #'A'
-         STA  TSTCBUF
-         LDA  #'B'
-         STA  TSTCBUF+1
-         LDA  #'C'
-         STA  TSTCBUF+2
-         LDA  #'D'
-         STA  TSTCBUF+3
-         LDA  #'E'
-         STA  TSTCBUF+4
+TSTDUMP:    LDA   #'A'
+            STA   TSTCBUF
+            LDA   #'B'
+            STA   TSTCBUF+1
+            LDA   #'C'
+            STA   TSTCBUF+2
+            LDA   #'D'
+            STA   TSTCBUF+3
+            LDA   #'E'
+            STA   TSTCBUF+4
 
-         IFEQ SERIALPOLL  ; >>>>
-         LDA  OUTHEAD
-         STA  TSTOHSAV
-         ENDC ; <<<<
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   OUTHEAD
+            STA   TSTOHSAV
+            ENDC                    ; <<<<
 
-         STU  TSTU0
-         STU  TSTUB4
+            STU   TSTU0
+            STU   TSTUB4
 
-         LDD  #TSTCBUF
-         PSHU D
-         LDD  #5
-         PSHU D
-         JSR  DUMPW
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            JSR   DUMPW
 
-         STU  TSTUAF
+            STU   TSTUAF
 
-         IFEQ SERIALPOLL  ; >>>>
-         LDA  TSTOHSAV
-         ADDA #69
-         ANDA #OUTBUFSZ-1
-         CMPA OUTHEAD
-         BNE  DUFAIL
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   TSTOHSAV
+            ADDA  #69
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            BNE   DUFAIL
 
-         LDX  #OUTBUF
-         LDB  TSTOHSAV
-         ADDB #2
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'4'
-         BNE  DUFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'1'
-         BNE  DUFAIL
+            LDX   #OUTBUF
+            LDB   TSTOHSAV
+            ADDB  #2
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'4'
+            BNE   DUFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'1'
+            BNE   DUFAIL
 
-         LDB  TSTOHSAV
-         ADDB #5
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'4'
-         BNE  DUFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'2'
-         BNE  DUFAIL
+            LDB   TSTOHSAV
+            ADDB  #5
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'4'
+            BNE   DUFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'2'
+            BNE   DUFAIL
 
-         LDB  TSTOHSAV
-         ADDB #14
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'4'
-         BNE  DUFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'5'
-         BNE  DUFAIL
+            LDB   TSTOHSAV
+            ADDB  #14
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'4'
+            BNE   DUFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'5'
+            BNE   DUFAIL
 
-         LDB  TSTOHSAV
-         ADDB #51
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'A'
-         BNE  DUFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'B'
-         BNE  DUFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'C'
-         BNE  DUFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'D'
-         BNE  DUFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LDA  B,X
-         CMPA #'E'
-         BNE  DUFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
+            LDB   TSTOHSAV
+            ADDB  #51
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'A'
+            BNE   DUFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'B'
+            BNE   DUFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'C'
+            BNE   DUFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'D'
+            BNE   DUFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LDA   B,X
+            CMPA  #'E'
+            BNE   DUFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
 
-         LDY  #11
-DUBLNKLP: LDA  B,X
-         CMPA #32
-         BNE  DUFAIL
-         INCB
-         ANDB #OUTBUFSZ-1
-         LEAY -1,Y
-         BNE  DUBLNKLP
-         ELSE  ; <<<<>>>>
-         LDA  EMITCH
-         CMPA #10
-         BNE  DUFAIL
-         ENDC  ; <<<<<<<<<<
+            LDY   #11
+DUBLNKLP:   LDA   B,X
+            CMPA  #32
+            BNE   DUFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LEAY  -1,Y
+            BNE   DUBLNKLP
+            ELSE                    ; <<<<>>>>
+            LDA   EMITCH
+            CMPA  #10
+            BNE   DUFAIL
+            ENDC                    ; <<<<<<<<<<
 
-         LDD  TSTUB4
-         SUBD TSTUAF
-         CMPD #0
-         BNE  DUFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   DUFAIL
 
-         LDD  #TRUEV
-         BRA  DUDONE2
-DUFAIL:  LDD  #FALSEV
-DUDONE2: LDX  #TSTDUNAME
-         PSHU X
-         PSHU D
-         JSR  TSTREPORT
+            LDD   #TRUEV
+            BRA   DUDONE2
+DUFAIL:     LDD   #FALSEV
+DUDONE2:    LDX   #TSTDUNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
 
-         LDU  TSTU0
-         RTS
+            LDU   TSTU0
+            RTS
 
-TSTDUNAME: FCB  7
-           FCC  "TSTDUMP"
+TSTDUNAME:  FCB   7
+            FCC   "TSTDUMP"
 
-           ENDC ; <<<<
+            ENDC                    ; <<<<
 
