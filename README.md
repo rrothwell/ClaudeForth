@@ -76,7 +76,7 @@ brew install binutils
 |Tests against ANS test suite, identifying, diagnosing and correcting bugs.  |:white_check_mark:|
 |Update documentation for ANS test suite|:white_check_mark:|
 |Retest with assembler test suite and adjust expectations.|:white_check_mark:|
-|Update general documentation||
+|Update general documentation, including applying style rules to assembler code and introducing shadow files.||
 |Optimisation for space, compiler performance & application performance| |
 |Update documentation| |
 |Burn ROM and install onto real MECB 6809 hardware. | |
@@ -98,7 +98,8 @@ brew install binutils
 + A memory map graphic.
 + An interpreter graphic in UML.
 + Improved, corrected ANS test suite, with logs of finalised test results.
-+ Scripts for automating execution of the ANS test suite .
++ Scripts for automating execution of the ANS test suite.
++ Project artifacts such as assembler .lst, .bin and .shd files.
 
 ### File types
 | File extension             | Description of contents   |
@@ -118,6 +119,13 @@ brew install binutils
 |.py| Python source code |
 |.bs| Bash script file |
 |.log| A logfile. Likely for accepting test results |
+|.shd| A shadow file with content corresponding to the same named assembler file[^1].|
+
+Foot notes:
+[^1]: A shadow file is a text file with sections corresponding 
+   to those of the same named assembler files.
+   This lists expanded block comments, operating principles,
+   bug fixes explanations and obsolete asembler code.
 
 
 ### Documentation
@@ -152,5 +160,6 @@ brew install binutils
 1. Cooperative multitasking.
 1. Mass storage support - SD Card or Flash.
 1. Application compilation to the ROM area via ROM emulation.
+1. Hardware/software floating point support.
 
 
