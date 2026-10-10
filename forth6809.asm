@@ -1,440 +1,63 @@
 ; ============================================================
-; 6809 ANS FORTH - consolidated source
-; Assembled from the full design conversation.
+; 6809 ANS FORTH - subroutine threaded
 ;
-; GLOBALS LAYOUT: applied. Every scratch/global cell now has a
-; fixed RMB-assigned address in page zero ($0000-$00FF, DP=$00
-; at reset) - see the GLOBALS section below for the full layout
-; and its byte budget (256 of 256 bytes used, 0 free - the page
-; is now fully packed; any future scratch cell will need to
-; reuse an existing one or move a cell out of page zero).
+; Layout of this file: memory map and constants, GLOBALS (page zero),
+; serial buffers, SECTION 27 (dictionary headers), SECTIONS 3-26 (code),
+; SECTION 2 (init code), SECTION 1 (vectors).
 ;
-; SERIAL HANDSHAKING: RTS (hardware, output) is implemented -
-; IRQH/KEY toggle it based on the input ring's fill level
-; against INHIWATER/INLOWATER (see SECTION 3). CTS (input) needs
-; no firmware logic at all: the 6850 hardware automatically
-; inhibits TDRE while CTS is deasserted, and this system's
-; existing TDRE-gated transmit logic already respects that with
-; no code changes. Software (XON/XOFF) handshaking remains not
-; implemented - this system still neither transmits nor
-; recognizes those bytes.
+; Build options (lwasm -D): SERIALPOLL (1 = polled ACIA, 0 = interrupt
+; driven), UNITTESTS (1 = include unit_tests.asm), TSTSELECTOR.
 ;
-; DICTIONARY: applied (SECTION 27), 220 entries (215 original +
-; DOES> + TRUE + FALSE + [COMPILE], added in later passes - see
-; below). [COMPILE] (XCOMPILE, section 13) is the obsolescent
-; predecessor to POSTPONE, added for ANS Annex F test coverage
-; (F.6.2.2530) - see XCOMPILE's own header/comment for how it
-; differs from POSTPONE, and BASECODE's EQU below for the
-; resulting header-table growth.
-; Every primitive with a real code label now has a real ROM
-; header, chained via LINK, CFA pointing directly at its code.
-; Building this surfaced two real findings, not just mechanical
-; work: (1) the original 1024-byte BASEDICT could not hold the
-; header table (1954 bytes needed) - BASEDICT was resized to
-; 2048 bytes ($E000-$E7FF), taking the space from BASECODE (then
-; $E800-$FFBF, 6080 bytes, was 7104). This resize was based on
-; the header-table budget alone; the actual assembled byte size
-; of BASECODE's code was never measured with a real 6809
-; assembler, so whether 6080 bytes was enough for all ~530
-; routine labels in this file was never verified before BASECODE
-; moved again (below). (2) DOES>
-; initially had no corresponding code anywhere in the file -
-; SETDOES and the DOES> compiling word (code label DOESGT, since
-; a literal ">" is not a valid 6809 assembler label) were added
-; in a follow-up pass, alongside DODOES/DOESRT0, closing that
-; gap; DOESBEH was added to the GLOBALS layout to support it,
-; using 2 of the page's last 3 free bytes (1 now remains). TRUE
-; and FALSE were added in a still later pass: CONSTANT TRUE -1
-; and CONSTANT FALSE 0, the first CONSTANT-pattern ROM-resident
-; words in this system (TRUEBODY/FALSEBODY, section 26) - every
-; other ROM word's CFA is a plain code label, but a CONSTANT's
-; CFA is the DODOES-trampoline pattern, built by hand here with
-; fixed, assemble-time addresses since there is no interactive
-; CREATE/CONSTANT phase for ROM content.
-;
-; BASEDICT now holds 1992 bytes ($D83F-$E006) - grown from the
-; earlier exact-fit 1973 bytes when H_ABORT/H_QUIT (formerly
-; ABORTHDR/QUITHDR) and BASELATEST moved in from their own
-; section so every dictionary header lives in one contiguous
-; block. BASECODE's start ($DFF4) did not move to match, since
-; it's a fixed address, not derived from BASEDICT's real size -
-; this reintroduces a real overlap, 19 bytes ($DFF4-$E006),
-; between the two. Not resolved here; see the open-items
-; checklist. USROMSTRT/USROMEND, INOUT, RSTACK, DSTACK, CODETOP,
-; APPCODE, APPDICT, and APPVARS remain mutually consistent
-; otherwise, with no other overlaps anywhere in the current
-; memory map. See the ROM Size Required section of the
-; documentation and the open-items checklist for real content
-; totals and remaining margin.
-;
-; This file preserves the code exactly as derived and verified
-; turn-by-turn in the conversation, including the corrected
-; versions of every bug that was caught and fixed in place.
-; SUBSTITUTE is complete but deliberately scoped to a single
-; registered name/value pair, not a full table (see REPLACES).
-; ENVTABLE's /HOLD and /PAD entries were both added this session
-; (HOLDMINSIZE and PADMINSIZE respectively - see the entries
-; themselves for why each uses its own, conceptually correct
-; constant rather than the numerically-equal PADOFFSET). The
-; DPHERE/CODEHERE/VARHERE boundary checks remain explicitly
-; incomplete/absent - see the inline notes preserved from that
-; discussion, and the open-items checklist.
+; Long explanatory and bug-fix comments are kept in the shadow file
+; forth6809.shd, and are referred to here by their NAME.n codes.
+; The original header comment is shadow HEADER.0.
 ; ============================================================
 
 ; ------------------------------------------------------------
 ; MEMORY MAP
 ; ------------------------------------------------------------
-ROMSTRT     EQU   $C000             ; true physical start of the 16K EPROM's own
-                                    ; address decode (distinct from USROMSTRT
-                                    ; below, which excludes INOUT's 256-byte
-                                    ; shadow) - see the ROM Size Required section
-                                    ; of the documentation, and the ROM: padding
-                                    ; block right before SECTION 27
-USROMSTRT   EQU   $C100             ; Usable ROM start. Beginning of the usable
-                                    ; EPROM address range. INITCODE, BASECODE,
-                                    ; and BASEDICT must all fall within
-                                    ; USROMSTRT..USROMEND - see the verification
-                                    ; note below each one's EQU.
-USROMEND    EQU   VECTORS-1         ; Usable ROM end. Corrected: 1 before VECTORS'
-                                    ; start ($FFEF), not one past VECTORS' end as
-                                    ; originally defined - this is a real 16-bit
-                                    ; address (the last byte available before the
-                                    ; reserved vector table), usable directly in
-                                    ; comparisons or as a memory operand, unlike
-                                    ; the previous $10000 definition
+ROMSTRT     EQU   $C000             ; physical start of the 16K EPROM
+USROMSTRT   EQU   $C100             ; usable ROM start (above INOUT)
+USROMEND    EQU   VECTORS-1         ; usable ROM end (VECTORS-1)
 VECTORS     EQU   $FFF0
-INITCODE    EQU   $FFA4             ; was $FFA9 - shifted down 3 bytes, per
-                                    ; explicit request, to make room for the
-                                    ; UNITTESTS call site's own fix (below):
-                                    ; that site now always emits exactly 3 bytes
-                                    ; (either the real JSR TSTRUNNER, or 3 NOPs
-                                    ; as a placeholder when the test framework is
-                                    ; excluded), so COLDSTRT's total size no
-                                    ; longer depends on UNITTESTS at all -
-                                    ; previously it did (JSR TSTRUNNER only
-                                    ; existed when included, with nothing emitted
-                                    ; when excluded - using this file's original,
-                                    ; since-reversed UNITTESTS convention at the
-                                    ; time this fix was made), meaning INITCODE's
-                                    ; fixed position here could be correct for
-                                    ; one setting and wrong for the other, risking
-                                    ; an overflow into VECTORS when tests were
-                                    ; compiled in. Prior
-                                    ; history: was $FFA2 - shifted up 7 bytes to
-                                    ; reduce the overlap with BASECODE's nominal
-                                    ; end ($FFB4) from 19 bytes to 12 - improved,
-                                    ; not resolved. CORRECTED: INITCODE's real
-                                    ; content is 71 bytes ($47), confirmed by an
-                                    ; actual assembler run - not the 78-byte
-                                    ; manual estimate relied on for several
-                                    ; turns, which was wrong by 7 bytes. That
-                                    ; 71-byte figure was measured with the old
-                                    ; structure (test framework excluded emitting
-                                    ; 0 bytes for
-                                    ; the TSTRUNNER call site) - with the fix
-                                    ; above, that site now always emits 3 bytes
-                                    ; either way, so real content is reasoned to
-                                    ; be 74 bytes now (71+3), not yet re-measured
-                                    ; by a real assembler run. At $FFA6, that
-                                    ; reasoned end is $FFEF - unchanged, since
-                                    ; the 3-byte shift in INITCODE's own start
-                                    ; and the 3-byte growth in content offset
-                                    ; exactly - still one byte below VECTORS, if
-                                    ; the reasoning above holds; confirm on
-                                    ; assembly. A prior turn claimed this general
-                                    ; shift created a new 7-byte VECTORS overlap;
-                                    ; that was based on the incorrect 78-byte
-                                    ; estimate and was wrong - retracted here. The
-                                    ; BASECODE overlap (12 bytes against its
-                                    ; nominal budget) is separate and unaffected
-                                    ; by this correction; not resolved. See the
-                                    ; open-items checklist.
-                                    ;
-                                    ; UPDATE: shifted down a further 2 bytes,
-                                    ; $FFA6 -> $FFA4, confirmed working by the
-                                    ; user against a real assembler run. Reason:
-                                    ; COLDSTRT's own interrupt-mask bug fix
-                                    ; (ANDCC #$AF, added right after JSR
-                                    ; INITSERIAL - see COLDSTRT's own comment)
-                                    ; is a 2-byte instruction, growing COLDSTRT's
-                                    ; total size by exactly that much; INITCODE's
-                                    ; own fixed budget against VECTORS needed the
-                                    ; same 2 bytes back to stay within it.
-;BASECODE EQU  $DE2E     ; was $DE5E ($DE7A, $DEEA, $DF6A, $DF8A, $DFCA,
-;BASECODE EQU  $DD2E     ; was $DE5E ($DE7A, $DEEA, $DF6A, $DF8A, $DFCA,
-;BASECODE EQU  $DD3A     ; shifted up $0C (12 bytes) from $DD2E: BASEDICT
-                                    ; grew by :NONAME's header entry (FCB + the
-                                    ; 7-char name + two FDBs = 12 bytes), which a
-                                    ; byte-count check mistakenly said still fit
-                                    ; under the old BASECODE address (an error in
-                                    ; that count, not in BASEDICT's real size) -
-                                    ; actually assembling showed BASEDICT's real
-                                    ; content overflowing $DD2E by 3 bytes. $DD3A
-                                    ; left 9 bytes of margin.
-BASECODE    EQU   $DD54             ; shifted up another $0E (14 bytes) from $DD46:
-                                    ; BASEDICT grew again by H_XCOMPILE's header
-                                    ; entry (FCB + the 9-char name "[COMPILE]" +
-                                    ; two FDBs = 14 bytes), added to give the new
-                                    ; [COMPILE] word (see XCOMPILE, section 13) a
-                                    ; dictionary entry. Same 9-byte margin as
-                                    ; before this entry was added, assuming that
-                                    ; margin was still accurate going in - not
-                                    ; reverified by a real assembler run yet (no
-                                    ; lwasm/lwtools available in this environment);
-                                    ; confirm on assembly before relying on it.
-;BASECODE EQU  $DD46    ; shifted up another $0C (12 bytes) from $DD3A:
-                                    ; BASEDICT grew again by H_TONUMBER's header
-                                    ; entry (same shape as :NONAME's - FCB + a
-                                    ; 7-char name + two FDBs = 12 bytes), added to
-                                    ; give >NUMBER a dictionary entry (it had working
-                                    ; code but was unreachable by name). Using the
-                                    ; corrected 5-bytes-per-entry-overhead formula
-                                    ; this time (not the 4-byte one that caused the
-                                    ; earlier $DD2E mistake): same 9-byte margin as
-                                    ; before this entry was added.
-                                    ; Prior history (pre-:NONAME): was $DE5E
-                                    ; ($DE7A, $DEEA, $DF6A, $DF8A, $DFCA, $DFDA,
-                                    ; $DFEA, $E02A before that) - shifted down a
-                                    ; further $30 (48 bytes) that time.
-                                    ; Reason: IRQH was rewritten for symmetry
-                                    ; between its RX/TX halves and single-point-
-                                    ; of-exit (all paths RTI through IRQDONE),
-                                    ; and gained new FE/OVRN/PE receiver-error
-                                    ; counting (SR_FE/SR_OVRN/SR_PE, tested from
-                                    ; the same ACIASR read, before ACIADR is
-                                    ; read, incrementing FECOUNT/OVRNCOUNT/
-                                    ; PECOUNT and discarding the byte rather than
-                                    ; storing it in INBUF when any is flagged) -
-                                    ; both add code, and the single-exit style
-                                    ; costs extra bytes/branches versus falling
-                                    ; through. Value provided by the user
-                                    ; directly; not independently re-derived or
-                                    ; re-verified here. Confirm on assembly/MAME
-                                    ; rather than trust a static estimate.
-                                    ;
-                                    ; Earlier history, preserved below in order:
-                                    ;
-                                    ; UPDATE: was $DE7A - shifted down a
-                                    ; further $70 (112 bytes) at that point. Unlike every
-                                    ; earlier shift in this chain (each resolving
-                                    ; a memory-map overlap from reorganizing
-                                    ; other regions), this one is for a different
-                                    ; reason: SERIALPOLL=0 (interrupt-driven ACIA
-                                    ; I/O, IRQH servicing INBUF/OUTBUF ring
-                                    ; buffers with RTS/CTS flow control) is
-                                    ; genuinely larger code than the SERIALPOLL=1
-                                    ; polling path it replaces, and the two are
-                                    ; mutually exclusive (IFEQ/ELSE/ENDC on the
-                                    ; same flag, never both assembled at once) -
-                                    ; but BASECODE's own budget was only ever
-                                    ; sized against the polling path's smaller
-                                    ; footprint, so selecting SERIALPOLL=0
-                                    ; collided against BASEDICT below. Value
-                                    ; provided by the user directly to resolve
-                                    ; that collision; not independently re-
-                                    ; derived or re-verified here. Confirm on
-                                    ; assembly/MAME rather than trust a static
-                                    ; estimate. See the open-items checklist.
-                                    ;
-                                    ; UPDATE: shifted down a further $1C (28
-                                    ; bytes), $DE7A -> $DE5E, confirmed working
-                                    ; by the user against a real assembler run.
-                                    ; Reason: the ECHOEMIT non-blocking-echo fix
-                                    ; (see ACCEPT's own comment) added a new
-                                    ; routine to the interrupt-driven code path,
-                                    ; growing its total size by that much; also
-                                    ; added, in the same change: a FILL directive
-                                    ; right before SECTION 1 (VECTORS), to stop
-                                    ; the assembler from omitting the gap between
-                                    ; INITCODE and VECTORS when generating the
-                                    ; raw .bin file.
-;BASEDICT EQU  $D643     ; was $D673 ($D68F, $D6FF, $D77F, $D79F, $D7DF,
-BASEDICT    EQU   $D543             ; was $D673 ($D68F, $D6FF, $D77F, $D79F, $D7DF,
-                                    ; $D7EF, $D7FF, $D83F before that) - shifted
-                                    ; down the same further $30 (48 bytes) as
-                                    ; BASECODE above, for the same reason (the
-                                    ; rewritten, symmetric/single-exit IRQH plus
-                                    ; the new FE/OVRN/PE receiver-error counting -
-                                    ; see BASECODE's own comment for the full
-                                    ; explanation). Value provided by the user
-                                    ; directly; not independently re-derived or
-                                    ; re-verified here. Confirm on assembly/MAME
-                                    ; rather than trust a static estimate.
-                                    ;
-                                    ; Earlier history, preserved below in order:
-                                    ;
-                                    ; UPDATE: shifted down the same $70 (112 bytes)
-                                    ; as BASECODE above, at that point, for the
-                                    ; same reason (making room for SERIALPOLL=0's
-                                    ; larger, interrupt-driven code path - see
-                                    ; BASECODE's own comment for the full
-                                    ; explanation). Value provided by the user
-                                    ; directly; not independently re-derived or
-                                    ; re-verified here. Confirm on assembly/MAME
-                                    ; rather than trust a static estimate. See the
-                                    ; open-items checklist.
-                                    ;
-                                    ; UPDATE: shifted down the same further $1C
-                                    ; (28 bytes) as BASECODE above, $D68F -> $D673,
-                                    ; same reason and same confirmation - see
-                                    ; BASECODE's own comment for the full
-                                    ; explanation.
-INOUT       EQU   $C000             ; was $DF00 - moved so INOUT (256 B) sits
-                                    ; directly below USROMSTRT ($C100), contiguous,
-                                    ; no gap. This also resolves the INOUT portion
-                                    ; of the collision flagged when BASEDICT moved
-                                    ; to $D85D: INOUT no longer overlaps BASEDICT
-                                    ; ($D85D-$E011), since $C0FF < $D85D. The
-                                    ; DSTACK and RSTACK portions of that same
-                                    ; collision were NOT touched by this specific
-                                    ; change, but were resolved separately when
-                                    ; those two regions moved (see below). This
-                                    ; move ALSO overlapped APPCODE at the time
-                                    ; ($7000-$D7FF then) - since resolved too, when
-                                    ; APPCODE moved down $2000 (see below).
+INITCODE    EQU   $FFA4             ; start of the init code (COLDSTRT)
+            ; Commented-out code moved to shadow: MEMMAP.5
+BASECODE    EQU   $DD54             ; base code. See shadow MEMMAP.6
+            ; Commented-out code moved to shadow: MEMMAP.7
+BASEDICT    EQU   $D543             ; base dictionary. See shadow MEMMAP.8
+INOUT       EQU   $C000             ; I/O block (ACIA), 256 bytes
 INOUTEND    EQU   INOUT+$FF
-RSTACK      EQU   $BFFF             ; was $BEFF - occupied range is $BD00-$BFFF
-                                    ; (768 bytes, unchanged size). RESOLVED: once a
-                                    ; 512-byte gap sat between this and DSTACK
-                                    ; below; DSTACK moving up $200 closed it - now
-                                    ; exactly contiguous, no gap
-DSTACK      EQU   $BCFF             ; was $BAFF - moved up $200. RESOLVED (both):
-                                    ; occupied range is now $B900-$BCFF, which
-                                    ; exactly matches CODETOP ($B900) as its true
-                                    ; bottom - the 512-byte mismatch is gone - and
-                                    ; is now exactly contiguous with RSTACK's
-                                    ; bottom ($BD00), closing that gap too
-CODETOP     EQU   $B900             ; was $B800 - code space ceiling (data stack
-                                    ; begins here). RESOLVED: this once no longer
-                                    ; matched DSTACK's true occupied bottom (was
-                                    ; $B700, a 512-byte mismatch) - now that DSTACK
-                                    ; moved up $200 to $B900, CODETOP matches it
-                                    ; exactly again
+RSTACK      EQU   $BFFF             ; return stack top
+DSTACK      EQU   $BCFF             ; data stack top
+CODETOP     EQU   $B900             ; code space ceiling
 
-; ANS transient-region minimums (forth-standard.org/standard/usage,
-; section 3.3.3.6 "Other transient regions"), verified against this
-; system's actual layout and used to replace the bare "84" that used
-; to sit directly inside PADW with a named, documented constant:
-;   PADMINSIZE  - PAD's own scratch region, size in characters. WORD
-;                 originally used a separate, fixed WORDBUF that
-;                 happened to meet its own 33-character minimum
-;                 exactly (WORDBUF's span up to where SIBUF used to
-;                 begin was precisely 33 bytes, confirmed by address
-;                 subtraction) - but WORD has since been redesigned
-;                 (see below, and WORD itself in the Header/Compiling
-;                 section) to use this same CODEHERE-to-PAD gap
-;                 instead, matching the traditional fig-Forth layout,
-;                 so WORDBUF itself is retired along with SIBUF.
-;   HOLDMINSIZE - pictured numeric output buffer, size in characters,
-;                 (2 * n) + 2 where n = bits per cell (16 here) = 34.
-;                 LTNUM ("<#") anchors HLD to PADW's own return value
-;                 and HOLD decrements before storing, so this buffer
-;                 grows downward from PAD into the CODEHERE-to-PAD
-;                 gap, not into PAD's own region above it - confirmed
-;                 by tracing LTNUM/HOLD. The gap must be at least
-;                 HOLDMINSIZE wide for this to fit.
-; PADOFFSET (below) satisfies both: it equals PADMINSIZE, which is
-; itself well above HOLDMINSIZE (128 vs 34, 94 bytes of margin) - kept
-; as a single, larger-than-either-strict-minimum offset rather than
-; two separately-tuned numbers, matching "larger than minimum is
-; satisfactory" for a small system.
-;
-; PADMINSIZE was raised from the original 84 to 128 after the 84
-; value was found to cap WORDMAXCHARS (below) at 46 characters,
-; silently truncating any S" string longer than that (WORD would
-; stop scanning at the cap without having seen the closing '"',
-; leaving unconsumed text to be misparsed as a bogus next word).
-; The longest S" strings actually in use (ans_tests/ttester.fs) run
-; to 62 characters, so 128 leaves headroom well beyond that. PAD is
-; computed dynamically as CODEHERE+PADOFFSET (see PADW) rather than
-; living at a fixed address, so this change carries no collision
-; risk with anything else in memory - the only cost is a small,
-; negligible reduction in dictionary headroom before CODEHERE+
-; PADOFFSET could reach CODETOP.
+; ANS transient-region sizes (ANS 3.3.3.6):
+;   PADMINSIZE  - size of PAD's scratch region, in characters.
+;   WORDMINSIZE - minimum size for WORD's region (33).
+;   HOLDMINSIZE - pictured numeric output buffer, (2 * 16) + 2 = 34;
+;                 it grows downward from PAD into the CODEHERE-to-PAD
+;                 gap.
+; PADOFFSET (the CODEHERE-to-PAD gap) equals PADMINSIZE. Original
+; comment: shadow PADSIZE.0.
 PADMINSIZE  EQU   128
 WORDMINSIZE EQU   33
 HOLDMINSIZE EQU   34
-PADOFFSET   EQU   PADMINSIZE        ; CODEHERE-to-PAD gap; also governs how
-                                    ; much of PAD's own upward-growing region
-                                    ; (now used by both the user and, per this
-                                    ; change, interpreted-mode S" text) is
-                                    ; guaranteed available before something
-                                    ; else might claim it
+PADOFFSET   EQU   PADMINSIZE        ; CODEHERE-to-PAD gap
 WORDMAXCHARS EQU   PADOFFSET-HOLDMINSIZE-1-3
-                                    ; max characters WORD can
-                                    ; scan when using the CODEHERE-to-PAD gap
-                                    ; (see WORD, below) - reserves HOLDMINSIZE
-                                    ; bytes at the PAD end for the pictured
-                                    ; numeric output buffer (which grows
-                                    ; downward from PAD into this same gap),
-                                    ; using the remaining space at the
-                                    ; CODEHERE end, less 1 byte for WORD's own
-                                    ; leading count byte, less a further 3
-                                    ; bytes for the worst case: S"/."/ABORT"
-                                    ; all reserve 3 bytes ahead of CODEHERE
-                                    ; before calling WORD (see SQUOTE/
-                                    ; DOTQUOTE/AQSTOK), so their text lands 3
-                                    ; bytes further into this same gap than
-                                    ; plain WORD-parsing (e.g. a dictionary
-                                    ; name for FIND) does. Sized for that
-                                    ; worst case uniformly, rather than giving
-                                    ; different callers different effective
-                                    ; limits - simpler and safer than trying
-                                    ; to track which caller needs which cap.
-                                    ; 128-34-1-3 = 90.
+            ; Maximum characters WORD can scan in the CODEHERE-to-PAD gap:
+            ; PADOFFSET - HOLDMINSIZE - 1 (count byte) - 3 (bytes reserved by
+            ; S", ." and ABORT"). Original comment: shadow WORDMAXCHARS.1.
 
-APPCODE     EQU   $7000             ; was $5000 - back to its original address.
-                                    ; RESOLVED: this once overlapped DSTACK's true
-                                    ; range by 512 bytes ($B700-$B8FF), a direct
-                                    ; consequence of the CODETOP/DSTACK mismatch -
-                                    ; now that DSTACK moved and CODETOP matches it
-                                    ; again, APPCODE's nominal range (up to
-                                    ; CODETOP-1) no longer reaches into DSTACK
-APPDICT     EQU   $2000             ; was $015B - moved up, size unchanged (20133
-                                    ; bytes, now $2000-$6EA4). REDUCED BUT NOT
-                                    ; RESOLVED: still overlaps APPVARS below by 347
-                                    ; bytes ($2000-$215A), though SIBUF/WORDBUF/
-                                    ; TIBBUF/OUTBUF (swallowed by the previous
-                                    ; APPDICT address) are now clear. See the
-                                    ; open-items checklist
-APPVARS     EQU   $021B             ; grown from 256 to 8000 bytes (end now $215A,
-                                    ; was $031A), taking the space directly from
-                                    ; APPDICT above it; start address unchanged.
-                                    ; That 8000-byte figure describes the original
-                                    ; intent, not the current actual usable size -
-                                    ; see APPVARSEND below, which now tracks
-                                    ; APPDICT's real position instead
-APPVARSEND  EQU   APPDICT-1         ; was APPVARS+8000 ($215B) - now derives
-                                    ; directly from wherever APPDICT actually
-                                    ; starts, currently $1FFF (7653 bytes usable,
-                                    ; down from the static 8000). Self-correcting:
-                                    ; this can no longer go stale if APPDICT moves
-                                    ; again, unlike the previous fixed-size
-                                    ; definition. VUNUSEDW (below) is unchanged -
-                                    ; it already computed against APPVARSEND
-; SIBUF EQU $01FB retired - was interpreted-mode S"'s fixed, dedicated
-; 32-byte scratch buffer; S" now writes into PAD instead (see SQINTERP,
-; String Words section), which is both larger and correctly per-call
-; rather than a single buffer shared by every S" call in a session.
-; The $01FB-$021A range it used to occupy is left unclaimed rather
-; than reassigned - APPVARS below still starts at its own, unchanged
-; address ($021B) - to avoid any risk to the rest of this carefully-
-; verified memory map for the sake of reclaiming 32 bytes on a system
-; with headroom to spare; reclaiming it would need APPVARS to move,
-; a separate, larger change not undertaken here.
-; WORDBUF EQU $01DA also retired, for the same reason as SIBUF above -
-; WORD now uses the CODEHERE-to-PAD gap directly (see WORD in the
-; Header/Compiling section, and WORDMAXCHARS above) rather than a
-; fixed, separately-allocated buffer capped at 31 characters. The
-; $01DA-$01FA range it used to occupy is left unclaimed, same
-; reasoning as SIBUF's retirement above - EXCEPT for its first 3
-; bytes, now claimed below for FECOUNT/OVRNCOUNT/PECOUNT (IRQH's
-; receiver-error counters); $01DD-$01FA (30 bytes) is still
-; unclaimed, and SIBUF's own $01FB-$021A range is untouched.
+APPCODE     EQU   $7000             ; application code area
+APPDICT     EQU   $2000             ; application dictionary
+APPVARS     EQU   $021B             ; application variables
+APPVARSEND  EQU   APPDICT-1         ; end of application variables
+; Unclaimed: $01DD-$01FA (formerly WORDBUF) and $01FB-$021A (formerly
+; SIBUF). Original comment: shadow MEMMAP.17.
 
-;TIBBUF   EQU  $018A     ; was $0284
-TIBBUF      EQU   $0106             ; was $018A
-TIBBUFL     EQU   80                ; $50, next free address is
+; Commented-out code moved to shadow: MEMMAP.18
+TIBBUF      EQU   $0106             ; terminal input buffer
+TIBBUFL     EQU   80                ; length of TIBBUF
 
 GLOBALS     EQU   $0000
 
@@ -452,21 +75,11 @@ RP0         EQU   RSTACK+1
 ; ELSE/ENDC (a numeric-expression test, not IFDEF/IFNDEF, since
 ; this is a value to compare, not a symbol's mere presence).
 ;
-; Was a fixed EQU, meaning it could only ever be changed by
-; editing this file directly - unlike UNITTESTS/TSTSELECTOR
-; below, a plain EQU cannot be overridden via lwasm's own -D
-; command-line option (EQU is a one-time, permanent binding;
-; -D's own documented behavior is to predefine a symbol "as
-; though...defined using the SET directive," which a later EQU
-; for the same symbol does not honor). Switched to the same
-; IFNDEF/SET/ENDC pattern as UNITTESTS/TSTSELECTOR immediately
-; below for exactly that reason: SERIALPOLL can now be selected
-; at build time with -DSERIALPOLL=0 (interrupt-driven) or
-; -DSERIALPOLL=1 (polling, same as omitting -D entirely, since 1
-; remains the fallback default here).
+; SERIALPOLL can be chosen at build time with lwasm -DSERIALPOLL=0 or
+; -DSERIALPOLL=1 (the default). Original comment: shadow SERIALPOLL.1.
 ; ------------------------------------------------------------
             IFNDEF SERIALPOLL
-SERIALPOLL  SET   1                 ; Fallback default value if -D wasn't passed.
+SERIALPOLL  SET   1                 ; default if -D not passed
             ENDC
 
 ; ------------------------------------------------------------
@@ -484,7 +97,7 @@ ACIADR      EQU   ACIA+1
 SR_IRQ      EQU   %10000000         ; ($80) (Interrupt Request)
 SR_RDRF     EQU   %00000001         ; ($01) (Receive Data Register Full)
 SR_TDRE     EQU   %00000010         ; ($02) (Transmit Data Register Empty)
-SR_CTS      EQU   %00001000         ; ($08) (Clear to send is blocking transmit.)
+SR_CTS      EQU   %00001000         ; ($08) CTS blocks transmit
 
 ; Errors only meaningful together with RDRF
 SR_FE       EQU   %00010000         ; ($10) (Framing Error)
@@ -496,16 +109,9 @@ SR_PE       EQU   %01000000         ; ($40) (Parity Error)
 CR_RESET    EQU   %00000011         ; ($03) (Master Reset mode)
 CR_BASE     EQU   %10010101         ; ($95) (Rx Int Enabled, 8-N-1, /16 Clock)
 CR_RXON     EQU   %10010101         ; ($95) (Rx Int Enabled, 8-N-1, /16 Clock)
-CR_RXTX     EQU   %10110101         ; ($B5) (Rx Int Enabled, Tx Int/RTS Control, 8-N-1, /16 Clock) -
-                                    ; stray trailing "|" before this comment removed: a dangling
-                                    ; bitwise-OR operator with nothing on its right, presumably a
-                                    ; typo left over from editing. Left alone, lwasm's expression
-                                    ; parser evidently tolerated it (whitespace before ";" likely
-                                    ; meant the "|" and comment were never actually joined into one
-                                    ; malformed expression token) - but it was never intentional and
-                                    ; is worth removing before it causes a real problem elsewhere.
-CR_POLL     EQU   %00010101         ; ($15) (All Ints Disabled, Polling mode, 8-N-1, /16 Clock)
-CR_RTSHI    EQU   %11010101         ; ($D5) (RTS High, Transmit Interrupt Disabled, 8-N-1, /16 Clock)
+CR_RXTX     EQU   %10110101         ; ($B5) Rx Int, Tx Int/RTS, 8-N-1
+CR_POLL     EQU   %00010101         ; ($15) Polling, no ints, 8-N-1
+CR_RTSHI    EQU   %11010101         ; ($D5) RTS high, Tx int off, 8-N-1
 
 ; CR_POLL
 
@@ -528,23 +134,11 @@ CR_RTSHI    EQU   %11010101         ; ($D5) (RTS High, Transmit Interrupt Disabl
 
 ; Ring buffer control
 SERBUFCTL   EQU   $0176
-SERBUF      EQU   $0180             ; was $0200 - USER0/USER1 removed entirely (see
-                                    ; below); the 4 buffers (SERBUF's 4-byte index
-                                    ; block, INBUF, OUTBUF, TIBBUF) still sit
-                                    ; contiguously right after MVSCRATCH, with no
-                                    ; gap - WORDBUF and SIBUF, which used to sit
-                                    ; right after TIBBUF and WORDBUF respectively
-                                    ; (closing what was once an 11-byte gap,
-                                    ; $02F5-$02FF, in an earlier address scheme),
-                                    ; are now both retired (see above) rather than
-                                    ; part of this contiguous run
+SERBUF      EQU   $0180             ; ring buffer start, 64-byte aligned
 INBUFSZ     EQU   64
 OUTBUFSZ    EQU   64
-INHIWATER   EQU   48                ; input ring fill level (of 64) at/above which RTS is
-                                    ; asserted high, telling the remote device to pause
-INLOWATER   EQU   16                ; fill level at/below which RTS is reasserted low;
-                                    ; deliberately well below INHIWATER (hysteresis) so
-                                    ; RTS doesn't chatter right at a single threshold
+INHIWATER   EQU   48                ; input ring level: RTS high
+INLOWATER   EQU   16                ; input ring level: RTS low
 
 ; Input control
 ; /RTS flag states
@@ -584,37 +178,14 @@ TAGDO       EQU   3
 TAGCASE     EQU   4
 TAGOF       EQU   5
 TAGENDOF    EQU   6
-TAGQDO      EQU   7                 ; ?DO's own pending zero-trip forward-branch marker,
-                  ; distinct from TAGFWD - LOOP/PLUSLOOP peek past their
-                  ; TAGDO frame for exactly this tag to decide whether
-                  ; there's a ?DO patch waiting. Reusing TAGFWD for that
-                  ; peek was a real bug: DO ... LOOP nested inside an
-                  ; still-open IF/WHILE (which legitimately has its own
-                  ; TAGFWD sitting in that exact spot) got its frame
-                  ; mistaken for a ?DO patch and consumed by LOOP,
-                  ; leaving the enclosing THEN/REPEAT to find the wrong
-                  ; tag and throw -22. A plain DO never has anything
-                  ; genuine for LOOP to find here, so nothing needs to
-                  ; match TAGQDO in that case - the enclosing frame is
-                  ; now left alone as it should be.
+TAGQDO      EQU   7                 ; ?DO marker. See bugfix: TAGQDO.1
 
 ; ============================================================
-; GLOBALS - real layout, applied. Every scratch/state cell
-; referenced across the whole build now has a fixed address
-; in page zero (DP = $00 at reset, set in COLDSTRT), laid out
-; in RMB order below. Total: 256 of 256 bytes used - the page
-; is fully packed. (DOESBEH and RTSSTATE were added in later
-; passes, after this comment was first written with 253/256;
-; they used up the last 3 bytes of headroom entirely.)
-;
-; SNEND, which appeared in the original placeholder list
-; (documented under S"/."/SLITERAL/ABORT"'s string runtime),
-; was dropped here: a full pass over every reference confirmed
-; it is never actually read or written anywhere - SCNT/SPTR
-; alone carry that runtime. CSAVE was removed earlier (see the
-; COMMA/CODECOMMA history) and was never part of this layout.
+; GLOBALS - scratch and state cells in page zero (DP = $00, set in
+; COLDSTRT), laid out in RMB order. 255 of 256 bytes are used
+; (GLOBALS_USED). Original comment: shadow GLOBALS.0.
 ; ============================================================
-            ORG   $0000             ; GLOBALS page - Direct Page (DP) set to $00 at reset
+            ORG   $0000             ; GLOBALS page (DP = $00)
 STATE       RMB   2                 ; offset $00
 BASE        RMB   2                 ; offset $02
 LATEST      RMB   2                 ; offset $04
@@ -639,7 +210,7 @@ NADDR       RMB   2                 ; offset $23
 NCNT        RMB   2                 ; offset $25
 MULBASE     RMB   1                 ; offset $27
 CARRY       RMB   1                 ; offset $28
-MSCR        RMB   2                 ; offset $29    (shared: -, *, comparisons, WITHIN...)
+MSCR        RMB   2                 ; offset $29 (shared: -, *, WITHIN...)
 MSCR2       RMB   2                 ; offset $2B
 MSCR3       RMB   2                 ; offset $2D
 MSCR4       RMB   2                 ; offset $2F
@@ -651,15 +222,8 @@ ACNT        RMB   2                 ; offset $39
 ACH         RMB   1                 ; offset $3B
 EMITCH      RMB   1                 ; offset $3C
 NEWHDR      RMB   2                 ; offset $3D
-; CURXT is an EQU alias for this same cell, not a second RMB (direct
-; page is already full at 256/256 bytes - see the layout note above).
-; HEADER's own use of NEWHDR (the new header's address, needed only
-; to set LATEST at the end of HEADER, before HEADER's own RTS) is
-; always finished by the time COLON/NONAME run their next instruction
-; after calling HEADER - so it's safe for COLON and NONAME to then
-; reuse the same cell to record the xt of the word currently being
-; compiled, under this second name, for RECURSE to read back. See
-; RECURSE's own comment for why this was needed.
+; CURXT is an alias of NEWHDR (page zero is full): it holds the xt of
+; the word being compiled, for RECURSE. Original comment: shadow CURXT.1.
 CURXT       EQU   NEWHDR
 NAMEP       RMB   2                 ; offset $3F
 NAMELEN     RMB   1                 ; offset $41
@@ -766,10 +330,8 @@ QSAVEVAR    RMB   2                 ; offset $F7
 QSAVELATEST RMB   2                 ; offset $F9
 QTHROWCODE  RMB   2                 ; offset $FB
 DOESBEH     RMB   2                 ; offset $FD - SETDOES scratch
-                                    ; GLOBALS page is now
-                                    ; fully packed bar 1: 255 of 256 bytes used, 1 free.
 
-GLOBALS_USED EQU   255              ; total bytes used, of 256 available - nearly fully packed
+GLOBALS_USED EQU   255              ; bytes used, of 256 available
 
 ; ------------------------------------------------------------
 ; MVSCRATCH - three cells shared, one at a time, by routine
@@ -789,9 +351,6 @@ GLOBALS_USED EQU   255              ; total bytes used, of 256 available - nearl
 ;     MRESULT  EQU MVSRC   - single-cell multiply's 16-bit result
 ;     FILLCHR  EQU MVSRC   - FILL's fill character (1 byte, uses
 ;                            MVSRC's first byte only)
-; FILLCNT/FILLADDR (formerly aliasing MVCNT/MVDST) were removed once
-; genuinely unused - FILLW now keeps its count and address directly
-; in Y/X rather than round-tripping through memory each iteration.
 ; ------------------------------------------------------------
             ORG   $0100
 MVCNT       RMB   2
@@ -812,29 +371,18 @@ FILLCHR     EQU   MVSRC
 
 INHEAD      RMB   1
 INTAIL      RMB   1
-; RTSSTATE -> INREQUEST ?
-RTSSTATE    RMB   1                 ; $00 = RTS Low (Clear), $FF = RTS High (Throttle)
+; Open question moved to shadow: RTSSTATE.1
+RTSSTATE    RMB   1                 ; $00 = RTS low, $FF = RTS high
 
 OUTHEAD     RMB   1
 OUTTAIL     RMB   1
 OUTACTIVITY RMB   1                 ; $00 = Idle, $FF = Busy (tx_active)
 
-FECOUNT     RMB   1                 ; framing-error count, incremented by IRQH (interrupt
-                                    ; build) or by polling KEY (polling build - see below)
+FECOUNT     RMB   1                 ; framing errors
 OVRNCOUNT   RMB   1                 ; overrun count, same as above
 PECOUNT     RMB   1                 ; parity-error count, same as above
 POLLREADYCNT
-            RMB   1                 ; polling build only: counts every KEY call that found
-                                    ; RDRF already set on its very first check, before
-                                    ; spinning at all - i.e. a character was already
-                                    ; sitting queued when we came back to poll for it.
-                                    ; A high count relative to total characters received
-                                    ; is evidence the host is running ahead of what the
-                                    ; 6809 has actually consumed (a transport-buffered
-                                    ; backlog), distinct from a genuine ACIA overrun
-                                    ; (which OVRNCOUNT would show instead) - last free
-                                    ; byte in this block, right before SERBUF's 64-byte
-                                    ; alignment at $0180.
+            RMB   1                 ; polling build; see shadow POLLREADYCNT.1
 
             ORG   SERBUF            ; $180, a 64 byte boundary.
 
@@ -851,22 +399,13 @@ OUTBUF      RMB   OUTBUFSZ          ; Transmit circular queue buffer
             ORG   USROMSTRT
 
             IFNDEF UNITTESTS
-UNITTESTS   SET   0                 ; Fallback default value if -D wasn't passed.
-                  ; Flag meaning reversed from this file's original
-                  ; UNITTESTS convention (0=included,1=excluded under
-                  ; IFEQ) to support overriding via lwasm's -D command
-                  ; line option: default (0, no -D given) now means
-                  ; EXCLUDED - production builds get plain FILL
-                  ; padding here with no test-framework code, by
-                  ; default. Pass -DUNITTESTS=1 (or any nonzero value)
-                  ; to INCLUDE the test framework - tested and
-                  ; confirmed working on real MAME hardware under the
-                  ; old convention; this reversal only changes how the
-                  ; choice is made, not what including it does.
+UNITTESTS   SET   0                 ; default if -D not passed
+            ; Default 0: unit tests excluded; -DUNITTESTS=1 includes them.
+            ; Original comment: shadow UNITTESTS.1.
             ENDC
 
             IFNDEF TSTSELECTOR
-TSTSELECTOR SET   2                 ; Fallback default value if -D wasn't passed.
+TSTSELECTOR SET   2                 ; default if -D not passed
             ENDC
 
             IFNE  UNITTESTS         ; >>>>>>>>>>
@@ -887,45 +426,17 @@ ROM:
 
 ; ============================================================
 ; SECTION 27: FORTH DICTIONARY (ROM base dictionary headers)
-; Every primitive word in the Glossary gets a real header here,
-; chained via LINK, living in BASEDICT ($D83F-$E006, an exact fit
-; for this dictionary's 1992 bytes - was $E000-$E7FF). CFA points
-; directly at each primitive's own code label for every entry -
-; these are all raw code entries, CFA = the label itself,
-; including TRUE and FALSE (added in a later pass, chain's newest
-; entries before H_ABORT/H_QUIT below), which originally used the
-; DODOES-trampoline pattern matching interactive CONSTANT, but are
-; now simple LDD/PSHU/RTS subroutines like everything else here -
-; see TRUEBODY/FALSEBODY, section 26, for the current code and why
-; they no longer need indirection.
 ;
-; DOES> is included (H_DOESGT) - added in a follow-up pass after
-; the original 214-entry generation flagged it as missing, then
-; moved again so it sits immediately after CREATE in the chain
-; (H_CREATE -> H_DOESGT -> H_VARIABLE) rather than at the chain's
-; newest end, since the two words are tightly coupled and read
-; better adjacent. SETDOES (the runtime it compiles a call to)
-; lives beside DODOES/DOESRT0; DOESGT is DOES>'s code label,
-; since a literal ">" is not valid in a 6809 assembler label.
+; One header per word, chained by LINK, placed at BASEDICT. Each
+; header is: length|flags, name, LINK, CFA. Every CFA is the word's
+; own code label (raw code entries, no trampoline), including TRUE
+; and FALSE. DOES> is next to CREATE; its code label is DOESGTW
+; because ">" is not valid in a label. ABORT and QUIT are
+; hand-built at the end of the section.
 ;
-; H_ABORT and H_QUIT (formerly ABORTHDR/QUITHDR, renamed to match
-; this file's H_ naming convention) are hand-built, not produced
-; by the same generation pass as the other 217 entries - see the
-; note where they're defined, at the end of this section, for why
-; HEADER/CREATE couldn't be used directly for these two. They used
-; to live physically apart from the rest of the dictionary, inside
-; BASECODE rather than BASEDICT, despite being header data rather
-; than code - moved here so every header lives in one place and
-; the chain (H_QUIT -> H_ABORT -> (newest entry below) -> ... ->
-; (oldest entry) -> 0) is visible in one block. BASELATEST remains
-; H_QUIT, the chain's true overall head.
-;
-; H_ABORT's LINK field, a placeholder 0 since it was first built,
-; is resolved here: it now points to this chain's newest entry.
-;
-; Names containing a literal double-quote (S", .", ABORT") have
-; that character split into a standalone FCB $22 rather than
-; escaped inside FCC - see emit_name's comment for why.
+; Names containing a double-quote (S", ." and ABORT") have it split
+; out of the FCC into a separate FCB $22.
+; The original header comment is shadow SECTION27.0.
 ; ============================================================
 
             ORG   BASEDICT          ; BASEDICT is $D83F
@@ -934,23 +445,23 @@ H_KEY:
             FCB   $03
             FCC   "KEY"
             FDB   0
-            FDB   KEY
+            FDB   KEYW
 H_KEYQ:
             FCB   $04
             FCC   "KEY?"
             FDB   H_KEY
-            FDB   KEYQ
+            FDB   KEYQW
 H_EMIT:
             FCB   $04
             FCC   "EMIT"
             FDB   H_KEYQ
-            FDB   EMIT
+            FDB   EMITW
 H_ACCEPT:
             FCB   $06
             FCC   "ACCEPT"
             FDB   H_EMIT
-            FDB   ACCEPT
-H_EXPECTW:
+            FDB   ACCEPTW
+H_EXPECT:
             FCB   $06
             FCC   "EXPECT"
             FDB   H_ACCEPT
@@ -958,159 +469,159 @@ H_EXPECTW:
 H_QUERY:
             FCB   $05
             FCC   "QUERY"
-            FDB   H_EXPECTW
-            FDB   QUERY
+            FDB   H_EXPECT
+            FDB   QUERYW
 H_TYPE:
             FCB   $04
             FCC   "TYPE"
             FDB   H_QUERY
-            FDB   TYPE
-H_CRW:
+            FDB   TYPEW
+H_CR:
             FCB   $02
             FCC   "CR"
             FDB   H_TYPE
             FDB   CRW
-H_SPACEW:
+H_SPACE:
             FCB   $05
             FCC   "SPACE"
-            FDB   H_CRW
+            FDB   H_CR
             FDB   SPACEW
-H_SPACESW:
+H_SPACES:
             FCB   $06
             FCC   "SPACES"
-            FDB   H_SPACEW
+            FDB   H_SPACE
             FDB   SPACESW
 H_DUP:
             FCB   $03
             FCC   "DUP"
-            FDB   H_SPACESW
-            FDB   DUP
+            FDB   H_SPACES
+            FDB   DUPW
 H_DROP:
             FCB   $04
             FCC   "DROP"
             FDB   H_DUP
-            FDB   DROP
+            FDB   DROPW
 H_SWAP:
             FCB   $04
             FCC   "SWAP"
             FDB   H_DROP
-            FDB   SWAP
+            FDB   SWAPW
 H_OVER:
             FCB   $04
             FCC   "OVER"
             FDB   H_SWAP
-            FDB   OVER
+            FDB   OVERW
 H_ROT:
             FCB   $03
             FCC   "ROT"
             FDB   H_OVER
-            FDB   ROT
+            FDB   ROTW
 H_QDUP:
             FCB   $04
             FCC   "?DUP"
             FDB   H_ROT
-            FDB   QDUP
+            FDB   QDUPW
 H_DEPTH:
             FCB   $05
             FCC   "DEPTH"
             FDB   H_QDUP
-            FDB   DEPTH
+            FDB   DEPTHW
 H_DDUP:
             FCB   $04
             FCC   "2DUP"
             FDB   H_DEPTH
-            FDB   DDUP
+            FDB   DDUPW
 H_DDROP:
             FCB   $05
             FCC   "2DROP"
             FDB   H_DDUP
-            FDB   DDROP
+            FDB   DDROPW
 H_DSWAP:
             FCB   $05
             FCC   "2SWAP"
             FDB   H_DDROP
-            FDB   DSWAP
+            FDB   DSWAPW
 H_DOVER:
             FCB   $05
             FCC   "2OVER"
             FDB   H_DSWAP
-            FDB   DOVER
+            FDB   DOVERW
 H_NIP:
             FCB   $03
             FCC   "NIP"
             FDB   H_DOVER
-            FDB   NIP
+            FDB   NIPW
 H_TUCK:
             FCB   $04
             FCC   "TUCK"
             FDB   H_NIP
-            FDB   TUCK
+            FDB   TUCKW
 H_PICK:
             FCB   $04
             FCC   "PICK"
             FDB   H_TUCK
-            FDB   PICK
+            FDB   PICKW
 H_ROLL:
             FCB   $04
             FCC   "ROLL"
             FDB   H_PICK
-            FDB   ROLL
+            FDB   ROLLW
 H_DROT:
             FCB   $04
             FCC   "2ROT"
             FDB   H_ROLL
-            FDB   DROT
+            FDB   DROTW
 H_TOR:
             FCB   $02
             FCC   ">R"
             FDB   H_DROT
-            FDB   TOR
+            FDB   TORW
 H_FROMR:
             FCB   $02
             FCC   "R>"
             FDB   H_TOR
-            FDB   FROMR
+            FDB   FROMRW
 H_RFETCH:
             FCB   $02
             FCC   "R@"
             FDB   H_FROMR
-            FDB   RFETCH
+            FDB   RFETCHW
 H_TWOTOR:
             FCB   $03
             FCC   "2>R"
             FDB   H_RFETCH
-            FDB   TWOTOR
+            FDB   TWOTORW
 H_TWOFROMR:
             FCB   $03
             FCC   "2R>"
             FDB   H_TWOTOR
-            FDB   TWOFROMR
+            FDB   TWOFROMRW
 H_TWORFETCH:
             FCB   $03
             FCC   "2R@"
             FDB   H_TWOFROMR
-            FDB   TWORFETCH
+            FDB   TWORFETCHW
 H_PLUS:
             FCB   $01
             FCC   "+"
             FDB   H_TWORFETCH
-            FDB   PLUS
+            FDB   PLUSW
 H_MINUS:
             FCB   $01
             FCC   "-"
             FDB   H_PLUS
-            FDB   MINUS
+            FDB   MINUSW
 H_STAR:
             FCB   $01
             FCC   "*"
             FDB   H_MINUS
-            FDB   STAR
+            FDB   STARW
 H_SLASH:
             FCB   $01
             FCC   "/"
             FDB   H_STAR
-            FDB   SLASH
-H_MODW:
+            FDB   SLASHW
+H_MOD:
             FCB   $03
             FCC   "MOD"
             FDB   H_SLASH
@@ -1118,14 +629,14 @@ H_MODW:
 H_SLASHMOD:
             FCB   $04
             FCC   "/MOD"
-            FDB   H_MODW
-            FDB   SLASHMOD
+            FDB   H_MOD
+            FDB   SLASHMODW
 H_NEGATE:
             FCB   $06
             FCC   "NEGATE"
             FDB   H_SLASHMOD
-            FDB   NEGATE
-H_ABSW:
+            FDB   NEGATEW
+H_ABS:
             FCB   $03
             FCC   "ABS"
             FDB   H_NEGATE
@@ -1133,149 +644,149 @@ H_ABSW:
 H_MIN:
             FCB   $03
             FCC   "MIN"
-            FDB   H_ABSW
-            FDB   MIN
+            FDB   H_ABS
+            FDB   MINW
 H_MAX:
             FCB   $03
             FCC   "MAX"
             FDB   H_MIN
-            FDB   MAX
+            FDB   MAXW
 H_ONEPLUS:
             FCB   $02
             FCC   "1+"
             FDB   H_MAX
-            FDB   ONEPLUS
+            FDB   ONEPLUSW
 H_ONEMINUS:
             FCB   $02
             FCC   "1-"
             FDB   H_ONEPLUS
-            FDB   ONEMINUS
+            FDB   ONEMINUSW
 H_TWOPLUS:
             FCB   $02
             FCC   "2+"
             FDB   H_ONEMINUS
-            FDB   TWOPLUS
+            FDB   TWOPLUSW
 H_TWOSTAR:
             FCB   $02
             FCC   "2*"
             FDB   H_TWOPLUS
-            FDB   TWOSTAR
+            FDB   TWOSTARW
 H_TWOSLASH:
             FCB   $02
             FCC   "2/"
             FDB   H_TWOSTAR
-            FDB   TWOSLASH
+            FDB   TWOSLASHW
 H_STARSLASH:
             FCB   $02
             FCC   "*/"
             FDB   H_TWOSLASH
-            FDB   STARSLASH
+            FDB   STARSLASHW
 H_STARSLASHMOD:
             FCB   $05
             FCC   "*/MOD"
             FDB   H_STARSLASH
-            FDB   STARSLASHMOD
+            FDB   STARSLASHMODW
 H_UMSTAR:
             FCB   $03
             FCC   "UM*"
             FDB   H_STARSLASHMOD
-            FDB   UMSTAR
+            FDB   UMSTARW
 H_UMSLASHMOD:
             FCB   $06
             FCC   "UM/MOD"
             FDB   H_UMSTAR
-            FDB   UMSLASHMOD
+            FDB   UMSLASHMODW
 H_MSTAR:
             FCB   $02
             FCC   "M*"
             FDB   H_UMSLASHMOD
-            FDB   MSTAR
+            FDB   MSTARW
 H_FMSLASHMOD:
             FCB   $06
             FCC   "FM/MOD"
             FDB   H_MSTAR
-            FDB   FMSLASHMOD
+            FDB   FMSLASHMODW
 H_SMSLASHREM:
             FCB   $06
             FCC   "SM/REM"
             FDB   H_FMSLASHMOD
-            FDB   SMSLASHREM
+            FDB   SMSLASHREMW
 H_DPLUS:
             FCB   $02
             FCC   "D+"
             FDB   H_SMSLASHREM
-            FDB   DPLUS
+            FDB   DPLUSW
 H_DMINUS:
             FCB   $02
             FCC   "D-"
             FDB   H_DPLUS
-            FDB   DMINUS
-H_DNEGATEW:
+            FDB   DMINUSW
+H_DNEGATE:
             FCB   $07
             FCC   "DNEGATE"
             FDB   H_DMINUS
             FDB   DNEGATEW
-H_DABSW:
+H_DABS:
             FCB   $04
             FCC   "DABS"
-            FDB   H_DNEGATEW
+            FDB   H_DNEGATE
             FDB   DABSW
 H_MPLUS:
             FCB   $02
             FCC   "M+"
-            FDB   H_DABSW
-            FDB   MPLUS
+            FDB   H_DABS
+            FDB   MPLUSW
 H_STOD:
             FCB   $03
             FCC   "S>D"
             FDB   H_MPLUS
-            FDB   STOD
+            FDB   STODW
 H_DTOS:
             FCB   $03
             FCC   "D>S"
             FDB   H_STOD
-            FDB   DTOS
-H_DMAXW:
+            FDB   DTOSW
+H_DMAX:
             FCB   $04
             FCC   "DMAX"
             FDB   H_DTOS
             FDB   DMAXW
-H_DMINW:
+H_DMIN:
             FCB   $04
             FCC   "DMIN"
-            FDB   H_DMAXW
+            FDB   H_DMAX
             FDB   DMINW
-H_ANDW:
+H_AND:
             FCB   $03
             FCC   "AND"
-            FDB   H_DMINW
+            FDB   H_DMIN
             FDB   ANDW
-H_ORW:
+H_OR:
             FCB   $02
             FCC   "OR"
-            FDB   H_ANDW
+            FDB   H_AND
             FDB   ORW
-H_XORW:
+H_XOR:
             FCB   $03
             FCC   "XOR"
-            FDB   H_ORW
+            FDB   H_OR
             FDB   XORW
 H_INVERT:
             FCB   $06
             FCC   "INVERT"
-            FDB   H_XORW
-            FDB   INVERT
+            FDB   H_XOR
+            FDB   INVERTW
 H_LSHIFT:
             FCB   $06
             FCC   "LSHIFT"
             FDB   H_INVERT
-            FDB   LSHIFT
+            FDB   LSHIFTW
 H_RSHIFT:
             FCB   $06
             FCC   "RSHIFT"
             FDB   H_LSHIFT
-            FDB   RSHIFT
-H_CELLSW:
+            FDB   RSHIFTW
+H_CELLS:
             FCB   $05
             FCC   "CELLS"
             FDB   H_RSHIFT
@@ -1283,9 +794,9 @@ H_CELLSW:
 H_CELLPLUS:
             FCB   $05
             FCC   "CELL+"
-            FDB   H_CELLSW
-            FDB   CELLPLUS
-H_CHARSW:
+            FDB   H_CELLS
+            FDB   CELLPLUSW
+H_CHARS:
             FCB   $05
             FCC   "CHARS"
             FDB   H_CELLPLUS
@@ -1293,44 +804,44 @@ H_CHARSW:
 H_CHARPLUS:
             FCB   $05
             FCC   "CHAR+"
-            FDB   H_CHARSW
-            FDB   CHARPLUS
-H_ALIGNW:
+            FDB   H_CHARS
+            FDB   CHARPLUSW
+H_ALIGN:
             FCB   $05
             FCC   "ALIGN"
             FDB   H_CHARPLUS
             FDB   ALIGNW
-H_ALIGNEDW:
+H_ALIGNED:
             FCB   $07
             FCC   "ALIGNED"
-            FDB   H_ALIGNW
+            FDB   H_ALIGN
             FDB   ALIGNEDW
-H_EQUALW:
+H_EQUAL:
             FCB   $01
             FCC   "="
-            FDB   H_ALIGNEDW
+            FDB   H_ALIGNED
             FDB   EQUALW
-H_LESSW:
+H_LESS:
             FCB   $01
             FCC   "<"
-            FDB   H_EQUALW
+            FDB   H_EQUAL
             FDB   LESSW
-H_GREATERW:
+H_GREATER:
             FCB   $01
             FCC   ">"
-            FDB   H_LESSW
+            FDB   H_LESS
             FDB   GREATERW
 H_ZEROEQ:
             FCB   $02
             FCC   "0="
-            FDB   H_GREATERW
-            FDB   ZEROEQ
+            FDB   H_GREATER
+            FDB   ZEROEQW
 H_ZEROLT:
             FCB   $02
             FCC   "0<"
             FDB   H_ZEROEQ
-            FDB   ZEROLT
-H_ULESSW:
+            FDB   ZEROLTW
+H_ULESS:
             FCB   $02
             FCC   "U<"
             FDB   H_ZEROLT
@@ -1338,24 +849,24 @@ H_ULESSW:
 H_NOTEQUAL:
             FCB   $02
             FCC   "<>"
-            FDB   H_ULESSW
-            FDB   NOTEQUAL
+            FDB   H_ULESS
+            FDB   NOTEQUALW
 H_ZERONE:
             FCB   $03
             FCC   "0<>"
             FDB   H_NOTEQUAL
-            FDB   ZERONE
+            FDB   ZERONEW
 H_ZEROGT:
             FCB   $02
             FCC   "0>"
             FDB   H_ZERONE
-            FDB   ZEROGT
+            FDB   ZEROGTW
 H_UGREATER:
             FCB   $02
             FCC   "U>"
             FDB   H_ZEROGT
-            FDB   UGREATER
-H_WITHINW:
+            FDB   UGREATERW
+H_WITHIN:
             FCB   $06
             FCC   "WITHIN"
             FDB   H_UGREATER
@@ -1363,109 +874,109 @@ H_WITHINW:
 H_DEQUAL:
             FCB   $02
             FCC   "D="
-            FDB   H_WITHINW
-            FDB   DEQUAL
-H_DLESSW:
+            FDB   H_WITHIN
+            FDB   DEQUALW
+H_DLESS:
             FCB   $02
             FCC   "D<"
             FDB   H_DEQUAL
             FDB   DLESSW
-H_DULESSW:
+H_DULESS:
             FCB   $03
             FCC   "DU<"
-            FDB   H_DLESSW
+            FDB   H_DLESS
             FDB   DULESSW
 H_IF:
             FCB   $82
             FCC   "IF"
-            FDB   H_DULESSW
-            FDB   IF
+            FDB   H_DULESS
+            FDB   IFW
 H_THEN:
             FCB   $84
             FCC   "THEN"
             FDB   H_IF
-            FDB   THEN
+            FDB   THENW
 H_ELSE:
             FCB   $84
             FCC   "ELSE"
             FDB   H_THEN
-            FDB   ELSE
+            FDB   ELSEW
 H_BEGIN:
             FCB   $85
             FCC   "BEGIN"
             FDB   H_ELSE
-            FDB   BEGIN
+            FDB   BEGINW
 H_UNTIL:
             FCB   $85
             FCC   "UNTIL"
             FDB   H_BEGIN
-            FDB   UNTIL
+            FDB   UNTILW
 H_AGAIN:
             FCB   $85
             FCC   "AGAIN"
             FDB   H_UNTIL
-            FDB   AGAIN
+            FDB   AGAINW
 H_WHILE:
             FCB   $85
             FCC   "WHILE"
             FDB   H_AGAIN
-            FDB   WHILE
+            FDB   WHILEW
 H_REPEAT:
             FCB   $86
             FCC   "REPEAT"
             FDB   H_WHILE
-            FDB   REPEAT
+            FDB   REPEATW
 H_RECURSE:
             FCB   $87
             FCC   "RECURSE"
             FDB   H_REPEAT
-            FDB   RECURSE
+            FDB   RECURSEW
 H_DO:
             FCB   $82
             FCC   "DO"
             FDB   H_RECURSE
-            FDB   DO
+            FDB   DOW
 H_QDO:
             FCB   $83
             FCC   "?DO"
             FDB   H_DO
-            FDB   QDO
+            FDB   QDOW
 H_LOOP:
             FCB   $84
             FCC   "LOOP"
             FDB   H_QDO
-            FDB   LOOP
+            FDB   LOOPW
 H_PLUSLOOP:
             FCB   $85
             FCC   "+LOOP"
             FDB   H_LOOP
-            FDB   PLUSLOOP
+            FDB   PLUSLOOPW
 H_IWORD:
             FCB   $01
             FCC   "I"
             FDB   H_PLUSLOOP
-            FDB   IWORD
+            FDB   IWORDW
 H_JWORD:
             FCB   $01
             FCC   "J"
             FDB   H_IWORD
-            FDB   JWORD
+            FDB   JWORDW
 H_LEAVE:
             FCB   $05
             FCC   "LEAVE"
             FDB   H_JWORD
-            FDB   LEAVE
+            FDB   LEAVEW
 H_UNLOOP:
             FCB   $06
             FCC   "UNLOOP"
             FDB   H_LEAVE
-            FDB   UNLOOP
+            FDB   UNLOOPW
 H_EXIT:
             FCB   $84
             FCC   "EXIT"
             FDB   H_UNLOOP
-            FDB   EXIT
-H_CASEW:
+            FDB   EXITW
+H_CASE:
             FCB   $84
             FCC   "CASE"
             FDB   H_EXIT
@@ -1473,80 +984,79 @@ H_CASEW:
 H_OF:
             FCB   $82
             FCC   "OF"
-            FDB   H_CASEW
-            FDB   OF
+            FDB   H_CASE
+            FDB   OFW
 H_ENDOF:
             FCB   $85
             FCC   "ENDOF"
             FDB   H_OF
-            FDB   ENDOF
+            FDB   ENDOFW
 H_ENDCASE:
             FCB   $87
             FCC   "ENDCASE"
             FDB   H_ENDOF
-            FDB   ENDCASE
+            FDB   ENDCASEW
 H_COLON:
             FCB   $01
             FCC   ":"
             FDB   H_ENDCASE
-            FDB   COLON
+            FDB   COLONW
 H_SEMI:
             FCB   $81
             FCC   ";"
             FDB   H_COLON
-            FDB   SEMI
+            FDB   SEMIW
 H_NONAME:
-            FCB   $07               ; not IMMEDIATE - ordinary word, same as
-                                    ; COLON (only ever runs during INTERPRET)
+            FCB   $07               ; not IMMEDIATE (runs only in INTERPRET)
             FCC   ":NONAME"
             FDB   H_SEMI
-            FDB   NONAME
+            FDB   NONAMEW
 H_CREATE:
             FCB   $06
             FCC   "CREATE"
             FDB   H_NONAME
-            FDB   CREATE
+            FDB   CREATEW
 H_DOESGT:
             FCB   $85               ; $80 IMMEDIATE | 5 (length of "DOES>")
             FCC   "DOES>"
             FDB   H_CREATE
-            FDB   DOESGT
+            FDB   DOESGTW
 H_VARIABLE:
             FCB   $08
             FCC   "VARIABLE"
             FDB   H_DOESGT
-            FDB   VARIABLE
+            FDB   VARIABLEW
 H_CONSTANT:
             FCB   $08
             FCC   "CONSTANT"
             FDB   H_VARIABLE
-            FDB   CONSTANT
-H_VALUEW:
+            FDB   CONSTANTW
+H_VALUE:
             FCB   $05
             FCC   "VALUE"
             FDB   H_CONSTANT
             FDB   VALUEW
-H_TOW:
+H_TO:
             FCB   $82
             FCC   "TO"
-            FDB   H_VALUEW
+            FDB   H_VALUE
             FDB   TOW
 H_TWOVARIABLE:
             FCB   $09
             FCC   "2VARIABLE"
-            FDB   H_TOW
-            FDB   TWOVARIABLE
+            FDB   H_TO
+            FDB   TWOVARIABLEW
 H_TWOCONSTANT:
             FCB   $09
             FCC   "2CONSTANT"
             FDB   H_TWOVARIABLE
-            FDB   TWOCONSTANT
+            FDB   TWOCONSTANTW
 H_BUFFERCOLON:
             FCB   $07
             FCC   "BUFFER:"
             FDB   H_TWOCONSTANT
-            FDB   BUFFERCOLON
-H_DEFERW:
+            FDB   BUFFERCOLONW
+H_DEFER:
             FCB   $05
             FCC   "DEFER"
             FDB   H_BUFFERCOLON
@@ -1554,14 +1064,14 @@ H_DEFERW:
 H_DEFERFETCH:
             FCB   $06
             FCC   "DEFER@"
-            FDB   H_DEFERW
-            FDB   DEFERFETCH
+            FDB   H_DEFER
+            FDB   DEFERFETCHW
 H_DEFERSTORE:
             FCB   $06
             FCC   "DEFER!"
             FDB   H_DEFERFETCH
-            FDB   DEFERSTORE
-H_ISW:
+            FDB   DEFERSTOREW
+H_IS:
             FCB   $82
             FCC   "IS"
             FDB   H_DEFERSTORE
@@ -1569,9 +1079,9 @@ H_ISW:
 H_ACTIONOF:
             FCB   $89
             FCC   "ACTION-OF"
-            FDB   H_ISW
-            FDB   ACTIONOF
-H_MARKERW:
+            FDB   H_IS
+            FDB   ACTIONOFW
+H_MARKER:
             FCB   $06
             FCC   "MARKER"
             FDB   H_ACTIONOF
@@ -1579,9 +1089,9 @@ H_MARKERW:
 H_IMMEDIATE:
             FCB   $09
             FCC   "IMMEDIATE"
-            FDB   H_MARKERW
-            FDB   IMMEDIATE
-H_STATEW:
+            FDB   H_MARKER
+            FDB   IMMEDIATEW
+H_STATE:
             FCB   $05
             FCC   "STATE"
             FDB   H_IMMEDIATE
@@ -1589,24 +1099,24 @@ H_STATEW:
 H_LBRACKET:
             FCB   $81
             FCC   "["
-            FDB   H_STATEW
-            FDB   LBRACKET
+            FDB   H_STATE
+            FDB   LBRACKETW
 H_RBRACKET:
             FCB   $81
             FCC   "]"
             FDB   H_LBRACKET
-            FDB   RBRACKET
+            FDB   RBRACKETW
 H_TICK:
             FCB   $01
             FCC   "'"
             FDB   H_RBRACKET
-            FDB   TICK
+            FDB   TICKW
 H_COMPILECOMMA:
             FCB   $08
             FCC   "COMPILE,"
             FDB   H_TICK
-            FDB   COMPILECOMMA
-H_LITERALW:
+            FDB   COMPILECOMMAW
+H_LITERAL:
             FCB   $87
             FCC   "LITERAL"
             FDB   H_COMPILECOMMA
@@ -1614,9 +1124,9 @@ H_LITERALW:
 H_BRACKTICK:
             FCB   $83
             FCC   "[']"
-            FDB   H_LITERALW
-            FDB   BRACKTICK
-H_POSTPONEW:
+            FDB   H_LITERAL
+            FDB   BRACKTICKW
+H_POSTPONE:
             FCB   $88
             FCC   "POSTPONE"
             FDB   H_BRACKTICK
@@ -1624,19 +1134,19 @@ H_POSTPONEW:
 H_XCOMPILE:
             FCB   $89               ; $80 IMMEDIATE | 9 (length of "[COMPILE]")
             FCC   "[COMPILE]"
-            FDB   H_POSTPONEW
-            FDB   XCOMPILE
+            FDB   H_POSTPONE
+            FDB   XCOMPILEW
 H_TOBODY:
             FCB   $05
             FCC   ">BODY"
             FDB   H_XCOMPILE
-            FDB   TOBODY
+            FDB   TOBODYW
 H_EXECUTE:
             FCB   $07
             FCC   "EXECUTE"
             FDB   H_TOBODY
-            FDB   EXECUTE
-H_SLITERALW:
+            FDB   EXECUTEW
+H_SLITERAL:
             FCB   $88
             FCC   "SLITERAL"
             FDB   H_EXECUTE
@@ -1644,15 +1154,15 @@ H_SLITERALW:
 H_ABORTQUOTE:
             FCB   $86
             FCC   "ABORT"
-            FCB   $22               ; '"' - split out of FCC, not escaped within it
-            FDB   H_SLITERALW
-            FDB   ABORTQUOTE
+            FCB   $22               ; '"' split out of the FCC string
+            FDB   H_SLITERAL
+            FDB   ABORTQUOTEW
 H_ATSIGN:
             FCB   $01
             FCC   "@"
             FDB   H_ABORTQUOTE
-            FDB   ATSIGN
-H_STOREW:
+            FDB   ATSIGNW
+H_STORE:
             FCB   $01
             FCC   "!"
             FDB   H_ATSIGN
@@ -1660,9 +1170,9 @@ H_STOREW:
 H_CFETCH:
             FCB   $02
             FCC   "C@"
-            FDB   H_STOREW
-            FDB   CFETCH
-H_CSTOREW:
+            FDB   H_STORE
+            FDB   CFETCHW
+H_CSTORE:
             FCB   $02
             FCC   "C!"
             FDB   H_CFETCH
@@ -1670,34 +1180,34 @@ H_CSTOREW:
 H_PLUSSTORE:
             FCB   $02
             FCC   "+!"
-            FDB   H_CSTOREW
-            FDB   PLUSSTORE
+            FDB   H_CSTORE
+            FDB   PLUSSTOREW
 H_DFETCH:
             FCB   $02
             FCC   "2@"
             FDB   H_PLUSSTORE
-            FDB   DFETCH
+            FDB   DFETCHW
 H_DSTORE:
             FCB   $02
             FCC   "2!"
             FDB   H_DFETCH
-            FDB   DSTORE
+            FDB   DSTOREW
 H_COMMA:
             FCB   $01
             FCC   ","
             FDB   H_DSTORE
-            FDB   COMMA
+            FDB   COMMAW
 H_CCOMMA:
             FCB   $02
             FCC   "C,"
             FDB   H_COMMA
-            FDB   CCOMMA
+            FDB   CCOMMAW
 H_ALLOT:
             FCB   $05
             FCC   "ALLOT"
             FDB   H_CCOMMA
-            FDB   ALLOT
-H_HEREW:
+            FDB   ALLOTW
+H_HERE:
             FCB   $04
             FCC   "HERE"
             FDB   H_ALLOT
@@ -1705,74 +1215,74 @@ H_HEREW:
 H_VCOMMA:
             FCB   $02
             FCC   "V,"
-            FDB   H_HEREW
-            FDB   VCOMMA
+            FDB   H_HERE
+            FDB   VCOMMAW
 H_VCCOMMA:
             FCB   $03
             FCC   "VC,"
             FDB   H_VCOMMA
-            FDB   VCCOMMA
+            FDB   VCCOMMAW
 H_VALLOT:
             FCB   $06
             FCC   "VALLOT"
             FDB   H_VCCOMMA
-            FDB   VALLOT
-H_VHEREW:
+            FDB   VALLOTW
+H_VHERE:
             FCB   $05
             FCC   "VHERE"
             FDB   H_VALLOT
             FDB   VHEREW
-H_PADW:
+H_PAD:
             FCB   $03
             FCC   "PAD"
-            FDB   H_VHEREW
+            FDB   H_VHERE
             FDB   PADW
-H_UNUSEDW:
+H_UNUSED:
             FCB   $06
             FCC   "UNUSED"
-            FDB   H_PADW
+            FDB   H_PAD
             FDB   UNUSEDW
-H_VUNUSEDW:
+H_VUNUSED:
             FCB   $07
             FCC   "VUNUSED"
-            FDB   H_UNUSEDW
+            FDB   H_UNUSED
             FDB   VUNUSEDW
-H_MOVEW:
+H_MOVE:
             FCB   $04
             FCC   "MOVE"
-            FDB   H_VUNUSEDW
+            FDB   H_VUNUSED
             FDB   MOVEW
-H_FILLW:
+H_FILL:
             FCB   $04
             FCC   "FILL"
-            FDB   H_MOVEW
+            FDB   H_MOVE
             FDB   FILLW
-H_ERASEW:
+H_ERASE:
             FCB   $05
             FCC   "ERASE"
-            FDB   H_FILLW
+            FDB   H_FILL
             FDB   ERASEW
-H_CMOVEW:
+H_CMOVE:
             FCB   $05
             FCC   "CMOVE"
-            FDB   H_ERASEW
+            FDB   H_ERASE
             FDB   CMOVEW
 H_CMOVEGT:
             FCB   $06
             FCC   "CMOVE>"
-            FDB   H_CMOVEW
-            FDB   CMOVEGT
+            FDB   H_CMOVE
+            FDB   CMOVEGTW
 H_COUNT:
             FCB   $05
             FCC   "COUNT"
             FDB   H_CMOVEGT
-            FDB   COUNT
+            FDB   COUNTW
 H_WORD:
             FCB   $04
             FCC   "WORD"
             FDB   H_COUNT
-            FDB   WORD
-H_CHARW:
+            FDB   WORDW
+H_CHAR:
             FCB   $04
             FCC   "CHAR"
             FDB   H_WORD
@@ -1780,9 +1290,9 @@ H_CHARW:
 H_BRACKCHAR:
             FCB   $86
             FCC   "[CHAR]"
-            FDB   H_CHARW
-            FDB   BRACKCHAR
-H_PARSEW:
+            FDB   H_CHAR
+            FDB   BRACKCHARW
+H_PARSE:
             FCB   $05
             FCC   "PARSE"
             FDB   H_BRACKCHAR
@@ -1790,137 +1300,136 @@ H_PARSEW:
 H_PARSENAME:
             FCB   $0A
             FCC   "PARSE-NAME"
-            FDB   H_PARSEW
-            FDB   PARSENAME
+            FDB   H_PARSE
+            FDB   PARSENAMEW
 H_SQUOTE:
             FCB   $82
             FCC   "S"
-            FCB   $22               ; '"' - split out of FCC, not escaped within it
+            FCB   $22               ; '"' split out of the FCC string
             FDB   H_PARSENAME
-            FDB   SQUOTE
+            FDB   SQUOTEW
 H_DOTQUOTE:
             FCB   $82
             FCC   "."
-            FCB   $22               ; '"' - split out of FCC, not escaped within it
+            FCB   $22               ; '"' split out of the FCC string
             FDB   H_SQUOTE
-            FDB   DOTQUOTE
-H_COMPAREW:
+            FDB   DOTQUOTEW
+H_COMPARE:
             FCB   $07
             FCC   "COMPARE"
             FDB   H_DOTQUOTE
             FDB   COMPAREW
-H_SEARCHW:
+H_SEARCH:
             FCB   $06
             FCC   "SEARCH"
-            FDB   H_COMPAREW
+            FDB   H_COMPARE
             FDB   SEARCHW
 H_DASHTRAILING:
             FCB   $09
             FCC   "-TRAILING"
-            FDB   H_SEARCHW
-            FDB   DASHTRAILING
+            FDB   H_SEARCH
+            FDB   DASHTRAILINGW
 H_SLASHSTRING:
             FCB   $07
             FCC   "/STRING"
             FDB   H_DASHTRAILING
-            FDB   SLASHSTRING
-H_REPLACESW:
+            FDB   SLASHSTRINGW
+H_REPLACES:
             FCB   $08
             FCC   "REPLACES"
             FDB   H_SLASHSTRING
             FDB   REPLACESW
-H_SUBSTITUTEW:
+H_SUBSTITUTE:
             FCB   $0A
             FCC   "SUBSTITUTE"
-            FDB   H_REPLACESW
+            FDB   H_REPLACES
             FDB   SUBSTITUTEW
-H_SNAMEW:
+H_SNAME:
             FCB   $05
             FCC   "SNAME"
-            FDB   H_SUBSTITUTEW
+            FDB   H_SUBSTITUTE
             FDB   SNAMEW
-H_UNESCAPEW:
+H_UNESCAPE:
             FCB   $08
             FCC   "UNESCAPE"
-            FDB   H_SNAMEW
+            FDB   H_SNAME
             FDB   UNESCAPEW
 H_LTNUM:
             FCB   $02
             FCC   "<#"
-            FDB   H_UNESCAPEW
-            FDB   LTNUM
+            FDB   H_UNESCAPE
+            FDB   LTNUMW
 H_NUMSIGN:
             FCB   $01
             FCC   "#"
             FDB   H_LTNUM
-            FDB   NUMSIGN
+            FDB   NUMSIGNW
 H_NUMSIGNS:
             FCB   $02
             FCC   "#S"
             FDB   H_NUMSIGN
-            FDB   NUMSIGNS
+            FDB   NUMSIGNSW
 H_NUMGT:
             FCB   $02
             FCC   "#>"
             FDB   H_NUMSIGNS
-            FDB   NUMGT
+            FDB   NUMGTW
 H_HOLD:
             FCB   $04
             FCC   "HOLD"
             FDB   H_NUMGT
-            FDB   HOLD
+            FDB   HOLDW
 H_HOLDS:
             FCB   $05
             FCC   "HOLDS"
             FDB   H_HOLD
-            FDB   HOLDS
+            FDB   HOLDSW
 H_SIGN:
             FCB   $04
             FCC   "SIGN"
             FDB   H_HOLDS
-            FDB   SIGN
+            FDB   SIGNW
 H_TONUMBER:
-            FCB   $07               ; audit finding: TONUMBER (the code for
-            FCC   ">NUMBER"         ; >NUMBER) existed and worked, but had no
-            FDB   H_SIGN            ; dictionary header at all - unreachable by
-            FDB   TONUMBER          ; name. Spliced in here next to the other
-                                    ; number/string-conversion words.
+            FCB   $07
+            FCC   ">NUMBER"
+            FDB   H_SIGN
+            FDB   TONUMBERW
 H_DOT:
             FCB   $01
             FCC   "."
             FDB   H_TONUMBER
-            FDB   DOT
+            FDB   DOTW
 H_UDOT:
             FCB   $02
             FCC   "U."
             FDB   H_DOT
-            FDB   UDOT
+            FDB   UDOTW
 H_DOTR:
             FCB   $02
             FCC   ".R"
             FDB   H_UDOT
-            FDB   DOTR
+            FDB   DOTRW
 H_UDOTR:
             FCB   $03
             FCC   "U.R"
             FDB   H_DOTR
-            FDB   UDOTR
+            FDB   UDOTRW
 H_QMARK:
             FCB   $01
             FCC   "?"
             FDB   H_UDOTR
-            FDB   QMARK
+            FDB   QMARKW
 H_DDOT:
             FCB   $02
             FCC   "D."
             FDB   H_QMARK
-            FDB   DDOT
+            FDB   DDOTW
 H_DDOTR:
             FCB   $03
             FCC   "D.R"
             FDB   H_DDOT
-            FDB   DDOTR
-H_BASEW:
+            FDB   DDOTRW
+H_BASE:
             FCB   $04
             FCC   "BASE"
             FDB   H_DDOTR
@@ -1928,24 +1437,24 @@ H_BASEW:
 H_DECIMAL:
             FCB   $07
             FCC   "DECIMAL"
-            FDB   H_BASEW
-            FDB   DECIMAL
-H_HEXW:
+            FDB   H_BASE
+            FDB   DECIMALW
+H_HEX:
             FCB   $03
             FCC   "HEX"
             FDB   H_DECIMAL
             FDB   HEXW
-H_BINARYW:
+H_BINARY:
             FCB   $06
             FCC   "BINARY"
-            FDB   H_HEXW
+            FDB   H_HEX
             FDB   BINARYW
 H_CATCH:
             FCB   $05
             FCC   "CATCH"
-            FDB   H_BINARYW
-            FDB   CATCH
-H_THROW:
+            FDB   H_BINARY
+            FDB   CATCHW
+H_THRO:
             FCB   $05
             FCC   "THROW"
             FDB   H_CATCH
@@ -1953,19 +1462,19 @@ H_THROW:
 H_LPAREN:
             FCB   $81
             FCC   "("
-            FDB   H_THROW
-            FDB   LPAREN
+            FDB   H_THRO
+            FDB   LPARENW
 H_BACKSLASH:
             FCB   $81
             FCC   "\"
             FDB   H_LPAREN
-            FDB   BACKSLASH
+            FDB   BACKSLASHW
 H_ENVQUERY:
             FCB   $0C
             FCC   "ENVIRONMENT?"
             FDB   H_BACKSLASH
-            FDB   ENVQUERY
-H_SOURCEW:
+            FDB   ENVQUERYW
+H_SOURCE:
             FCB   $06
             FCC   "SOURCE"
             FDB   H_ENVQUERY
@@ -1973,136 +1482,113 @@ H_SOURCEW:
 H_SOURCEID:
             FCB   $09
             FCC   "SOURCE-ID"
-            FDB   H_SOURCEW
-            FDB   SOURCEID
-H_REFILLW:
+            FDB   H_SOURCE
+            FDB   SOURCEIDW
+H_REFILL:
             FCB   $06
             FCC   "REFILL"
             FDB   H_SOURCEID
             FDB   REFILLW
-H_EVALUATEW:
+H_EVALUATE:
             FCB   $08
             FCC   "EVALUATE"
-            FDB   H_REFILLW
+            FDB   H_REFILL
             FDB   EVALUATEW
-H_TIBW:
+H_TIB:
             FCB   $03
             FCC   "TIB"
-            FDB   H_EVALUATEW
+            FDB   H_EVALUATE
             FDB   TIBW
-H_NTIBW:
+H_NTIB:
             FCB   $04
             FCC   "#TIB"
-            FDB   H_TIBW
+            FDB   H_TIB
             FDB   NTIBW
-H_TOINW:
+H_TOIN:
             FCB   $03
             FCC   ">IN"
-            FDB   H_NTIBW
+            FDB   H_NTIB
             FDB   TOINW
-H_SPANW:
+H_SPAN:
             FCB   $04
             FCC   "SPAN"
-            FDB   H_TOINW
+            FDB   H_TOIN
             FDB   SPANW
-H_BLW:
+H_BL:
             FCB   $02
             FCC   "BL"
-            FDB   H_SPANW
+            FDB   H_SPAN
             FDB   BLW
 H_DOTS:
             FCB   $02
             FCC   ".S"
-            FDB   H_BLW
-            FDB   DOTS
-H_WORDSW:
+            FDB   H_BL
+            FDB   DOTSW
+H_WORDS:
             FCB   $05
             FCC   "WORDS"
             FDB   H_DOTS
             FDB   WORDSW
-H_DUMPW:
+H_DUMP:
             FCB   $04
             FCC   "DUMP"
-            FDB   H_WORDSW
+            FDB   H_WORDS
             FDB   DUMPW
 
 H_TRUE:
             FCB   $04
             FCC   "TRUE"
-            FDB   H_DUMPW
-            FDB   TRUEBODY
+            FDB   H_DUMP
+            FDB   TRUEW
 
 H_FALSE:
             FCB   $05
             FCC   "FALSE"
             FDB   H_TRUE
-            FDB   FALSEBODY
+            FDB   FALSEW
 
-; H_ABORT and H_QUIT are hand-built, not produced by the same
-; generation pass as the 217 entries above - ABORT and QUIT need
-; to be findable at the prompt, but HEADER/CREATE couldn't be used
-; directly for these two (see the source conversation this file
-; was derived from for why). Moved here from their own separate
-; section so every header in this ROM lives in one contiguous
-; block, with the chain visible end to end: H_M2 -> H_2 -> H_M1 ->
-; H_1 -> H_FIND -> H_QUIT -> H_ABORT -> H_FALSE (the newest of the
-; 217 generated entries) -> ... -> H_KEY -> 0. H_M2 is now the true
-; head (see BASELATEST below) - H_FIND and the four number words
-; were chained on after H_QUIT in a later turn.
+; H_ABORT and H_QUIT are hand-built (HEADER/CREATE could not be used
+; for them). Chain, newest first: H_NEGTWO, H_POSTWO, H_NEGONE,
+; H_POSONE, H_FIND, H_QUIT, H_ABORT, H_FALSE ... H_KEY, then 0.
+; Original comment: shadow H_ABORT.0.
 H_ABORT:    FCB   5
             FCC   "ABORT"
-            FDB   H_FALSE           ; resolved - was placeholder 0, then H_DUMPW,
-                                    ; then H_DOESGT, then H_DUMPW again once
-                                    ; DOES> moved out of the chain's newest slot;
-                                    ; now H_FALSE, the chain's newest entry
-            FDB   ABORTW            ; BUG FIX: the ABORT *word* is -1 THROW so CATCH
-                                    ; can intercept it (26's t6 c6); the bare ABORT
-                                    ; label stays the unconditional reset.
+            FDB   H_FALSE           ; previous newest entry
+            FDB   ABORTW            ; See bugfix: H_ABORT.2
 
 H_QUIT:     FCB   4
             FCC   "QUIT"
             FDB   H_ABORT
-            FDB   QUIT
+            FDB   QUITW
 
-; FIND had no dictionary entry at all - confirmed by checking for
-; any H_FIND label or FCC "FIND" string anywhere in this file
-; before adding this. Its actual implementation (verified before
-; exposing it) already matches the standard stack effect exactly:
-; success pushes xt then 1 (immediate) or -1 (normal); failure
-; reconstructs and pushes the original c-addr, then 0.
+; FIND: pushes xt and 1 (immediate) or -1 (normal) on success; on
+; failure pushes the original c-addr and 0.
 H_FIND:     FCB   4
             FCC   "FIND"
             FDB   H_QUIT
-            FDB   FIND
+            FDB   FINDW
 
-H_1:        FCB   1
+H_POSONE:   FCB   1
             FCC   "1"
             FDB   H_FIND
-            FDB   ONEBODY
+            FDB   POSONEW
 
-H_M1:       FCB   2
+H_NEGONE:   FCB   2
             FCC   "-1"
-            FDB   H_1
-            FDB   MONEBODY
+            FDB   H_POSONE
+            FDB   NEGONEW
 
-H_2:        FCB   1
+H_POSTWO:   FCB   1
             FCC   "2"
-            FDB   H_M1
-            FDB   TWOBODY
+            FDB   H_NEGONE
+            FDB   POSTWOW
 
-H_M2:       FCB   2
+H_NEGTWO:   FCB   2
             FCC   "-2"
-            FDB   H_2
-            FDB   MTWOBODY
+            FDB   H_POSTWO
+            FDB   NEGTWOW
 
-BASELATEST  EQU   H_M2              ; the ROM dictionary's true head - referenced by
-                                    ; COLD to initialize LATEST. Was H_QUIT before
-                                    ; FIND and the four number words (1/-1/2/-2)
-                                    ; were chained on after it; before that,
-                                    ; QUITHDR before the H_QUIT rename; before
-                                    ; that, undefined entirely - a real bug, not
-                                    ; a placeholder, found and fixed several turns
-                                    ; before this one.
+BASELATEST  EQU   H_NEGTWO          ; head of the ROM dictionary (see COLD)
 
 ; Verify no collision with base code.
 ; Value should match ORG BASECODE
@@ -2112,43 +1598,20 @@ BASEDICTSIZE EQU   BASEDICTEND-BASEDICT
 ; ============================================================
 ; SECTION 3: ACIA INTERRUPT HANDLER
 ; ============================================================
-            ORG   BASECODE          ; BASECODE is $E02A. This ORG was missing
-                                    ; entirely - every routine from here through
-                                    ; SECTION 26 (IRQH, COLD/ABORT/QUIT, and
-                                    ; every primitive) would otherwise have
-                                    ; continued growing from wherever SECTION 2's
-                                    ; WARM message left the location counter,
-                                    ; inside INIT's 48-byte $FFC0-$FFEF budget,
-                                    ; overflowing directly into VECTORS ($FFF0)
-                                    ; instead of landing in BASECODE at all
+            ORG   BASECODE          ; See bugfix: BASECODE.1
 
 ; ------------------------------------------------------------
-; INITSERIAL - initializes the ACIA: master reset, then selects
-; interrupt-driven or polling operation depending on SERIALPOLL.
-; Extracted from COLDSTRT, which now just JSRs here - moved into
-; this section so the ACIA's own init code sits next to the rest
-; of its interrupt/polling logic rather than inline in COLDSTRT.
-; ------------------------------------------------------------
-; ------------------------------------------------------------
-; SERBUFCLR - zeros all four ring-buffer pointers (INHEAD/
-; INTAIL/OUTHEAD/OUTTAIL, the four bytes of SERBUF) plus
-; RTSSTATE, plus (added alongside IRQH's new receiver-error
-; counting) FECOUNT/OVRNCOUNT/PECOUNT, so a cold or warm boot
-; always starts those three counts at zero rather than whatever
-; MAME's/real RAM's arbitrary startup contents happened to hold -
-; same reasoning as the OUTHEAD/OUTTAIL bug fix described below.
-; BUG FIX: the code this replaced (formerly inline in
-; COLDSTRT) only ever cleared INHEAD/INTAIL (2 of SERBUF's own 4
-; bytes) - OUTHEAD/OUTTAIL were never zeroed at all, even on a
-; cold boot, meaning the TX ring buffer could start from
-; whatever arbitrary contents MAME's own RAM happened to hold
-; (MAME does not guarantee zeroed RAM on start), a real,
-; independent, latent risk of exactly the kind of "transmit
-; buffer appears full immediately" spin-wait lockup separately
-; observed and reported. Called from INITSERIAL itself (below),
-; so both COLDSTRT's own existing call and WARM's new one (see
-; WARM's own comment) share this single, complete reset point -
-; not duplicated logic in either place.
+; Reset the serial ring buffers, flow-control state and
+; receiver-error counters to zero.
+; SERBUFCLR
+;    Inputs:
+;        none
+;    Outputs:
+;        INHEAD, INTAIL, OUTHEAD, OUTTAIL, RTSSTATE, OUTACTIVITY,
+;        FECOUNT, OVRNCOUNT, PECOUNT and POLLREADYCNT all cleared
+;    Registers: only CC changed.
+; Original comment: shadow SERBUFCLR.0.
+; See bugfix: SERBUFCLR.1.
 ; ------------------------------------------------------------
 
 SERBUFCLR:  CLR   INHEAD
@@ -2165,6 +1628,18 @@ SERBUFCLR:  CLR   INHEAD
             CLR   POLLREADYCNT
             RTS
 
+; ------------------------------------------------------------
+; Initialise the ACIA (6850): master reset, then select
+; interrupt-driven or polling operation per SERIALPOLL.
+; INITSERIAL
+;    Inputs:
+;        none
+;    Outputs:
+;        ring buffers cleared (SERBUFCLR); ACIACR set to the run mode
+;    Registers: RegA and CC changed.
+; Original comment: shadow INITSERIAL.0.
+; See bugfix: INITSERIAL.1.
+; ------------------------------------------------------------
 INITSERIAL: JSR   SERBUFCLR
             LDA   CR_RESET          ; Master Software Reset command to 6850
             STA   ACIACR
@@ -2176,28 +1651,35 @@ INITSERIAL: JSR   SERBUFCLR
             ELSE                    ; <<<<<>>>>>
             LDA   #CR_POLL          ; polling mode: no interrupts, RTS held low
             ENDC                    ; <<<<<<<<<<
-            STA   ACIACR            ; was "STA ACIA" - same fix
+            STA   ACIACR            ; See bugfix: INITSERIAL.1
             RTS
 
             IFEQ  SERIALPOLL        ; >>>>>>>>>>
 ; ------------------------------------------------------------
-; INFILL - ( -- A=fill level, 0-63 ) input ring's current fill
-; level. INBUFSZ is a power of two, and both indices are always
-; kept in 0..INBUFSZ-1, so a plain masked subtraction gives the
-; true mod-64 distance even across the wrap point.
+; Return the input ring buffer fill level (0 to INBUFSZ-1).
+; INBUFSZ is a power of two and both indices stay in range, so a
+; masked subtraction gives the true distance across the wrap.
+; INFILL
+;    Inputs:
+;        none
+;    Outputs:
+;        RegA = (INHEAD - INTAIL) mod INBUFSZ
+;    Registers: RegA and CC changed.
 ; ------------------------------------------------------------
 INFILL:     LDA   INHEAD
             SUBA  INTAIL
-            ANDA  #INBUFSZ-1
+            ANDA  #INBUFSZ-1        ; Output: RegA = fill level
             RTS
 ; ------------------------------------------------------------
-; RTSCHECKHI - called from IRQH's own RX path (interrupts
-; already masked by hardware during ISR execution, so no
-; explicit masking needed here). If the input ring has reached
-; INHIWATER and RTS is not already asserted high, assert it -
-; telling the remote device to pause sending. Per the 6850, RTS
-; has no automatic tie to reception; this is ordinary firmware
-; flow control, not a chip feature.
+; Assert RTS high (ask the sender to pause) if the input ring has
+; reached INHIWATER and RTS is not already high. Called from the
+; receive path with interrupts already masked.
+; RTSCHECKHI
+;    Inputs:
+;        none
+;    Outputs:
+;        RTSSTATE = 1 and ACIACR = CR_RTSHI if the threshold was reached
+;    Registers: RegA and CC changed.
 ; ------------------------------------------------------------
 RTSCHECKHI: JSR   INFILL
             CMPA  #INHIWATER
@@ -2209,6 +1691,16 @@ RTSCHECKHI: JSR   INFILL
             LDA   #1
             STA   RTSSTATE
 RTSCHIDONE: RTS
+; ------------------------------------------------------------
+; Write the ACIA control byte for the current RTSSTATE and
+; OUTACTIVITY: RTS high disables the Tx interrupt; RTS low
+; enables it only while output is pending.
+; UPDATE_RTS
+;    Inputs:
+;        RTSSTATE, OUTACTIVITY
+;    Outputs:
+;        ACIACR written (OUTACTIVITY cleared when RTS is high)
+;    Registers: RegA and CC changed.
 ; ------------------------------------------------------------
 UPDATE_RTS:
             TST   RTSSTATE
@@ -2223,7 +1715,7 @@ UPDATE_RTS:
 
 SET_RTS_LO_TX_OFF:                  ; $95/%10010101
             LDA   #CR_RXON          ; RTS = Low, Tx Interrupt = Disabled
-            BRA   WRITE_CR          ; Why is OUTACTIVITY not updated here?
+            BRA   WRITE_CR          ; Open question moved to shadow: UPDATE_RTS.1
 
 SET_RTS_HI_TX_OFF:                  ; $D5/%1101_0101
             LDA   #CR_RTSHI         ; RTS = High, Tx Interrupt = Disabled
@@ -2232,29 +1724,19 @@ WRITE_CR:
             STA   ACIACR
             RTS
 ; ------------------------------------------------------------
-; CHKHI/CHKLO - replace the old combined CHKWATERLEVEL. That
-; routine always paid for a TST RTSSTATE/BNE to pick a
-; direction (hi vs lo) before checking either watermark - but
-; the direction picked never actually depended on which caller
-; was asking, only on the current RTSSTATE, and each caller
-; only ever moves fill one way: INCHAR (via CHKHI) only ever
-; adds to the ring, so only the hi threshold can ever usefully
-; fire from that side; GETCHAR (via CHKLO) only ever drains it,
-; so only the lo threshold can fire from that side. Whenever
-; the old routing sent a caller into the "wrong" branch for its
-; own direction (e.g. INCHAR landing in CHK_LO while RTSSTATE
-; was REJECT), the comparison was provably always a no-op from
-; that caller - the fill level only ever moves the way that
-; caller pushes it, so the other threshold's condition can't
-; newly become true there. Splitting into two direction-fixed
-; routines removes that dead branch+comparison from both
-; callers, and both take the current fill level pre-computed in
-; RegB rather than reloading INHEAD/INTAIL themselves, so a
-; caller that already has one of the two pointers in a register
-; (see INCHAR) doesn't pay for a redundant reload.
+; If the input ring is near full and RTS is not already high,
+; set RTSSTATE to INREJECT and update the ACIA to drop RTS.
+; Called after a character is added to the ring.
+; CHKHI
+;    Inputs:
+;        RegB = input ring fill level
+;    Outputs:
+;        RTSSTATE and ACIACR updated if the high-water mark was reached
+;    Registers: RegA and CC changed.
+; Original comment: shadow CHKHI.0.
 ; ------------------------------------------------------------
 CHKHI:
-            CMPB  #INHIWATER        ; Is the buffer near full?
+            CMPB  #INHIWATER        ; RegB = fill level. Near full?
             BLO   CHKHIDONE         ; No! Do nothing.
             TST   RTSSTATE
             BNE   CHKHIDONE         ; already high - nothing to do
@@ -2263,8 +1745,19 @@ CHKHI:
             JSR   UPDATE_RTS
 CHKHIDONE:  RTS
 
+; ------------------------------------------------------------
+; If the input ring is near empty and RTS is high, set
+; RTSSTATE to INACCEPT and update the ACIA to raise RTS.
+; Called after a character is removed from the ring.
+; CHKLO
+;    Inputs:
+;        RegB = input ring fill level
+;    Outputs:
+;        RTSSTATE and ACIACR updated if the low-water mark was reached
+;    Registers: RegA and CC changed.
+; ------------------------------------------------------------
 CHKLO:
-            CMPB  #INLOWATER        ; Is the buffer near empty?
+            CMPB  #INLOWATER        ; RegB = fill level. Near empty?
             BHS   CHKLODONE         ; No! Do nothing.
             TST   RTSSTATE
             BEQ   CHKLODONE         ; already low - nothing to do
@@ -2273,21 +1766,18 @@ CHKLO:
             JSR   UPDATE_RTS
 CHKLODONE:  RTS
 ; ------------------------------------------------------------
-; BUG FIX: this used to loop internally (BRA back to the top)
-; until the whole OUTBUF drained or CTS blocked - an unbounded
-; spin of up to ~64 characters (~5.5ms at 115200 baud). In
-; practice only one character was ever observed to be processed
-; per call anyway (TDRE is rarely ready again this soon after
-; sending), so this now makes that explicit: sends at most ONE
-; character per call and returns unconditionally, whatever the
-; reason (buffer empty, CTS-blocked, TDRE not ready yet, or a
-; character actually sent - including the TDRE-not-ready case,
-; which used to spin-wait right here and now instead just
-; returns to try again on the next call). Every caller (KEY,
-; PUTCHAR) already calls this once per character it handles on
-; its own side, so the buffer still drains at essentially the
-; same rate - this removes the unbounded worst case and the
-; TDRE spin-wait, without changing normal-case throughput.
+; Send at most one character from the output ring to the ACIA
+; by polling, then return. Nothing is sent if the ring is empty,
+; the remote receiver is blocking (CTS) or the transmitter is not
+; ready; the caller simply tries again on its next call.
+; FLUSHOUTBUFFER
+;    Inputs:
+;        none
+;    Outputs:
+;        one character sent and OUTTAIL advanced, or no change
+;    Registers: RegA, RegB, RegX and CC changed.
+; See bugfix: FLUSHOUTBUFFER.1.
+; ------------------------------------------------------------
 FLUSHOUTBUFFER:
             LDB   OUTTAIL
             CMPB  OUTHEAD           ; Is transmit buffer empty?
@@ -2313,11 +1803,14 @@ FLUSHOUTBUFFER:
 FLUSHED:
             RTS
 ; ------------------------------------------------------------
+; Queue a character for transmission. The character is discarded
+; if the output ring is full. Runs as a critical section.
 ; PUTCHAR
 ;    Inputs:
-;        RegA = character to insert into transmit buffer.
+;        RegA = character to insert into transmit buffer
 ;    Outputs:
 ;        none
+;    Registers: RegA and RegB changed; RegX and CC preserved.
 ; ------------------------------------------------------------
 PUTCHAR:
             PSHS  CC,X
@@ -2331,7 +1824,7 @@ PUTCHAR:
 
             LDX   #OUTBUF           ; Put character into character slot.
             LDB   OUTHEAD
-            STA   B,X
+            STA   B,X               ; Input: RegA = character
 
             INCB                    ; Update tail pointer to next character slot.
             ANDB  #OUTBUFSZ-1
@@ -2340,19 +1833,8 @@ PUTCHAR:
             TST   RTSSTATE          ; Is RTS currently low (chars still being accepted)?
             BEQ   CHK_INT_PATH      ; Yes! Interrupt-driven TX is still available.
 
-            ; RTS is high (REJECT): CR_RTSHI hardware-disables the TX
-            ; interrupt, so nothing will ever drain OUTBUF except this
-            ; polling fallback. BUG FIX: FLUSHOUTBUFFER can take until
-            ; the whole OUTBUF drains (up to ~64 chars, ~5.5ms at 115200
-            ; baud) - running that under PUTCHAR's own ORCC #$50 masked
-            ; IRQ+FIRQ for the entire span, which is exactly why RTS
-            ; went high in the first place: the receiver was under
-            ; pressure, and masking IRQ here stops IRQH's own INCHAR
-            ; path from servicing it, guaranteeing overruns. Unmask
-            ; around the call - FLUSHOUTBUFFER only touches OUTHEAD/
-            ; OUTTAIL/ACIACR, none of which IRQH's RX path (INHEAD/
-            ; INTAIL) touches, so there is no correctness reason to
-            ; keep the receiver blind while this runs.
+            ; RTS is high so the Tx interrupt is off: drain by polling,
+            ; with IRQ and FIRQ unmasked meanwhile. See bugfix: PUTCHAR.1
             ANDCC #$AF              ; unmask IRQ+FIRQ for the flush only
             JSR   FLUSHOUTBUFFER    ; Fallback to transmit by polling.
             ORCC  #$50              ; re-mask - PUT_EXIT below still
@@ -2384,12 +1866,15 @@ PUT_EXIT:
             PULS  CC,X,PC           ; Leaving the critical section,
                                     ; by restoring the CC.
 ; ------------------------------------------------------------
+; Fetch the next character from the input ring, if any, and let
+; the flow-control check re-assert RTS when the ring has drained.
 ; GETCHAR
 ;    Inputs:
 ;        none
 ;    Outputs:
-;         RegA  = next character retrieved from receive buffer.
-;         RegCC(carry) = valid?.
+;        RegA = next character from the receive buffer
+;        Carry clear = character returned, set = ring empty
+;    Registers: RegA, RegB, RegX and CC changed.
 ; ------------------------------------------------------------
 GETCHAR:
             LDB   INTAIL            ; Is the out buffer populated?
@@ -2397,26 +1882,14 @@ GETCHAR:
             BEQ   GET_NO_CHAR       ; No! Exit.
 
             LDX   #INBUF            ; Pull character from the out buffer.
-            LDA   B,X
+            LDA   B,X               ; Output: RegA = character
 
             INCB                    ; Update the tail pointer
             ANDB  #INBUFSZ-1        ; to point to the next character.
             STB   INTAIL
 
-            ; BUG FIX: CHKLO reads-then-writes RTSSTATE/OUTACTIVITY and
-            ; can write ACIACR (via UPDATE_RTS) - state IRQH's own
-            ; INCHAR path also reads and writes, by calling CHKHI too
-            ; (safely, from ISR context, where interrupts are already
-            ; hardware-masked). GETCHAR is only ever called from
-            ; mainline code (KEY), unmasked, so without masking here an
-            ; interrupt landing mid-call could race this call against
-            ; IRQH's own concurrent one, leaving RTSSTATE corrupted or
-            ; ACIACR written twice with conflicting values. Masked here
-            ; (IRQ only, matching RTSCHECKLO's own existing discipline
-            ; below) rather than inside CHKLO itself, since CHKHI's
-            ; ISR-context caller must NOT unmask IRQ before its own RTI.
-            ; The fill-level read is inside the same masked span, for
-            ; the same reason: INHEAD could be mid-update by the ISR.
+            ; Mask IRQ so the flow-control check cannot race the
+            ; receive interrupt. See bugfix: GETCHAR.1
             ORCC  #$10
             LDB   INHEAD            ; Calculate current fill level fresh -
             SUBB  INTAIL            ; both pointers may have moved since
@@ -2433,15 +1906,16 @@ GET_NO_CHAR:
             ORCC  #$01              ; Carry flag %1 = no valid character.
             RTS
 ; ------------------------------------------------------------
-; RTSCHECKLO - called from mainline code (KEY), NOT from the
-; ISR, so it must mask IRQ around its critical section: IRQH's
-; own TXOFF path also writes ACIACR, and an interrupt landing
-; mid-decision here could otherwise race it. If the ring has
-; drained to INLOWATER or below and RTS is currently high,
-; reassert RTS low - restoring TX-interrupt-enable too if
-; output happens to be queued, since the ACIA has no control
-; byte combination offering RTS-high with TX-interrupt-enabled
-; simultaneously (see CR_RTSHI's comment).
+; Raise RTS (accept input again) once the input ring has drained
+; to INLOWATER or below, re-enabling the Tx interrupt if output is
+; pending. Called from mainline code, so IRQ is masked while it runs.
+; RTSCHECKLO
+;    Inputs:
+;        none
+;    Outputs:
+;        RTSSTATE = 0 and ACIACR rewritten if RTS was high and the ring is low
+;    Registers: RegA, RegB and CC changed.
+; Original comment: shadow RTSCHECKLO.0.
 ; ------------------------------------------------------------
 RTSCHECKLO:
             ORCC  #$10              ; mask IRQ for the critical section
@@ -2472,36 +1946,17 @@ RTSCLOUNMASK:
 RTSCLODONE: RTS
 
 ; ------------------------------------------------------------
-; IRQH - interrupt-driven ACIA (6850) servicing (SERIALPOLL=0).
-; Rewritten by the user for two things at once: (1) the RX and TX
-; halves are now laid out symmetrically (each is: check the
-; relevant status bit, dispatch, single self-contained handler
-; block), and (2) single point of exit - every path, success or
-; not, falls through to IRQDONE/RTI rather than RTI-ing from
-; several different places. Deliberately less byte/cycle-
-; efficient than the previous version in exchange for being
-; easier to review by eye; the user accepted that trade knowingly.
-;
-; Interrupts are automatically masked during an interrupt handler
-; (6809 hardware behavior on IRQ entry), so the composite
-; operations here (ring-buffer head/tail updates, RTSSTATE,
-; ACIACR, the new error counters below) are all safe without any
-; explicit ORCC/ANDCC masking of their own - unlike RTSCHECKLO,
-; which runs from mainline code and does mask explicitly.
-;
-; Receiver-error counting: SR_FE/SR_OVRN/SR_PE (bits 4/5/6 of
-; ACIASR - framing error, overrun, parity error) are only
-; meaningful together with RDRF, and are tested from the SAME
-; ACIASR byte already read into A above, BEFORE ACIADR is read -
-; reading ACIADR clears RDRF and, per the 6850 datasheet, the
-; latched error bits along with it, so they must be inspected
-; first or the information is gone. More than one bit can be set
-; at once, so each is tested and tallied independently into its
-; own counter (FECOUNT/OVRNCOUNT/PECOUNT - see the memory-map
-; comment where they're declared). ACIADR is still read when an
-; error is flagged, to clear the condition and let the next
-; character arrive, but that byte is assumed corrupted and is
-; discarded rather than stored into INBUF.
+; ACIA (6850) interrupt handler (SERIALPOLL=0). Services received
+; characters (into the input ring, counting framing, overrun and
+; parity errors) and transmit-ready (from the output ring), with a
+; single exit point. IRQ is hardware-masked while it runs.
+; IRQH
+;    Inputs:
+;        none (hardware interrupt entry)
+;    Outputs:
+;        none (returns with RTI)
+;    Registers: all registers are saved and restored by the interrupt.
+; Original comment: shadow IRQH.0.
 ; ------------------------------------------------------------
 IRQH:       LDA   ACIASR            ; Get the status.
 
@@ -2541,23 +1996,15 @@ INOK:       TFR   B,A               ; Transfer good character from the receiver.
             CMPB  INTAIL            ; Would the new head slot meet the tail?
             BEQ   IRQDONE1          ; Don't allow it - buffer full, drop the character.
             STB   INHEAD            ; New head pointer is OK so store it.
-            ;JSR   RTSCHECKHI     ; Protect the in buffer from overflow.
-                                    ; OPTIMIZATION: RegB still holds the new head
-                                    ; value STB just stored (STB doesn't clobber
-                                    ; it) - reuse it directly to get the fill
-                                    ; level, rather than have CHKHI reload INHEAD
-                                    ; from memory. This is the single hottest
-                                    ; per-character path in the system (it runs
-                                    ; on every byte received), so a redundant
-                                    ; 4-cycle load here is worth avoiding.
+            ; Commented-out code moved to shadow: INCHAR.2
+            ; Reuse RegB (the new head) for the fill level.
+            ; See shadow: INCHAR.1
             SUBB  INTAIL            ; RegB: new head - tail = current fill level.
             ANDB  #INBUFSZ-1
             JSR   CHKHI             ; Protect the in buffer from overflow.
 IRQDONE1:   RTI
 
-            ; LDA   ACIASR          ; Recheck if the transmitter is ready.
-            ; BITA  #SR_TDRE        ; after handling the received character.
-            ; BEQ IRQDONE2          ; Yes! Process the char.
+            ; Commented-out code moved to shadow: OUTCHAR.1
 
 OUTCHAR:    LDB   OUTTAIL           ; Is the out buffer empty?
             CMPB  OUTHEAD
@@ -2572,11 +2019,8 @@ OUTCHAR:    LDB   OUTTAIL           ; Is the out buffer empty?
             STB   OUTTAIL
 IRQDONE2    RTI
 
-TXOFF:                              ; TST   RTSSTATE        ; The buffer is empty.
-            ; BNE   IRQDONE3         ; RTS is asserted high - leave ACIACR alone,
-                                    ; or this would incorrectly drop it back low
-            ; LDA   #CR_RXON
-            ; STA   ACIACR
+TXOFF:                              ; The output ring is empty.
+            ; Commented-out code moved to shadow: TXOFF.1
             CLR   OUTACTIVITY
             JSR   UPDATE_RTS
 IRQDONE3    RTI
@@ -2590,6 +2034,10 @@ IRQH:       RTI                     ; polling mode (SERIALPOLL=1) - ACIA
                                     ; the other unused vectors below
             ENDC                    ; <<<<<<<<<<
 
+; ------------------------------------------------------------
+; Unused interrupt handlers: return immediately. SWIH instead
+; pushes the throw code -99 and jumps to THROW.
+; ------------------------------------------------------------
 SWI3H:      RTI
 SWI2H:      RTI
 FIRQH:      RTI
@@ -2601,6 +2049,17 @@ SWIH:       LDD   #-99              ; placeholder hardware-trap code; push and
 ; ============================================================
 ; SECTION 4: COLD / ABORT / QUIT  (with CATCH-wrapped INTERPRET)
 ; ============================================================
+; ------------------------------------------------------------
+; Cold start: set the dictionary, code and variable pointers to
+; their application areas, BASE to 10 and the input source to the
+; terminal buffer, print the sign-on banner, then enter ABORT.
+; COLD
+;    Inputs:
+;        none (entered at reset)
+;    Outputs:
+;        none (does not return)
+;    Registers: all changed.
+; ------------------------------------------------------------
 COLD:       LDD   #APPVARS
             STD   VARHERE
             LDD   #APPCODE
@@ -2620,54 +2079,44 @@ COLD:       LDD   #APPVARS
             STD   SRCID
 
             LDX   #SIGNON
-            PSHU  X
+            PSHU  X                 ; c-addr
             LDD   #SIGNONL
-            PSHU  D
-            JSR   TYPE
+            PSHU  D                 ; u
+            JSR   TYPEW
             JSR   CRW
-            BRA   ABORT             ; (was a fall-through; ABORTW now sits between)
+            BRA   ABORT             ; Go to ABORT, skipping the ABORTW word.
 
-ABORTW:     LDD   #-1               ; ANS ABORT = -1 THROW. With no CATCH frame,
-            PSHU  D                 ; THROW falls into the ABORT reset below.
+; ------------------------------------------------------------
+; ABORT  ( i*x -- ) ( R: j*x -- )
+; Throw -1. With no CATCH frame, THROW falls into the ABORT reset below.
+; ------------------------------------------------------------
+ABORTW:     LDD   #-1
+            PSHU  D                 ; throw code (-1)
             JMP   THROW
 
+; ------------------------------------------------------------
+; Reset the data stack to its base, then fall through into QUITW.
+; ABORT
+;    Inputs:
+;        none
+;    Outputs:
+;        none (does not return)
+;    Registers: RegU changed.
+; ------------------------------------------------------------
 ABORT:      LDU   #SP0
             ; falls through into QUIT
 
-QUIT:       LDS   #RP0
-            LDD   #0                ; BUG FIX: this reset used to live at QLOOP
-            STD   STATE             ; below, running on EVERY line - including
-                                    ; lines in the middle of a colon definition
-                                    ; that spans more than one line of input.
-                                    ; COLON (sets STATE=-1) and SEMI (sets
-                                    ; STATE=0, after checking CSP) are the
-                                    ; correct, sole places STATE should change
-                                    ; during normal operation - the old QLOOP
-                                    ; reset was a third, redundant one that
-                                    ; silently dropped back to interpret mode
-                                    ; every time QUERY read a new line,
-                                    ; regardless of whether ";" had actually
-                                    ; been reached. A colon definition split
-                                    ; across multiple lines would have every
-                                    ; word on every line after the first
-                                    ; interpreted (and, for anything with a
-                                    ; stack effect, executed) instead of
-                                    ; compiled - "TRUE" pushing TRUEV onto the
-                                    ; data stack instead of being compiled,
-                                    ; leaving a stray cell CSP would correctly
-                                    ; catch as a mismatch at ";" (-22). Moved
-                                    ; here rather than removed outright: QUIT is
-                                    ; only re-entered on cold boot or an
-                                    ; uncaught error routing back through ABORT
-                                    ; (confirmed - ordinary successful lines
-                                    ; loop back to QLOOP directly, never QUIT),
-                                    ; so this still correctly forces interpret
-                                    ; state exactly when ANS's own QUIT
-                                    ; semantics call for it - just not on every
-                                    ; single line of an otherwise-uninterrupted
-                                    ; session. Confirmed via MAME debugger.
+; ------------------------------------------------------------
+; QUIT  ( -- ) ( R: i*x -- )
+; Empty the return stack, set interpretation state, then loop reading
+; a line and interpreting it under CATCH. Errors are reported as
+; "ERROR n"; -1 (ABORT) is silent. Never returns.
+; ------------------------------------------------------------
+QUITW:      LDS   #RP0
+            LDD   #0
+            STD   STATE             ; See bugfix: QUITW.1
 
-QLOOP:      JSR   QUERY
+QLOOP:      JSR   QUERYW
 
             LDD   DPHERE
             STD   QSAVEDP
@@ -2679,9 +2128,9 @@ QLOOP:      JSR   QUERY
             STD   QSAVELATEST
 
             LDD   #INTERPRET
-            PSHU  D
-            JSR   CATCH
-            PULU  D
+            PSHU  D                 ; xt
+            JSR   CATCHW
+            PULU  D                 ; throw code (0 = no error)
             STD   QTHROWCODE
             CMPD  #0
             BEQ   QOK
@@ -2696,26 +2145,8 @@ QLOOP:      JSR   QUERY
             STD   LATEST
             LDU   #SP0
 
-            ; BUG FIX: an error caught here can happen mid-colon-definition
-            ; (STATE=-1) - e.g. a bad REPEAT/control-flow mismatch thrown
-            ; while compiling GI5 in 12_control_flow's Annex F tests. The
-            ; dictionary/HERE pointers above get rolled back (the half-
-            ; built word is erased) but STATE itself was NOT among them,
-            ; so it stayed at -1 even though there was no longer any
-            ; in-progress definition to be compiling. Every word on every
-            ; line sent afterward was then fed to INTERPRET while
-            ; STATE=-1, which compiles (and for immediate words, executes)
-            ; instead of interpreting - explaining the observed cascade
-            ; where one failed definition (GI5) turned every subsequent,
-            ; otherwise-correct test on later lines into further -13/-22
-            ; errors. QUIT/ABORT already reset STATE correctly (see the
-            ; BUG FIX comment above at this routine's entry) for a cold
-            ; boot or a fully-unwound ABORT; this is the matching reset
-            ; for QLOOP's own, lighter-weight per-line catch, which is
-            ; the path every ordinary typed/sent-line error actually
-            ; takes and previously left STATE untouched. ANS QUIT's own
-            ; semantics call for returning to interpretation state after
-            ; any uncaught exception, which is exactly this case.
+            ; Return to interpretation state after a caught error.
+            ; See bugfix: QLOOP.1
             LDD   #0
             STD   STATE
 
@@ -2725,38 +2156,23 @@ QLOOP:      JSR   QUERY
 
             JSR   CRW
             LDX   #ERRMSG
-            PSHU  X
+            PSHU  X                 ; c-addr
             LDD   #ERRMSGL
-            PSHU  D
-            JSR   TYPE
+            PSHU  D                 ; u
+            JSR   TYPEW
             LDD   QTHROWCODE
-            PSHU  D
-            JSR   DOT
+            PSHU  D                 ; n
+            JSR   DOTW
             BRA   QLOOP
 
-QOK:        JSR   CRW               ; BUG FIX: was JSR CRW AFTER the STATE check
-                                    ; below, so "BNE QLOOP" (still compiling)
-                                    ; skipped both the CR echo and the ok
-                                    ; message together. The CR reflects a real
-                                    ; keystroke - the user genuinely pressed
-                                    ; Enter for that line - and should echo
-                                    ; regardless of interpret/compile state;
-                                    ; only the "ok" message itself should stay
-                                    ; conditional (correctly not shown mid-
-                                    ; definition). Previously, every line of a
-                                    ; multi-line colon definition after the
-                                    ; first had its line ending silently
-                                    ; dropped, so the echoed source ran
-                                    ; together onto one line with no
-                                    ; resemblance to what was actually typed.
-                                    ; Confirmed via MAME debugger.
+QOK:        JSR   CRW               ; See bugfix: QOK.1
             LDD   STATE
             BNE   QLOOP
             LDX   #OKMSG
-            PSHU  X
+            PSHU  X                 ; c-addr
             LDD   #OKMSGL
-            PSHU  D
-            JSR   TYPE
+            PSHU  D                 ; u
+            JSR   TYPEW
             BRA   QLOOP
 
 SIGNON:     FCC   "6809 FORTH v1.0"
@@ -2770,13 +2186,36 @@ ERRMSGL     EQU   *-ERRMSG
 ; SECTION 5: INNER-INTERPRETER SUPPORT (LIT, ZBRANCH, BRANCH,
 ; DODOES, DODEFER, EXECUTE)
 ; ============================================================
+; ------------------------------------------------------------
+; Run-time for a literal: fetch the inline cell that follows the
+; calling JSR, push it, and advance the return address past it.
+; LIT   ( -- x )
+;    Inputs:
+;        return stack top = address of the inline 16-bit literal
+;    Outputs:
+;        x pushed on the data stack; return address advanced by 2
+;    Registers: RegD, RegX and CC changed.
+; ------------------------------------------------------------
 LIT:        PULS  X
             LDD   ,X++
-            PSHU  D
+            PSHU  D                 ; x
             PSHS  X
             RTS
 
-ZBRANCH:    PULU  D
+; ------------------------------------------------------------
+; Run-time for a conditional branch: take the inline offset if the
+; flag is false, otherwise skip it. The offset is relative to its own
+; address.
+; ZBRANCH   ( flag -- )
+;    Inputs:
+;        flag on the data stack
+;        return stack top = address of the inline 16-bit offset
+;    Outputs:
+;        flag removed; return address set to the branch target or past
+;        the offset
+;    Registers: RegD, RegX and CC changed.
+; ------------------------------------------------------------
+ZBRANCH:    PULU  D                 ; flag
             PULS  X
             CMPD  #0
             BNE   ZSKIP
@@ -2788,26 +2227,67 @@ ZSKIP:      LEAX  2,X
             PSHS  X
             RTS
 
+; ------------------------------------------------------------
+; Run-time for an unconditional branch: add the inline offset
+; (relative to its own address) to the return address.
+; BRANCH
+;    Inputs:
+;        return stack top = address of the inline 16-bit offset
+;    Outputs:
+;        return address set to the branch target
+;    Registers: RegD, RegX and CC changed.
+; ------------------------------------------------------------
 BRANCH:     PULS  X
             LDD   ,X
             LEAX  D,X
             PSHS  X
             RTS
 
+; ------------------------------------------------------------
+; Run-time entry of a CREATEd or DOES>-defined word. Its code is a
+; trampoline: JSR DODOES, a BEHAVIOR address, then the data-field
+; address. Pushes the data-field address and jumps to BEHAVIOR.
+; DODOES   ( -- pfa )
+;    Inputs:
+;        return stack top = address of the BEHAVIOR cell in the
+;        trampoline
+;    Outputs:
+;        pfa pushed on the data stack; control passes to BEHAVIOR
+;    Registers: RegD, RegX, RegY and CC changed.
+; ------------------------------------------------------------
 DODOES:     PULS  X
             LDY   ,X++
             LDD   ,X
-            PSHU  D
+            PSHU  D                 ; pfa
             JMP   ,Y
 
+; ------------------------------------------------------------
+; Default BEHAVIOR for a CREATEd word: do nothing, leaving the data-
+; field address on the stack.
+; DOESRT0
+;    Inputs:
+;        none
+;    Outputs:
+;        none
+;    Registers: none.
+; ------------------------------------------------------------
 DOESRT0:    RTS
 
-; ----------------------------------------------------------
-; SETDOES - compiled via JSR by DOES>'s immediate action.
-; Patches LATEST's trampoline BEHAVIOR field, then returns
-; two levels up - skipping the rest of the defining word's
-; body entirely, straight back to whoever invoked it.
-; ----------------------------------------------------------
+; ------------------------------------------------------------
+; Run-time for DOES>: patch the BEHAVIOR cell of the most recent
+; definition with the code that follows the calling JSR, then return
+; two levels up, skipping the rest of the defining word.
+; SETDOES
+;    Inputs:
+;        return stack top = address after "JSR SETDOES" (the new
+;        BEHAVIOR)
+;        next on the return stack = the defining word's own return
+;        address
+;    Outputs:
+;        BEHAVIOR cell of LATEST patched; control returns to the
+;        defining word's caller
+;    Registers: RegD, RegX, CC, HDRFLAGS and DOESBEH changed.
+; ------------------------------------------------------------
 SETDOES:    PULS  X                 ; X = addr right after "JSR SETDOES" - new BEHAVIOR
             STX   DOESBEH
 
@@ -2830,17 +2310,46 @@ SETDOES:    PULS  X                 ; X = addr right after "JSR SETDOES" - new B
             PULS  X                 ; X = the OUTER defining word's own return addr
             JMP   ,X                ; jump there directly - "double RTS"
 
-DODEFER:    PULU  X
+; ------------------------------------------------------------
+; BEHAVIOR of a DEFERred word: execute the xt stored in its data
+; field. Tail-calls the xt, so it returns to the original caller.
+; DODEFER   ( pfa -- )
+;    Inputs:
+;        pfa on the data stack
+;    Outputs:
+;        pfa removed; the stored xt is executed
+;    Registers: RegD, RegX and CC changed.
+; ------------------------------------------------------------
+DODEFER:    PULU  X                 ; pfa
             LDD   ,X
             TFR   D,X
             JMP   ,X
 
+; ------------------------------------------------------------
+; Initial xt of a DEFER: throws -21 until IS stores a real xt.
+; DOABORTUNDEF
+;    Inputs:
+;        none
+;    Outputs:
+;        none (does not return)
+;    Registers: RegD changed.
+; ------------------------------------------------------------
 DOABORTUNDEF:
             LDD   #-21
-            PSHU  D
+            PSHU  D                 ; throw code (-21)
             JMP   THROW
 
-DOMARKER:   PULU  X
+; ------------------------------------------------------------
+; BEHAVIOR of a MARKER word: restore the dictionary, code and variable
+; pointers and LATEST from the four cells saved when it was defined.
+; DOMARKER   ( pfa -- )
+;    Inputs:
+;        pfa on the data stack (the four saved cells)
+;    Outputs:
+;        pfa removed; DPHERE, CODEHERE, VARHERE and LATEST restored
+;    Registers: RegD, RegX and CC changed.
+; ------------------------------------------------------------
+DOMARKER:   PULU  X                 ; pfa
             LDD   ,X
             STD   DPHERE
             LDD   2,X
@@ -2851,91 +2360,183 @@ DOMARKER:   PULU  X
             STD   LATEST
             RTS
 
-EXECUTE:    PULU  X
+; ------------------------------------------------------------
+; EXECUTE  ( i*x xt -- j*x )
+; Execute the word whose execution token is xt.
+; ------------------------------------------------------------
+EXECUTEW:   PULU  X                 ; xt
             JSR   ,X
             RTS
 
 ; ============================================================
 ; SECTION 6: COMMA FAMILY (factored via APPENDCELL/APPENDBYTE)
 ; ============================================================
-APPENDCELL: PULU  D
+; ------------------------------------------------------------
+; Append a 16-bit cell to the area whose "here" pointer is at RegX
+; (CODEHERE or VARHERE), and advance that pointer by 2.
+; APPENDCELL   ( x -- )
+;    Inputs:
+;        RegX = address of the here pointer
+;        x on the data stack
+;    Outputs:
+;        x stored at the old here value; pointer advanced by 2
+;    Registers: RegD, RegY and CC changed.
+; ------------------------------------------------------------
+APPENDCELL: PULU  D                 ; x
             LDY   ,X
             STD   ,Y++
             STY   ,X
             RTS
 
-APPENDBYTE: PULU  D
+; ------------------------------------------------------------
+; Append the low byte of the top cell to the area whose "here" pointer
+; is at RegX (CODEHERE or VARHERE), and advance that pointer by 1.
+; APPENDBYTE   ( char -- )
+;    Inputs:
+;        RegX = address of the here pointer
+;        char on the data stack
+;    Outputs:
+;        char stored at the old here value; pointer advanced by 1
+;    Registers: RegD, RegY and CC changed.
+; ------------------------------------------------------------
+APPENDBYTE: PULU  D                 ; char
             LDY   ,X
             STB   ,Y+
             STY   ,X
             RTS
 
-COMMA:      LDX   #CODEHERE
+; ------------------------------------------------------------
+; ,  ( x -- )
+; Append x to the code/data area (CODEHERE).
+; ------------------------------------------------------------
+COMMAW:     LDX   #CODEHERE
             JMP   APPENDCELL
 
+; ------------------------------------------------------------
+; CODECOMMA  ( x -- )
+; Internal name for ",": append x at CODEHERE.
+; ------------------------------------------------------------
 CODECOMMA:  LDX   #CODEHERE
             JMP   APPENDCELL
 
-CCOMMA:     LDX   #CODEHERE
+; ------------------------------------------------------------
+; C,  ( char -- )
+; Append char to the code/data area (CODEHERE).
+; ------------------------------------------------------------
+CCOMMAW:    LDX   #CODEHERE
             JMP   APPENDBYTE
 
+; ------------------------------------------------------------
+; CCOMMA1  ( char -- )
+; Internal name for "C,": append char at CODEHERE.
+; ------------------------------------------------------------
 CCOMMA1:    LDX   #CODEHERE
             JMP   APPENDBYTE
 
-VCOMMA:     LDX   #VARHERE
+; ------------------------------------------------------------
+; V,  ( x -- )
+; Append x to the variable area (VARHERE).
+; ------------------------------------------------------------
+VCOMMAW:    LDX   #VARHERE
             JMP   APPENDCELL
 
-VCCOMMA:    LDX   #VARHERE
+; ------------------------------------------------------------
+; VC,  ( char -- )
+; Append char to the variable area (VARHERE).
+; ------------------------------------------------------------
+VCCOMMAW:   LDX   #VARHERE
             JMP   APPENDBYTE
 
-ALLOT:      PULU  D
+; ------------------------------------------------------------
+; ALLOT  ( n -- )
+; Reserve n bytes in the code/data area by advancing CODEHERE.
+; ------------------------------------------------------------
+ALLOTW:     PULU  D                 ; n
             LDX   CODEHERE
             LEAX  D,X
             STX   CODEHERE
             RTS
 
-VALLOT:     PULU  D
+; ------------------------------------------------------------
+; VALLOT  ( n -- )
+; Reserve n bytes in the variable area by advancing VARHERE.
+; ------------------------------------------------------------
+VALLOTW:    PULU  D                 ; n
             LDX   VARHERE
             LEAX  D,X
             STX   VARHERE
             RTS
 
+; ------------------------------------------------------------
+; HERE  ( -- addr )
+; Return the next free address in the code/data area (CODEHERE).
+; ------------------------------------------------------------
 HEREW:      LDD   CODEHERE
-            PSHU  D
+            PSHU  D                 ; addr
             RTS
 
+; ------------------------------------------------------------
+; VHERE  ( -- addr )
+; Return the next free address in the variable area (VARHERE).
+; ------------------------------------------------------------
 VHEREW:     LDD   VARHERE
-            PSHU  D
+            PSHU  D                 ; addr
             RTS
 
+; ------------------------------------------------------------
+; PAD  ( -- c-addr )
+; Return the scratch buffer address, PADOFFSET bytes above CODEHERE.
+; ------------------------------------------------------------
 PADW:       LDD   CODEHERE
             ADDD  #PADOFFSET
-            PSHU  D
+            PSHU  D                 ; c-addr
             RTS
 
+; ------------------------------------------------------------
+; UNUSED  ( -- u )
+; Return the number of free bytes remaining in the code/data area.
+; ------------------------------------------------------------
 UNUSEDW:    LDD   #CODETOP
             SUBD  CODEHERE
-            PSHU  D
+            PSHU  D                 ; u
             RTS
 
-VUNUSEDW:   LDD   #APPVARSEND       ; was #APPCODE - a real bug, not just a
-            SUBD  VARHERE           ; missing check: computed a meaningless
-            PSHU  D                 ; distance to an unrelated region instead
-            RTS                     ; of remaining APPVARS space
+; ------------------------------------------------------------
+; VUNUSED  ( -- u )
+; Return the number of free bytes remaining in the variable area.
+; ------------------------------------------------------------
+VUNUSEDW:   LDD   #APPVARSEND       ; See bugfix: VUNUSEDW.1
+            SUBD  VARHERE
+            PSHU  D                 ; u
+            RTS
 
 ; ============================================================
 ; SECTION 7: HEADER (factored from :/CREATE/VARIABLE)
 ; ============================================================
+; ------------------------------------------------------------
+; Build a dictionary header for the next name in the input: parse the
+; name, then lay down the length byte (with the smudge bit set if
+; requested), the name, the link to the previous header and the code
+; field address (CODEHERE). LATEST and DPHERE are updated.
+; HEADER   ( smudge-flag "name" -- )
+;    Inputs:
+;        smudge-flag on the data stack (non-zero hides the new word)
+;        name parsed from the input stream
+;    Outputs:
+;        header built at DPHERE; LATEST and NEWHDR = address of the
+;        new header
+;    Registers: RegA, RegB, RegX, RegY and CC changed.
+; ------------------------------------------------------------
 HEADER:     LDD   #32
             PSHU  D
-            JSR   WORD
-            PULU  X
+            JSR   WORDW
+            PULU  X                 ; c-addr of the name
             LDA   ,X
             STA   NAMELEN
             LEAX  1,X
             STX   NAMEP
 
-            PULU  D
+            PULU  D                 ; smudge flag
             STB   HDRSMUDGE
 
             LDD   DPHERE
@@ -2965,23 +2566,30 @@ HDNONM:     LDD   LATEST
 ; ============================================================
 ; SECTION 8: DEFINING WORDS
 ; ============================================================
-COLON:      LDD   #TRUEV
+; ------------------------------------------------------------
+; :  ( "name" -- )
+; Start a colon definition: parse the name, build a smudged header,
+; record the new xt in CURXT, note the control-flow stack position in
+; CSP and enter compile state.
+; ------------------------------------------------------------
+COLONW:     LDD   #TRUEV
             PSHU  D
             JSR   HEADER
-            LDD   CODEHERE          ; BUG FIX: record this word's own xt in CURXT
-            STD   CURXT             ; (safe to reuse NEWHDR's cell here - HEADER
-                                    ; is done with it) so RECURSE has a reliable
-                                    ; place to find it. RECURSE used to walk
-                                    ; LATEST's header instead, which broke inside
-                                    ; a :NONAME body (LATEST deliberately isn't
-                                    ; touched there) - see RECURSE and NONAME.
+            LDD   CODEHERE          ; Record this word's xt for RECURSE.
+            STD   CURXT             ; See bugfix: COLONW.1
             TFR   U,D
             STD   CSP
             LDD   #-1
             STD   STATE
             RTS
 
-SEMI:       LDD   #RTSOPC
+; ------------------------------------------------------------
+; ;  ( -- )  IMMEDIATE
+; End a colon definition: compile RTS, check that the control-flow
+; stack is balanced (error -22 if not), clear the smudge bit of the
+; new word and return to interpret state.
+; ------------------------------------------------------------
+SEMIW:      LDD   #RTSOPC
             PSHU  D
             JSR   CCOMMA1
             TFR   U,D
@@ -2996,57 +2604,30 @@ SEMIOK:     LDX   LATEST
             STD   STATE
             RTS
 
-; NONAME (":NONAME", CORE EXT): like COLON, but deliberately skips
-; HEADER entirely - no WORD call (consumes no name from the input),
-; no new header written at DPHERE, and LATEST is left completely
-; untouched. That's the ANS-required "no-name" definition: never
-; findable by FIND, never linked into the dictionary chain at all.
-; In this subroutine-threaded system the execution token IS the code
-; address (no separate CFA indirection, unlike CREATE's DODOES
-; trampoline), so the xt ANS requires :NONAME to leave on the stack
-; is simply CODEHERE at this instant - identical to what HEREW
-; returns - pushed BEFORE compilation of the body begins, matching
-; where ANS says :NONAME produces it. CSP is snapshotted AFTER that
-; push (mirroring COLON's own CSP snapshot, taken after HEADER's
-; transient pushes/pops have already netted back to baseline) so
-; SEMI's control-flow consistency check at ";" only catches a
-; genuinely unbalanced IF/DO etc. left over from the body, not the
-; xt itself, which is meant to still be there when ";" returns.
-; SEMI itself needs no changes: its unsmudge-the-word-at-LATEST step
-; still targets whatever LATEST already was (the previous NAMED
-; word, untouched by this routine) - a harmless no-op there, since a
-; normal definition is already unsmudged by the time any later
-; definition's SEMI runs.
-NONAME:     LDD   CODEHERE
-            PSHU  D
-            STD   CURXT             ; BUG FIX: RECURSE needs this word's own xt
-                                    ; (see RECURSE and COLON's matching fix) -
-                                    ; :NONAME deliberately never touches LATEST
-                                    ; (correctly, per ANS - a :NONAME word is
-                                    ; never findable/linked), but RECURSE used to
-                                    ; unconditionally walk LATEST's header to find
-                                    ; the xt to recurse into. Inside a :NONAME
-                                    ; body that meant RECURSE compiled a call to
-                                    ; whatever NAMED word happened to be defined
-                                    ; most recently - a completely unrelated word
-                                    ; - rather than this one. Confirmed against
-                                    ; Annex F's RECURSE test (":NONAME ... CASE
-                                    ; ... RECURSE ... ENDCASE ; CONSTANT rn2"):
-                                    ; every case that actually took the RECURSE
-                                    ; path failed ttester's "WRONG NUMBER OF
-                                    ; RESULTS" (recursing into a different word
-                                    ; with a different stack effect), while
-                                    ; ordinary named RECURSE tests (rn1, 12's own
-                                    ; earlier definitions) were unaffected, since
-                                    ; LATEST is correct for those. STD here costs
-                                    ; nothing extra (D already holds CODEHERE).
+; ------------------------------------------------------------
+; :NONAME  ( -- xt )
+; Start an anonymous definition: no header is built and LATEST is left
+; alone, so the word can never be found. Leaves the xt (the current
+; CODEHERE) on the stack, records it in CURXT, notes the control-flow
+; stack position in CSP and enters compile state.
+; Original comment: shadow NONAMEW.0.
+; ------------------------------------------------------------
+NONAMEW:    LDD   CODEHERE
+            PSHU  D                 ; xt
+            STD   CURXT             ; See bugfix: NONAMEW.1
             TFR   U,D
             STD   CSP
             LDD   #-1
             STD   STATE
             RTS
 
-CREATE:     LDD   #0
+; ------------------------------------------------------------
+; CREATE  ( "name" -- )
+; Build a header whose code is a DODOES trampoline. The default
+; behaviour (DOESRT0) leaves the data-field address, the next free
+; address in the code area, on the stack.
+; ------------------------------------------------------------
+CREATEW:    LDD   #0
             PSHU  D
             JSR   HEADER
             LDD   #DODOES
@@ -3055,35 +2636,29 @@ CREATE:     LDD   #0
             LDD   #DOESRT0
             PSHU  D
             JSR   CODECOMMA
-            LDD   CODEHERE          ; BUG FIX: same self-referential PFA bug as
-            ADDD  #2                ; CONSTANT/DEFER/2CONSTANT/MARKER (CONSTANT's
-            PSHU  D                 ; instance confirmed via MAME debugger) -
-            JSR   CODECOMMA         ; without +2 this pointed at itself instead
-                                    ; of the value cell that "," appends next.
-                                    ; Never on the previously-flagged list (only
-                                    ; DEFER/2CONSTANT/MARKER were), so it went
-                                    ; unfixed until confirmed by inspection here.
-                                    ; Confirmed via MAME: ": ENUM CREATE , DOES>
-                                    ; @ ;" returned the PFA-pointer field's own
-                                    ; address instead of the value COMMA stored
-                                    ; one cell further on - exactly "the address
-                                    ; before the 16-bit constant" instead of the
-                                    ; address 1 cell further on, matching a
-                                    ; user-reported MAME trace precisely.
+            LDD   CODEHERE          ; PFA = the cell after this one
+            ADDD  #2                ; See bugfix: CONSTANTW.1
+            PSHU  D
+            JSR   CODECOMMA
             RTS
 
-; ----------------------------------------------------------
-; DOES> ( -- )  IMMEDIATE, compile-only. Compiles a call to
-; SETDOES. Code label DOESGT, not "DOES>" - a literal ">" is
-; not valid in a 6809 assembler label, same reason ?DUP/2DUP/
-; etc. all use mnemonic labels rather than their literal names.
-; ----------------------------------------------------------
-DOESGT:     LDD   #SETDOES
+; ------------------------------------------------------------
+; DOES>  ( -- )  IMMEDIATE, compile-only
+; Compile a call to SETDOES, which at run time patches the behaviour
+; of the word being defined.
+; Original comment: shadow DOESGTW.0.
+; ------------------------------------------------------------
+DOESGTW:    LDD   #SETDOES
             PSHU  D
             JSR   CCALL
             RTS
 
-VARIABLE:   LDD   #0
+; ------------------------------------------------------------
+; VARIABLE  ( "name" -- )
+; Build a word that returns the address of a new cell in the variable
+; area, initialised to zero.
+; ------------------------------------------------------------
+VARIABLEW:  LDD   #0
             PSHU  D
             JSR   HEADER
             LDD   #DODOES
@@ -3101,39 +2676,55 @@ VARIABLE:   LDD   #0
             STX   VARHERE
             RTS
 
-ATSIGN:     PULU  X
+; ------------------------------------------------------------
+; @  ( a-addr -- x )
+; Fetch the cell at a-addr. Also the behaviour of CONSTANT words.
+; ------------------------------------------------------------
+ATSIGNW:    PULU  X                 ; a-addr
             LDD   ,X
-            PSHU  D
+            PSHU  D                 ; x
             RTS
 
-CONSTANT:   LDD   #0
+; ------------------------------------------------------------
+; CONSTANT  ( x "name" -- )
+; Build a word that returns x. The value is stored in the code area
+; after the trampoline and fetched with @.
+; ------------------------------------------------------------
+CONSTANTW:  LDD   #0
             PSHU  D
             JSR   HEADER
             LDD   #DODOES
             PSHU  D
             JSR   CCALL
-            LDD   #ATSIGN
+            LDD   #ATSIGNW
             PSHU  D
             JSR   CODECOMMA
-            LDD   CODEHERE          ; BUG FIX: was storing CODEHERE's value as-is,
-            ADDD  #2                ; but at this point CODEHERE points at THIS
-            PSHU  D                 ; very cell, about to be written by the next
-            JSR   CODECOMMA         ; CODECOMMA - self-referential, not pointing
-                                    ; at the value cell 2 bytes further on where
-                                    ; the JSR COMMA below actually appends 1234.
-                                    ; +2 accounts for this FDB field's own width,
-                                    ; landing correctly on the value that follows.
-                                    ; Confirmed via MAME debugger: executing the
-                                    ; constant returned its own compile-time
-                                    ; CODEHERE address instead of the real value.
-            JSR   COMMA
-            RTS
-
-DOVALUE:    PULU  X
-            LDD   ,X
+            LDD   CODEHERE          ; PFA = the cell after this one
+            ADDD  #2                ; See bugfix: CONSTANTW.1
             PSHU  D
+            JSR   CODECOMMA
+            JSR   COMMAW
             RTS
 
+; ------------------------------------------------------------
+; Behaviour of a VALUE word: fetch the value cell.
+; DOVALUE   ( pfa -- x )
+;    Inputs:
+;        pfa on the data stack (address of the value cell)
+;    Outputs:
+;        pfa replaced by the value
+;    Registers: RegD, RegX and CC changed.
+; ------------------------------------------------------------
+DOVALUE:    PULU  X                 ; pfa
+            LDD   ,X
+            PSHU  D                 ; x
+            RTS
+
+; ------------------------------------------------------------
+; VALUE  ( x "name" -- )
+; Build a word that returns x, which can be changed with TO. The value
+; cell is kept in the variable area so that it is writable.
+; ------------------------------------------------------------
 VALUEW:     LDD   #0
             PSHU  D
             JSR   HEADER            ; not smudged - immediately findable
@@ -3142,18 +2733,22 @@ VALUEW:     LDD   #0
             JSR   CCALL
             LDD   #DOVALUE
             PSHU  D
-            JSR   CODECOMMA         ; trampoline itself is still code
-            LDD   VARHERE           ; PFA = VARHERE, mutable space - was
-            PSHU  D                 ; CODEHERE; TO writes through this PFA,
-            JSR   CODECOMMA         ; so it must live in mutable space
-            JSR   VCOMMA            ; store x into VARHERE via VCOMMA,
-                                    ; not COMMA (which targets CODEHERE)
+            JSR   CODECOMMA
+            LDD   VARHERE           ; PFA = VARHERE (writable space)
+            PSHU  D                 ; See bugfix: VALUEW.1
+            JSR   CODECOMMA
+            JSR   VCOMMAW           ; store x in the variable area
             RTS
 
+; ------------------------------------------------------------
+; TO  ( x "name" -- )  IMMEDIATE
+; Store x in the named VALUE. When compiling, instead compile code to
+; store a run-time x in it. Error -13 if the name is not found.
+; ------------------------------------------------------------
 TOW:        LDD   #32
             PSHU  D
-            JSR   WORD
-            JSR   FIND
+            JSR   WORDW
+            JSR   FINDW
             PULU  D
             CMPD  #0
             BNE   TOFOUND
@@ -3161,7 +2756,7 @@ TOW:        LDD   #32
             LDD   #-13
             PSHU  D
             JSR   THROW
-TOFOUND:    JSR   TOBODY
+TOFOUND:    JSR   TOBODYW
             LDD   STATE
             BEQ   TOIMMED
             JSR   LITERALW
@@ -3169,12 +2764,17 @@ TOFOUND:    JSR   TOBODY
             PSHU  D
             JSR   CCALL
             RTS
-TOIMMED:    PULU  X
-            PULU  D
+TOIMMED:    PULU  X                 ; a-addr of the value cell
+            PULU  D                 ; x
             STD   ,X
             RTS
 
-TWOVARIABLE:
+; ------------------------------------------------------------
+; 2VARIABLE  ( "name" -- )
+; Build a word that returns the address of a new two-cell variable in
+; the variable area, initialised to zero.
+; ------------------------------------------------------------
+TWOVARIABLEW:
             LDD   #0
             PSHU  D
             JSR   HEADER
@@ -3194,31 +2794,40 @@ TWOVARIABLE:
             STX   VARHERE
             RTS
 
-TWOCONSTANT:
+; ------------------------------------------------------------
+; 2CONSTANT  ( x1 x2 "name" -- )
+; Build a word that returns x1 x2. The pair is stored in the code area
+; with x2 at the lower address, as 2@ and 2! expect.
+; ------------------------------------------------------------
+TWOCONSTANTW:
             LDD   #0
             PSHU  D
             JSR   HEADER
             LDD   #DODOES
             PSHU  D
             JSR   CCALL
-            LDD   #DFETCH
+            LDD   #DFETCHW
             PSHU  D
             JSR   CODECOMMA
-            LDD   CODEHERE          ; BUG FIX: same self-referential PFA bug as
-            ADDD  #2                ; CONSTANT (confirmed via MAME debugger) -
-            PSHU  D                 ; without +2 this pointed at itself instead
-            JSR   CODECOMMA         ; of the two-cell value that COMMA appends
-                                    ; below.
-            PULU  D                 ; x2, off the top
+            LDD   CODEHERE          ; PFA = the cell after this one
+            ADDD  #2                ; See bugfix: CONSTANTW.1
+            PSHU  D
+            JSR   CODECOMMA
+            PULU  D                 ; x2
             STD   MSCR
-            LDD   MSCR              ; BUG FIX: standard layout is x2 at
-            PSHU  D                 ; the lower address, x1 above it
-            JSR   COMMA             ; (matches 2@/2! below) - x2 -> low
-            JSR   COMMA             ; x1 -> higher address
+            LDD   MSCR
+            PSHU  D
+            JSR   COMMAW            ; x2 -> lower address
+            JSR   COMMAW            ; x1 -> higher. See bugfix: TWOCONSTANTW.1
             RTS
 
-BUFFERCOLON:
-            PULU  D
+; ------------------------------------------------------------
+; BUFFER:  ( u "name" -- )
+; Build a word that returns the address of a u-byte buffer reserved in
+; the variable area.
+; ------------------------------------------------------------
+BUFFERCOLONW:
+            PULU  D                 ; u
             STD   MSCR2
             LDD   #0
             PSHU  D
@@ -3234,9 +2843,14 @@ BUFFERCOLON:
             JSR   CODECOMMA
             LDD   MSCR2
             PSHU  D
-            JSR   VALLOT
+            JSR   VALLOTW
             RTS
 
+; ------------------------------------------------------------
+; DEFER  ( "name" -- )
+; Build a deferred word. Until IS stores an xt in it, executing it
+; throws -21.
+; ------------------------------------------------------------
 DEFERW:     LDD   #0
             PSHU  D
             JSR   HEADER
@@ -3246,35 +2860,47 @@ DEFERW:     LDD   #0
             LDD   #DODEFER
             PSHU  D
             JSR   CODECOMMA
-            LDD   CODEHERE          ; BUG FIX: same self-referential PFA bug as
-            ADDD  #2                ; CONSTANT (confirmed via MAME debugger) -
-            PSHU  D                 ; without +2 this pointed at itself instead
-            JSR   CODECOMMA         ; of the value cell DOABORTUNDEF lands in
-                                    ; below. Confirmed by inspection: DODEFER's
-                                    ; own "LDD ,X" would have read the PFA's own
-                                    ; address and jumped there, crashing on
-                                    ; execution of any newly-DEFER'd word.
+            LDD   CODEHERE          ; PFA = the cell after this one
+            ADDD  #2                ; See bugfix: CONSTANTW.1
+            PSHU  D
+            JSR   CODECOMMA
             LDD   #DOABORTUNDEF
             PSHU  D
-            JSR   COMMA
+            JSR   COMMAW
             RTS
 
-DEFERFETCH: JSR   TOBODY
-            PULU  X
+; ------------------------------------------------------------
+; DEFER@  ( xt1 -- xt2 )
+; Return the xt currently stored in the deferred word xt1.
+; ------------------------------------------------------------
+DEFERFETCHW:
+            JSR   TOBODYW
+            PULU  X                 ; body address
             LDD   ,X
-            PSHU  D
+            PSHU  D                 ; xt2
             RTS
 
-DEFERSTORE: JSR   TOBODY
-            PULU  X
-            PULU  D
+; ------------------------------------------------------------
+; DEFER!  ( xt2 xt1 -- )
+; Store xt2 as the action of the deferred word xt1.
+; ------------------------------------------------------------
+DEFERSTOREW:
+            JSR   TOBODYW
+            PULU  X                 ; body address of xt1
+            PULU  D                 ; xt2
             STD   ,X
             RTS
 
+; ------------------------------------------------------------
+; IS  ( xt "name" -- )  IMMEDIATE
+; Store xt as the action of the named deferred word. When compiling,
+; compile code to do so at run time. Error -13 if the name is not
+; found.
+; ------------------------------------------------------------
 ISW:        LDD   #32
             PSHU  D
-            JSR   WORD
-            JSR   FIND
+            JSR   WORDW
+            JSR   FINDW
             PULU  D
             CMPD  #0
             BNE   ISFOUND
@@ -3287,18 +2913,24 @@ ISFOUND:    PULU  X
             BEQ   ISIMMED
             PSHU  X
             JSR   LITERALW
-            LDD   #DEFERSTORE
+            LDD   #DEFERSTOREW
             PSHU  D
             JSR   CCALL
             RTS
 ISIMMED:    PSHU  X
-            JSR   DEFERSTORE
+            JSR   DEFERSTOREW
             RTS
 
-ACTIONOF:   LDD   #32
+; ------------------------------------------------------------
+; ACTION-OF  ( "name" -- xt )  IMMEDIATE
+; Return the xt currently stored in the named deferred word. When
+; compiling, compile code to do so at run time. Error -13 if the name
+; is not found.
+; ------------------------------------------------------------
+ACTIONOFW:  LDD   #32
             PSHU  D
-            JSR   WORD
-            JSR   FIND
+            JSR   WORDW
+            JSR   FINDW
             PULU  D
             CMPD  #0
             BNE   AOFOUND
@@ -3311,14 +2943,19 @@ AOFOUND:    PULU  X
             BEQ   AOIMMED
             PSHU  X
             JSR   LITERALW
-            LDD   #DEFERFETCH
+            LDD   #DEFERFETCHW
             PSHU  D
             JSR   CCALL
             RTS
 AOIMMED:    PSHU  X
-            JSR   DEFERFETCH
+            JSR   DEFERFETCHW
             RTS
 
+; ------------------------------------------------------------
+; MARKER  ( "name" -- )
+; Save DPHERE, CODEHERE, VARHERE and LATEST in a new word, which when
+; executed restores them (forgetting everything defined since).
+; ------------------------------------------------------------
 MARKERW:    LDD   DPHERE
             STD   MKDP
             LDD   CODEHERE
@@ -3336,51 +2973,44 @@ MARKERW:    LDD   DPHERE
             LDD   #DOMARKER
             PSHU  D
             JSR   CODECOMMA
-            LDD   CODEHERE          ; BUG FIX: same self-referential PFA bug as
-            ADDD  #2                ; CONSTANT (confirmed via MAME debugger) -
-            PSHU  D                 ; without +2 this pointed at itself instead
-            JSR   CODECOMMA         ; of the four snapshot cells COMMA appends
-                                    ; below. Confirmed by inspection: DOMARKER's
-                                    ; own fixed-offset reads (,X / 2,X / 4,X /
-                                    ; 6,X) would have read garbage relative to
-                                    ; the intended MKDP/MKCODE/MKVAR/MKLATEST -
-                                    ; the most severe of the three, since using
-                                    ; a MARKER-created word would restore
-                                    ; corrupted dictionary-state pointers.
+            LDD   CODEHERE          ; PFA = the cell after this one
+            ADDD  #2                ; See bugfix: CONSTANTW.1
+            PSHU  D
+            JSR   CODECOMMA
             LDD   MKDP
             PSHU  D
-            JSR   COMMA
+            JSR   COMMAW
             LDD   MKCODE
             PSHU  D
-            JSR   COMMA
+            JSR   COMMAW
             LDD   MKVAR
             PSHU  D
-            JSR   COMMA
+            JSR   COMMAW
             LDD   MKLATEST
             PSHU  D
-            JSR   COMMA
+            JSR   COMMAW
             RTS
 
 ; ============================================================
 ; SECTION 9: OUTER INTERPRETER (INTERPRET / WORD / FIND / NUMBER?)
 ; ============================================================
+; ------------------------------------------------------------
+; INTERPRET  ( -- )
+; Interpret the rest of the input source: parse each word and look it
+; up. A found word is executed, or compiled when STATE is compile and
+; it is not immediate. Anything else is converted as a single or
+; double number (compiled as literals when compiling). An unknown word
+; is typed and THROW -13 is raised.
+; ------------------------------------------------------------
 INTERPRET:
-ILOOP:      LDD   #32               ; BUG FIX: WORD expects a delimiter char
-            PSHU  D                 ; pushed by its caller (PULU D/STB DELIM)
-                                    ; - nothing pushed one here before, so
-                                    ; WORD pulled from an empty U stack,
-                                    ; landing on live RSTACK content (SP0 is
-                                    ; RSTACK's own first byte) instead of a
-                                    ; real delimiter. Confirmed present in
-                                    ; both SERIALPOLL branches - IRQH never
-                                    ; touches U, so interrupt-driven mode
-                                    ; had no incidental workaround either.
-            JSR   WORD
+ILOOP:      LDD   #32               ; Delimiter: space. See bugfix: INTERPRET.1
+            PSHU  D                 ; char
+            JSR   WORDW
             LDX   ,U
             LDA   ,X
             BEQ   IDONE
 
-            JSR   FIND
+            JSR   FINDW
             PULU  D
             TSTB
             LBEQ  TRYNUM
@@ -3392,21 +3022,16 @@ ILOOP:      LDD   #32               ; BUG FIX: WORD expects a delimiter char
             JSR   CCALL
             BRA   ILOOP
 
-DOEXEC:     JSR   EXECUTE
+DOEXEC:     JSR   EXECUTEW
             BRA   ILOOP
 
 TRYNUM:     JSR   NUMBERQ
             PULU  D
-            CMPD  #0                ; was TSTD (6309-only) - PULU doesn't set CC on
-                                    ; genuine 6809, so compare D against 0 directly
+            CMPD  #0                ; flag (PULU does not set CC)
             BEQ   BADWORD
 
-            CMPD  #1                ; NEW: distinguishes NUMBERQ's double-number
-            BEQ   TNDOUBLE          ; success code (1) from single (-1), added
-                                    ; to support ANS's double-number input
-                                    ; convention (forth-standard.org/standard/
-                                    ; usage#usage:numbers) - "123." parses as
-                                    ; a double-cell number, "123" as single.
+            CMPD  #1                ; 1 = double-number result
+            BEQ   TNDOUBLE          ; See shadow: INTERPRET.3
 
             LDD   STATE
             BEQ   ILOOP
@@ -3440,41 +3065,30 @@ TNDOUBLE:                           ; U currently holds [UDLO(bottom), UDHI(top)
             JSR   CODECOMMA         ; compiles UDHI
             BRA   ILOOP
 
-BADWORD:    JSR   COUNT
-            JSR   TYPE
+BADWORD:    JSR   COUNTW
+            JSR   TYPEW
             LDD   #-13
             PSHU  D
             JSR   THROW
 
-IDONE:      PULU  X                 ; BUG FIX: WORD always pushes a c-addr (WORDBUF),
-                                    ; even via its EMPTY branch - this path used to
-                                    ; branch straight here via a bare peek (LDX ,U,
-                                    ; never popped), stranding that address on U.
-                                    ; JSR FIND (the other path) consumes it via its
-                                    ; own PULU X; this does the same here, matching
-                                    ; that same convention rather than inventing a
-                                    ; different one. Confirmed via MAME debugger:
-                                    ; a spurious WORDBUF address was found sitting
-                                    ; on top of otherwise-correct stack contents.
+IDONE:      PULU  X                 ; c-addr from WORD (empty). See bugfix: INTERPRET.4
             RTS
 
-WORD:       PULU  D
+; ------------------------------------------------------------
+; WORD  ( char "<chars>ccc<char>" -- c-addr )
+; Skip leading delimiters, then parse text up to the next char from
+; the input source. The text is stored as a counted string at
+; CODEHERE, which is not advanced. An exhausted input gives a zero
+; count.
+; ------------------------------------------------------------
+WORDW:      PULU  D                 ; char
             STB   DELIM
             LDD   TOIN
             LDX   SRCADDR
             LEAX  D,X
             LDD   SRCLEN
             SUBD  TOIN
-            LBLO  EMPTY             ; BUG FIX: >IN beyond the end of the input
-                                    ; (SRCLEN < TOIN, unsigned borrow). The
-                                    ; remaining-length count below is unsigned,
-                                    ; and SKIPLP/SCANLP only stop at EXACTLY
-                                    ; zero, so an overshoot wrapped to ~65000
-                                    ; and WORD parsed stale memory far past the
-                                    ; TIB. ANS Annex F's own >IN tests overshoot
-                                    ; on purpose (e.g. ">IN +!" skipping text).
-                                    ; Treat any overshoot as an exhausted
-                                    ; parse area, same as exactly-at-end.
+            LBLO  EMPTY             ; See bugfix: WORDW.1
             TFR   D,Y
 
 SKIPLP:     CMPY  #0
@@ -3494,34 +3108,7 @@ SCANLP:     CMPY  #0
             LDA   ,X
             CMPA  DELIM
             BEQ   CONSUME
-            CMPB  #WORDMAXCHARS     ; REDESIGN: was "CMPB #31", capping WORD
-                                    ; at 31 characters regardless of what it was
-                                    ; parsing - a plain word, a defined name, or
-                                    ; the text of a compiled/interpreted S"
-                                    ; string, all fed through the same scan.
-                                    ; That cap came from WORDBUF's own fixed
-                                    ; 33-byte allocation (1 count byte + 32 data
-                                    ; bytes, with 1 byte of that never actually
-                                    ; used by this check), entirely unrelated to
-                                    ; CODEHERE or PAD. Traced via MAME: a longer
-                                    ; S" string was truncated during WORD's own
-                                    ; scan, before either S"'s interpreted-mode
-                                    ; (PAD) or compiled-mode (CODEHERE) storage
-                                    ; path ever got a chance to matter - the
-                                    ; PAD-based S" redesign a few turns ago
-                                    ; didn't help here because this is an
-                                    ; earlier stage entirely. Now uses the
-                                    ; CODEHERE-to-PAD gap directly, matching the
-                                    ; traditional fig-Forth layout (WORD's own
-                                    ; buffer at HERE, growing toward PAD, with
-                                    ; the pictured numeric output buffer at the
-                                    ; opposite end growing back toward HERE) -
-                                    ; WORDMAXCHARS reserves HOLDMINSIZE bytes at
-                                    ; the PAD end for that buffer, so the two
-                                    ; don't collide even though ANS itself would
-                                    ; permit them to (3.3.3.6: "the regions
-                                    ; returned by WORD and #> may overlap in
-                                    ; memory"). Confirmed via MAME debugger.
+            CMPB  #WORDMAXCHARS     ; Length limit. See shadow: WORDW.2
             BEQ   ENDW
             LEAX  1,X
             LEAY  -1,Y
@@ -3530,30 +3117,14 @@ SCANLP:     CMPY  #0
 
 CONSUME:    LEAX  1,X
             LEAY  -1,Y
-ENDW:       PSHS  B                 ; BUG FIX: B holds the true character count from
-                                    ; SCANLP's own INCB loop, but B is D's low byte -
-                                    ; TFR X,D below would silently destroy it before
-                                    ; it's stored as the length byte. Save it here,
-                                    ; restore it right before STB ,X+. Affects every
-                                    ; token followed by more input on the same line
-                                    ; (terminated via CONSUME, not by running out of
-                                    ; buffer) - the stored length was TOIN's delta
-                                    ; instead of the true count, one too many (the
-                                    ; consumed delimiter), so the copy loop below
-                                    ; would also copy one byte past the token's real
-                                    ; end. Confirmed via MAME debugger.
+ENDW:       PSHS  B                 ; Save the count. See bugfix: WORDW.3
             TFR   X,D
             SUBD  SRCADDR
             STD   TOIN
             PULS  B
 
-            LDX   CODEHERE          ; REDESIGN: was "LDX #WORDBUF" - now writes
-                                    ; at CODEHERE directly (see SCANLP above for
-                                    ; the full reasoning). CODEHERE itself is
-                                    ; NOT advanced by this - matches the ANS
-                                    ; transient-region contract, where WORD's
-                                    ; region is expected to be overwritten by
-                                    ; whatever gets compiled/allocated next.
+            LDX   CODEHERE          ; Result buffer; CODEHERE is not advanced.
+                                    ; See shadow: WORDW.4
             STB   ,X+
             LDY   WSTART
 COPYLP:     TSTB
@@ -3562,17 +3133,22 @@ COPYLP:     TSTB
             STA   ,X+
             DECB
             BRA   COPYLP
-COPYDONE:   LDX   CODEHERE          ; REDESIGN: was "LDX #WORDBUF", matching
-                                    ; the copy destination above.
-            PSHU  X
+COPYDONE:   LDX   CODEHERE          ; Result address (see WORDW.4)
+            PSHU  X                 ; c-addr
             RTS
 
-EMPTY:      LDX   CODEHERE          ; REDESIGN: was "LDX #WORDBUF" - same reason.
+EMPTY:      LDX   CODEHERE          ; Empty string at the result buffer
             CLR   ,X
-            PSHU  X
+            PSHU  X                 ; c-addr
             RTS
 
-FIND:       PULU  X
+; ------------------------------------------------------------
+; FIND  ( c-addr -- c-addr 0 | xt 1 | xt -1 )
+; Look up the counted string in the dictionary, newest first, ignoring
+; smudged entries. Returns the xt and 1 if the word is immediate, or
+; -1 if not. If not found, returns c-addr and 0.
+; ------------------------------------------------------------
+FINDW:      PULU  X                 ; c-addr
             LDA   ,X
             STA   SLEN
             LEAX  1,X
@@ -3610,14 +3186,14 @@ FMATCH:     LDX   HDRPTR
             LEAX  D,X
             LEAX  2,X
             LDD   ,X
-            PSHU  D
+            PSHU  D                 ; xt
             LDA   HDRFLAGS
             BITA  #$80
             BEQ   FISNORM
             LDD   #1
             BRA   FPUSH
 FISNORM:    LDD   #-1
-FPUSH:      PSHU  D
+FPUSH:      PSHU  D                 ; 1 = immediate, -1 = normal
             RTS
 
 FNEXT:      LDX   HDRPTR
@@ -3632,11 +3208,23 @@ FNEXT:      LDX   HDRPTR
 
 NOTFOUND:   LDX   SNAMEP
             LEAX  -1,X
-            PSHU  X
+            PSHU  X                 ; c-addr
             LDD   #0
-            PSHU  D
+            PSHU  D                 ; 0 = not found
             RTS
 
+; ------------------------------------------------------------
+; Multiply the unsigned double UDHI:UDLO by BASE and add a digit.
+; UDMULADD
+;    Inputs:
+;        UDHI:UDLO = ud
+;        RegB = digit value to add
+;        BASE
+;    Outputs:
+;        UDHI:UDLO = ud * BASE + digit
+;    Registers: RegA, RegB and CC changed; CARRY and MULBASE used as
+;        scratch.
+; ------------------------------------------------------------
 UDMULADD:   STB   CARRY
             LDA   BASE+1
             STA   MULBASE
@@ -3673,6 +3261,20 @@ UM2:        STB   UDHI+1
 UM3:        STB   UDHI
             RTS
 
+; ------------------------------------------------------------
+; Convert digits at NADDR into UDHI:UDLO, in BASE, until NCNT
+; characters are used or a non-digit is reached.
+; NUMLOOP
+;    Inputs:
+;        NADDR = address of the first character
+;        NCNT = number of characters
+;        UDHI:UDLO = initial value
+;    Outputs:
+;        UDHI:UDLO = accumulated value
+;        NADDR, NCNT = first unconverted character and the count
+;        remaining
+;    Registers: RegA, RegB, RegX and CC changed.
+; ------------------------------------------------------------
 NUMLOOP:    LDD   NCNT
             BEQ   NLDONE
             LDX   NADDR
@@ -3702,45 +3304,52 @@ NLGOT:      CMPA  BASE+1
             BRA   NUMLOOP
 NLDONE:     RTS
 
-TONUMBER:   PULU  D
+; ------------------------------------------------------------
+; >NUMBER  ( ud1 c-addr1 u1 -- ud2 c-addr2 u2 )
+; Convert the string into ud1, in BASE, stopping at the first
+; unconvertible character. Returns the accumulated ud2 and the
+; remaining string.
+; ------------------------------------------------------------
+TONUMBERW:  PULU  D                 ; u1
             STD   NCNT
-            PULU  D
+            PULU  D                 ; c-addr1
             STD   NADDR
-            PULU  D
+            PULU  D                 ; ud1 high
             STD   UDHI
-            PULU  D
+            PULU  D                 ; ud1 low
             STD   UDLO
             JSR   NUMLOOP
             LDD   UDLO
-            PSHU  D
+            PSHU  D                 ; ud2 low
             LDD   UDHI
-            PSHU  D
+            PSHU  D                 ; ud2 high
             LDX   NADDR
-            PSHU  X
+            PSHU  X                 ; c-addr2
             LDD   NCNT
-            PSHU  D
+            PSHU  D                 ; u2
             RTS
 
-NUMBERQ:    PULU  X
+; ------------------------------------------------------------
+; Convert a counted string to a number in BASE. A leading "-" negates
+; it; a trailing "." makes it a double-cell number.
+; NUMBERQ   ( c-addr -- n -1 | ud 1 | c-addr 0 )
+;    Inputs:
+;        c-addr of the counted string on the data stack
+;    Outputs:
+;        single number: n and -1
+;        double number: ud (low cell below high cell) and 1
+;        not a number: c-addr and 0
+;    Registers: RegA, RegB, RegX and CC changed.
+; ------------------------------------------------------------
+NUMBERQ:    PULU  X                 ; c-addr
             STX   CADDR
             LDA   ,X
             BEQ   NQBAD
             STA   CNTREM
             LEAX  1,X
 
-            ; NEW: ANS double-number input convention (forth-standard.org/
-            ; standard/usage#usage:numbers, 3.4.1.3) - a number immediately
-            ; followed by a decimal point converts to a double-cell number
-            ; instead of single-cell ("1234" -> 1234; "1234." -> 1234 0).
-            ; Detected here to exclude the trailing '.' from CNTREM before
-            ; NUMLOOP runs, so it isn't mistaken for a digit. The decision
-            ; itself is re-derived independently at the end of this routine
-            ; (from CADDR and the original count, both still unchanged at
-            ; that point - confirmed nothing else in this routine, including
-            ; NUMLOOP/UDMULADD, ever touches CADDR) rather than remembered
-            ; in a new persistent flag here - GLOBALS is fully packed at
-            ; 256/256 bytes, and this avoids needing to carve out a byte
-            ; for it.
+            ; A trailing "." means a double number: leave it out of the
+            ; digit count. See shadow: NUMBERQ.1
             LDB   CNTREM
             DECB
             LDA   B,X
@@ -3771,14 +3380,7 @@ NQNOSIGN2:  STX   NADDR
             LDD   NCNT
             BNE   NQBAD
 
-            ; BUG FIX (as part of this same change): was "LDD UDLO / TST
-            ; NUMNEG / BEQ NQPOS / COMA / COMB / ADDD #1" - negated only
-            ; the low 16 bits. Harmless for single-cell numbers (the high
-            ; cell was never returned before), but wrong once returning a
-            ; genuine 32-bit value for the double case - a negative double
-            ; needs the full 32-bit two's-complement negation, with any
-            ; carry out of the low-cell increment propagated into the
-            ; high cell.
+            ; Negate the full 32-bit value. See bugfix: NUMBERQ.2
             TST   NUMNEG
             BEQ   NQPOS32
             LDD   UDLO
@@ -3786,41 +3388,12 @@ NQNOSIGN2:  STX   NADDR
             COMB
             ADDD  #1
             STD   UDLO
-            PSHS  CC                ; BUG FIX: save the TRUE carry from the
-                                    ; addition above, before it gets destroyed.
-                                    ; COM (used on UDHI just below) unconditionally
-                                    ; SETS carry=1 on the 6809, regardless of its
-                                    ; operand - a documented quirk, but one that
-                                    ; silently overwrote the real carry here
-                                    ; before the BCC check could ever read it,
-                                    ; making the high-cell increment run
-                                    ; UNCONDITIONALLY instead of only when the
-                                    ; low-cell addition actually overflowed.
-                                    ; Confirmed via MAME: "-123." returned high
-                                    ; cell 0 instead of -1, and "-123456."
-                                    ; returned -1 instead of -2 - both exactly
-                                    ; matching "always increment" rather than
-                                    ; "increment only on genuine carry".
+            PSHS  CC                ; Save the carry. See bugfix: NUMBERQ.3
             LDD   UDHI
             COMA
             COMB
             PULS  CC                ; restore the TRUE carry
-            BCC   NQSTOREHI         ; BUG FIX: this used to be "BCC NQPOS32",
-                                    ; branching all the way PAST "STD UDHI"
-                                    ; when there's no carry - the complemented
-                                    ; value was computed in D but never
-                                    ; actually stored back to UDHI in that
-                                    ; case, leaving it at its stale, pre-
-                                    ; negation value. Masked by the carry bug
-                                    ; above in practice (that bug meant carry
-                                    ; was always seen as set, so this branch
-                                    ; was never actually taken, and STD UDHI
-                                    ; always ran) - fixing the carry check
-                                    ; alone would have made this second,
-                                    ; previously-latent bug live. Now branches
-                                    ; only past the "+1", never past the
-                                    ; store itself - the store always runs,
-                                    ; either way.
+            BCC   NQSTOREHI         ; See bugfix: NUMBERQ.4
             ADDD  #1
 NQSTOREHI:  STD   UDHI
 
@@ -3862,129 +3435,82 @@ NQBAD:      LDX   CADDR
 ; SECTION 10: QUERY / ACCEPT / EXPECT / KEY / KEY? / EMIT
 ; ============================================================
             IFEQ  SERIALPOLL        ; >>>>>>>>>>
-X_KEY:      LDA   INHEAD
-            CMPA  INTAIL
-            BEQ   KEY
-            LDX   #INBUF
-            LDB   INTAIL
-            LDA   B,X
-            INCB
-            ANDB  #INBUFSZ-1
-            STB   INTAIL
-            PSHS  A                 ; stash the char on the return stack across
-                                    ; the call - JSR/RTS is self-balancing, so
-                                    ; this needs no dedicated scratch global
-            JSR   RTSCHECKLO
-            PULS  A
-            TFR   A,B
-            CLRA
-            PSHU  D
-            RTS
+; Unused alternative to KEY removed; see shadow X_KEY.1.
 
 ; ------------------------------------------------------------
-; KEY ( -- char )
+; KEY  ( -- char )
+; Wait for the next received character and return it. While waiting,
+; drain the output ring by polling if RTS is high.
 ; ------------------------------------------------------------
-KEY:
+KEYW:
 
             TST   RTSSTATE          ; Is throttling?
             BEQ   TRY_READ          ; No! Retrieve character from input buffer.
 
-            ; BUG FIX: this used to mask IRQ (ORCC #$10) around the
-            ; FLUSHOUTBUFFER call. FLUSHOUTBUFFER can spin until the
-            ; whole OUTBUF drains (up to ~5.5ms at 115200 baud), and
-            ; masking IRQ for that whole span blocks IRQH's own INCHAR
-            ; path from servicing the receiver - precisely while RTS
-            ; is high because the receiver is already under pressure,
-            ; which is what was causing the returned overrun errors.
-            ; FLUSHOUTBUFFER only touches OUTHEAD/OUTTAIL/ACIACR, not
-            ; INHEAD/INTAIL, so there's no correctness reason to mask
-            ; the receiver interrupt here at all.
+            ; IRQ stays unmasked during the flush. See bugfix: KEYW.1
             JSR   FLUSHOUTBUFFER    ; Drain the output buffer,
                                     ; by transmitting all chars.
 
 TRY_READ:
             JSR   GETCHAR           ; Is char available in input buffer.
-            BCS   KEY               ; No? Try again to receive a char,
+            BCS   KEYW              ; No? Try again to receive a char,
                                     ; while still transmitting!
 
             TFR   A,B               ; Move char result to Reg B (LSB of D)
             CLRA                    ; Clear MSB.
-            PSHU  D                 ; Return result on data stack.
+            PSHU  D                 ; char
 
             RTS
 
 ; ------------------------------------------------------------
-; KEY? ( -- flag )
+; KEY?  ( -- flag )
+; Return true if a received character is waiting in the input ring.
 ; ------------------------------------------------------------
-KEYQ:
-            ; ORCC  #$10              ; Yes! Enter critical section
+KEYQW:
+            ; Commented-out code moved to shadow: KEYQW.1
 
             LDA   INHEAD            ; Characters received?
             CMPA  INTAIL
 
-            ; ANDCC #$EF              ; Exit critical section
+            ; Commented-out code moved to shadow: KEYQW.2
 
             BNE   KQTRUE            ; Yes!
 
             LDD   #FALSEV           ; No! Return false result.
-            PSHU  D
+            PSHU  D                 ; flag = false
 
             RTS
 
 KQTRUE:
             LDD   #TRUEV            ; Yes! Return true result.
-            PSHU  D                 ; Push 16-bit cell to Stack (U)
+            PSHU  D                 ; flag = true
             RTS
+
+; Unused alternative to EMIT removed; see shadow X_EMIT.1.
+
 ; ------------------------------------------------------------
 ; EMIT  ( char -- )
+; Transmit char through PUTCHAR (the output ring). The character is
+; discarded if the ring is full.
 ; ------------------------------------------------------------
-
-X_EMIT:     PULU  D
-            STB   EMITCH
-EMITWT:     LDB   OUTHEAD
-            INCB
-            ANDB  #OUTBUFSZ-1
-            CMPB  OUTTAIL
-            BEQ   EMITWT
-            LDX   #OUTBUF
-            LDB   OUTHEAD
-            LDA   EMITCH
-            STA   B,X
-            INCB
-            ANDB  #OUTBUFSZ-1
-            STB   OUTHEAD
-            TST   RTSSTATE
-            BNE   EMITNORTS         ; RTS is asserted high - leave ACIACR alone;
-                                    ; output stays queued until RTS drops low,
-                                    ; at which point RTSCHECKLO re-enables TX
-                                    ; interrupt itself if OUTBUF still has data
-            LDA   #CR_RXTX
-            STA   ACIACR
-EMITNORTS:  RTS
-
-EMIT:
-            PULU  D                 ; Copy char from 2 byte stack cell to RegA.
+EMITW:
+            PULU  D                 ; char
             TFR   B,A
             JSR   PUTCHAR           ; Transmit char.
             RTS
 
             ELSE                    ; <<<<<>>>>>
 ; ------------------------------------------------------------
-; Polling versions of KEY/KEYQ/EMIT (SERIALPOLL=1) - no ring
-; buffers, no interrupts, no hardware RTS/CTS handshaking (see
-; PUTXON/PUTXOFF below and ACCEPT for this build's software
-; substitute). Each blocks (KEY, EMIT) or checks once (KEYQ)
-; directly against ACIASR.
-;
-; KEY additionally: (1) counts framing/overrun/parity errors into
-; FECOUNT/OVRNCOUNT/PECOUNT - previously only the interrupt-driven
-; IRQH path checked these bits at all, so a real UART-level error
-; in a polling build went completely uncounted; (2) counts into
-; POLLREADYCNT every time RDRF is already set on the very first
-; check, before any spinning - a backlog signal distinct from a
-; genuine OVRN, see POLLREADYCNT's own comment at its RMB.
+; KEY  ( -- char )  [polling build, SERIALPOLL=1]
+; Wait for RDRF and return the received character. There are no ring
+; buffers, interrupts or hardware handshaking in this build; ACCEPT
+; uses software XON/XOFF instead. Framing, overrun and parity errors
+; are counted in FECOUNT, OVRNCOUNT and PECOUNT, and POLLREADYCNT
+; counts characters already waiting when KEY was called.
+; Original comment: shadow KEYW.2. KEY?, EMIT, PUTXON and PUTXOFF
+; follow.
 ; ------------------------------------------------------------
-KEY:
+KEYW:
             LDA   ACIASR
             BITA  #SR_RDRF
             BEQ   KWAIT
@@ -4013,24 +3539,20 @@ KXOVRN:     BITA  #SR_PE
 KGETCH:     LDA   ACIADR
             TFR   A,B
             CLRA
-            PSHU  D
+            PSHU  D                 ; char
             RTS
 
 ; ------------------------------------------------------------
-; PUTXON / PUTXOFF - polling-mode software flow control. Sends
-; XON/XOFF as raw bytes straight to the ACIA, busy-waiting on
-; TDRE exactly like EMIT's own EMITWT, but bypassing the data
-; stack (U) and EMIT/EMITCH entirely - only A/B/S are touched, so
-; either is safe to call from ACCEPT at any point without
-; disturbing whatever's on U. See ACCEPT for where these are
-; called: XON at the start of every line (the host may stream
-; characters continuously while ACCEPT's own tight loop is
-; polling), XOFF the instant a line is complete (CR seen), before
-; handing off to INTERPRET/compilation - which does arbitrary,
-; variable-length work with KEY never polled at all, exactly the
-; window where a host that kept sending would build up a backlog
-; this polling build (with no ring buffer to hold it) has no way
-; to recover from correctly.
+; Send the software flow-control character XOFF (PUTXOFF) or XON
+; (PUTXON) straight to the ACIA, waiting for TDRE. The data stack is
+; not touched, so ACCEPT can call these at any point.
+; PUTXON / PUTXOFF
+;    Inputs:
+;        none
+;    Outputs:
+;        XON or XOFF transmitted
+;    Registers: RegA, RegB and CC changed.
+; Original comment: shadow PUTXON.0.
 ; ------------------------------------------------------------
 PUTXOFF:    LDA   #XOFFCH
             BRA   PUTXCH
@@ -4043,17 +3565,25 @@ PXWT:       LDB   ACIASR
             STA   ACIADR
             RTS
 
-KEYQ:       LDA   ACIASR
+; ------------------------------------------------------------
+; KEY?  ( -- flag )  [polling build]
+; Return true if the ACIA has a received character (RDRF set).
+; ------------------------------------------------------------
+KEYQW:      LDA   ACIASR
             BITA  #SR_RDRF
             BEQ   KQFALSE
             LDD   #TRUEV
-            PSHU  D
+            PSHU  D                 ; flag = true
             RTS
 KQFALSE:    LDD   #FALSEV
-            PSHU  D
+            PSHU  D                 ; flag = false
             RTS
 
-EMIT:       PULU  D
+; ------------------------------------------------------------
+; EMIT  ( char -- )  [polling build]
+; Wait for TDRE, then transmit char directly.
+; ------------------------------------------------------------
+EMITW:      PULU  D                 ; char
             STB   EMITCH
 EMITWT:     LDA   ACIASR
             BITA  #SR_TDRE
@@ -4064,9 +3594,15 @@ EMITWT:     LDA   ACIASR
 
             ENDC                    ; <<<<<<<<<<
 
-ACCEPT:     PULU  D
+; ------------------------------------------------------------
+; ACCEPT  ( c-addr +n1 -- +n2 )
+; Read a line of up to +n1 characters into the buffer at c-addr,
+; echoing as it goes. Backspace and DEL erase the last character; LF
+; is ignored; CR ends the line. Returns the count +n2.
+; ------------------------------------------------------------
+ACCEPTW:    PULU  D                 ; +n1
             STD   AMAX
-            PULU  D
+            PULU  D                 ; c-addr
             STD   ABUFP
             LDD   #0
             STD   ACNT
@@ -4079,7 +3615,7 @@ ACCEPT:     PULU  D
             JSR   PUTXON
             ENDC                    ; <<<<<<<<<<
 
-ALOOP:      JSR   KEY
+ALOOP:      JSR   KEYW
             PULU  D
             STB   ACH
 
@@ -4107,7 +3643,7 @@ ALOOP:      JSR   KEY
             CLRA
             LDB   ACH
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             BRA   ALOOP
 
 ABKSP:      LDD   ACNT
@@ -4116,13 +3652,13 @@ ABKSP:      LDD   ACNT
             STD   ACNT
             LDD   #8
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             LDD   #32
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             LDD   #8
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             BRA   ALOOP
 
 ADONE:
@@ -4134,19 +3670,29 @@ ADONE:
             JSR   PUTXOFF
             ENDC                    ; <<<<<<<<<<
             LDD   ACNT
-            PSHU  D
+            PSHU  D                 ; +n2
             RTS
 
-EXPECTW:    JSR   ACCEPT
+; ------------------------------------------------------------
+; EXPECT  ( c-addr +n -- )
+; Read a line as ACCEPT does and store the count in SPAN.
+; ------------------------------------------------------------
+EXPECTW:    JSR   ACCEPTW
             PULU  D
             STD   SPAN
             RTS
 
-QUERY:      LDX   #TIBBUF
+; ------------------------------------------------------------
+; QUERY  ( -- )
+; Read a line into the terminal input buffer and make it the input
+; source: set NTIB and SRCLEN to its length, SRCADDR to TIBBUF, SRCID
+; to 0 and >IN to 0.
+; ------------------------------------------------------------
+QUERYW:     LDX   #TIBBUF
             PSHU  X
             LDD   #TIBBUFL
             PSHU  D
-            JSR   ACCEPT
+            JSR   ACCEPTW
             PULU  D
             STD   NTIB
             STD   SRCLEN
@@ -4158,23 +3704,38 @@ QUERY:      LDX   #TIBBUF
             RTS
 
 ; ============================================================
-; SECTION 11: COLON / SEMICOLON support already in section 8
-; (COLON/SEMI) - CATCH/THROW, CFERR
+; SECTION 11: EXCEPTIONS (CFERR, CATCH, THROW)
 ; ============================================================
+; ------------------------------------------------------------
+; Report a control-structure mismatch: throw -22. Called by the
+; control-flow words when the tag on the control-flow stack is not the
+; one expected.
+; CFERR
+;    Inputs:
+;        none
+;    Outputs:
+;        does not return (THROW -22)
+;    Registers: RegD changed; THROW decides the rest.
+; ------------------------------------------------------------
 CFERR:      LDD   #-22
-            PSHU  D
+            PSHU  D                 ; -22
             JSR   THROW
             RTS
 
-CATCH:      PULU  X
+; ------------------------------------------------------------
+; CATCH  ( i*x xt -- j*x 0 | i*x n )
+; Execute xt with an exception frame in place. On normal return push
+; 0. If xt (or anything it calls) executes THROW with a non-zero n,
+; THROW unwinds to this frame and CATCH returns n.
+; Frame on S, top first: >IN, SRCID, SRCLEN, SRCADDR, saved U,
+; previous HANDLER. HANDLER points at the >IN cell.
+; ------------------------------------------------------------
+CATCHW:     PULU  X                 ; xt
             LDD   HANDLER
             PSHS  D
             PSHS  U
-            ; BUG FIX: ANS CATCH must save the input-source specification
-            ; and THROW must restore it. A THROW out of a nested EVALUATE
-            ; (11_catch_throw's t9/t8/t7) left SRCADDR/SRCLEN/TOIN pointing
-            ; into the abandoned EVALUATE string, so the rest of the outer
-            ; line was lost and stray cells (6 7 -13 3) stayed on the stack.
+            ; Save the input source specification.
+            ; See bugfix: CATCHW.1
             LDD   SRCADDR
             PSHS  D
             LDD   SRCLEN
@@ -4188,16 +3749,21 @@ CATCH:      PULU  X
 
             JSR   ,X
 
-            LEAS  8,S               ; normal return: drop saved source (REFILL etc.
-                                    ; may have legitimately changed it)
+            LEAS  8,S               ; drop saved input source
             LEAS  2,S               ; saved U
             PULS  D
             STD   HANDLER
             LDD   #0
-            PSHU  D
+            PSHU  D                 ; 0 = no exception
             RTS
 
-THROW:      PULU  D
+; ------------------------------------------------------------
+; THROW  ( k*x n -- k*x | i*x n )
+; If n is zero, do nothing. Otherwise restore the state saved by the
+; most recent CATCH (S, U, input source, >IN, HANDLER) and make that
+; CATCH return n. With no CATCH active, push n and ABORT.
+; ------------------------------------------------------------
+THROW:      PULU  D                 ; n
             CMPD  #0
             BEQ   THDONE
 
@@ -4224,6 +3790,7 @@ THROW:      PULU  D
             RTS
 THDONE:     RTS
 
+            ; No CATCH is active: leave n on the stack and ABORT.
 THUNCAU:    LDD   THROWN
             PSHU  D
             JMP   ABORT
@@ -4232,17 +3799,33 @@ THUNCAU:    LDD   THROWN
 ; SECTION 12: CONTROL FLOW (IF/THEN/ELSE, BEGIN family,
 ; DO/LOOP/+LOOP/I/J/LEAVE/UNLOOP/?DO, EXIT, CASE family)
 ; ============================================================
+; ------------------------------------------------------------
+; Store a branch displacement: the cell at location receives target -
+; location.
+; PATCH   ( target location -- )
+;    Inputs:
+;        target and location on the data stack (location on top)
+;    Outputs:
+;        the cell at location holds target - location
+;    Registers: RegD and RegX changed; PFIELD and PTARGET used as
+;        scratch.
+; ------------------------------------------------------------
 PATCH:      PULU  D
-            STD   PFIELD
+            STD   PFIELD            ; location
             PULU  D
-            STD   PTARGET
+            STD   PTARGET           ; target
             LDD   PTARGET
             SUBD  PFIELD
             LDX   PFIELD
             STD   ,X
             RTS
 
-IF:         LDD   #ZBRANCH
+; ------------------------------------------------------------
+; IF  ( C: -- orig )
+; Compile ZBRANCH with a placeholder operand. Leave the operand
+; address and TAGFWD on the control-flow stack for ELSE or THEN.
+; ------------------------------------------------------------
+IFW:        LDD   #ZBRANCH
             PSHU  D
             JSR   CCALL
             LDD   #0
@@ -4250,32 +3833,38 @@ IF:         LDD   #ZBRANCH
             JSR   CODECOMMA
             LDD   CODEHERE
             SUBD  #2
-            PSHU  D
+            PSHU  D                 ; orig
             LDD   #TAGFWD
             PSHU  D
             RTS
 
-THEN:       PULU  D
+; ------------------------------------------------------------
+; THEN  ( C: orig -- )
+; Resolve the forward branch left by IF, ELSE or WHILE: patch its
+; operand to jump to the current code address.
+; ------------------------------------------------------------
+THENW:      PULU  D
             CMPD  #TAGFWD
             BEQ   THOK
             JSR   CFERR
-THOK:       PULU  X
+THOK:       PULU  X                 ; orig
             LDD   CODEHERE
             PSHU  D
             PSHU  X
             JSR   PATCH
             RTS
 
-ELSE:       PULU  D
+; ------------------------------------------------------------
+; ELSE  ( C: orig1 -- orig2 )
+; Compile BRANCH with a placeholder operand, resolve orig1 to the
+; address just after it, and leave the new operand address and TAGFWD.
+; ------------------------------------------------------------
+ELSEW:      PULU  D
             CMPD  #TAGFWD
             BEQ   ELOK
             JSR   CFERR
-ELOK:       PULU  D                 ; BUG FIX: same class as LOOP/EOFOK - was PULU X
-            STD   MSCR              ; then used via PSHU X after CCALL/CODECOMMA
-                                    ; below, both of which clobber X internally.
-                                    ; Saved to scratch (not parked on U, since
-                                    ; CODEHERE gets pushed onto U further down,
-                                    ; between the save and the retrieve).
+ELOK:       PULU  D                 ; orig1
+            STD   MSCR              ; See bugfix: ELSEW.1
             LDD   #BRANCH
             PSHU  D
             JSR   CCALL
@@ -4291,24 +3880,32 @@ ELOK:       PULU  D                 ; BUG FIX: same class as LOOP/EOFOK - was PU
             PSHU  D
             JSR   PATCH
             LDD   NEWFLD
-            PSHU  D
+            PSHU  D                 ; orig2
             LDD   #TAGFWD
             PSHU  D
             RTS
 
-BEGIN:      LDD   CODEHERE
-            PSHU  D
+; ------------------------------------------------------------
+; BEGIN  ( C: -- dest )
+; Leave the current code address and TAGBACK on the control-flow
+; stack.
+; ------------------------------------------------------------
+BEGINW:     LDD   CODEHERE
+            PSHU  D                 ; dest
             LDD   #TAGBACK
             PSHU  D
             RTS
 
-UNTIL:      PULU  D
+; ------------------------------------------------------------
+; UNTIL  ( C: dest -- )
+; Compile ZBRANCH with a displacement back to dest.
+; ------------------------------------------------------------
+UNTILW:     PULU  D
             CMPD  #TAGBACK
             BEQ   UNOK
             JSR   CFERR
-UNOK:       PULU  D                 ; BUG FIX: same class as LOOP - was PULU X then
-            PSHU  D                 ; TFR X,D after CCALL/CODECOMMA, both of which
-                                    ; clobber X internally. Parked on U instead.
+UNOK:       PULU  D                 ; dest
+            PSHU  D                 ; park dest. See bugfix: UNTILW.1
             LDD   #ZBRANCH
             PSHU  D
             JSR   CCALL
@@ -4325,13 +3922,16 @@ UNOK:       PULU  D                 ; BUG FIX: same class as LOOP - was PULU X t
             JSR   PATCH
             RTS
 
-AGAIN:      PULU  D
+; ------------------------------------------------------------
+; AGAIN  ( C: dest -- )
+; Compile BRANCH with a displacement back to dest.
+; ------------------------------------------------------------
+AGAINW:     PULU  D
             CMPD  #TAGBACK
             BEQ   AGOK
             JSR   CFERR
-AGOK:       PULU  D                 ; BUG FIX: same class as LOOP - was PULU X then
-            PSHU  D                 ; TFR X,D after CCALL/CODECOMMA, both of which
-                                    ; clobber X internally. Parked on U instead.
+AGOK:       PULU  D                 ; dest
+            PSHU  D                 ; park dest. See bugfix: AGAINW.1
             LDD   #BRANCH
             PSHU  D
             JSR   CCALL
@@ -4348,7 +3948,12 @@ AGOK:       PULU  D                 ; BUG FIX: same class as LOOP - was PULU X t
             JSR   PATCH
             RTS
 
-WHILE:      LDD   #ZBRANCH
+; ------------------------------------------------------------
+; WHILE  ( C: dest -- orig dest )
+; Compile ZBRANCH with a placeholder operand. Leave orig (its operand
+; address) and TAGFWD on top of the BEGIN frame.
+; ------------------------------------------------------------
+WHILEW:     LDD   #ZBRANCH
             PSHU  D
             JSR   CCALL
             LDD   #0
@@ -4356,54 +3961,33 @@ WHILE:      LDD   #ZBRANCH
             JSR   CODECOMMA
             LDD   CODEHERE
             SUBD  #2
-            PSHU  D
+            PSHU  D                 ; orig
             LDD   #TAGFWD
             PSHU  D
             RTS
 
-REPEAT:     PULU  D
+; ------------------------------------------------------------
+; REPEAT  ( C: orig dest -- )
+; Compile BRANCH back to the BEGIN address and resolve the WHILE
+; branch to just after it. A BEGIN frame beneath further open WHILE
+; frames is found by scanning, and removed from beneath them.
+; ------------------------------------------------------------
+REPEATW:    PULU  D
             CMPD  #TAGFWD
             BEQ   RPOK1
             JSR   CFERR
-RPOK1:      PULU  X
-            STX   NEWFLD            ; this WHILE's own forward-branch patch loc
+RPOK1:      PULU  X                 ; orig
+            STX   NEWFLD            ; save orig
 
-            ; BUG FIX: this used to assume the matching BEGIN frame sits
-            ; immediately below this WHILE's frame on U (just pop 2 more
-            ; cells and expect TAGBACK) - true for a plain BEGIN...
-            ; WHILE...REPEAT, but false for the standard ANS idiom that
-            ; nests a SECOND WHILE between the same BEGIN and REPEAT
-            ; (Annex F's GI5: "BEGIN DUP 2 > WHILE DUP 5 < WHILE DUP 1+
-            ; REPEAT 123 ELSE 345 THEN" - the OUTER WHILE is deliberately
-            ; left open here, to be closed later by ELSE/THEN, not by
-            ; this REPEAT, since WHILE and IF push an identical TAGFWD
-            ; frame). Blindly popping the next 4 bytes landed on the
-            ; outer WHILE's TAGFWD where TAGBACK was expected, throwing
-            ; -22 via CFERR every time (confirmed on real hardware/MAME:
-            ; GI5 itself failed to compile, and left U corrupted enough
-            ; to cascade failures into every word compiled afterward in
-            ; the same session). Fixed by scanning past any intervening
-            ; still-open TAGFWD frames to find the real TAGBACK, then
-            ; closing the 4-byte gap left behind so those intervening
-            ; frames end up shallower by exactly one frame but otherwise
-            ; undisturbed - right where ELSE/THEN will later expect them.
-            LEAX  0,U
-            STX   MSCR2             ; MSCR2 = base: start of scan region,
-                                    ; fixed for the whole routine
-            STX   MSCR4             ; MSCR4 = current scan pointer, moves
-                                    ; forward each pass (borrowed scratch -
-                                    ; direct page is only 1 byte short of
-                                    ; full, see GLOBALS_USED, so reusing
-                                    ; the generic MSCR2/3/4 cells rather
-                                    ; than adding new globals; safe since
-                                    ; nothing else compile-time-only runs
-                                    ; concurrently) - matches EXIT's own
-                                    ; CSP-bounded scan loop style above
+            ; Find the BEGIN frame, scanning past any open TAGFWD frames.
+            ; See bugfix: REPEATW.1
+            LEAX  0,U               ; scan from top of control stack
+            STX   MSCR2             ; MSCR2 = base of scan region
+            STX   MSCR4             ; MSCR4 = scan pointer
 RPSCAN:     LDD   MSCR4
             CMPD  CSP
             BNE   RPSCANOK
-            JSR   CFERR             ; scanned past CSP with no TAGBACK -
-                                    ; no matching BEGIN at all
+            JSR   CFERR             ; no matching BEGIN
 RPSCANOK:   LDX   MSCR4
             LDD   ,X
             CMPD  #TAGBACK
@@ -4415,22 +3999,15 @@ RPSKIP:     LDD   MSCR4
             ADDD  #4
             STD   MSCR4
             BRA   RPSCAN
-RPFOUND:    LDX   MSCR4             ; MSCR4 already holds the found TAGBACK
-                                    ; frame's own address - no separate
-                                    ; "found at" variable needed
-            LDD   2,X               ; BEGIN's own branch-target address
-            STD   PFIELD            ; (reused exactly as the old code did -
-                                    ; PATCH's own first PULU overwrites
-                                    ; this immediately on entry anyway)
+RPFOUND:    LDX   MSCR4             ; X = found BEGIN frame
+            LDD   2,X               ; dest = BEGIN's address
+            STD   PFIELD            ; kept in PFIELD
 
-            ; close the gap: shift any intervening TAGFWD frames down by
-            ; 4 bytes (the size of the BEGIN frame being removed),
-            ; copying from the high end first since dest > src
+            ; Close the gap: move the frames above the BEGIN frame down 4
+            ; bytes, highest word first.
             LDD   MSCR4
             SUBD  MSCR2
-            STD   MSCR3             ; MSCR3 = byte count to shift (0 when
-                                    ; BEGIN was already adjacent - the
-                                    ; common, non-nested case)
+            STD   MSCR3             ; MSCR3 = bytes to shift
             BEQ   RPSHIFTDONE
 RPSHIFT:    LDD   MSCR3
             SUBD  #2
@@ -4445,8 +4022,7 @@ RPSHIFT:    LDD   MSCR3
 RPSHIFTDONE:
             LDX   MSCR2
             LEAX  4,X
-            TFR   X,U               ; real U now reflects BEGIN's frame
-                                    ; having been removed from the stack
+            TFR   X,U               ; U now excludes BEGIN frame
 
             LDD   #BRANCH
             PSHU  D
@@ -4456,8 +4032,7 @@ RPSHIFTDONE:
             JSR   CODECOMMA
             LDD   CODEHERE
             SUBD  #2
-            STD   MSCR3             ; MSCR3 free again now - this backward
-                                    ; branch's own operand address
+            STD   MSCR3             ; MSCR3 = branch operand address
             LDD   PFIELD            ; target = BEGIN's address
             PSHU  D
             LDD   MSCR3             ; location = the operand just compiled
@@ -4470,38 +4045,43 @@ RPSHIFTDONE:
             JSR   PATCH
             RTS
 
-RECURSE:    LDD   CURXT             ; BUG FIX: used to walk LATEST's header (skip
-            PSHU  D                 ; the length/flags byte, then the name, then
-            JSR   CCALL             ; the link cell, to read the xt cell HEADER
-            RTS                     ; stores right after it) to find the xt to
-                                    ; recurse into. That only works when LATEST
-                                    ; actually points at the word being compiled
-                                    ; - true for an ordinary COLON definition,
-                                    ; but :NONAME deliberately never updates
-                                    ; LATEST (see its own comment), so RECURSE
-                                    ; inside a :NONAME body found whatever NAMED
-                                    ; word was defined most recently instead -
-                                    ; confirmed against Annex F's RECURSE/CASE
-                                    ; test (":NONAME ... RECURSE ... ENDCASE ;
-                                    ; CONSTANT rn2"). Both COLON and NONAME now
-                                    ; record their own xt in CURXT directly, so
-                                    ; RECURSE just reads that back - correct for
-                                    ; both named and anonymous definitions, and
-                                    ; no more header-field-offset arithmetic to
-                                    ; get wrong.
+; ------------------------------------------------------------
+; RECURSE  ( -- )
+; Compile a call to the word being defined (named or :NONAME), using
+; the xt held in CURXT.
+; ------------------------------------------------------------
+RECURSEW:   LDD   CURXT             ; xt of word being compiled
+            PSHU  D                 ; See bugfix: RECURSEW.1
+            JSR   CCALL
+            RTS
 
-DO:         LDD   #DOSETUP
+; ------------------------------------------------------------
+; DO  ( C: -- dest )
+; Compile a call to DOSETUP and leave the loop start address and TAGDO
+; on the control-flow stack for LOOP or +LOOP.
+; ------------------------------------------------------------
+DOW:        LDD   #DOSETUP
             PSHU  D
             JSR   CCALL
             LDD   CODEHERE
-            PSHU  D
+            PSHU  D                 ; dest
             LDD   #TAGDO
             PSHU  D
             RTS
 
-DOSETUP:    PULU  D
+; ------------------------------------------------------------
+; Run-time start of DO and ?DO: build the loop frame on S, beneath the
+; return address.
+; DOSETUP   ( limit index -- )
+;    Inputs:
+;        limit and index on the data stack (index on top)
+;    Outputs:
+;        S holds index, limit and a zero leave flag (top first)
+;    Registers: RegD and RegX changed; MSCR and MSCR2 used as scratch.
+; ------------------------------------------------------------
+DOSETUP:    PULU  D                 ; index
             STD   MSCR
-            PULU  D
+            PULU  D                 ; limit
             STD   MSCR2
             PULS  X
             LDD   #0
@@ -4513,68 +4093,44 @@ DOSETUP:    PULU  D
             PSHS  X
             RTS
 
-IWORD:      LDD   2,S               ; BUG FIX: PULS X/PSHS X used to bracket this
-            PSHU  D                 ; read, shifting S by 2 first - so "2,S" landed
-            RTS                     ; on the limit (what's really at 4,S unshifted)
-                                    ; instead of the index. The pair served no
-                                    ; purpose (nothing needed offset 0 for anything
-                                    ; here) - removed, so 2,S directly and
-                                    ; correctly targets the index DOSETUP pushed
-                                    ; there. Confirmed via MAME debugger: "I"
-                                    ; returned the loop limit on every iteration.
+; ------------------------------------------------------------
+; I  ( -- n )
+; Push the index of the innermost loop (2,S, beyond the return
+; address).
+; ------------------------------------------------------------
+IWORDW:     LDD   2,S               ; n. See bugfix: IWORDW.1
+            PSHU  D
+            RTS
 
-JWORD:      LDD   8,S               ; CORRECTION: an earlier turn changed this to
-            PSHU  D                 ; 10,S, which was itself wrong - it assumed
-            RTS                     ; DOSETUP's own JSR-pushed return address
-                                    ; persists on S once each DOSETUP finishes.
-                                    ; It doesn't: DOSETUP's own RTS pops and
-                                    ; consumes it to jump into the loop body, so
-                                    ; it never actually sits on S for J to count
-                                    ; past. Re-traced by counting every real
-                                    ; push/pop across a nested DO: after the
-                                    ; inner DOSETUP finishes, S is [inner-index@0]
-                                    ; [inner-limit@2][inner-leave@4][outer-
-                                    ; index@6][outer-limit@8][outer-leave@10] -
-                                    ; J's own JSR pushes one more cell on top,
-                                    ; landing outer-index at 8, not 10. Offset 10
-                                    ; read the outer loop's limit instead - a
-                                    ; fixed value every iteration, exactly
-                                    ; matching the observed bug (J stuck at the
-                                    ; limit, never progressing). Confirmed via a
-                                    ; real MULT-TABLE test on MAME.
+; ------------------------------------------------------------
+; J  ( -- n )
+; Push the index of the next outer loop (8,S, beyond the return
+; address and the inner loop frame).
+; ------------------------------------------------------------
+JWORDW:     LDD   8,S               ; n. See bugfix: JWORDW.1
+            PSHU  D
+            RTS
 
-LEAVE:      LDD   #TRUEV            ; BUG FIX (earlier): was PULS X first, shifting
-            STD   6,S               ; S by 2 before this write, landing 2 bytes
-            RTS                     ; past the LEAVE flag DOSETUP actually pushed.
-                                    ; Fixed by deferring PULS X to after the
-                                    ; write - but that left a PULS X/PSHS X pair
-                                    ; that had become a genuine no-op (nothing
-                                    ; between them touches S or X, and this
-                                    ; routine never uses X's value for anything,
-                                    ; unlike DOTEST's own deferred PULS X, which
-                                    ; feeds LDD ,X/LEAX D,X afterward). Removed,
-                                    ; per the parallel 68000 port's observation,
-                                    ; confirmed by inspection.
+; ------------------------------------------------------------
+; LEAVE  ( -- )
+; Set the leave flag in the innermost loop frame. The loop exits at
+; its next LOOP or +LOOP test.
+; ------------------------------------------------------------
+LEAVEW:     LDD   #TRUEV            ; true
+            STD   6,S               ; See bugfix: LEAVEW.1
+            RTS
 
-LOOP:       PULU  D
+; ------------------------------------------------------------
+; LOOP  ( C: dest -- )
+; Compile a call to DOTEST followed by a displacement back to dest.
+; For a ?DO loop, also resolve its skip branch to the loop exit.
+; ------------------------------------------------------------
+LOOPW:      PULU  D
             CMPD  #TAGDO
             BEQ   LOOPOK
             JSR   CFERR
-LOOPOK:     PULU  D                 ; BUG FIX: was PULU X, then TFR X,D to retrieve
-            PSHU  D                 ; it after CCALL/CODECOMMA below - but both of
-                                    ; those clobber X internally (CCALL's own LDX
-                                    ; CODEHERE, CODECOMMA's LDX #CODEHERE via
-                                    ; APPENDCELL), so X no longer held the target
-                                    ; by the time TFR X,D ran - it held the address
-                                    ; of the CODEHERE variable itself, corrupting
-                                    ; the branch displacement PATCH computed.
-                                    ; Parking the target on U instead (untouched by
-                                    ; CCALL/CODECOMMA, which only use D/X/A) keeps
-                                    ; it safe across both calls; retrieved below via
-                                    ; PULU D in place of the old TFR X,D. Confirmed
-                                    ; via MAME debugger: the compiled displacement
-                                    ; came out as +8, executing DOTEST's return to
-                                    ; a near-zero, invalid address.
+LOOPOK:     PULU  D                 ; dest
+            PSHU  D                 ; park dest. See bugfix: LOOPW.1
             LDD   #DOTEST
             PSHU  D
             JSR   CCALL
@@ -4591,48 +4147,58 @@ LOOPOK:     PULU  D                 ; BUG FIX: was PULU X, then TFR X,D to retri
             JSR   PATCH
 
             LDD   ,U
-            CMPD  #TAGQDO           ; BUG FIX: was TAGFWD - collided with an
-                                    ; enclosing, still-open IF/WHILE's own
-                                    ; TAGFWD frame (see TAGQDO's definition
-                                    ; above). Only ?DO leaves TAGQDO here.
+            CMPD  #TAGQDO           ; ?DO frame? See bugfix: LOOPW.2
             BNE   LOOPDONE
             PULU  D
-            PULU  X
+            PULU  X                 ; ?DO skip operand
             LDD   CODEHERE
             PSHU  D
             PSHU  X
             JSR   PATCH
 LOOPDONE:   RTS
 
-DOTEST:     LDD   6,S               ; BUG FIX: PULS X used to run FIRST, shifting S
-            BNE   DTEXIT            ; by 2 before these offset reads - "6,S" ended
-            LDD   2,S               ; up reading past the 3 cells DOSETUP pushed,
-            ADDD  #1                ; into whatever return address was already on
-            STD   2,S               ; S below them (e.g. EXECUTE's own), which is
-            CMPD  4,S               ; almost always nonzero - so BNE DTEXIT fired
-            BEQ   DTEXIT            ; on the very first pass, exiting immediately.
-            PULS  X                 ; X (the return address to the FDB <offset>
-            LDD   ,X                ; field, needed for the back-branch) is only
-            LEAX  D,X               ; actually needed here and in DTEXIT below -
-            PSHS  X                 ; deferred to each path separately instead of
-            RTS                     ; popped once up front. Confirmed via MAME
-                                    ; debugger: DOTEST was tested at $E184, a
-                                    ; leftover EXECUTE return address, instead of
-                                    ; the intended $0000 LEAVE flag.
+; ------------------------------------------------------------
+; Run-time end of LOOP. Called by JSR; the return address points at
+; the back-branch operand. Add 1 to the index. If the leave flag is
+; set or the index has reached the limit, discard the loop frame and
+; skip the operand; otherwise branch back to the loop start.
+; DOTEST
+;    Inputs:
+;        S holds return address, index, limit and leave flag (top
+;        first)
+;    Outputs:
+;        branch taken, or loop frame removed and operand skipped
+;    Registers: RegD and RegX changed.
+; ------------------------------------------------------------
+DOTEST:     LDD   6,S               ; leave flag. See bugfix: DOTEST.1
+            BNE   DTEXIT            ; set: exit
+            LDD   2,S               ; index
+            ADDD  #1
+            STD   2,S
+            CMPD  4,S               ; limit
+            BEQ   DTEXIT
+            PULS  X                 ; X = branch operand address
+            LDD   ,X
+            LEAX  D,X
+            PSHS  X                 ; return to loop start
+            RTS
 DTEXIT:     PULS  X
-            LEAX  2,X
-            LEAS  6,S
+            LEAX  2,X               ; skip the branch operand
+            LEAS  6,S               ; discard the loop frame
             PSHS  X
             RTS
 
-PLUSLOOP:   PULU  D
+; ------------------------------------------------------------
+; +LOOP  ( C: dest -- )
+; Compile a call to DOPLUSTEST followed by a displacement back to
+; dest. For a ?DO loop, also resolve its skip branch to the loop exit.
+; ------------------------------------------------------------
+PLUSLOOPW:  PULU  D
             CMPD  #TAGDO
             BEQ   PLOOPOK
             JSR   CFERR
-PLOOPOK:    PULU  D                 ; BUG FIX: same class as LOOP above - was PULU X
-            PSHU  D                 ; then TFR X,D after CCALL/CODECOMMA, both of
-                                    ; which clobber X internally. Parked on U
-                                    ; instead, retrieved below via PULU D.
+PLOOPOK:    PULU  D                 ; dest
+            PSHU  D                 ; park dest. See bugfix: PLUSLOOPW.1
             LDD   #DOPLUSTEST
             PSHU  D
             JSR   CCALL
@@ -4649,44 +4215,34 @@ PLOOPOK:    PULU  D                 ; BUG FIX: same class as LOOP above - was PU
             JSR   PATCH
 
             LDD   ,U
-            CMPD  #TAGQDO           ; BUG FIX: was TAGFWD - same collision as
-                                    ; LOOP's identical peek; see TAGQDO's
-                                    ; definition above.
+            CMPD  #TAGQDO           ; ?DO frame? See bugfix: PLUSLOOPW.2
             BNE   PLOOPDONE
             PULU  D
-            PULU  X
+            PULU  X                 ; ?DO skip operand
             LDD   CODEHERE
             PSHU  D
             PSHU  X
             JSR   PATCH
 PLOOPDONE:  RTS
 
-DOPLUSTEST: PULU  D                 ; BUG FIX: this PULU D used to run AFTER the
-            STD   MSCR              ; LEAVE-flag check below (LDD 6,S/BNE DPTEXIT),
-                                    ; so when LEAVE had set the flag, DPTEXIT was
-                                    ; reached without ever popping the step value
-                                    ; that "n +LOOP" always pushes onto U before
-                                    ; calling here. That left the step value
-                                    ; stranded on the data stack every time LEAVE
-                                    ; fired before the natural boundary crossing -
-                                    ; confirmed against Annex F's GD7 (a DO ... I
-                                    ; ... LEAVE ... +LOOP word): every case where
-                                    ; the internal counter hit LEAVE before +LOOP's
-                                    ; own limit test would otherwise fire reported
-                                    ; ttester's "WRONG NUMBER OF RESULTS" (one extra
-                                    ; item), and the leftover item then threw off
-                                    ; later tests' own stack baselines too. Moved
-                                    ; PULU D/STD MSCR to the top, unconditionally,
-                                    ; before the LEAVE check - it's needed on every
-                                    ; path (LEAVE-exit, boundary-exit, and the
-                                    ; continue-looping path alike), not just the
-                                    ; two paths that used to reach it.
-            LDD   6,S               ; BUG FIX (earlier): PULS X used to run first,
-            BNE   DPTEXIT           ; shifting S by 2 before every one of these
-                                    ; offset reads (6,S/2,S/4,S), landing past the
-                                    ; 3 cells DOSETUP pushed. Deferred PULS X to
-                                    ; each path separately below, same fix as DOTEST.
-            LDD   2,S               ; old index (the step value is already consumed
+; ------------------------------------------------------------
+; Run-time end of +LOOP. Called by JSR; the return address points at
+; the back-branch operand. Add the step to the index. If the leave
+; flag is set or the index crossed the limit, discard the loop frame
+; and skip the operand; otherwise branch back to the loop start.
+; DOPLUSTEST   ( n -- )
+;    Inputs:
+;        step n on the data stack; S as for DOTEST
+;    Outputs:
+;        branch taken, or loop frame removed and operand skipped
+;    Registers: RegD and RegX changed; MSCR, MSCR2 and MSCR3 used as
+;        scratch.
+; ------------------------------------------------------------
+DOPLUSTEST: PULU  D                 ; n = step. See bugfix: DOPLUSTEST.1
+            STD   MSCR              ; MSCR = step
+            LDD   6,S               ; leave flag. See bugfix: DOPLUSTEST.2
+            BNE   DPTEXIT           ; set: exit
+            LDD   2,S               ; old index
             SUBD  4,S               ; old_u = old_index - limit, mod 65536
             STD   MSCR2
             LDD   2,S
@@ -4694,52 +4250,35 @@ DOPLUSTEST: PULU  D                 ; BUG FIX: this PULU D used to run AFTER the
             STD   2,S
             SUBD  4,S               ; new_u = new_index - limit, mod 65536
             STD   MSCR3
-            ; BUG FIX: the previous test here compared the SIGNS of
-            ; old_u/new_u as plain 16-bit two's complement values (EORA
-            ; of their high bytes, BMI on a sign flip). That's wrong in
-            ; general: a signed 16-bit difference's sign bit flips at
-            ; TWO points on the 65536-value ring, not one - at the true
-            ; limit (correct) AND at the antipodal point exactly halfway
-            ; around (spurious, nothing to do with limit at all). Any
-            ; small/ordinary loop range never reaches that second point,
-            ; so GD2 and friends still passed - but Annex F's GD8 (its
-            ; "ustep"/"step" constants are deliberately sized to march
-            ; the index across nearly the whole MAX-UINT/MAX-INT range)
-            ; hits the spurious antipodal flip first every time, exiting
-            ; at exactly half the correct iteration count (128 instead
-            ; of 256) - confirmed by simulating both the old algorithm
-            ; and the fix below against GD8's own 4 cases, and checking
-            ; the fix still agrees with the old algorithm (and with
-            ; hardware-confirmed behavior) on GD2, a limit=0 decreasing
-            ; loop, and an exact-landing case, where the two never
-            ; differed. Correct, general test: compare old_u and new_u
-            ; as UNSIGNED values and ask which direction they moved -
-            ; crossing limit means this unsigned "distance from limit"
-            ; measure wrapped around 0/65536, and it can only wrap in
-            ; the direction the step is actually heading. Which
-            ; comparison applies depends on the step's own sign, so
-            ; branch on that first.
+            ; Crossing test on the unsigned distances old_u and new_u: with a
+            ; positive step the limit was crossed if new_u < old_u, with a
+            ; negative step if new_u > old_u. See bugfix: DOPLUSTEST.3
             LDD   MSCR              ; reload the step to test its sign
             BMI   DPNEG
-DPPOS:      LDD   MSCR3             ; step positive: crossed iff new_u < old_u
-            CMPD  MSCR2             ; (unsigned) - the "distance from limit"
-            BLO   DPTEXIT           ; measure wrapped back down through zero.
+DPPOS:      LDD   MSCR3             ; step > 0: crossed if new_u < old_u
+            CMPD  MSCR2
+            BLO   DPTEXIT
             BRA   DPCONT
-DPNEG:      LDD   MSCR3             ; step negative: crossed iff new_u > old_u
-            CMPD  MSCR2             ; (unsigned) - the measure wrapped up past
-            BHI   DPTEXIT           ; 65535 back toward zero from the other side.
-DPCONT:     PULS  X
+DPNEG:      LDD   MSCR3             ; step < 0: crossed if new_u > old_u
+            CMPD  MSCR2
+            BHI   DPTEXIT
+DPCONT:     PULS  X                 ; X = branch operand address
             LDD   ,X
             LEAX  D,X
             PSHS  X
             RTS
 DPTEXIT:    PULS  X
-            LEAX  2,X
-            LEAS  6,S
+            LEAX  2,X               ; skip the branch operand
+            LEAS  6,S               ; discard the loop frame
             PSHS  X
             RTS
 
-QDO:        LDD   #QDOSETUP
+; ------------------------------------------------------------
+; ?DO  ( C: -- orig dest )
+; Compile a call to QDOSETUP with a placeholder skip operand. Leave
+; orig (the skip operand address) and TAGQDO, then dest and TAGDO.
+; ------------------------------------------------------------
+QDOW:       LDD   #QDOSETUP
             PSHU  D
             JSR   CCALL
             LDD   #0
@@ -4747,21 +4286,29 @@ QDO:        LDD   #QDOSETUP
             JSR   CODECOMMA
             LDD   CODEHERE
             SUBD  #2
-            PSHU  D
-            LDD   #TAGQDO           ; BUG FIX: was TAGFWD - indistinguishable
-                                    ; from an enclosing IF/WHILE's own pending
-                                    ; TAGFWD frame from LOOP/PLUSLOOP's later
-                                    ; peek. See TAGQDO's definition above.
+            PSHU  D                 ; orig
+            LDD   #TAGQDO           ; See bugfix: QDOW.1
             PSHU  D
             LDD   CODEHERE
-            PSHU  D
+            PSHU  D                 ; dest
             LDD   #TAGDO
             PSHU  D
             RTS
 
-QDOSETUP:   PULU  D
+; ------------------------------------------------------------
+; Run-time start of ?DO. If index equals limit, branch over the whole
+; loop; otherwise build the loop frame as DOSETUP does and skip the
+; branch operand.
+; QDOSETUP   ( limit index -- )
+;    Inputs:
+;        limit and index on the data stack (index on top)
+;    Outputs:
+;        loop skipped, or loop frame on S and operand skipped
+;    Registers: RegD and RegX changed; MSCR and MSCR2 used as scratch.
+; ------------------------------------------------------------
+QDOSETUP:   PULU  D                 ; index
             STD   MSCR
-            PULU  D
+            PULU  D                 ; limit
             STD   MSCR2
             PULS  X
             LDD   MSCR2
@@ -4781,12 +4328,23 @@ QDBUILD:    LEAX  2,X
             PSHS  X
             RTS
 
-UNLOOP:     PULS  X                 ; discard the 3-cell loop frame (index, limit,
-            LEAS  6,S               ; LEAVE flag) beneath our return address, so a
-            PSHS  X                 ; following I/J sees the enclosing loop (GD6).
+; ------------------------------------------------------------
+; UNLOOP  ( -- )
+; Discard the loop frame (index, limit, leave flag) beneath UNLOOP's
+; return address, so that a following I or J sees the enclosing loop.
+; ------------------------------------------------------------
+UNLOOPW:    PULS  X
+            LEAS  6,S
+            PSHS  X
             RTS
 
-EXIT:       LDD   #0
+; ------------------------------------------------------------
+; EXIT  ( -- )
+; Compile a call to EXITUNLOOP followed by a count of the DO frames
+; found on the control-flow stack. The count is not used at run time.
+; A loop must be left with UNLOOP before EXIT.
+; ------------------------------------------------------------
+EXITW:      LDD   #0
             STD   EXITCNT
             TFR   U,D
             STD   EXITPTR
@@ -4813,39 +4371,38 @@ EXSCANDONE:
             JSR   CODECOMMA
             RTS
 
-EXITUNLOOP: PULS  X                 ; BUG FIX (GD6 3: expected 4 1 2, got 4 1 1): standard
-            PULS  Y                 ; EXIT does NOT discard loop frames - the program
-            JMP   ,Y                ; must UNLOOP first (UNLOOP is a real discard again, above).
-                                    ; The inline count (X) is now ignored, so the
-                                    ; EXSCAN compile-time count above is harmless.
+; ------------------------------------------------------------
+; Run-time part of EXIT: drop the address of the inline count, then
+; return from the definition. Loop frames are not discarded.
+; EXITUNLOOP
+;    Inputs:
+;        S holds the address of the inline count, then the return
+;        address
+;    Outputs:
+;        returns to the caller of the definition
+;    Registers: RegX and RegY changed.
+; ------------------------------------------------------------
+EXITUNLOOP: PULS  X                 ; See bugfix: EXITUNLOOP.1
+            PULS  Y                 ; Y = return address
+            JMP   ,Y
 
-CASEW:      LDD   #0                ; BUG FIX HISTORY: this filler cell was removed
-            PSHU  D                 ; once already (see below) because nothing in
-            LDD   #TAGCASE          ; OF/ENDOF read it and ENDCASE's ECDONE path
-            PSHU  D                 ; didn't pop it either, stranding it below CSP
-            RTS                     ; and throwing -22 on ";" for a plain CASE...
-                                    ; ENDCASE with no OF clauses. That fix (just
-                                    ; pushing TAGCASE alone, 2 bytes) solved that,
-                                    ; but EXIT's compile-time control-flow-stack
-                                    ; scan (see EXIT/EXSCAN below) steps from U to
-                                    ; CSP in fixed 4-byte strides, same as every
-                                    ; other structure's frame (DO leaves [CODEHERE]
-                                    ; [TAGDO], OF leaves [patch-addr][TAGOF], both
-                                    ; 4 bytes) - a lone 2-byte CASEW frame throws
-                                    ; that stride off by 2 bytes, so an EXIT
-                                    ; compiled inside a CASE's OF clause scans past
-                                    ; CSP forever (confirmed: MAME hangs inside
-                                    ; EXITUNLOOP's caller, looping until 16-bit
-                                    ; rollover, on ": X 1- DUP CASE 0 OF EXIT
-                                    ; ENDOF ... ENDCASE ;"). Restored the 2-cell/
-                                    ; 4-byte frame here to match DO/OF, and fixed
-                                    ; ENDCASE's ECDONE path (below) to pop the
-                                    ; paired filler cell there instead of leaving
-                                    ; it stranded - keeping both the CSP balance
-                                    ; for the no-OF-clause case AND the 4-byte
-                                    ; alignment EXIT's scan depends on.
+; ------------------------------------------------------------
+; CASE  ( C: -- case-sys )
+; Start a CASE structure. Leave a filler cell and TAGCASE, a 4-byte
+; frame like those of DO and OF, which the EXIT scan relies on.
+; ------------------------------------------------------------
+CASEW:      LDD   #0                ; filler. See bugfix: CASEW.1
+            PSHU  D
+            LDD   #TAGCASE
+            PSHU  D
+            RTS
 
-OF:         LDD   #OVER
+; ------------------------------------------------------------
+; OF  ( C: -- orig )
+; Compile OVER = ZBRANCH <operand> DROP. Leave orig (the operand
+; address) and TAGOF.
+; ------------------------------------------------------------
+OFW:        LDD   #OVERW
             PSHU  D
             JSR   CCALL
             LDD   #EQUALW
@@ -4859,25 +4416,25 @@ OF:         LDD   #OVER
             JSR   CODECOMMA
             LDD   CODEHERE
             SUBD  #2
-            PSHU  D
-            LDD   #DROP
+            PSHU  D                 ; orig
+            LDD   #DROPW
             PSHU  D
             JSR   CCALL
             LDD   #TAGOF
             PSHU  D
             RTS
 
-ENDOF:      PULU  D
+; ------------------------------------------------------------
+; ENDOF  ( C: orig1 -- orig2 )
+; Compile BRANCH with a placeholder operand, resolve orig1 to just
+; after it, and leave the new operand address and TAGENDOF.
+; ------------------------------------------------------------
+ENDOFW:     PULU  D
             CMPD  #TAGOF
             BEQ   EOFOK
             JSR   CFERR
-EOFOK:      PULU  D                 ; BUG FIX: same class as LOOP - was PULU X then
-            STD   MSCR              ; used via PSHU X after CCALL/CODECOMMA below,
-                                    ; both of which clobber X internally. Saved to
-                                    ; scratch instead (not parked on U, since
-                                    ; CODEHERE gets pushed onto U further down,
-                                    ; between the save and the retrieve below -
-                                    ; parking on U would retrieve that instead).
+EOFOK:      PULU  D                 ; orig1
+            STD   MSCR              ; See bugfix: ENDOFW.1
             LDD   #BRANCH
             PSHU  D
             JSR   CCALL
@@ -4893,12 +4450,17 @@ EOFOK:      PULU  D                 ; BUG FIX: same class as LOOP - was PULU X t
             PSHU  D
             JSR   PATCH
             LDD   NEWFLD
-            PSHU  D
+            PSHU  D                 ; orig2
             LDD   #TAGENDOF
             PSHU  D
             RTS
 
-ENDCASE:    LDD   #DROP
+; ------------------------------------------------------------
+; ENDCASE  ( C: case-sys -- )
+; Compile DROP, then resolve every ENDOF branch to the current code
+; address and discard the CASE frame.
+; ------------------------------------------------------------
+ENDCASEW:   LDD   #DROPW
             PSHU  D
             JSR   CCALL
 ECLOOP:     PULU  D
@@ -4907,153 +4469,180 @@ ECLOOP:     PULU  D
             CMPD  #TAGENDOF
             BEQ   ECPATCH
             JSR   CFERR
-ECPATCH:    PULU  X
+ECPATCH:    PULU  X                 ; orig
             LDD   CODEHERE
             PSHU  D
             PSHU  X
             JSR   PATCH
             BRA   ECLOOP
-ECDONE:     PULU  D                 ; discard CASEW's paired filler cell - see the
-                                    ; comment at CASEW above. Without this, that
-                                    ; cell is left stranded below CSP the moment
-                                    ; we hit TAGCASE and return, which is exactly
-                                    ; the bug CASEW's frame was once shrunk to
-                                    ; avoid; popping it here instead keeps CSP
-                                    ; balanced without reintroducing the EXIT
-                                    ; scan-alignment bug that shrinking it caused.
+ECDONE:     PULU  D                 ; drop filler. See bugfix: ENDCASEW.1
             RTS
 
 ; ============================================================
 ; SECTION 13: COMPILING WORDS (IMMEDIATE/[/]/'/COMPILE,/
 ; LITERAL/[']/POSTPONE/>BODY, SLITERAL, ABORT")
 ; ============================================================
+; ------------------------------------------------------------
+; STATE  ( -- a-addr )
+; Push the address of the STATE variable.
+; ------------------------------------------------------------
 STATEW:     LDD   #STATE
-            PSHU  D
+            PSHU  D                 ; a-addr
             RTS
 
-IMMEDIATE:  LDX   LATEST
+; ------------------------------------------------------------
+; IMMEDIATE  ( -- )
+; Set the immediate flag ($80) in the length byte of the most recent
+; definition (LATEST).
+; ------------------------------------------------------------
+IMMEDIATEW: LDX   LATEST
             LDA   ,X
             ORA   #$80
             STA   ,X
             RTS
 
-LBRACKET:   LDD   #0
+; ------------------------------------------------------------
+; [  ( -- )
+; Enter interpretation state: STATE = 0.
+; ------------------------------------------------------------
+LBRACKETW:  LDD   #0
             STD   STATE
             RTS
 
-RBRACKET:   LDD   #-1
+; ------------------------------------------------------------
+; ]  ( -- )
+; Enter compilation state: STATE = -1.
+; ------------------------------------------------------------
+RBRACKETW:  LDD   #-1
             STD   STATE
             RTS
 
-TICK:       LDD   #32
-            PSHU  D
-            JSR   WORD
-            JSR   FIND
-            PULU  D
+; ------------------------------------------------------------
+; '  ( "name" -- xt )
+; Parse the next blank-delimited name and return its xt. THROW -13 if
+; the name is not found.
+; ------------------------------------------------------------
+TICKW:      LDD   #32
+            PSHU  D                 ; BL delimiter
+            JSR   WORDW
+            JSR   FINDW
+            PULU  D                 ; found flag
             CMPD  #0
             BNE   TICKOK
-            PULU  D
-            LDD   #-13
+            PULU  D                 ; drop the name
+            LDD   #-13              ; -13
             PSHU  D
             JSR   THROW
 TICKOK:     RTS
 
-COMPILECOMMA:
+; ------------------------------------------------------------
+; COMPILE,  ( xt -- )
+; Compile a call to xt (see CCALL).
+; ------------------------------------------------------------
+COMPILECOMMAW:
             JMP   CCALL
 
-CCALL:      LDX   CODEHERE          ; BUG FIX: was PULU D first, then LDA #OPJSR -
-            LDA   #OPJSR            ; but A is D's high byte, so that LDA silently
-            STA   ,X+               ; destroyed the top byte of the address PULU D
-            PULU  D                 ; had just pulled, and the STD below wrote out
-            STD   ,X++              ; the corrupted result - a JSR to a garbage
-                                    ; target address. Deferring PULU D until after
-                                    ; STA ,X+ means D is never live at the same time
-                                    ; A gets reused for the opcode, so nothing
-                                    ; clobbers it. Confirmed via MAME debugger:
-                                    ; execution jumped to random memory.
+; ------------------------------------------------------------
+; Append a JSR to xt at the code pointer CODEHERE.
+; CCALL   ( xt -- )
+;    Inputs:
+;        xt on the data stack
+;    Outputs:
+;        JSR xt appended at CODEHERE; CODEHERE advanced by 3
+;    Registers: RegA, RegB, RegD and RegX changed.
+; ------------------------------------------------------------
+CCALL:      LDX   CODEHERE          ; X = code pointer
+            LDA   #OPJSR            ; JSR opcode
+            STA   ,X+
+            PULU  D                 ; xt
+            STD   ,X++              ; See bugfix: CCALL.1
             STX   CODEHERE
             RTS
 
+; ------------------------------------------------------------
+; LITERAL  ( x -- )
+; Compile LIT followed by x, so that x is pushed when the definition
+; runs.
+; ------------------------------------------------------------
 LITERALW:   LDD   #LIT
             PSHU  D
             JSR   CCALL
-            JSR   CODECOMMA
+            JSR   CODECOMMA         ; x
             RTS
 
-BRACKTICK:  LDD   STATE
+; ------------------------------------------------------------
+; [']  ( "name" -- )
+; Compile the xt of the next name as a literal. THROW -14 if not
+; compiling, -13 if the name is not found.
+; ------------------------------------------------------------
+BRACKTICKW: LDD   STATE
             BNE   BTSTOK
-            LDD   #-14
+            LDD   #-14              ; -14
             PSHU  D
             JSR   THROW
 BTSTOK:     LDD   #32
             PSHU  D
-            JSR   WORD
-            JSR   FIND
+            JSR   WORDW
+            JSR   FINDW
             PULU  D
             CMPD  #0
             BNE   BTOK
             PULU  D
-            LDD   #-13
+            LDD   #-13              ; -13
             PSHU  D
             JSR   THROW
 BTOK:       JSR   LITERALW
             RTS
 
+; ------------------------------------------------------------
+; POSTPONE  ( "name" -- )
+; If the name is immediate, compile a call to it now. Otherwise
+; compile its xt as a literal followed by a call to COMPILE, so that
+; it is compiled when the enclosing definition runs. THROW -14 if not
+; compiling, -13 if the name is not found.
+; ------------------------------------------------------------
 POSTPONEW:  LDD   STATE
             BNE   PPSTOK
-            LDD   #-14
+            LDD   #-14              ; -14
             PSHU  D
             JSR   THROW
 PPSTOK:     LDD   #32
             PSHU  D
-            JSR   WORD
-            JSR   FIND
+            JSR   WORDW
+            JSR   FINDW
             PULU  D
             CMPD  #0
             BNE   PPFOUND
             PULU  D
-            LDD   #-13
+            LDD   #-13              ; -13
             PSHU  D
             JSR   THROW
-PPFOUND:    CMPD  #1
+PPFOUND:    CMPD  #1                ; 1 = immediate
             BEQ   PPIMM
             JSR   LITERALW
-            LDD   #COMPILECOMMA
+            LDD   #COMPILECOMMAW
             PSHU  D
             JSR   CCALL
             RTS
-PPIMM:      JSR   COMPILECOMMA
+PPIMM:      JSR   COMPILECOMMAW
             RTS
 
-; [COMPILE] ( "name" -- )  IMMEDIATE, compile-only. OBSOLESCENT per
-; the ANS standard - POSTPONE (above) is its modern, more general
-; replacement (see POSTPONEW's own header/comment and the GLOSSARY
-; doc). Unlike POSTPONE, [COMPILE] does NOT distinguish immediate
-; from non-immediate words: it always compiles a direct call to the
-; found word's xt, right now, at the point [COMPILE] itself runs -
-; identical to POSTPONE's own PPIMM branch, reused directly here.
-; That's exactly why [COMPILE] was superseded: for a "default-
-; compilation" word (one whose own compiling behavior is itself
-; CREATEd/DOES>-built rather than a fixed JSR, e.g. many words built
-; via : NAME CREATE , DOES> ... ; IMMEDIATE patterns), compiling a
-; direct call to it here is not always equivalent to appending its
-; real compilation semantics - POSTPONE's two-level LIT+COMPILE,
-; mechanism (see PPFOUND above) is needed for full generality.
-; [COMPILE] remains correct for the ordinary case (works on any
-; word whose compilation semantics really is "compile a call to me"
-; - true of every immediate word in this implementation, and of
-; every plain/non-immediate word by definition) - ANS Annex F's own
-; F.6.2.2530 test (13_compiling_words.tests.fs) exercises exactly
-; that ordinary case (DUP, a user-defined immediate word, and IF).
-XCOMPILE:   LDD   STATE
+; ------------------------------------------------------------
+; [COMPILE]  ( "name" -- )
+; Compile a call to the next name, whether or not it is immediate.
+; Obsolescent: POSTPONE is the general replacement. THROW -14 if not
+; compiling, -13 if the name is not found.
+; Original comment: shadow XCOMPILEW.0.
+; ------------------------------------------------------------
+XCOMPILEW:  LDD   STATE
             BNE   XCSTOK
             LDD   #-14
             PSHU  D
             JSR   THROW
 XCSTOK:     LDD   #32
             PSHU  D
-            JSR   WORD
-            JSR   FIND
+            JSR   WORDW
+            JSR   FINDW
             PULU  D
             CMPD  #0
             BNE   XCFOUND
@@ -5061,24 +4650,34 @@ XCSTOK:     LDD   #32
             LDD   #-13
             PSHU  D
             JSR   THROW
-XCFOUND:    JSR   COMPILECOMMA
+XCFOUND:    JSR   COMPILECOMMAW
             RTS
 
-TOBODY:     PULU  D
+; ------------------------------------------------------------
+; >BODY  ( xt -- a-addr )
+; Return the data-field address of a CREATEd word: the cell at xt+5 of
+; its JSR DODOES trampoline.
+; ------------------------------------------------------------
+TOBODYW:    PULU  D                 ; xt
             ADDD  #5
             TFR   D,X
             LDD   ,X
             PSHU  D
             RTS
 
+; ------------------------------------------------------------
+; SLITERAL  ( c-addr u -- )
+; Compile DOSTR followed by a count byte and a copy of the string.
+; THROW -14 if not compiling.
+; ------------------------------------------------------------
 SLITERALW:  LDD   STATE
             BNE   SLSTOK
             LDD   #-14
             PSHU  D
             JSR   THROW
-SLSTOK:     PULU  D
+SLSTOK:     PULU  D                 ; u
             STD   SCNT
-            PULU  D
+            PULU  D                 ; c-addr
             STD   SPTR
             LDD   #DOSTR
             PSHU  D
@@ -5096,6 +4695,19 @@ SLCPY:      LDA   ,Y+
 SLEND:      STX   CODEHERE
             RTS
 
+; ------------------------------------------------------------
+; Run-time part of ABORT". The counted string follows the call. If
+; flag is non-zero, TYPE the string and THROW -2; otherwise skip over
+; the string.
+; DOABORTQUOTE   ( flag -- )
+;    Inputs:
+;        flag on the data stack; return address on S points at the
+;        count byte
+;    Outputs:
+;        execution continues after the string, or THROW -2
+;    Registers: RegA, RegB, RegD, RegX changed; SPTR and SCNT used as
+;        scratch.
+; ------------------------------------------------------------
 DOABORTQUOTE:
             PULS  X
             LDB   ,X
@@ -5106,7 +4718,7 @@ DOABORTQUOTE:
             LDX   SPTR
             LDB   SCNT+1
             LEAX  B,X
-            PULU  D
+            PULU  D                 ; flag
             CMPD  #0
             BNE   AQTHROW
             PSHS  X
@@ -5115,24 +4727,29 @@ AQTHROW:    LDD   SPTR
             PSHU  D
             LDD   SCNT
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             PSHS  X
-            LDD   #-2
+            LDD   #-2               ; -2
             PSHU  D
             JMP   THROW
 
-ABORTQUOTE: LDD   STATE
+; ------------------------------------------------------------
+; ABORT"  ( "ccc<quote>" -- )
+; Compile DOABORTQUOTE followed by the string up to the closing quote
+; as a counted string. THROW -14 if not compiling.
+; ------------------------------------------------------------
+ABORTQUOTEW:
+            LDD   STATE
             BNE   AQSTOK
             LDD   #-14
             PSHU  D
             JSR   THROW
 AQSTOK:     LDD   #34
             PSHU  D
-            LDD   CODEHERE          ; BUG FIX: same class as SQUOTE/DOTQUOTE -
-            ADDD  #3                ; reserve 3 bytes ahead of WORD's write so
-            STD   CODEHERE          ; the trampoline compiled below doesn't
-                                    ; overwrite the text it's about to stage.
-            JSR   WORD
+            LDD   CODEHERE          ; reserve 3 bytes
+            ADDD  #3                ; See bugfix: ABORTQUOTEW.1
+            STD   CODEHERE
+            JSR   WORDW
             PULU  X
             LDA   ,X
             STA   SCNT
@@ -5157,22 +4774,42 @@ AQCPY:      LDA   ,Y+
 AQEND:      STX   CODEHERE
             RTS
 
+; ------------------------------------------------------------
+; BL  ( -- char )
+; Push 32, the space character.
+; ------------------------------------------------------------
 BLW:        LDD   #32
-            PSHU  D
+            PSHU  D                 ; char
             RTS
 
+; ------------------------------------------------------------
+; >IN  ( -- a-addr )
+; Push the address of the >IN variable (TOIN).
+; ------------------------------------------------------------
 TOINW:      LDD   #TOIN
             PSHU  D
             RTS
 
+; ------------------------------------------------------------
+; SPAN  ( -- a-addr )
+; Push the address of the SPAN variable.
+; ------------------------------------------------------------
 SPANW:      LDD   #SPAN
             PSHU  D
             RTS
 
+; ------------------------------------------------------------
+; TIB  ( -- c-addr )
+; Push the address of the terminal input buffer.
+; ------------------------------------------------------------
 TIBW:       LDD   #TIBBUF
             PSHU  D
             RTS
 
+; ------------------------------------------------------------
+; #TIB  ( -- a-addr )
+; Push the address of the NTIB variable.
+; ------------------------------------------------------------
 NTIBW:      LDD   #NTIB
             PSHU  D
             RTS
@@ -5180,60 +4817,100 @@ NTIBW:      LDD   #NTIB
 ; ============================================================
 ; SECTION 14: STACK MANIPULATION (Core + Core Ext + return stack)
 ; ============================================================
-DUP:        LDD   ,U
+; ------------------------------------------------------------
+; DUP  ( x -- x x )
+; Duplicate the top cell.
+; ------------------------------------------------------------
+DUPW:       LDD   ,U                ; x
             PSHU  D
             RTS
 
-DROP:       LEAU  2,U
+; ------------------------------------------------------------
+; DROP  ( x -- )
+; Discard the top cell.
+; ------------------------------------------------------------
+DROPW:      LEAU  2,U               ; x
             RTS
 
-SWAP:       LDD   ,U
-            LDX   2,U
+; ------------------------------------------------------------
+; SWAP  ( x1 x2 -- x2 x1 )
+; Exchange the top two cells.
+; ------------------------------------------------------------
+SWAPW:      LDD   ,U                ; x2
+            LDX   2,U               ; x1
             STX   ,U
             STD   2,U
             RTS
 
-OVER:       LDD   2,U
+; ------------------------------------------------------------
+; OVER  ( x1 x2 -- x1 x2 x1 )
+; Copy the second cell to the top.
+; ------------------------------------------------------------
+OVERW:      LDD   2,U               ; x1
             PSHU  D
             RTS
 
-ROT:        LDD   ,U
-            LDX   2,U
-            LDY   4,U
+; ------------------------------------------------------------
+; ROT  ( x1 x2 x3 -- x2 x3 x1 )
+; Rotate the third cell to the top.
+; ------------------------------------------------------------
+ROTW:       LDD   ,U                ; x3
+            LDX   2,U               ; x2
+            LDY   4,U               ; x1
             STY   ,U
             STD   2,U
             STX   4,U
             RTS
 
-QDUP:       LDD   ,U
+; ------------------------------------------------------------
+; ?DUP  ( x -- 0 | x x )
+; Duplicate the top cell if it is non-zero.
+; ------------------------------------------------------------
+QDUPW:      LDD   ,U                ; x
             CMPD  #0
             BEQ   QDUPDONE
             PSHU  D
 QDUPDONE:   RTS
 
-DEPTH:      TFR   U,D
+; ------------------------------------------------------------
+; DEPTH  ( -- +n )
+; Push the number of cells on the data stack: (SP0 - U) / 2.
+; ------------------------------------------------------------
+DEPTHW:     TFR   U,D
             STD   DEPTHTMP
             LDD   #SP0
             SUBD  DEPTHTMP
             LSRA
             RORB
-            PSHU  D
+            PSHU  D                 ; +n
             RTS
 
-DDUP:       LDD   2,U
-            LDX   ,U
+; ------------------------------------------------------------
+; 2DUP  ( x1 x2 -- x1 x2 x1 x2 )
+; Duplicate the top cell pair.
+; ------------------------------------------------------------
+DDUPW:      LDD   2,U               ; x1
+            LDX   ,U                ; x2
             PSHU  D
             PSHU  X
             RTS
 
-DDROP:      LEAU  4,U
+; ------------------------------------------------------------
+; 2DROP  ( x1 x2 -- )
+; Discard the top cell pair.
+; ------------------------------------------------------------
+DDROPW:     LEAU  4,U
             RTS
 
-DSWAP:      LDD   ,U
+; ------------------------------------------------------------
+; 2SWAP  ( x1 x2 x3 x4 -- x3 x4 x1 x2 )
+; Exchange the top two cell pairs.
+; ------------------------------------------------------------
+DSWAPW:     LDD   ,U                ; x4
             STD   MSCR
-            LDD   2,U
-            LDX   4,U
-            LDY   6,U
+            LDD   2,U               ; x3
+            LDX   4,U               ; x2
+            LDY   6,U               ; x1
             STD   6,U
             STX   ,U
             STY   2,U
@@ -5241,32 +4918,54 @@ DSWAP:      LDD   ,U
             STD   4,U
             RTS
 
-DOVER:      LDD   6,U
-            LDX   4,U
+; ------------------------------------------------------------
+; 2OVER  ( x1 x2 x3 x4 -- x1 x2 x3 x4 x1 x2 )
+; Copy the second cell pair to the top.
+; ------------------------------------------------------------
+DOVERW:     LDD   6,U               ; x1
+            LDX   4,U               ; x2
             PSHU  D
             PSHU  X
             RTS
 
-NIP:        LDD   ,U
+; ------------------------------------------------------------
+; NIP  ( x1 x2 -- x2 )
+; Discard the second cell.
+; ------------------------------------------------------------
+NIPW:       LDD   ,U                ; x2
             STD   2,U
             LEAU  2,U
             RTS
 
-TUCK:       LDD   ,U
-            LDX   2,U
+; ------------------------------------------------------------
+; TUCK  ( x1 x2 -- x2 x1 x2 )
+; Copy the top cell beneath the second cell.
+; ------------------------------------------------------------
+TUCKW:      LDD   ,U                ; x2
+            LDX   2,U               ; x1
             PSHU  D
             STX   2,U
             STD   4,U
             RTS
 
-PICK:       PULU  D
+; ------------------------------------------------------------
+; PICK  ( xu ... x0 u -- xu ... x0 xu )
+; Copy the cell u deep (0 PICK is DUP) to the top.
+; ------------------------------------------------------------
+PICKW:      PULU  D                 ; u
             LSLB
             ROLA
             LDD   D,U
             PSHU  D
             RTS
 
-ROLL:       PULU  D
+; ------------------------------------------------------------
+; ROLL  ( xu xu-1 ... x0 u -- xu-1 ... x0 xu )
+; Move the cell u deep (0 ROLL does nothing) to the top, shifting the
+; cells above it down one place. RDST holds the byte offset and RVAL
+; the cell being moved.
+; ------------------------------------------------------------
+ROLLW:      PULU  D                 ; u
             CMPD  #0
             BEQ   ROLLDONE
             LSLB
@@ -5291,9 +4990,14 @@ RSTORE:     LDD   RVAL
             STD   ,U
 ROLLDONE:   RTS
 
-DROT:       LDD   10,U
+; ------------------------------------------------------------
+; 2ROT  ( x1 x2 x3 x4 x5 x6 -- x3 x4 x5 x6 x1 x2 )
+; Rotate the third cell pair to the top. TR1 and TR2 hold the pair
+; while the others move.
+; ------------------------------------------------------------
+DROTW:      LDD   10,U              ; x1
             STD   TR1
-            LDD   8,U
+            LDD   8,U               ; x2
             STD   TR2
             LDD   6,U
             STD   10,U
@@ -5309,27 +5013,51 @@ DROT:       LDD   10,U
             STD   2,U
             RTS
 
-TOR:        PULU  D
+; ------------------------------------------------------------
+; >R  ( x -- )  ( R: -- x )
+; Move x from the data stack to the return stack. The return address
+; of this call is on top of S, so it is lifted off and put back around
+; the transfer.
+; ------------------------------------------------------------
+TORW:       PULU  D                 ; x
             PULS  X
             PSHS  D
             PSHS  X
             RTS
 
-FROMR:      PULS  X
-            PULS  D
+; ------------------------------------------------------------
+; R>  ( -- x )  ( R: x -- )
+; Move x from the return stack to the data stack. The return address
+; of this call is on top of S, so it is lifted off and put back around
+; the transfer.
+; ------------------------------------------------------------
+FROMRW:     PULS  X
+            PULS  D                 ; x
             PSHS  X
             PSHU  D
             RTS
 
-RFETCH:     PULS  X
-            LDD   ,S
+; ------------------------------------------------------------
+; R@  ( -- x )  ( R: x -- x )
+; Copy the top of the return stack to the data stack. The return
+; address of this call is on top of S, so it is lifted off and put
+; back around the transfer.
+; ------------------------------------------------------------
+RFETCHW:    PULS  X
+            LDD   ,S                ; x
             PSHS  X
             PSHU  D
             RTS
 
-TWOTOR:     PULU  D
+; ------------------------------------------------------------
+; 2>R  ( x1 x2 -- )  ( R: -- x1 x2 )
+; Move a cell pair to the return stack. R2A and R2B are scratch. The
+; return address of this call is on top of S, so it is lifted off and
+; put back around the transfer.
+; ------------------------------------------------------------
+TWOTORW:    PULU  D                 ; x2
             STD   R2A
-            PULU  D
+            PULU  D                 ; x1
             STD   R2B
             PULS  X
             LDD   R2B
@@ -5339,10 +5067,16 @@ TWOTOR:     PULU  D
             PSHS  X
             RTS
 
-TWOFROMR:   PULS  X
-            PULS  D
+; ------------------------------------------------------------
+; 2R>  ( -- x1 x2 )  ( R: x1 x2 -- )
+; Move a cell pair from the return stack. R2A and R2B are scratch. The
+; return address of this call is on top of S, so it is lifted off and
+; put back around the transfer.
+; ------------------------------------------------------------
+TWOFROMRW:  PULS  X
+            PULS  D                 ; x2
             STD   R2A
-            PULS  D
+            PULS  D                 ; x1
             STD   R2B
             PSHS  X
             LDD   R2B
@@ -5351,10 +5085,16 @@ TWOFROMR:   PULS  X
             PSHU  D
             RTS
 
-TWORFETCH:  PULS  X
-            LDD   ,S
+; ------------------------------------------------------------
+; 2R@  ( -- x1 x2 )  ( R: x1 x2 -- x1 x2 )
+; Copy the top cell pair of the return stack. R2A and R2B are scratch.
+; The return address of this call is on top of S, so it is lifted off
+; and put back around the transfer.
+; ------------------------------------------------------------
+TWORFETCHW: PULS  X
+            LDD   ,S                ; x2
             STD   R2A
-            LDD   2,S
+            LDD   2,S               ; x1
             STD   R2B
             PSHS  X
             LDD   R2B
@@ -5366,28 +5106,42 @@ TWORFETCH:  PULS  X
 ; ============================================================
 ; SECTION 15: ARITHMETIC (single + double + mixed precision)
 ; ============================================================
-PLUS:       PULU  D
+; ------------------------------------------------------------
+; +  ( n1 n2 -- n3 )
+; Add n2 to n1.
+; ------------------------------------------------------------
+PLUSW:      PULU  D                 ; n2
             ADDD  ,U
             STD   ,U
             RTS
 
-; MSCR is declared once in the GLOBALS layout above - no local
-; redeclaration needed here.
-MINUS:      PULU  D
+; ------------------------------------------------------------
+; -  ( n1 n2 -- n3 )
+; Subtract n2 from n1.
+; ------------------------------------------------------------
+MINUSW:     PULU  D                 ; n2
             STD   MSCR
             LDD   ,U
             SUBD  MSCR
             STD   ,U
             RTS
 
-NEGATE:     LDD   ,U
+; ------------------------------------------------------------
+; NEGATE  ( n1 -- n2 )
+; Two's complement negate.
+; ------------------------------------------------------------
+NEGATEW:    LDD   ,U                ; n1
             COMA
             COMB
             ADDD  #1
             STD   ,U
             RTS
 
-ABSW:       LDD   ,U
+; ------------------------------------------------------------
+; ABS  ( n -- u )
+; Absolute value.
+; ------------------------------------------------------------
+ABSW:       LDD   ,U                ; n
             BPL   ABSDONE
             COMA
             COMB
@@ -5395,36 +5149,62 @@ ABSW:       LDD   ,U
             STD   ,U
 ABSDONE:    RTS
 
-MIN:        PULU  D
+; ------------------------------------------------------------
+; MIN  ( n1 n2 -- n3 )
+; The lesser of two signed numbers.
+; ------------------------------------------------------------
+MINW:       PULU  D                 ; n2
             CMPD  ,U
             BLT   MINISN2
             RTS
 MINISN2:    STD   ,U
             RTS
 
-MAX:        PULU  D
+; ------------------------------------------------------------
+; MAX  ( n1 n2 -- n3 )
+; The greater of two signed numbers.
+; ------------------------------------------------------------
+MAXW:       PULU  D                 ; n2
             CMPD  ,U
             BGT   MAXISN2
             RTS
 MAXISN2:    STD   ,U
             RTS
 
-ONEPLUS:    LDD   ,U
+; ------------------------------------------------------------
+; 1+  ( n1 -- n2 )
+; Add 1.
+; ------------------------------------------------------------
+ONEPLUSW:   LDD   ,U
             ADDD  #1
             STD   ,U
             RTS
 
-ONEMINUS:   LDD   ,U
+; ------------------------------------------------------------
+; 1-  ( n1 -- n2 )
+; Subtract 1.
+; ------------------------------------------------------------
+ONEMINUSW:  LDD   ,U
             SUBD  #1
             STD   ,U
             RTS
 
-TWOPLUS:    LDD   ,U
+; ------------------------------------------------------------
+; 2+  ( n1 -- n2 )
+; Add 2.
+; ------------------------------------------------------------
+TWOPLUSW:   LDD   ,U
             ADDD  #2
             STD   ,U
             RTS
 
-STAR:       PULU  D
+; ------------------------------------------------------------
+; *  ( n1 n2 -- n3 )
+; Signed multiply, keeping the low 16 bits of the product. The
+; magnitudes are multiplied byte-wise with MUL and the sign is
+; restored.
+; ------------------------------------------------------------
+STARW:      PULU  D                 ; n2
             STD   MSCR
             LDD   ,U
             CLR   MSIGN
@@ -5452,14 +5232,14 @@ SNOFLIP2:   STA   MBHI
             MUL
             LDA   MRESULT
             PSHS  B
-            ADDA  ,S+               ; was "ADDA B" - not valid 6809 syntax
+            ADDA  ,S+               ; A = A + B
             STA   MRESULT
             LDA   MALO
             LDB   MBHI
             MUL
             LDA   MRESULT
             PSHS  B
-            ADDA  ,S+               ; was "ADDA B" - not valid 6809 syntax
+            ADDA  ,S+               ; A = A + B
             STA   MRESULT
             LDD   MRESULT
             TST   MSIGN
@@ -5470,12 +5250,26 @@ SNOFLIP2:   STA   MBHI
 SDONE:      STD   ,U
             RTS
 
-TWOSTAR:    LDD   ,U
+; ------------------------------------------------------------
+; 2*  ( x1 -- x2 )
+; Shift left one bit.
+; ------------------------------------------------------------
+TWOSTARW:   LDD   ,U
             ASLB
             ROLA
             STD   ,U
             RTS
 
+; ------------------------------------------------------------
+; Unsigned 16-bit division by shift and subtract. The divisor is not
+; checked for zero.
+; UDIV16
+;    Inputs:
+;        DIVNUM = dividend, DIVDEN = divisor (unsigned)
+;    Outputs:
+;        DIVNUM = quotient, DIVREM = remainder
+;    Registers: RegD changed; DIVCNT used as the loop counter.
+; ------------------------------------------------------------
 UDIV16:     CLR   DIVREM
             CLR   DIVREM+1
             LDB   #16
@@ -5493,14 +5287,25 @@ UDSKIP:     DEC   DIVCNT
             BNE   UD16LOOP
             RTS
 
-DIVCOMMON:  PULU  D
+; ------------------------------------------------------------
+; Common part of /, MOD and /MOD: divide n1 by n2 with the sign
+; handling for truncating division. THROW -10 if n2 is zero.
+; DIVCOMMON   ( n1 n2 -- )
+;    Inputs:
+;        n1 and n2 on the data stack (n2 on top)
+;    Outputs:
+;        DIVNUM = quotient, DIVREM = remainder (data stack popped)
+;    Registers: RegD changed; DIVNUM, DIVDEN, DIVREM, DNSIGN, DVSIGN
+;        used.
+; ------------------------------------------------------------
+DIVCOMMON:  PULU  D                 ; n2
             STD   DIVDEN
             CMPD  #0
             BNE   DCOK
-            LDD   #-10
+            LDD   #-10              ; -10
             PSHU  D
             JSR   THROW
-DCOK:       PULU  D
+DCOK:       PULU  D                 ; n1
             STD   DIVNUM
             CLR   DVSIGN
             CLR   DNSIGN
@@ -5538,29 +5343,60 @@ DQPOS:      LDD   DIVREM
             STD   DIVREM
 DCRPOS:     RTS
 
-SLASH:      JSR   DIVCOMMON
+; ------------------------------------------------------------
+; /  ( n1 n2 -- n3 )
+; Quotient of n1 divided by n2. Division truncates toward zero; the
+; remainder has the sign of the dividend. THROW -10 if the divisor is
+; zero.
+; ------------------------------------------------------------
+SLASHW:     JSR   DIVCOMMON
             LDD   DIVNUM
             PSHU  D
             RTS
 
+; ------------------------------------------------------------
+; MOD  ( n1 n2 -- n3 )
+; Remainder of n1 divided by n2. Division truncates toward zero; the
+; remainder has the sign of the dividend. THROW -10 if the divisor is
+; zero.
+; ------------------------------------------------------------
 MODW:       JSR   DIVCOMMON
             LDD   DIVREM
             PSHU  D
             RTS
 
-SLASHMOD:   JSR   DIVCOMMON
+; ------------------------------------------------------------
+; /MOD  ( n1 n2 -- n3 n4 )
+; Divide n1 by n2, giving the remainder n3 and the quotient n4.
+; Division truncates toward zero; the remainder has the sign of the
+; dividend. THROW -10 if the divisor is zero.
+; ------------------------------------------------------------
+SLASHMODW:  JSR   DIVCOMMON
             LDD   DIVREM
             PSHU  D
             LDD   DIVNUM
             PSHU  D
             RTS
 
-TWOSLASH:   LDD   ,U
+; ------------------------------------------------------------
+; 2/  ( x1 -- x2 )
+; Arithmetic shift right one bit.
+; ------------------------------------------------------------
+TWOSLASHW:  LDD   ,U
             ASRA
             RORB
             STD   ,U
             RTS
 
+; ------------------------------------------------------------
+; Unsigned 16 x 16 to 32-bit multiply from four partial products.
+; UMUL32
+;    Inputs:
+;        MAHI:MALO and MBHI:MBLO (unsigned factors)
+;    Outputs:
+;        PRODHI:PRODLO = product
+;    Registers: RegA, RegB and RegD changed.
+; ------------------------------------------------------------
 UMUL32:     LDA   MALO
             LDB   MBLO
             MUL
@@ -5594,44 +5430,17 @@ UM32B:      LDA   MAHI
             STD   PRODHI
             RTS
 
-; BUG FIX (found from a hardware report on UM/MOD's own ANS Annex F
-; boundary test, F.6.1.2370: "MAX-UINT MAX-UINT UM* MAX-UINT UM/MOD
-; -> 0 MAX-UINT" - got 0 65535 for (remainder, quotient) wrong-way-
-; round, actually got (1, 0) - and traced back here, since SM/REM,
-; UM/MOD, FM/MOD, and plain /, MOD, /MOD (via DIVCOMMON) all share
-; this one routine). This is the classic off-by-one-bit boundary bug
-; in a 32-bit-dividend/16-bit-divisor restoring-division shift loop:
-; DIVREM is only a 16-bit register, but the value it needs to compare
-; against DIVDEN (the divisor) each iteration, just after the whole
-; DIVREM:PRODHI:PRODLO chain shifts left by one bit, can transiently
-; need a 17th bit - the true "remainder so far, doubled, plus the new
-; incoming dividend bit" can reach up to 2*(DIVDEN-1)+1, which for a
-; divisor near MAX-UINT (as in the failing test, DIVDEN=$FFFF) can
-; exceed $FFFF and overflow the 16-bit DIVREM register. The old code
-; (ROL DIVREM as the last link in the shift chain, then straight into
-; LDD DIVREM/SUBD DIVDEN/BLO) simply discarded that overflow bit - it
-; falls out of ROL DIVREM's own carry flag and was never tested -  so
-; whenever it was set, DIVREM's 16 bits alone read as SMALLER than
-; DIVDEN even though the true (17-bit) value was actually larger,
-; wrongly skipping a subtraction (and its quotient bit) that should
-; have happened. Confirmed by simulating this exact instruction
-; sequence in Python against a known-correct reference division and a
-; 200,000-case random fuzz run: the original code was the only one
-; that failed, and only on inputs that hit this exact overflow
-; condition (the MAX-UINT/MAX-UINT case being the smallest/simplest
-; one in this test corpus, not a coincidence - DIVDEN=$FFFF is the
-; case where the overflow condition is easiest to trigger). Fixed by
-; testing the carry out of ROL DIVREM (the chain's final link, so
-; this carry IS that discarded 17th bit) before ever touching DIVREM
-; via LDD: if set, the true 17-bit value is DIVREM+$10000, which is
-; always >= any 16-bit DIVDEN, so the subtraction is known to succeed
-; without needing the CMPD/BLO test at all - and the plain 16-bit
-; "DIVREM - DIVDEN" (letting it wrap how it wraps) IS the correct new
-; remainder, since adding $10000 then subtracting DIVDEN and dropping
-; the now-impossible 17th bit again is exactly equivalent mod $10000.
-; LDD does not itself affect the carry flag on the 6809 (only N/Z,
-; clears V), but BCS is placed immediately after ROL DIVREM anyway,
-; before anything else, so this isn't relied upon.
+; ------------------------------------------------------------
+; Unsigned 32 / 16 division (restoring, 32 iterations). Used by
+; UM/MOD, SM/REM, FM/MOD, */ and */MOD.
+; UDIV32
+;    Inputs:
+;        PRODHI:PRODLO = dividend, DIVDEN = divisor (unsigned)
+;    Outputs:
+;        PRODLO = quotient, DIVREM = remainder
+;    Registers: RegD changed; DIVCNT used as the loop counter.
+; Original comment: shadow UDIV32.1.
+; ------------------------------------------------------------
 UDIV32:     CLR   DIVREM
             CLR   DIVREM+1
             LDB   #32
@@ -5642,7 +5451,7 @@ UD32LP:     ASL   PRODLO+1
             ROL   PRODHI
             ROL   DIVREM+1
             ROL   DIVREM
-            BCS   UD32FORCE
+            BCS   UD32FORCE         ; 17th bit set. See bugfix: UDIV32.1
             LDD   DIVREM
             SUBD  DIVDEN
             BLO   UD32SKIP
@@ -5656,6 +5465,15 @@ UD32SKIP:   DEC   DIVCNT
             BNE   UD32LP
             RTS
 
+; ------------------------------------------------------------
+; Negate the 32-bit value in PRODHI:PRODLO.
+; MNEG32
+;    Inputs:
+;        PRODHI:PRODLO
+;    Outputs:
+;        PRODHI:PRODLO negated
+;    Registers: RegD changed.
+; ------------------------------------------------------------
 MNEG32:     LDD   PRODLO
             COMA
             COMB
@@ -5673,12 +5491,24 @@ MNEG32:     LDD   PRODLO
             STD   PRODHI
 MN32DONE:   RTS
 
+; ------------------------------------------------------------
+; Common part of */ and */MOD: form the 32-bit product n1 * n2, then
+; divide it by n3. The quotient is negated if an odd number of the
+; three is negative, the remainder if the product is negative. THROW
+; -10 if n3 is zero.
+; STARSLASHCOMMON   ( n1 n2 n3 -- )
+;    Inputs:
+;        n1, n2 and n3 on the data stack (n3 on top)
+;    Outputs:
+;        PRODLO = quotient, DIVREM = remainder (data stack popped)
+;    Registers: RegA, RegB and RegD changed; many scratch cells used.
+; ------------------------------------------------------------
 STARSLASHCOMMON:
-            PULU  D
+            PULU  D                 ; n3
             STD   DIVDEN
             CMPD  #0
             BNE   SSOK
-            LDD   #-10
+            LDD   #-10              ; -10
             PSHU  D
             JSR   THROW
 SSOK:       CLR   PSIGN
@@ -5692,7 +5522,7 @@ SSOK:       CLR   PSIGN
             STD   DIVDEN
 SSN3POS:    LDA   #0
             STA   PRSIGN
-            PULU  D
+            PULU  D                 ; n2
             STD   MSCR
             TST   MSCR
             BPL   SSN2POS
@@ -5707,7 +5537,7 @@ SSN2POS:    LDA   MSCR
             STA   MBHI
             LDA   MSCR+1
             STA   MBLO
-            PULU  D
+            PULU  D                 ; n1
             STD   MSCR
             TST   MSCR
             BPL   SSN1POS
@@ -5740,12 +5570,22 @@ SSQPOS:     LDD   DIVREM
             STD   DIVREM
 SSRPOS:     RTS
 
-STARSLASH:  JSR   STARSLASHCOMMON
+; ------------------------------------------------------------
+; */  ( n1 n2 n3 -- n4 )
+; Multiply n1 by n2 giving a 32-bit intermediate product, then divide
+; by n3. The quotient is n4.
+; ------------------------------------------------------------
+STARSLASHW: JSR   STARSLASHCOMMON
             LDD   PRODLO
             PSHU  D
             RTS
 
-STARSLASHMOD:
+; ------------------------------------------------------------
+; */MOD  ( n1 n2 n3 -- n4 n5 )
+; Multiply n1 by n2 giving a 32-bit intermediate product, then divide
+; by n3, giving the remainder n4 and the quotient n5.
+; ------------------------------------------------------------
+STARSLASHMODW:
             JSR   STARSLASHCOMMON
             LDD   DIVREM
             PSHU  D
@@ -5753,9 +5593,13 @@ STARSLASHMOD:
             PSHU  D
             RTS
 
-UMSTAR:     PULU  D
+; ------------------------------------------------------------
+; UM*  ( u1 u2 -- ud )
+; Unsigned 16 x 16 to 32-bit multiply.
+; ------------------------------------------------------------
+UMSTARW:    PULU  D                 ; u2
             STD   MSCR
-            PULU  D
+            PULU  D                 ; u1
             STA   MAHI
             STB   MALO
             LDD   MSCR
@@ -5768,14 +5612,20 @@ UMSTAR:     PULU  D
             PSHU  D
             RTS
 
-UMSLASHMOD: PULU  D
+; ------------------------------------------------------------
+; UM/MOD  ( ud u1 -- u2 u3 )
+; Divide the unsigned double ud by u1, giving the remainder u2 and the
+; quotient u3. THROW -10 if u1 is zero.
+; ------------------------------------------------------------
+UMSLASHMODW:
+            PULU  D                 ; u1
             STD   DIVDEN
             CMPD  #0
             BNE   UMOK
-            LDD   #-10
+            LDD   #-10              ; -10
             PSHU  D
             JSR   THROW
-UMOK:       PULU  D
+UMOK:       PULU  D                 ; ud
             STD   PRODHI
             PULU  D
             STD   PRODLO
@@ -5786,26 +5636,15 @@ UMOK:       PULU  D
             PSHU  D
             RTS
 
-MSTAR:      PULU  D
+; ------------------------------------------------------------
+; M*  ( n1 n2 -- d )
+; Signed 16 x 16 to 32-bit multiply.
+; ------------------------------------------------------------
+MSTARW:     PULU  D                 ; n2
             STD   MSCR
-            PULU  D
+            PULU  D                 ; n1
             CLR   MSIGN
-            TSTA                    ; BUG FIX: CLR MSIGN unconditionally sets N=0
-                                    ; (CLR always clears to 0), overwriting D's
-                                    ; own flags from the PULU above - and PULU
-                                    ; doesn't set flags on genuine 6809 anyway
-                                    ; (same class as TRYNUM/STOD/SIGN's own fixes
-                                    ; elsewhere in this file), so BPL was always
-                                    ; testing CLR's result, not n1's actual sign.
-                                    ; BPL always branched, meaning n1 was NEVER
-                                    ; negated even when genuinely negative - found
-                                    ; via MAME: TSTMSTAR's two returned values
-                                    ; came back wrong, which turned out to be
-                                    ; this, not a push-order swap in the test
-                                    ; itself. FMSLASHMOD/SMSLASHREM already do
-                                    ; this correctly (explicit TST PRODHI between
-                                    ; their own CLR calls and the branch) - MSTAR
-                                    ; was simply missing the equivalent re-test.
+            TSTA                    ; sign of n1. See bugfix: MSTARW.1
             BPL   MSN1POS
             COM   MSIGN
             COMA
@@ -5831,14 +5670,21 @@ MSDONE:     LDD   PRODLO
             PSHU  D
             RTS
 
-SMSLASHREM: PULU  D
+; ------------------------------------------------------------
+; SM/REM  ( d n1 -- n2 n3 )
+; Symmetric division of the double d by n1, giving the remainder n2
+; and the quotient n3. The quotient is truncated toward zero and the
+; remainder has the sign of d. THROW -10 if n1 is zero.
+; ------------------------------------------------------------
+SMSLASHREMW:
+            PULU  D                 ; n1
             STD   DIVDEN
             CMPD  #0
             BNE   SMOK
-            LDD   #-10
+            LDD   #-10              ; -10
             PSHU  D
             JSR   THROW
-SMOK:       PULU  D
+SMOK:       PULU  D                 ; d
             STD   PRODHI
             PULU  D
             STD   PRODLO
@@ -5874,14 +5720,21 @@ SMRPOS:     PSHU  D
 SMQPOS:     PSHU  D
             RTS
 
-FMSLASHMOD: PULU  D
+; ------------------------------------------------------------
+; FM/MOD  ( d n1 -- n2 n3 )
+; Floored division of the double d by n1, giving the remainder n2 and
+; the quotient n3. The quotient is rounded toward negative infinity
+; and the remainder has the sign of n1. THROW -10 if n1 is zero.
+; ------------------------------------------------------------
+FMSLASHMODW:
+            PULU  D                 ; n1
             STD   DIVDEN
             CMPD  #0
             BNE   FMOK
-            LDD   #-10
+            LDD   #-10              ; -10
             PSHU  D
             JSR   THROW
-FMOK:       PULU  D
+FMOK:       PULU  D                 ; d
             STD   PRODHI
             PULU  D
             STD   PRODLO
@@ -5929,13 +5782,17 @@ FMRPOS:     PSHU  D
 FMQPOS:     PSHU  D
             RTS
 
-DPLUS:      PULU  D
+; ------------------------------------------------------------
+; D+  ( d1 d2 -- d3 )
+; Add two doubles.
+; ------------------------------------------------------------
+DPLUSW:     PULU  D                 ; d2 high
             STD   MSCR
-            PULU  D
+            PULU  D                 ; d2 low
             STD   MSCR2
-            PULU  D
+            PULU  D                 ; d1 high
             STD   MSCR3
-            PULU  D
+            PULU  D                 ; d1 low
             ADDD  MSCR2
             STD   MSCR4
             BCC   DPNOCY
@@ -5952,13 +5809,17 @@ DPHIDONE:   STD   MSCR3
             PSHU  D
             RTS
 
-DMINUS:     PULU  D
+; ------------------------------------------------------------
+; D-  ( d1 d2 -- d3 )
+; Subtract d2 from d1.
+; ------------------------------------------------------------
+DMINUSW:    PULU  D                 ; d2 high
             STD   MSCR
-            PULU  D
+            PULU  D                 ; d2 low
             STD   MSCR2
-            PULU  D
+            PULU  D                 ; d1 high
             STD   MSCR3
-            PULU  D
+            PULU  D                 ; d1 low
             SUBD  MSCR2
             STD   MSCR4
             BCC   DMNOBOR
@@ -5975,9 +5836,13 @@ DMHIDONE:   STD   MSCR3
             PSHU  D
             RTS
 
-DNEGATEW:   PULU  D
+; ------------------------------------------------------------
+; DNEGATE  ( d1 -- d2 )
+; Negate a double.
+; ------------------------------------------------------------
+DNEGATEW:   PULU  D                 ; d1 high
             STD   PRODHI
-            PULU  D
+            PULU  D                 ; d1 low
             STD   PRODLO
             JSR   MNEG32
             LDD   PRODLO
@@ -5986,9 +5851,13 @@ DNEGATEW:   PULU  D
             PSHU  D
             RTS
 
-DABSW:      PULU  D
+; ------------------------------------------------------------
+; DABS  ( d -- ud )
+; Absolute value of a double.
+; ------------------------------------------------------------
+DABSW:      PULU  D                 ; d high
             STD   PRODHI
-            PULU  D
+            PULU  D                 ; d low
             STD   PRODLO
             TST   PRODHI
             BPL   DABSDONE
@@ -5999,16 +5868,20 @@ DABSDONE:   LDD   PRODLO
             PSHU  D
             RTS
 
-MPLUS:      PULU  D
+; ------------------------------------------------------------
+; M+  ( d1 n -- d2 )
+; Add the single n, sign-extended, to the double d1.
+; ------------------------------------------------------------
+MPLUSW:     PULU  D                 ; n
             STD   MSCR2
             BPL   MPPOSN
             LDD   #-1
             BRA   MPSIGNED
 MPPOSN:     LDD   #0
 MPSIGNED:   STD   MSCR
-            PULU  D
+            PULU  D                 ; d1 high
             STD   MSCR3
-            PULU  D
+            PULU  D                 ; d1 low
             ADDD  MSCR2
             STD   MSCR4
             BCC   MPNOCY
@@ -6025,21 +5898,13 @@ MPHIDONE:   STD   MSCR3
             PSHU  D
             RTS
 
-STOD:       PULU  D
+; ------------------------------------------------------------
+; S>D  ( n -- d )
+; Sign-extend a single to a double.
+; ------------------------------------------------------------
+STODW:      PULU  D                 ; n
             PSHU  D
-            TSTA                    ; BUG FIX: was a bare "BPL SDPOS" right after
-                                    ; PULU - PULU doesn't affect condition codes
-                                    ; on genuine 6809 (same class as TRYNUM's own
-                                    ; PULU-then-compare fix elsewhere in this
-                                    ; file), so BPL was testing whatever flags an
-                                    ; unrelated, earlier instruction happened to
-                                    ; leave set, not the sign of the value just
-                                    ; popped. TSTA explicitly tests D's high byte
-                                    ; (bit 7 of A reflects the full 16-bit value's
-                                    ; sign) immediately before the branch that
-                                    ; depends on it. Confirmed via MAME debugger:
-                                    ; "-123 S>D" returned high cell 0 instead of
-                                    ; -1 - no sign extension was happening at all.
+            TSTA                    ; sign of n. See bugfix: STODW.1
             BPL   SDPOS
             LDD   #-1
             BRA   SDPUSH
@@ -6047,16 +5912,24 @@ SDPOS:      LDD   #0
 SDPUSH:     PSHU  D
             RTS
 
-DTOS:       PULU  D
+; ------------------------------------------------------------
+; D>S  ( d -- n )
+; Drop the high cell of a double.
+; ------------------------------------------------------------
+DTOSW:      PULU  D                 ; drop high cell
             RTS
 
-DMAXW:      PULU  D
+; ------------------------------------------------------------
+; DMAX  ( d1 d2 -- d3 )
+; The greater of two signed doubles.
+; ------------------------------------------------------------
+DMAXW:      PULU  D                 ; d2 high
             STD   MSCR
-            PULU  D
+            PULU  D                 ; d2 low
             STD   MSCR2
-            PULU  D
+            PULU  D                 ; d1 high
             STD   MSCR3
-            PULU  D
+            PULU  D                 ; d1 low
             STD   MSCR4
             LDD   MSCR3
             CMPD  MSCR
@@ -6076,13 +5949,17 @@ DMXD1:      LDD   MSCR4
             PSHU  D
             RTS
 
-DMINW:      PULU  D
+; ------------------------------------------------------------
+; DMIN  ( d1 d2 -- d3 )
+; The lesser of two signed doubles.
+; ------------------------------------------------------------
+DMINW:      PULU  D                 ; d2 high
             STD   MSCR
-            PULU  D
+            PULU  D                 ; d2 low
             STD   MSCR2
-            PULU  D
+            PULU  D                 ; d1 high
             STD   MSCR3
-            PULU  D
+            PULU  D                 ; d1 low
             STD   MSCR4
             LDD   MSCR3
             CMPD  MSCR
@@ -6105,31 +5982,51 @@ DMND1:      LDD   MSCR4
 ; ============================================================
 ; SECTION 16: LOGIC / SHIFTS / ADDRESS ARITHMETIC
 ; ============================================================
-ANDW:       PULU  D
+; ------------------------------------------------------------
+; AND  ( x1 x2 -- x3 )
+; Bitwise AND.
+; ------------------------------------------------------------
+ANDW:       PULU  D                 ; x2
             ANDA  ,U
             ANDB  1,U
             STD   ,U
             RTS
 
-ORW:        PULU  D
+; ------------------------------------------------------------
+; OR  ( x1 x2 -- x3 )
+; Bitwise OR.
+; ------------------------------------------------------------
+ORW:        PULU  D                 ; x2
             ORA   ,U
             ORB   1,U
             STD   ,U
             RTS
 
-XORW:       PULU  D
+; ------------------------------------------------------------
+; XOR  ( x1 x2 -- x3 )
+; Bitwise exclusive OR.
+; ------------------------------------------------------------
+XORW:       PULU  D                 ; x2
             EORA  ,U
             EORB  1,U
             STD   ,U
             RTS
 
-INVERT:     LDD   ,U
+; ------------------------------------------------------------
+; INVERT  ( x1 -- x2 )
+; Ones complement.
+; ------------------------------------------------------------
+INVERTW:    LDD   ,U
             COMA
             COMB
             STD   ,U
             RTS
 
-LSHIFT:     PULU  D
+; ------------------------------------------------------------
+; LSHIFT  ( x1 u -- x2 )
+; Shift x1 left u bits (only the low byte of u is used).
+; ------------------------------------------------------------
+LSHIFTW:    PULU  D                 ; u
             STB   SHCNT
             LDD   ,U
 LSLOOP:     LDB   SHCNT
@@ -6140,7 +6037,11 @@ LSLOOP:     LDB   SHCNT
             BRA   LSLOOP
 LSDONE:     RTS
 
-RSHIFT:     PULU  D
+; ------------------------------------------------------------
+; RSHIFT  ( x1 u -- x2 )
+; Logical shift of x1 right u bits (only the low byte of u is used).
+; ------------------------------------------------------------
+RSHIFTW:    PULU  D                 ; u
             STB   SHCNT
 RSLOOP:     LDB   SHCNT
             BEQ   RSDONE
@@ -6150,31 +6051,61 @@ RSLOOP:     LDB   SHCNT
             BRA   RSLOOP
 RSDONE:     RTS
 
+; ------------------------------------------------------------
+; CELLS  ( n1 -- n2 )
+; Convert a cell count to address units (multiply by 2).
+; ------------------------------------------------------------
 CELLSW:     LDD   ,U
             ASLB
             ROLA
             STD   ,U
             RTS
 
-CELLPLUS:   LDD   ,U
+; ------------------------------------------------------------
+; CELL+  ( a-addr1 -- a-addr2 )
+; Add the size of a cell (2).
+; ------------------------------------------------------------
+CELLPLUSW:  LDD   ,U
             ADDD  #2
             STD   ,U
             RTS
 
+; ------------------------------------------------------------
+; CHARS  ( n1 -- n2 )
+; Convert a character count to address units. A character is one
+; address unit, so nothing is done.
+; ------------------------------------------------------------
 CHARSW:     RTS
 
-CHARPLUS:   LDD   ,U
+; ------------------------------------------------------------
+; CHAR+  ( c-addr1 -- c-addr2 )
+; Add the size of a character (1).
+; ------------------------------------------------------------
+CHARPLUSW:  LDD   ,U
             ADDD  #1
             STD   ,U
             RTS
 
+; ------------------------------------------------------------
+; ALIGN  ( -- )
+; Nothing to do: the 6809 has no alignment restrictions.
+; ------------------------------------------------------------
 ALIGNW:     RTS
+
+; ------------------------------------------------------------
+; ALIGNED  ( addr -- a-addr )
+; Nothing to do: the 6809 has no alignment restrictions.
+; ------------------------------------------------------------
 ALIGNEDW:   RTS
 
 ; ============================================================
 ; SECTION 17: COMPARISON
 ; ============================================================
-EQUALW:     PULU  D
+; ------------------------------------------------------------
+; =  ( x1 x2 -- flag )
+; True if x1 equals x2.
+; ------------------------------------------------------------
+EQUALW:     PULU  D                 ; x2
             CMPD  ,U
             BEQ   EQTRUE
             LDD   #FALSEV
@@ -6184,7 +6115,11 @@ EQTRUE:     LDD   #TRUEV
             STD   ,U
             RTS
 
-LESSW:      PULU  D
+; ------------------------------------------------------------
+; <  ( n1 n2 -- flag )
+; True if n1 is less than n2 (signed).
+; ------------------------------------------------------------
+LESSW:      PULU  D                 ; n2
             STD   MSCR
             LDD   ,U
             CMPD  MSCR
@@ -6196,7 +6131,11 @@ LTTRUE:     LDD   #TRUEV
             STD   ,U
             RTS
 
-GREATERW:   PULU  D
+; ------------------------------------------------------------
+; >  ( n1 n2 -- flag )
+; True if n1 is greater than n2 (signed).
+; ------------------------------------------------------------
+GREATERW:   PULU  D                 ; n2
             STD   MSCR
             LDD   ,U
             CMPD  MSCR
@@ -6208,7 +6147,11 @@ GTTRUE:     LDD   #TRUEV
             STD   ,U
             RTS
 
-ZEROEQ:     LDD   ,U
+; ------------------------------------------------------------
+; 0=  ( x -- flag )
+; True if x is zero.
+; ------------------------------------------------------------
+ZEROEQW:    LDD   ,U                ; x
             BEQ   ZEQTRUE
             LDD   #FALSEV
             STD   ,U
@@ -6217,7 +6160,11 @@ ZEQTRUE:    LDD   #TRUEV
             STD   ,U
             RTS
 
-ZEROLT:     LDD   ,U
+; ------------------------------------------------------------
+; 0<  ( n -- flag )
+; True if n is negative.
+; ------------------------------------------------------------
+ZEROLTW:    LDD   ,U                ; n
             BMI   ZLTTRUE
             LDD   #FALSEV
             STD   ,U
@@ -6226,7 +6173,11 @@ ZLTTRUE:    LDD   #TRUEV
             STD   ,U
             RTS
 
-ULESSW:     PULU  D
+; ------------------------------------------------------------
+; U<  ( u1 u2 -- flag )
+; True if u1 is less than u2 (unsigned).
+; ------------------------------------------------------------
+ULESSW:     PULU  D                 ; u2
             STD   MSCR
             LDD   ,U
             CMPD  MSCR
@@ -6238,21 +6189,33 @@ ULTRUE:     LDD   #TRUEV
             STD   ,U
             RTS
 
-NOTEQUAL:   JSR   EQUALW
+; ------------------------------------------------------------
+; <>  ( x1 x2 -- flag )
+; True if x1 is not equal to x2 (= then invert).
+; ------------------------------------------------------------
+NOTEQUALW:  JSR   EQUALW
             LDD   ,U
             COMA
             COMB
             STD   ,U
             RTS
 
-ZERONE:     JSR   ZEROEQ
+; ------------------------------------------------------------
+; 0<>  ( x -- flag )
+; True if x is non-zero (0= then invert).
+; ------------------------------------------------------------
+ZERONEW:    JSR   ZEROEQW
             LDD   ,U
             COMA
             COMB
             STD   ,U
             RTS
 
-ZEROGT:     LDD   ,U
+; ------------------------------------------------------------
+; 0>  ( n -- flag )
+; True if n is greater than zero.
+; ------------------------------------------------------------
+ZEROGTW:    LDD   ,U                ; n
             BEQ   ZGTFALSE
             BMI   ZGTFALSE
             LDD   #TRUEV
@@ -6262,7 +6225,11 @@ ZGTFALSE:   LDD   #FALSEV
             STD   ,U
             RTS
 
-UGREATER:   PULU  D
+; ------------------------------------------------------------
+; U>  ( u1 u2 -- flag )
+; True if u1 is greater than u2 (unsigned).
+; ------------------------------------------------------------
+UGREATERW:  PULU  D                 ; u2
             STD   MSCR
             LDD   ,U
             CMPD  MSCR
@@ -6275,9 +6242,14 @@ UGFALSE:    LDD   #FALSEV
             STD   ,U
             RTS
 
-WITHINW:    PULU  D
+; ------------------------------------------------------------
+; WITHIN  ( n1 n2 n3 -- flag )
+; True if n2 <= n1 < n3, evaluated as the unsigned comparison (n1 -
+; n2) U< (n3 - n2), so it also works for ranges that wrap.
+; ------------------------------------------------------------
+WITHINW:    PULU  D                 ; n3
             STD   MSCR
-            PULU  D
+            PULU  D                 ; n2
             STD   MSCR2
             LDD   ,U
             SUBD  MSCR2
@@ -6295,13 +6267,17 @@ WITHTRUE:   LDD   #TRUEV
             STD   ,U
             RTS
 
-DEQUAL:     PULU  D
+; ------------------------------------------------------------
+; D=  ( d1 d2 -- flag )
+; True if the doubles are equal.
+; ------------------------------------------------------------
+DEQUALW:    PULU  D                 ; d2 high
             STD   MSCR
-            PULU  D
+            PULU  D                 ; d2 low
             STD   MSCR2
-            PULU  D
+            PULU  D                 ; d1 high
             STD   MSCR3
-            PULU  D
+            PULU  D                 ; d1 low
             CMPD  MSCR2
             BNE   DEQFALSE
             LDD   MSCR3
@@ -6314,13 +6290,18 @@ DEQFALSE:   LDD   #FALSEV
             PSHU  D
             RTS
 
-DLESSW:     PULU  D
+; ------------------------------------------------------------
+; D<  ( d1 d2 -- flag )
+; True if d1 is less than d2 (signed): compare the high cells signed,
+; then the low cells unsigned.
+; ------------------------------------------------------------
+DLESSW:     PULU  D                 ; d2 high
             STD   MSCR
-            PULU  D
+            PULU  D                 ; d2 low
             STD   MSCR2
-            PULU  D
+            PULU  D                 ; d1 high
             STD   MSCR3
-            PULU  D
+            PULU  D                 ; d1 low
             STD   MSCR4
             LDD   MSCR3
             CMPD  MSCR
@@ -6336,13 +6317,17 @@ DLTRUE:     LDD   #TRUEV
             PSHU  D
             RTS
 
-DULESSW:    PULU  D
+; ------------------------------------------------------------
+; DU<  ( ud1 ud2 -- flag )
+; True if ud1 is less than ud2 (unsigned).
+; ------------------------------------------------------------
+DULESSW:    PULU  D                 ; ud2 high
             STD   MSCR
-            PULU  D
+            PULU  D                 ; ud2 low
             STD   MSCR2
-            PULU  D
+            PULU  D                 ; ud1 high
             STD   MSCR3
-            PULU  D
+            PULU  D                 ; ud1 low
             STD   MSCR4
             LDD   MSCR3
             CMPD  MSCR
@@ -6361,74 +6346,98 @@ DULTRUE:    LDD   #TRUEV
 ; ============================================================
 ; SECTION 18: MEMORY (fetch/store, block ops)
 ; ============================================================
-STOREW:     PULU  X
-            PULU  D
+; ------------------------------------------------------------
+; !  ( x a-addr -- )
+; Store x at a-addr.
+; ------------------------------------------------------------
+STOREW:     PULU  X                 ; a-addr
+            PULU  D                 ; x
             STD   ,X
             RTS
 
-CFETCH:     PULU  X
+; ------------------------------------------------------------
+; C@  ( c-addr -- char )
+; Fetch the byte at c-addr.
+; ------------------------------------------------------------
+CFETCHW:    PULU  X                 ; c-addr
             LDB   ,X
             CLRA
             PSHU  D
             RTS
 
-CSTOREW:    PULU  X
-            PULU  D
+; ------------------------------------------------------------
+; C!  ( char c-addr -- )
+; Store the low byte of char at c-addr.
+; ------------------------------------------------------------
+CSTOREW:    PULU  X                 ; c-addr
+            PULU  D                 ; char
             STB   ,X
             RTS
 
-PLUSSTORE:  PULU  X
-            PULU  D
+; ------------------------------------------------------------
+; +!  ( n a-addr -- )
+; Add n to the cell at a-addr.
+; ------------------------------------------------------------
+PLUSSTOREW: PULU  X                 ; a-addr
+            PULU  D                 ; n
             ADDD  ,X
             STD   ,X
             RTS
 
-DFETCH:     PULU  X                 ; BUG FIX (runner, section 18): standard
-            LDD   2,X               ; 2@ ( a -- x1 x2 ) has x2 at a and x1 at
-            PSHU  D                 ; a+cell. Was the other way round (it
-            LDD   ,X                ; round-tripped with 2! but a memory
-            PSHU  D                 ; image 5,6 gave 5 6 not 6 5). Now x1
-            RTS                     ; (high addr) deep, x2 (low addr) on top.
+; ------------------------------------------------------------
+; 2@  ( a-addr -- x1 x2 )
+; Fetch the cell pair at a-addr: x2 from a-addr (on top) and x1 from
+; a-addr+2.
+; ------------------------------------------------------------
+DFETCHW:    PULU  X                 ; a-addr. See bugfix: DFETCHW.1
+            LDD   2,X
+            PSHU  D
+            LDD   ,X
+            PSHU  D
+            RTS
 
-DSTORE:     PULU  X                 ; 2! ( x1 x2 a -- ): x2 -> a, x1 -> a+2
-            PULU  D
+; ------------------------------------------------------------
+; 2!  ( x1 x2 a-addr -- )
+; Store the cell pair: x2 at a-addr and x1 at a-addr+2.
+; ------------------------------------------------------------
+DSTOREW:    PULU  X                 ; a-addr
+            PULU  D                 ; x2
             STD   ,X
-            PULU  D
+            PULU  D                 ; x1
             STD   2,X
             RTS
 
-CMOVEW:     PULU  D
+; ------------------------------------------------------------
+; CMOVE  ( c-addr1 c-addr2 u -- )
+; Copy u bytes from c-addr1 to c-addr2, starting at the low addresses.
+; ------------------------------------------------------------
+CMOVEW:     PULU  D                 ; u
             STD   MVCNT
-            PULU  D
+            PULU  D                 ; c-addr2
             STD   MVDST
-            PULU  D
+            PULU  D                 ; c-addr1
             STD   MVSRC
             LDX   MVSRC
             LDY   MVDST
 CMVLOOP:    LDD   MVCNT
             BEQ   CMDONE
-            SUBD  #1                ; BUG FIX: was after the byte copy below -
-            STD   MVCNT             ; LDA ,X+ (needed for the byte itself)
-                                    ; clobbers A, D's high byte, corrupting the
-                                    ; count before SUBD used it. Unlike FILL,
-                                    ; there's no spare 16-bit register to keep
-                                    ; the count in instead - X and Y are both
-                                    ; already committed to the source and
-                                    ; destination addresses - so the fix here is
-                                    ; reordering: decrement and store while D
-                                    ; still holds the true count, before the
-                                    ; copy is free to clobber A. Confirmed via
-                                    ; MAME debugger: the loop never terminated.
+            SUBD  #1                ; count - 1. See bugfix: CMOVEW.1
+            STD   MVCNT
             LDA   ,X+
             STA   ,Y+
             BRA   CMVLOOP
 CMDONE:     RTS
 
-CMOVEGT:    PULU  D
+; ------------------------------------------------------------
+; CMOVE>  ( c-addr1 c-addr2 u -- )
+; Copy u bytes from c-addr1 to c-addr2, starting at the high
+; addresses.
+; ------------------------------------------------------------
+CMOVEGTW:   PULU  D                 ; u
             STD   MVCNT
-            PULU  D
+            PULU  D                 ; c-addr2
             STD   MVDST
-            PULU  D
+            PULU  D                 ; c-addr1
             STD   MVSRC
             LDD   MVCNT
             BEQ   CGDONE
@@ -6448,11 +6457,16 @@ CGLOOP:     LDA   ,X
             BNE   CGLOOP
 CGDONE:     RTS
 
-MOVEW:      PULU  D
+; ------------------------------------------------------------
+; MOVE  ( addr1 addr2 u -- )
+; Copy u bytes from addr1 to addr2, choosing CMOVE or CMOVE> so that
+; overlapping regions are handled correctly.
+; ------------------------------------------------------------
+MOVEW:      PULU  D                 ; u
             STD   MVCNT
-            PULU  D
+            PULU  D                 ; addr2
             STD   MVDST
-            PULU  D
+            PULU  D                 ; addr1
             STD   MVSRC
             LDD   MVDST
             CMPD  MVSRC
@@ -6463,7 +6477,7 @@ MOVEW:      PULU  D
             PSHU  D
             LDD   MVCNT
             PSHU  D
-            JMP   CMOVEGT
+            JMP   CMOVEGTW
 MVLOW:      LDD   MVSRC
             PSHU  D
             LDD   MVDST
@@ -6472,29 +6486,16 @@ MVLOW:      LDD   MVSRC
             PSHU  D
             JMP   CMOVEW
 
-FILLW:      PULU  D
+; ------------------------------------------------------------
+; FILL  ( c-addr u char -- )
+; Store char in each of u bytes starting at c-addr.
+; ------------------------------------------------------------
+FILLW:      PULU  D                 ; char
             STB   FILLCHR
-            PULU  D
-            TFR   D,Y               ; BUG FIX: was STD FILLCNT/LDD FILLCNT each
-                                    ; iteration - and inside the loop, LDA
-                                    ; FILLCHR (needed for the fill byte) clobbers
-                                    ; A, which is D's high byte, corrupting the
-                                    ; count that SUBD #1 then decremented from.
-                                    ; The high byte took on the fill character's
-                                    ; value instead of the count's real high
-                                    ; byte, so the count almost never reached
-                                    ; zero at the intended point - FILL ran far
-                                    ; past the requested length. Keeping the
-                                    ; count in Y instead removes the conflict
-                                    ; entirely (Y is untouched by loading the
-                                    ; fill character into A) and removes the
-                                    ; per-iteration memory round-trip - also
-                                    ; addresses the redundant scratch usage
-                                    ; flagged alongside this bug. Confirmed via
-                                    ; MAME debugger.
-            PULU  D
-            TFR   D,X               ; address, kept directly in X rather than
-                                    ; round-tripping through FILLADDR too
+            PULU  D                 ; u
+            TFR   D,Y               ; Y = count. See bugfix: FILLW.1
+            PULU  D                 ; c-addr
+            TFR   D,X               ; X = address
 FILLOOP:    CMPY  #0
             BEQ   FDONE
             LDA   FILLCHR
@@ -6503,6 +6504,10 @@ FILLOOP:    CMPY  #0
             BRA   FILLOOP
 FDONE:      RTS
 
+; ------------------------------------------------------------
+; ERASE  ( c-addr u -- )
+; Fill u bytes starting at c-addr with zero.
+; ------------------------------------------------------------
 ERASEW:     LDD   #0
             PSHU  D
             JMP   FILLW
@@ -6510,6 +6515,17 @@ ERASEW:     LDD   #0
 ; ============================================================
 ; SECTION 19: STRING WORDS
 ; ============================================================
+; ------------------------------------------------------------
+; Run-time part of S". The counted string follows the call: push its
+; address and length and skip over it.
+; DOSTR   ( -- c-addr u )
+;    Inputs:
+;        return address on S points at the count byte
+;    Outputs:
+;        c-addr and u on the data stack; execution resumes after the
+;        string
+;    Registers: RegB, RegD and RegX changed.
+; ------------------------------------------------------------
 DOSTR:      PULS  X
             LDB   ,X
             LEAX  1,X
@@ -6520,22 +6536,20 @@ DOSTR:      PULS  X
             PSHS  X
             RTS
 
-SQUOTE:     LDD   #34
+; ------------------------------------------------------------
+; S"  ( "ccc<quote>" -- c-addr u )
+; Parse up to the closing quote. When compiling, compile DOSTR
+; followed by the counted string. When interpreting, copy the string
+; to PAD and return its address and length.
+; A 3-byte gap is reserved at CODEHERE while WORD parses, so that the
+; compiled JSR DOSTR does not overwrite the text being staged.
+; ------------------------------------------------------------
+SQUOTEW:    LDD   #34
             PSHU  D
-            LDD   CODEHERE          ; BUG FIX (caught while verifying the WORD
-            ADDD  #3                ; redesign above): reserve 3 bytes ahead of
-            STD   CODEHERE          ; where WORD is about to write its parsed
-                                    ; text. Without this, the compiled path
-                                    ; below would compile "JSR DOSTR" (3 bytes)
-                                    ; directly at CODEHERE - the same address
-                                    ; WORD just used - overwriting the first 2
-                                    ; characters of the very text being staged,
-                                    ; before the copy loop even runs. Reserving
-                                    ; the gap first means the text lands exactly
-                                    ; where it needs to end up, and the trampoline
-                                    ; safely goes in front of it instead of on
-                                    ; top of it.
-            JSR   WORD
+            LDD   CODEHERE          ; reserve 3 bytes
+            ADDD  #3                ; See bugfix: SQUOTEW.1
+            STD   CODEHERE
+            JSR   WORDW
             PULU  X
             LDA   ,X
             STA   SCNT
@@ -6563,37 +6577,12 @@ SQCPY:      LDA   ,Y+
 SQEND:      STX   CODEHERE
             RTS
 
-SQINTERP:                           ; REDESIGN: was a fixed "LDX #SIBUF" here and at SQIEND -
-                                    ; SIBUF was a dedicated, fixed 32-byte buffer,
-                                    ; capping every interpreted S" string at 32
-                                    ; characters and (worse) shared identically
-                                    ; by every S" call, so a second S" call before
-                                    ; the first string was actually used (e.g.
-                                    ; registering two REPLACES strings, or a
-                                    ; SUBSTITUTE template argument) silently
-                                    ; overwrote the first - confirmed via MAME
-                                    ; testing and traced precisely earlier this
-                                    ; session. Retired per user's own follow-up
-                                    ; testing/design decision: rather than give
-                                    ; REPLACES its own dedicated copy-on-register
-                                    ; storage, wrap each string in its own colon
-                                    ; definition for stable storage instead - but
-                                    ; that still leaves interpreted S" itself
-                                    ; capped at SIBUF's 32 characters for any
-                                    ; single string. Now computes PAD's current
-                                    ; address fresh via PADW (dynamic - depends
-                                    ; on CODEHERE, per ANS's own transient-region
-                                    ; semantics) and writes there instead, giving
-                                    ; interpreted S" access to PAD's full
-                                    ; PADMINSIZE-character region (128, comfortably
-                                    ; above the old 32-character SIBUF limit) -
-                                    ; SIBUF itself is now unused and retired (see
-                                    ; the GLOBALS layout notes above).
+            ; Interpreting: copy the string to PAD. Original comment: shadow
+            ; SQUOTEW.2.
+SQINTERP:
             JSR   PADW
             PULU  X
-            STX   MSCR4             ; save PAD's own address - X gets advanced
-                                    ; by the copy loop below, need the
-                                    ; original back for the return value
+            STX   MSCR4             ; save PAD address
             LDY   SPTR
             LDB   SCNT
             BEQ   SQIEND
@@ -6608,6 +6597,17 @@ SQIEND:     LDX   MSCR4
             PSHU  D
             RTS
 
+; ------------------------------------------------------------
+; Run-time part of ."  The counted string follows the call: TYPE it
+; and skip over it.
+; DOTSTR
+;    Inputs:
+;        return address on S points at the count byte
+;    Outputs:
+;        string displayed; execution resumes after the string
+;    Registers: RegB, RegD and RegX changed; SPTR and SCNT used as
+;        scratch.
+; ------------------------------------------------------------
 DOTSTR:     PULS  X
             LDB   ,X
             LEAX  1,X
@@ -6620,16 +6620,20 @@ DOTSTR:     PULS  X
             PSHU  X
             LDD   SCNT
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             RTS
 
-DOTQUOTE:   LDD   #34
+; ------------------------------------------------------------
+; ."  ( "ccc<quote>" -- )
+; Compile DOTSTR followed by the string up to the closing quote as a
+; counted string.
+; ------------------------------------------------------------
+DOTQUOTEW:  LDD   #34
             PSHU  D
-            LDD   CODEHERE          ; BUG FIX: same class as SQUOTE above -
-            ADDD  #3                ; reserve 3 bytes ahead of WORD's write so
-            STD   CODEHERE          ; the trampoline compiled below doesn't
-                                    ; overwrite the text it's about to stage.
-            JSR   WORD
+            LDD   CODEHERE          ; reserve 3 bytes
+            ADDD  #3                ; See bugfix: DOTQUOTEW.1
+            STD   CODEHERE
+            JSR   WORDW
             PULU  X
             LDA   ,X
             STA   SCNT
@@ -6654,9 +6658,13 @@ DQCPY:      LDA   ,Y+
 DQEND:      STX   CODEHERE
             RTS
 
-TYPE:       PULU  D
+; ------------------------------------------------------------
+; TYPE  ( c-addr u -- )
+; Display u characters starting at c-addr, through EMIT.
+; ------------------------------------------------------------
+TYPEW:      PULU  D                 ; u
             STD   TYPECNT
-            PULU  D
+            PULU  D                 ; c-addr
             STD   TYPEADDR
 TYLOOP:     LDD   TYPECNT
             BEQ   TYDONE
@@ -6666,14 +6674,18 @@ TYLOOP:     LDD   TYPECNT
             TFR   A,B
             CLRA
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             LDD   TYPECNT
             SUBD  #1
             STD   TYPECNT
             BRA   TYLOOP
 TYDONE:     RTS
 
-COUNT:      PULU  X
+; ------------------------------------------------------------
+; COUNT  ( c-addr1 -- c-addr2 u )
+; Convert a counted string to its address and length.
+; ------------------------------------------------------------
+COUNTW:     PULU  X                 ; c-addr1
             LDB   ,X
             CLRA
             STD   MSCR
@@ -6683,23 +6695,32 @@ COUNT:      PULU  X
             PSHU  D
             RTS
 
+; ------------------------------------------------------------
+; CHAR  ( "name" -- char )
+; Parse the next blank-delimited name and return its first character.
+; ------------------------------------------------------------
 CHARW:      LDD   #32
             PSHU  D
-            JSR   WORD
+            JSR   WORDW
             PULU  X
             LDB   1,X
             CLRA
             PSHU  D
             RTS
 
-BRACKCHAR:  LDD   STATE
+; ------------------------------------------------------------
+; [CHAR]  ( "name" -- )
+; Compile the first character of the next name as a literal. THROW -14
+; if not compiling.
+; ------------------------------------------------------------
+BRACKCHARW: LDD   STATE
             BNE   BCSTOK
-            LDD   #-14
+            LDD   #-14              ; -14
             PSHU  D
             JSR   THROW
 BCSTOK:     LDD   #32
             PSHU  D
-            JSR   WORD
+            JSR   WORDW
             PULU  X
             LDB   1,X
             CLRA
@@ -6707,7 +6728,13 @@ BCSTOK:     LDD   #32
             JSR   LITERALW
             RTS
 
-PARSEW:     PULU  D
+; ------------------------------------------------------------
+; PARSE  ( char "ccc<char>" -- c-addr u )
+; Parse the input up to the delimiter char (which is consumed) and
+; return the parsed text. A >IN beyond the end of the input is treated
+; as an exhausted input (empty result).
+; ------------------------------------------------------------
+PARSEW:     PULU  D                 ; char
             STB   PDELIM
             LDD   TOIN
             LDX   SRCADDR
@@ -6715,9 +6742,7 @@ PARSEW:     PULU  D
             STX   PSTART
             LDD   SRCLEN
             SUBD  TOIN
-            LBLO  PNEMPTY           ; BUG FIX: same >IN-overshoot guard as WORD
-                                    ; - shares PNEMPTY (sets >IN to SRCLEN,
-                                    ; returns end-of-input addr and length 0).
+            LBLO  PNEMPTY           ; See bugfix: PARSEW.1
             TFR   D,Y
             LDD   #0
             STD   PLEN
@@ -6743,12 +6768,17 @@ PDONE:      TFR   X,D
             PSHU  D
             RTS
 
-PARSENAME:  LDD   TOIN
+; ------------------------------------------------------------
+; PARSE-NAME  ( "<spaces>name<space>" -- c-addr u )
+; Skip leading blanks, then parse a blank-delimited name and return
+; it. An empty result is returned at the end of the input.
+; ------------------------------------------------------------
+PARSENAMEW: LDD   TOIN
             LDX   SRCADDR
             LEAX  D,X
             LDD   SRCLEN
             SUBD  TOIN
-            BLO   PNEMPTY           ; BUG FIX: same >IN-overshoot guard as WORD
+            BLO   PNEMPTY           ; See bugfix: PARSENAMEW.1
             TFR   D,Y
 PNSKIP:     CMPY  #0
             BEQ   PNEMPTY
@@ -6791,8 +6821,12 @@ PNEMPTY:    LDD   SRCLEN
             PSHU  D
             RTS
 
-SLASHSTRING:
-            PULU  D
+; ------------------------------------------------------------
+; /STRING  ( c-addr1 u1 n -- c-addr2 u2 )
+; Remove n characters from the start of the string.
+; ------------------------------------------------------------
+SLASHSTRINGW:
+            PULU  D                 ; n
             STD   MSCR
             PULU  D
             SUBD  MSCR
@@ -6804,7 +6838,11 @@ SLASHSTRING:
             PSHU  D
             RTS
 
-DASHTRAILING:
+; ------------------------------------------------------------
+; -TRAILING  ( c-addr u1 -- c-addr u2 )
+; Reduce the length to exclude trailing blanks.
+; ------------------------------------------------------------
+DASHTRAILINGW:
             LDD   ,U
             STD   PLEN
 DTLOOP:     LDD   PLEN
@@ -6823,13 +6861,19 @@ DTDONE:     LDD   PLEN
             STD   ,U
             RTS
 
-COMPAREW:   PULU  D
+; ------------------------------------------------------------
+; COMPARE  ( c-addr1 u1 c-addr2 u2 -- n )
+; Compare two strings byte by byte. n is -1, 0 or 1 as the first
+; string is less than, equal to or greater than the second; if one is
+; a prefix of the other, the shorter is less.
+; ------------------------------------------------------------
+COMPAREW:   PULU  D                 ; u2
             STD   CMPL2
-            PULU  D
+            PULU  D                 ; c-addr2
             STD   CMPA2
-            PULU  D
+            PULU  D                 ; u1
             STD   CMPL1
-            PULU  D
+            PULU  D                 ; c-addr1
             STD   CMPA1
             LDD   CMPL1
             CMPD  CMPL2
@@ -6865,13 +6909,19 @@ CMGT:       LDD   #1
             PSHU  D
             RTS
 
-SEARCHW:    PULU  D
+; ------------------------------------------------------------
+; SEARCH  ( c-addr1 u1 c-addr2 u2 -- c-addr3 u3 flag )
+; Search the string c-addr1 u1 for the string c-addr2 u2. If found,
+; return the address and remaining length of the match and true;
+; otherwise return the original string and false.
+; ------------------------------------------------------------
+SEARCHW:    PULU  D                 ; u2
             STD   SRCH2L
-            PULU  D
+            PULU  D                 ; c-addr2
             STD   SRCH2
-            PULU  D
+            PULU  D                 ; u1
             STD   SRCH1L
-            PULU  D
+            PULU  D                 ; c-addr1
             STD   SRCH1
             LDD   SRCH2L
             BEQ   SRCHNOTFOUND
@@ -6922,7 +6972,12 @@ SRCHNOTFOUND:
             PSHU  D
             RTS
 
-SNAMEW:     PULU  D
+; ------------------------------------------------------------
+; SNAME  ( xt -- c-addr u | 0 0 )
+; Find the name of the word whose xt is given by searching the
+; dictionary from LATEST. Return the name or two zeros if not found.
+; ------------------------------------------------------------
+SNAMEW:     PULU  D                 ; xt
             STD   SNTARGET
             LDD   LATEST
             STD   SNXT
@@ -6965,101 +7020,81 @@ SNNOTFOUND: LDD   #0
             PSHU  D
             RTS
 
-UNESCAPEW:  PULU  D                 ; BUG FIX: was PULU D/STD UESRCLEN (storing
-            STD   UEDST             ; the popped dest-addr into the SOURCE-
-                                    ; length variable), then LDD ,U (a PEEK, not
-                                    ; a pop) into BOTH UEADDR and UEDST - so the
-                                    ; real source length was misread as an
-                                    ; address, the real source address was never
-                                    ; popped at all, and the true destination
-                                    ; address never reached UEDST. Correct
-                                    ; ANS order is ( c-addr1 u1 c-addr2 -- ):
-                                    ; c-addr2 (dest) is on top, popped first.
-            PULU  D                 ; next: u1 (source length)
+; ------------------------------------------------------------
+; UNESCAPE  ( c-addr1 u1 c-addr2 -- c-addr2 u2 )
+; Copy the string c-addr1 u1 to c-addr2, doubling every "%" so that
+; SUBSTITUTE turns it back into the original. u2 is the length of the
+; result.
+; ------------------------------------------------------------
+UNESCAPEW:  PULU  D                 ; c-addr2 (destination)
+            STD   UEDST             ; See bugfix: UNESCAPEW.1
+            PULU  D                 ; u1
             STD   UESRCLEN
-            PULU  D                 ; next: c-addr1 (source address)
+            PULU  D                 ; c-addr1
             STD   UEADDR
             LDD   #0
             STD   UEOUTLEN
             LDX   UEADDR
             LDY   UEDST
 
-            ; ALGORITHM REPLACED (caught by MAME testing after the
-            ; argument-order fix above): the entire body below used
-            ; to decode backslash escape sequences (\n, \t, \\, \") -
-            ; a plausible-looking but entirely wrong reading of what
-            ; ANS UNESCAPE does. Confirmed against the actual spec and
-            ; its canonical reference implementation (forth-standard.
-            ; org/standard/string/UNESCAPE and complang.tuwien.ac.at's
-            ; ANS Forth reference text): UNESCAPE has nothing to do
-            ; with backslash sequences at all - it replaces every '%'
-            ; character with two '%' characters, and nothing else, so
-            ; that a literal '%' in text survives an eventual
-            ; SUBSTITUTE pass unchanged ("If you pass a string through
-            ; UNESCAPE and then SUBSTITUTE, you get the original
-            ; string"). Every character that ISN'T '%' passes straight
-            ; through, one-for-one. Confirmed via MAME: doubling a
-            ; single '%' wasn't happening at all, and the returned
-            ; count didn't grow to reflect the added characters -
-            ; both are direct, expected consequences of this being the
-            ; wrong algorithm entirely, not a smaller bug within it.
+            ; Double every %; copy all other characters unchanged.
+            ; See bugfix: UNESCAPEW.2
 UELOOP:     LDD   UESRCLEN
             BEQ   UEDONE
             LDA   ,X+
             CMPA  #'%'
             BNE   UENOTPCT
-            LDB   #'%'              ; write the extra '%' first - the character
-            STB   ,Y+               ; itself still gets written once more below,
-                                    ; giving two '%' total for each one in the
-                                    ; source. Handles multiple '%' characters in
-                                    ; the same string correctly, since this runs
-                                    ; independently for each one the loop visits.
-UENOTPCT:   STA   ,Y+               ; write the actual character - always, for
-                                    ; every character, '%' or not
+            LDB   #'%'              ; extra % written first
+            STB   ,Y+
+UENOTPCT:   STA   ,Y+               ; write the character
             LDD   UESRCLEN
             SUBD  #1
             STD   UESRCLEN
             BRA   UELOOP
-UEDONE:     TFR   Y,D               ; BUG FIX: was "LDD UEOUTLEN / STD ,U" -
-            SUBD  UEDST             ; overwriting whatever was left on top of
-            STD   UEOUTLEN          ; the stack rather than pushing both
-                                    ; required return values, and separately,
-                                    ; UEOUTLEN itself was never correctly
-                                    ; tracked by the old backslash-decoding
-                                    ; loop's own per-character bookkeeping in a
-                                    ; way that accounted for doubled '%'
-                                    ; characters. Now computed directly as the
-                                    ; final write pointer (Y) minus the
-                                    ; original destination address (UEDST) -
-                                    ; correct regardless of how many characters
-                                    ; were doubled, since it's derived from
-                                    ; where writing actually stopped rather than
-                                    ; incremented alongside it.
+UEDONE:     TFR   Y,D               ; See bugfix: UNESCAPEW.4
+            SUBD  UEDST             ; u2 = end - destination
+            STD   UEOUTLEN
             LDD   UEDST
             PSHU  D                 ; push c-addr2 (destination address)
             LDD   UEOUTLEN
             PSHU  D                 ; push u2 (actual unescaped length)
             RTS
 
-; REPLACES/SUBSTITUTE - single-slot simplified version, per
-; the explicit scoping-down discussed in the source conversation
-REPLACESW:  PULU  D
+; ------------------------------------------------------------
+; REPLACES  ( c-addr1 u1 c-addr2 u2 -- )
+; Register the substitution text c-addr1 u1 for the name c-addr2 u2.
+; Only one registration is kept (a single slot); a new call replaces
+; the previous one. The strings are not copied.
+; Original comment: shadow REPLACESW.0.
+; ------------------------------------------------------------
+REPLACESW:  PULU  D                 ; u2
             STD   REPLNLEN
-            PULU  D
+            PULU  D                 ; c-addr2
             STD   REPLNAME
-            PULU  D
+            PULU  D                 ; u1
             STD   REPLVLEN
-            PULU  D
+            PULU  D                 ; c-addr1
             STD   REPLVAL
             RTS
 
+; ------------------------------------------------------------
+; Append bytes to the SUBSTITUTE output buffer. THROW -1 if the buffer
+; would overflow.
+; SUBCOPY
+;    Inputs:
+;        RegD = byte count, RegX = source address
+;    Outputs:
+;        bytes appended at SUBWPTR; SUBOUTLEN and SUBWPTR advanced
+;    Registers: RegA, RegD, RegX and RegY changed; SUBCOPYCNT and
+;        SUBCOPYSRC used.
+; ------------------------------------------------------------
 SUBCOPY:    STD   SUBCOPYCNT
             STX   SUBCOPYSRC
 SUBCPLP:    LDD   SUBCOPYCNT
             BEQ   SUBCPDONE
             LDD   SUBOUTLEN
             CMPD  SUBDESTCAP
-            LBHS  SUBOVERFLOW       ; was BHS - out of short-branch range
+            LBHS  SUBOVERFLOW       ; buffer full: THROW -1
             LDX   SUBCOPYSRC
             LDA   ,X+
             STX   SUBCOPYSRC
@@ -7075,36 +7110,25 @@ SUBCPLP:    LDD   SUBCOPYCNT
             BRA   SUBCPLP
 SUBCPDONE:  RTS
 
-SUBSTITUTEW:                        ; REWRITE: was a plain substring search-and-replace on
-            ; the bare registered name (via SEARCHW), which found
-            ; "girl" and replaced only that span, leaving surrounding
-            ; "%...%" delimiters untouched in the output - and never
-            ; returned the substitution count ANS requires as a
-            ; third stack item. Per the ANS spec (forth-standard.org/
-            ; standard/string/SUBSTITUTE), SUBSTITUTE must scan for
-            ; text between '%' (ASCII $25) delimiter pairs
-            ; specifically: "%%" collapses to a single '%' (count
-            ; unchanged); a name matching the REPLACES registration
-            ; has the ENTIRE "%name%" span - delimiters included -
-            ; replaced by the substitution text (count incremented);
-            ; a non-matching name is passed through unchanged,
-            ; delimiters and all (count unchanged); an unpaired
-            ; trailing '%' with no closing delimiter passes the
-            ; residue through unchanged. Confirmed via MAME testing
-            ; against a real template. GLOBALS is fully packed
-            ; (256/256), so this reuses MSCR/MSCR2/MSCR3/MSCR4
-            ; (confirmed untouched by SUBCOPY) rather than adding
-            ; dedicated cells: MSCR = current read position, MSCR2 =
-            ; running substitution count, MSCR3/MSCR4 = local scratch
-            ; per %-pair found. Reuses the existing COMPAREW for name
-            ; matching rather than a new comparison loop.
-            PULU  D
+; ------------------------------------------------------------
+; SUBSTITUTE  ( c-addr1 u1 c-addr2 u2 -- c-addr2 u3 n )
+; Copy the template c-addr1 u1 to the buffer c-addr2 u2, replacing
+; each %name% that matches the name registered by REPLACES with its
+; text. "%%" becomes a single "%"; a %name% that does not match, and
+; an unpaired "%", are copied unchanged. u3 is the output length and n
+; the number of substitutions. THROW -1 if the output does not fit.
+; Scratch: MSCR = read position, MSCR2 = substitution count, MSCR3 and
+; MSCR4 = temporaries for each %-pair. Original comment: shadow
+; SUBSTITUTEW.1.
+; ------------------------------------------------------------
+SUBSTITUTEW:
+            PULU  D                 ; u2
             STD   SUBDESTCAP
-            PULU  D
+            PULU  D                 ; c-addr2
             STD   SUBDESTADR
-            PULU  D
+            PULU  D                 ; u1
             STD   SUBSRCLEN
-            PULU  D
+            PULU  D                 ; c-addr1
             STD   SUBSRCADR
 
             LDY   SUBDESTADR
@@ -7199,7 +7223,8 @@ SUBHASNAME: LDD   MSCR
             STD   MSCR
             LBRA  SUBSCAN
 
-SUBNOMATCH:                         ; not a registered name - pass %name% through unchanged
+            ; Not a registered name: pass %name% through unchanged.
+SUBNOMATCH:
             LDD   MSCR
             LDX   SUBSRCADR
             LEAX  D,X
@@ -7220,6 +7245,7 @@ SUBSDONE:   LDX   SUBDESTADR
             PSHU  D
             RTS
 
+            ; The output buffer is too small: THROW -1.
 SUBOVERFLOW:
             LDD   #-1
             PSHU  D
@@ -7228,21 +7254,35 @@ SUBOVERFLOW:
 ; ============================================================
 ; SECTION 20: NUMERIC OUTPUT (pictured + direct)
 ; ============================================================
-LTNUM:      JSR   PADW
+; ------------------------------------------------------------
+; <#  ( -- )
+; Start a pictured numeric output string: HLD is set to the end of
+; PAD. The string is built backwards from there.
+; ------------------------------------------------------------
+LTNUMW:     JSR   PADW
             PULU  D
             STD   HLD
             RTS
 
-HOLD:       PULU  D
+; ------------------------------------------------------------
+; HOLD  ( char -- )
+; Add char to the front of the pictured numeric output string.
+; ------------------------------------------------------------
+HOLDW:      PULU  D                 ; char
             LDX   HLD
             LEAX  -1,X
             STX   HLD
             STB   ,X
             RTS
 
-HOLDS:      PULU  D
+; ------------------------------------------------------------
+; HOLDS  ( c-addr u -- )
+; Add the string c-addr u to the front of the pictured numeric output
+; string.
+; ------------------------------------------------------------
+HOLDSW:     PULU  D                 ; u
             STD   HSLEN
-            PULU  D
+            PULU  D                 ; c-addr
             STD   HSADDR
 HSLOOP:     LDD   HSLEN
             BEQ   HSDONE
@@ -7255,13 +7295,18 @@ HSLOOP:     LDD   HSLEN
             TFR   A,B
             CLRA
             PSHU  D
-            JSR   HOLD
+            JSR   HOLDW
             BRA   HSLOOP
 HSDONE:     RTS
 
-NUMSIGN:    PULU  D
+; ------------------------------------------------------------
+; #  ( ud1 -- ud2 )
+; Divide ud1 by BASE, add the remainder as a digit to the pictured
+; numeric output string, and leave the quotient ud2.
+; ------------------------------------------------------------
+NUMSIGNW:   PULU  D                 ; ud1 high
             STD   UDHI
-            PULU  D
+            PULU  D                 ; ud1 low
             STD   UDLO
             JSR   UDDIGIT
             LDA   REM
@@ -7273,13 +7318,23 @@ NDIGIT:     ADDA  #'0'
 NHOLD:      TFR   A,B
             CLRA
             PSHU  D
-            JSR   HOLD
+            JSR   HOLDW
             LDD   UDLO
             PSHU  D
             LDD   UDHI
             PSHU  D
             RTS
 
+; ------------------------------------------------------------
+; Divide the unsigned double UDHI:UDLO by BASE (restoring division, 32
+; iterations). Only the low byte of BASE is used.
+; UDDIGIT
+;    Inputs:
+;        UDHI:UDLO = dividend
+;    Outputs:
+;        UDHI:UDLO = quotient, REM = remainder
+;    Registers: RegA and RegB changed; DCNT used as the loop counter.
+; ------------------------------------------------------------
 UDDIGIT:    CLR   REM
             LDB   #32
             STB   DCNT
@@ -7298,43 +7353,37 @@ UDNEXT:     DEC   DCNT
             BNE   UDDLOOP
             RTS
 
-NUMSIGNS:   JSR   NUMSIGN
+; ------------------------------------------------------------
+; #S  ( ud -- 0 0 )
+; Convert digits with # until the quotient is zero (at least one digit
+; is produced).
+; ------------------------------------------------------------
+NUMSIGNSW:  JSR   NUMSIGNW
             LDD   UDHI
-            BNE   NUMSIGNS
+            BNE   NUMSIGNSW
             LDD   UDLO
-            BNE   NUMSIGNS
+            BNE   NUMSIGNSW
             RTS
 
-SIGN:       PULU  D
-            TSTA                    ; BUG FIX: was a bare "BPL SIGNDONE" right
-                                    ; after PULU - PULU doesn't affect condition
-                                    ; codes on genuine 6809 (same class as STOD's
-                                    ; own fix elsewhere in this file), so BPL was
-                                    ; testing whatever flags an unrelated, earlier
-                                    ; instruction happened to leave set, not the
-                                    ; sign of the value just popped. TSTA
-                                    ; explicitly tests D's high byte immediately
-                                    ; before the branch that depends on it. The
-                                    ; four existing internal callers (DOT/DOTR/
-                                    ; DDOT/DDOTR, i.e. . / .R / D. / D.R) were
-                                    ; accidentally unaffected - each happens to
-                                    ; run "LDD SAVEN" (a flag-setting load of the
-                                    ; true signed value) immediately before PSHU
-                                    ; D/JSR SIGN, and PSHU doesn't disturb flags -
-                                    ; but this was fragile, caller-side luck, not
-                                    ; SIGN being correct on its own. Confirmed via
-                                    ; MAME: a direct, standalone use of SIGN (not
-                                    ; preceded by an unrelated flag-setting
-                                    ; instruction) never added the minus sign for
-                                    ; either sign of input.
+; ------------------------------------------------------------
+; SIGN  ( n -- )
+; If n is negative, add a minus sign to the pictured numeric output
+; string.
+; ------------------------------------------------------------
+SIGNW:      PULU  D                 ; n
+            TSTA                    ; sign of n. See bugfix: SIGNW.1
             BPL   SIGNDONE
             LDD   #'-'
             PSHU  D
-            JSR   HOLD
+            JSR   HOLDW
 SIGNDONE:   RTS
 
-NUMGT:      PULU  D
-            PULU  D
+; ------------------------------------------------------------
+; #>  ( xd -- c-addr u )
+; Drop xd and return the pictured numeric output string.
+; ------------------------------------------------------------
+NUMGTW:     PULU  D                 ; xd high
+            PULU  D                 ; xd low
             LDX   HLD
             PSHU  X
             JSR   PADW
@@ -7343,7 +7392,11 @@ NUMGT:      PULU  D
             PSHU  D
             RTS
 
-DOT:        PULU  D
+; ------------------------------------------------------------
+; .  ( n -- )
+; Display n in the current base, followed by a space.
+; ------------------------------------------------------------
+DOTW:       PULU  D                 ; n
             STD   SAVEN
             BPL   DABSOK
             COMA
@@ -7352,40 +7405,40 @@ DOT:        PULU  D
 DABSOK:     PSHU  D
             LDD   #0
             PSHU  D
-            JSR   LTNUM
-            JSR   NUMSIGNS
+            JSR   LTNUMW
+            JSR   NUMSIGNSW
             LDD   SAVEN
             PSHU  D
-            JSR   SIGN
-            JSR   NUMGT
-            JSR   TYPE
+            JSR   SIGNW
+            JSR   NUMGTW
+            JSR   TYPEW
             LDD   #32
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             RTS
 
-UDOT:       LDD   #0                ; SIMPLIFICATION: was PULU D/PSHU D here first -
-                                    ; a literal no-op (pop the value, immediately
-                                    ; push it back, nothing in between), leftover
-                                    ; rather than functional. The value being
-                                    ; formatted was never actually consumed here;
-                                    ; this line already pushes 0 on top of it
-                                    ; unchanged either way. Removed per the
-                                    ; parallel 68000 port's observation, confirmed
-                                    ; by inspection.
+; ------------------------------------------------------------
+; U.  ( u -- )
+; Display u in the current base, followed by a space.
+; ------------------------------------------------------------
+UDOTW:      LDD   #0                ; ud high cell = 0
             PSHU  D
-            JSR   LTNUM
-            JSR   NUMSIGNS
-            JSR   NUMGT
-            JSR   TYPE
+            JSR   LTNUMW
+            JSR   NUMSIGNSW
+            JSR   NUMGTW
+            JSR   TYPEW
             LDD   #32
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             RTS
 
-DOTR:       PULU  D
+; ------------------------------------------------------------
+; .R  ( n1 n2 -- )
+; Display n1 right-justified in a field of n2 characters.
+; ------------------------------------------------------------
+DOTRW:      PULU  D                 ; n2 (width)
             STD   DRWIDTH
-            PULU  D
+            PULU  D                 ; n1
             STD   SAVEN
             BPL   DRABSOK
             COMA
@@ -7394,12 +7447,12 @@ DOTR:       PULU  D
 DRABSOK:    PSHU  D
             LDD   #0
             PSHU  D
-            JSR   LTNUM
-            JSR   NUMSIGNS
+            JSR   LTNUMW
+            JSR   NUMSIGNSW
             LDD   SAVEN
             PSHU  D
-            JSR   SIGN
-            JSR   NUMGT
+            JSR   SIGNW
+            JSR   NUMGTW
             PULU  D
             STD   DRLEN
             PULU  D
@@ -7414,26 +7467,26 @@ DRPADLP:    LDD   DRPAD
             STD   DRPAD
             LDD   #32
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             BRA   DRPADLP
 DRNOPAD:    LDX   DRADDR
             PSHU  X
             LDD   DRLEN
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             RTS
 
-UDOTR:      PULU  D
+; ------------------------------------------------------------
+; U.R  ( u n -- )
+; Display u right-justified in a field of n characters.
+; ------------------------------------------------------------
+UDOTRW:     PULU  D                 ; n (width)
             STD   DRWIDTH
-            LDD   #0                ; SIMPLIFICATION: was PULU D/PSHU D here first -
-                                    ; a literal no-op on the value being formatted
-                                    ; (the width above is a real, separate pop -
-                                    ; unaffected). Removed per the parallel 68000
-                                    ; port's observation, confirmed by inspection.
+            LDD   #0                ; ud high cell = 0
             PSHU  D
-            JSR   LTNUM
-            JSR   NUMSIGNS
-            JSR   NUMGT
+            JSR   LTNUMW
+            JSR   NUMSIGNSW
+            JSR   NUMGTW
             PULU  D
             STD   DRLEN
             PULU  D
@@ -7448,24 +7501,32 @@ UDRPADLP:   LDD   DRPAD
             STD   DRPAD
             LDD   #32
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             BRA   UDRPADLP
 UDRNOPAD:   LDX   DRADDR
             PSHU  X
             LDD   DRLEN
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             RTS
 
-QMARK:      PULU  X
+; ------------------------------------------------------------
+; ?  ( a-addr -- )
+; Display the cell at a-addr.
+; ------------------------------------------------------------
+QMARKW:     PULU  X                 ; a-addr
             LDD   ,X
             PSHU  D
-            JSR   DOT
+            JSR   DOTW
             RTS
 
-DDOT:       PULU  D
+; ------------------------------------------------------------
+; D.  ( d -- )
+; Display the double d in the current base, followed by a space.
+; ------------------------------------------------------------
+DDOTW:      PULU  D                 ; d high
             STD   PRODHI
-            PULU  D
+            PULU  D                 ; d low
             STD   PRODLO
             LDD   PRODHI
             STD   SAVEN
@@ -7475,23 +7536,27 @@ DDPOS:      LDD   PRODLO
             PSHU  D
             LDD   PRODHI
             PSHU  D
-            JSR   LTNUM
-            JSR   NUMSIGNS
+            JSR   LTNUMW
+            JSR   NUMSIGNSW
             LDD   SAVEN
             PSHU  D
-            JSR   SIGN
-            JSR   NUMGT
-            JSR   TYPE
+            JSR   SIGNW
+            JSR   NUMGTW
+            JSR   TYPEW
             LDD   #32
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             RTS
 
-DDOTR:      PULU  D
+; ------------------------------------------------------------
+; D.R  ( d n -- )
+; Display the double d right-justified in a field of n characters.
+; ------------------------------------------------------------
+DDOTRW:     PULU  D                 ; n (width)
             STD   DRWIDTH
-            PULU  D
+            PULU  D                 ; d high
             STD   PRODHI
-            PULU  D
+            PULU  D                 ; d low
             STD   PRODLO
             LDD   PRODHI
             STD   SAVEN
@@ -7501,12 +7566,12 @@ DDRPOS:     LDD   PRODLO
             PSHU  D
             LDD   PRODHI
             PSHU  D
-            JSR   LTNUM
-            JSR   NUMSIGNS
+            JSR   LTNUMW
+            JSR   NUMSIGNSW
             LDD   SAVEN
             PSHU  D
-            JSR   SIGN
-            JSR   NUMGT
+            JSR   SIGNW
+            JSR   NUMGTW
             PULU  D
             STD   DRLEN
             PULU  D
@@ -7521,30 +7586,46 @@ DRDPADLP:   LDD   DRPAD
             STD   DRPAD
             LDD   #32
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             BRA   DRDPADLP
 DRDNOPAD:   LDX   DRADDR
             PSHU  X
             LDD   DRLEN
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             RTS
 
 ; ============================================================
 ; SECTION 21: BASE / RADIX CONTROL
 ; ============================================================
-BASEW:      LDD   #BASE
+; ------------------------------------------------------------
+; BASE  ( -- a-addr )
+; Push the address of the BASE variable.
+; ------------------------------------------------------------
+BASEW:      LDD   #BASE             ; a-addr
             PSHU  D
             RTS
 
-DECIMAL:    LDD   #10
+; ------------------------------------------------------------
+; DECIMAL  ( -- )
+; Set BASE to 10.
+; ------------------------------------------------------------
+DECIMALW:   LDD   #10
             STD   BASE
             RTS
 
+; ------------------------------------------------------------
+; HEX  ( -- )
+; Set BASE to 16.
+; ------------------------------------------------------------
 HEXW:       LDD   #16
             STD   BASE
             RTS
 
+; ------------------------------------------------------------
+; BINARY  ( -- )
+; Set BASE to 2.
+; ------------------------------------------------------------
 BINARYW:    LDD   #2
             STD   BASE
             RTS
@@ -7552,26 +7633,38 @@ BINARYW:    LDD   #2
 ; ============================================================
 ; SECTION 22: OUTPUT FORMATTING (CR/SPACE/SPACES)
 ; ============================================================
+; ------------------------------------------------------------
+; CR  ( -- )
+; Send carriage return and line feed.
+; ------------------------------------------------------------
 CRW:        LDD   #13
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             LDD   #10
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             RTS
 
+; ------------------------------------------------------------
+; SPACE  ( -- )
+; Send one space.
+; ------------------------------------------------------------
 SPACEW:     LDD   #32
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             RTS
 
-SPACESW:    PULU  D
+; ------------------------------------------------------------
+; SPACES  ( n -- )
+; Send n spaces (nothing if n is zero or negative).
+; ------------------------------------------------------------
+SPACESW:    PULU  D                 ; n
             STD   SHCNT2
 SPLOOP:     LDD   SHCNT2
             BLE   SPDONE
             LDD   #32
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             LDD   SHCNT2
             SUBD  #1
             STD   SHCNT2
@@ -7581,62 +7674,77 @@ SPDONE:     RTS
 ; ============================================================
 ; SECTION 23: COMMENT WORDS
 ; ============================================================
-LPAREN:     LDD   #')'
+; ------------------------------------------------------------
+; (  ( "ccc<paren>" -- )
+; Parse and discard text up to the closing parenthesis.
+; ------------------------------------------------------------
+LPARENW:    LDD   #')'
             PSHU  D
-            JSR   WORD
-            PULU  D                 ; BUG FIX: WORD always pushes a c-addr at the
-                                    ; end (the parsed text's address), which this
-                                    ; word never consumed - "(" only needs WORD's
-                                    ; side effect of advancing >IN past the closing
-                                    ; delimiter, not the address itself, but that
-                                    ; address was left stranded on the stack every
-                                    ; time. Explains both reported symptoms: a
-                                    ; stray value visible after a comment in
-                                    ; interpret mode, and a CSP mismatch (-22) for
-                                    ; any colon definition containing one, since
-                                    ; the leftover throws off the compile-time
-                                    ; stack-depth check between ":" and ";".
-                                    ; Confirmed via MAME debugger.
+            JSR   WORDW
+            PULU  D                 ; discard c-addr. See bugfix: LPARENW.1
             RTS
 
-BACKSLASH:  LDD   SRCLEN
+; ------------------------------------------------------------
+; \  ( "ccc<eol>" -- )
+; Discard the rest of the input line by setting >IN to the source
+; length.
+; ------------------------------------------------------------
+BACKSLASHW: LDD   SRCLEN
             STD   TOIN
             RTS
 
 ; ============================================================
 ; SECTION 24: ENVIRONMENTAL QUERY / SOURCE / REFILL / EVALUATE
 ; ============================================================
+; ------------------------------------------------------------
+; SOURCE  ( -- c-addr u )
+; Push the address and length of the current input source.
+; ------------------------------------------------------------
 SOURCEW:    LDD   SRCADDR
             PSHU  D
             LDD   SRCLEN
             PSHU  D
             RTS
 
-SOURCEID:   LDD   SRCID
+; ------------------------------------------------------------
+; SOURCE-ID  ( -- 0 | -1 )
+; Push 0 for the terminal, -1 for a string being EVALUATEd.
+; ------------------------------------------------------------
+SOURCEIDW:  LDD   SRCID
             PSHU  D
             RTS
 
+; ------------------------------------------------------------
+; REFILL  ( -- flag )
+; From the terminal, read a new line with QUERY and return true. From
+; an EVALUATEd string, return false.
+; ------------------------------------------------------------
 REFILLW:    LDD   SRCID
             BEQ   RFTERM
             LDD   #FALSEV
             PSHU  D
             RTS
-RFTERM:     JSR   QUERY
+RFTERM:     JSR   QUERYW
             LDD   #TRUEV
             PSHU  D
             RTS
 
-EVALUATEW:  LDD   SRCADDR           ; BUG FIX: the outer source was saved in
-            PSHS  D                 ; global EVSAVE* cells, so a nested EVALUATE
-            LDD   SRCLEN            ; (t9 -> t8 -> t7) overwrote the outer save and
-            PSHS  D                 ; every level restored the wrong source. Save
-            LDD   SRCID             ; on the return stack instead (EVSAVE* now
-            PSHS  D                 ; unused).
+; ------------------------------------------------------------
+; EVALUATE  ( c-addr u -- )
+; Interpret the string c-addr u as the input source, then restore the
+; previous input source (kept on the return stack).
+; ------------------------------------------------------------
+EVALUATEW:  LDD   SRCADDR           ; save the input source on S
+            PSHS  D                 ; See bugfix: EVALUATEW.1
+            LDD   SRCLEN
+            PSHS  D
+            LDD   SRCID
+            PSHS  D
             LDD   TOIN
             PSHS  D
-            PULU  D
+            PULU  D                 ; u
             STD   SRCLEN
-            PULU  D
+            PULU  D                 ; c-addr
             STD   SRCADDR
             LDD   #-1
             STD   SRCID
@@ -7653,76 +7761,25 @@ EVALUATEW:  LDD   SRCADDR           ; BUG FIX: the outer source was saved in
             STD   SRCADDR
             RTS
 
-; ENVIRONMENT? - dispatcher complete; table has entries derived
-; without fabricating unfixed capacities. /HOLD and /PAD were both
-; added this session, answering HOLDMINSIZE and PADMINSIZE
-; respectively (see each entry itself, below, for why each uses its
-; own, conceptually correct constant rather than the numerically-
-; equal PADOFFSET).
-;
-; WORDLISTS (16.3.2, Search-Order word set) is deliberately absent
-; from ENVTABLE, not an oversight - this system doesn't implement
-; the Search-Order word set, so WORDLISTS is genuinely an unknown
-; attribute here. Per ENVIRONMENT?'s own spec (6.1.1345): "If the
-; system treats the attribute as unknown, the returned flag is
-; false" - falling through to ENVNOTFOUND already produces exactly
-; that, correctly and completely, with no dispatcher work needed.
-; Confirmed via MAME testing.
-;
-; MAX-D/MAX-UD were resolved this session via a genuine dispatcher
-; extension, not just a table entry - both are double-cell values
-; per their own ANS data type, which the original single-cell
-; ENVFOUND (pushing exactly one value before TRUE) couldn't
-; represent. Added a second table (ENVTABLE2) and matching loop
-; (ENV2START/ENV2LOOP/ENV2FOUND, below) specifically for double-cell
-; entries, rather than reworking the single-cell path to handle both
-; shapes - see those labels for the full design.
-;
-; FLOORED was the third, separate open item flagged previously -
-; investigated this session by tracing DIVCOMMON (shared by /, MOD,
-; /MOD) against this system's own SM/REM and FM/MOD. Confirmed
-; DIVCOMMON matches SM/REM's convention exactly (remainder sign
-; restored from the dividend's own original sign, not the quotient's)
-; - this system's primary division words use symmetric division, not
-; floored. FLOORED now answers 0 (false) - see the entry itself,
-; below, for the full trace.
-ENVQUERY:   PULU  D
+; ------------------------------------------------------------
+; ENVIRONMENT?  ( c-addr u -- false | i*x true )
+; Look up the attribute name c-addr u first in ENVTABLE (single-cell
+; values), then in ENVTABLE2 (double-cell values). If found, return
+; the value and true; otherwise return false. WORDLISTS is
+; deliberately absent because the Search-Order word set is not
+; implemented. FLOORED is false because /, MOD and /MOD use symmetric
+; division.
+; Original comment: shadow ENVQUERYW.0.
+; ------------------------------------------------------------
+ENVQUERYW:  PULU  D                 ; u
             STD   ENVLEN
-            PULU  D
+            PULU  D                 ; c-addr
             STD   ENVADDR
             LDX   #ENVTABLE
 ENVLOOP:    LDD   ,X
             CMPD  #0
-            BEQ   ENV2START         ; CHANGED: was BEQ ENVNOTFOUND - now tries
-                                    ; the double-cell table (below) before
-                                    ; giving up entirely. See ENV2START/
-                                    ; ENV2LOOP for MAX-D/MAX-UD, added this
-                                    ; turn - both are double-cell values per
-                                    ; their own ANS data type, which this
-                                    ; single-cell table's ENVFOUND (pushing
-                                    ; exactly one value before TRUE) can't
-                                    ; represent correctly.
-            PSHS  X                 ; BUG FIX: COMPAREW uses X as its own
-                                    ; internal scratch (LDX CMPA1, then LDA
-                                    ; ,X+ advancing through the comparison),
-                                    ; clobbering whatever the caller had there.
-                                    ; ENVQUERY needs X to still point at the
-                                    ; current table entry after COMPAREW
-                                    ; returns, both for ENVFOUND's own LDD 4,X
-                                    ; and for advancing to the next entry -
-                                    ; without saving it first, a successful
-                                    ; match left X sitting just past the
-                                    ; matched string's own text (for
-                                    ; "/COUNTED-STRING", 15 characters, that
-                                    ; lands exactly at the start of the next
-                                    ; entry's string, "MAX-N") - so ENVFOUND
-                                    ; read the "value" field from inside the
-                                    ; NEXT entry's own string text instead of
-                                    ; the real value. Confirmed via MAME: this
-                                    ; exact mechanism produces $4E4D precisely
-                                    ; - the bytes 'N' ($4E) and 'M' ($4D, the
-                                    ; start of "MAX-U") sitting 4 bytes into
-                                    ; "MAX-N", read as one cell.
+            BEQ   ENV2START         ; end of table: try ENVTABLE2
+            PSHS  X                 ; See bugfix: ENVQUERYW.2
             PSHU  D
             LDD   2,X
             PSHU  D
@@ -7743,20 +7800,11 @@ ENVFOUND:   LDD   4,X
             PSHU  D
             RTS
 
-ENV2START:  LDX   #ENVTABLE2        ; NEW: double-cell query table - kept
-                                    ; entirely separate from ENVTABLE above
-                                    ; rather than trying to unify both cases
-                                    ; into one mechanism, since the two
-                                    ; genuinely differ in entry size (8 bytes
-                                    ; here, vs 6 for single-cell) and in how
-                                    ; many cells a match pushes (two, not
-                                    ; one) - lower risk than reworking the
-                                    ; already-tested single-cell path to
-                                    ; handle both shapes at once.
+ENV2START:  LDX   #ENVTABLE2        ; double-cell table
 ENV2LOOP:   LDD   ,X
             CMPD  #0
             BEQ   ENVNOTFOUND
-            PSHS  X                 ; same COMPAREW X-clobber concern as above
+            PSHS  X                 ; See bugfix: ENVQUERYW.2
             PSHU  D
             LDD   2,X
             PSHU  D
@@ -7769,14 +7817,10 @@ ENV2LOOP:   LDD   ,X
             PULU  D
             CMPD  #0
             BEQ   ENV2FOUND
-            LEAX  8,X               ; entries are 8 bytes here (ADDR,LEN,LOW,
-                                    ; HIGH), not 6 (ADDR,LEN,VALUE)
+            LEAX  8,X               ; 8-byte entries
             BRA   ENV2LOOP
-ENV2FOUND:  LDD   4,X               ; low cell - pushed first/deep, matching
-            PSHU  D                 ; standard double-cell stack order (3.1.4.1:
-                                    ; the cell containing the most significant
-                                    ; part shall be above the cell containing
-                                    ; the least significant part)
+ENV2FOUND:  LDD   4,X               ; low cell, pushed first
+            PSHU  D
             LDD   6,X               ; high cell - pushed second/top
             PSHU  D
             LDD   #TRUEV
@@ -7788,134 +7832,42 @@ ENVNOTFOUND:
             PSHU  D
             RTS
 
+; ------------------------------------------------------------
+; ENVTABLE2
+; Double-cell ENVIRONMENT? entries: name address, name length, low
+; cell, high cell. A zero ends the table.
+; ------------------------------------------------------------
 ENVTABLE2:
             FDB   EN11,EN11L,$FFFF,$7FFF
-                                    ; MAX-D: maximum signed
-                                    ; double-cell value, $7FFFFFFF - low
-                                    ; cell $FFFF, high cell $7FFF (the
-                                    ; maximum positive 16-bit signed value in
-                                    ; the high cell, matching how a 32-bit
-                                    ; two's-complement maximum is laid out:
-                                    ; all bits set except the sign bit of the
-                                    ; most significant cell).
+                                    ; MAX-D
             FDB   EN12,EN12L,$FFFF,$FFFF
-                                    ; MAX-UD: maximum unsigned
-                                    ; double-cell value, $FFFFFFFF - both
-                                    ; cells all bits set.
+                                    ; MAX-UD
             FDB   0
 EN11:       FCC   "MAX-D"
 EN11L       EQU   *-EN11
 EN12:       FCC   "MAX-UD"
 EN12L       EQU   *-EN12
 
+; ------------------------------------------------------------
+; ENVTABLE
+; Single-cell ENVIRONMENT? entries: name address, name length, value.
+; A zero ends the table.
+; ------------------------------------------------------------
 ENVTABLE:
-            FDB   EN1,EN1L,255      ; BUG FIX: was 31 - the maximum size of a
-                                    ; counted string is bounded by its 1-byte
-                                    ; count field (0-255), not 31, which
-                                    ; looks like it was mistakenly copied from
-                                    ; an unrelated constraint (WORD's own,
-                                    ; separate scan cap in an earlier version
-                                    ; of this file). /COUNTED-STRING's own
-                                    ; meaning (forth-standard.org/standard/
-                                    ; usage#usage:env) is specifically the
-                                    ; count byte's own maximum value.
-            FDB   EN2,EN2L,32767
-            FDB   EN3,EN3L,65535
-            FDB   EN6,EN6L,8
+            FDB   EN1,EN1L,255      ; /COUNTED-STRING. See bugfix: ENVTABLE.1
+            FDB   EN2,EN2L,32767    ; MAX-N
+            FDB   EN3,EN3L,65535    ; MAX-U
+            FDB   EN6,EN6L,8        ; ADDRESS-UNIT-BITS
             FDB   EN7,EN7L,HOLDMINSIZE
-                                    ; NEW: /HOLD was previously absent
-                                    ; entirely (the top-of-file note calling
-                                    ; out "/HOLD and /PAD... remain explicitly
-                                    ; incomplete/absent" was accurate at the
-                                    ; time). Answers HOLDMINSIZE (34), not the
-                                    ; larger PADOFFSET (128) - HOLDMINSIZE is
-                                    ; specifically the portion of the
-                                    ; CODEHERE-to-PAD gap reserved for the
-                                    ; pictured numeric output buffer, the same
-                                    ; amount WORDMAXCHARS deliberately holds
-                                    ; back from WORD's own use at the other
-                                    ; end of that same shared gap. PADOFFSET
-                                    ; is the total gap width, most of which is
-                                    ; actually earmarked for WORD's own
-                                    ; parsing - reporting it here would
-                                    ; overstate what HOLD can safely use
-                                    ; without risking collision with whatever
-                                    ; WORD is doing in the same space.
+                                    ; /HOLD
             FDB   EN8,EN8L,PADMINSIZE
-                                    ; NEW: /PAD, the last of the two
-                                    ; entries the top-of-file note originally
-                                    ; flagged as absent - now both present.
-                                    ; Answers PADMINSIZE (128) directly, per
-                                    ; ANS's own /PAD meaning (3.3.3.6, "the
-                                    ; size of the scratch area whose address
-                                    ; is returned by PAD") - PAD's own region,
-                                    ; growing upward from PAD itself, distinct
-                                    ; from HOLDMINSIZE above (which answers
-                                    ; for a different region entirely, the
-                                    ; downward-growing pictured-numeric buffer
-                                    ; in the CODEHERE-to-PAD gap). PADOFFSET
-                                    ; happens to equal PADMINSIZE numerically
-                                    ; in this implementation (PADOFFSET EQU
-                                    ; PADMINSIZE), but /PAD is answered with
-                                    ; the conceptually correct constant, not
-                                    ; the coincidentally-equal one.
-            FDB   EN9,EN9L,0        ; NEW: FLOORED - previously the one item
-                                    ; in this area explicitly left open
-                                    ; pending its own investigation (unlike
-                                    ; WORDLISTS, this is a CORE query, not
-                                    ; tied to an unimplemented optional word
-                                    ; set, so "false by omission" wasn't the
-                                    ; right default). Investigated by tracing
-                                    ; DIVCOMMON (shared by /, MOD, /MOD)
-                                    ; against this system's own SM/REM and
-                                    ; FM/MOD: DIVCOMMON restores the
-                                    ; remainder's sign from DNSIGN (the
-                                    ; dividend's own original sign) after
-                                    ; dividing absolute values - exactly
-                                    ; SM/REM's own logic, confirmed identical
-                                    ; by direct comparison. FM/MOD, by
-                                    ; contrast, has an explicit flooring
-                                    ; adjustment step (correcting the
-                                    ; quotient and remainder when the
-                                    ; quotient would be negative with a
-                                    ; nonzero remainder) that DIVCOMMON does
-                                    ; not have. This system's primary
-                                    ; division words (/, MOD, /MOD) use
-                                    ; symmetric division, not floored -
-                                    ; FLOORED is 0 (false), a real, meaningful
-                                    ; answer (recognized query, value false),
-                                    ; not the "unrecognized" fallthrough
-                                    ; WORDLISTS correctly uses.
-            FDB   EN10,EN10L,255    ; NEW: MAX-CHAR - maximum value of any
-                                    ; character in this implementation's
-                                    ; character set (3.2.6). This system uses
-                                    ; 8-bit characters throughout (matching
-                                    ; ADDRESS-UNIT-BITS=8, already in this
-                                    ; table) - a single byte's maximum value
-                                    ; is 255.
+                                    ; /PAD
+            FDB   EN9,EN9L,0        ; FLOORED = false
+            FDB   EN10,EN10L,255    ; MAX-CHAR
             FDB   EN13,EN13L,(RSTACK-DSTACK)/2
-                                    ; NEW: RETURN-STACK-
-                                    ; CELLS - computed from this system's own
-                                    ; stack region boundaries rather than
-                                    ; hardcoded, so this stays correct if the
-                                    ; memory map shifts again (it has
-                                    ; repeatedly this session). RSTACK's own
-                                    ; comment confirms the occupied range is
-                                    ; $BD00-RSTACK (768 bytes currently) -
-                                    ; DSTACK+1 is $BD00 exactly (the two
-                                    ; regions are contiguous, per RSTACK's
-                                    ; and DSTACK's own comments). Since
-                                    ; RSTACK-(DSTACK+1)+1 simplifies to
-                                    ; RSTACK-DSTACK (the +1/-1 cancel), the
-                                    ; simpler form is used directly: 384
-                                    ; currently.
+                                    ; RETURN-STACK-CELLS
             FDB   EN14,EN14L,(DSTACK-CODETOP+1)/2
-                                    ; NEW: STACK-CELLS -
-                                    ; same reasoning, for the data stack's own
-                                    ; region (CODETOP to DSTACK, 1024 bytes
-                                    ; currently, matching CODETOP's own
-                                    ; comment "code space ceiling (data stack
-                                    ; begins here)"): 512 currently.
+                                    ; STACK-CELLS
             FDB   0
 EN1:        FCC   "/COUNTED-STRING"
 EN1L        EQU   *-EN1
@@ -7941,7 +7893,12 @@ EN14L       EQU   *-EN14
 ; ============================================================
 ; SECTION 25: TOOLS WORD SET (.S / WORDS / DUMP)
 ; ============================================================
-DOTS:       TFR   U,D
+; ------------------------------------------------------------
+; .S  ( -- )
+; Display every cell on the data stack, top first, each followed by a
+; space, using ".". The stack is not changed.
+; ------------------------------------------------------------
+DOTSW:      TFR   U,D
             STD   DSPTMP
 DSLOOP:     LDD   DSPTMP
             CMPD  #SP0
@@ -7949,13 +7906,18 @@ DSLOOP:     LDD   DSPTMP
             LDX   DSPTMP
             LDD   ,X
             PSHU  D
-            JSR   DOT
+            JSR   DOTW
             LDD   DSPTMP
             ADDD  #2
             STD   DSPTMP
             BRA   DSLOOP
 DSDONE:     RTS
 
+; ------------------------------------------------------------
+; WORDS  ( -- )
+; Display the names of all dictionary words, newest first, then a
+; carriage return.
+; ------------------------------------------------------------
 WORDSW:     LDD   LATEST
             STD   WWALK
 WWLOOP:     LDD   WWALK
@@ -7969,7 +7931,7 @@ WWLOOP:     LDD   WWALK
             ANDB  #$1F
             CLRA
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   SPACEW
             LDX   WWALK
             LEAX  1,X
@@ -7983,6 +7945,15 @@ WWLOOP:     LDD   WWALK
 WWDONE:     JSR   CRW
             RTS
 
+; ------------------------------------------------------------
+; Display one hexadecimal digit.
+; HEXDIGIT   ( n -- )
+;    Inputs:
+;        n (0 to 15) on the data stack
+;    Outputs:
+;        the digit sent with EMIT
+;    Registers: RegD changed.
+; ------------------------------------------------------------
 HEXDIGIT:   PULU  D
             CMPD  #10
             BLO   HDDIGIT
@@ -7990,40 +7961,49 @@ HEXDIGIT:   PULU  D
             BRA   HDEMIT
 HDDIGIT:    ADDD  #'0'
 HDEMIT:     PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             RTS
 
+; ------------------------------------------------------------
+; Display a byte as two hexadecimal digits.
+; HEXBYTE   ( byte -- )
+;    Inputs:
+;        byte on the data stack
+;    Outputs:
+;        two digits sent with EMIT
+;    Registers: RegD changed; MSCR used as scratch.
+; ------------------------------------------------------------
 HEXBYTE:    PULU  D
-            STB   MSCR              ; BUG FIX: STB writes ONE byte, at MSCR
-            LDB   MSCR              ; itself - both reads below used to read
-            LSRB                    ; MSCR+1 instead, a byte this routine never
-            LSRB                    ; writes at all, so both the high and low
-            LSRB                    ; nibble extraction ran on whatever stale
-            LSRB                    ; value happened to be sitting there, not
-            CLRA                    ; the byte actually passed in. Now reads
-            PSHU  D                 ; from MSCR, where STB actually put it.
-            JSR   HEXDIGIT          ; Confirmed via MAME debugger: DUMP showed
-            LDB   MSCR              ; $03 instead of $7B for a memory fill
-            ANDB  #$0F              ; character, with the ASCII column (a
-            CLRA                    ; separate code path) correctly showing
-            PSHU  D                 ; "}".
+            STB   MSCR              ; See bugfix: HEXBYTE.1
+            LDB   MSCR              ; high nibble
+            LSRB
+            LSRB
+            LSRB
+            LSRB
+            CLRA
+            PSHU  D
+            JSR   HEXDIGIT
+            LDB   MSCR              ; low nibble
+            ANDB  #$0F
+            CLRA
+            PSHU  D
             JSR   HEXDIGIT
             RTS
 
-; DUMP - includes the partial-final-line ASCII fix
-DUMPW:      PULU  D
+; ------------------------------------------------------------
+; DUMP  ( addr u -- )
+; Display u bytes starting at addr, 16 per line: the hex bytes (no
+; address), then the same bytes as ASCII with non-printing characters
+; shown as ".". A partial last line is padded so the ASCII columns
+; line up. A carriage return is sent first and after every line.
+; ------------------------------------------------------------
+DUMPW:      PULU  D                 ; u
             STD   DUMPCNT
-            PULU  D
+            PULU  D                 ; addr
             STD   DUMPADDR
-            JSR   CRW               ; FORMATTING: leading CR, so the first line
-                                    ; starts on its own fresh line - matches
-                                    ; DULEND's existing trailing CR after every
-                                    ; line (including the last), giving
-                                    ; consistent vertical alignment from the
-                                    ; first line to the last regardless of
-                                    ; where the cursor was when DUMP was called.
+            JSR   CRW               ; leading CR
 DULINE:     LDD   DUMPCNT
-            LBEQ  DUDONE            ; was BEQ - out of short-branch range
+            LBEQ  DUDONE            ; no bytes left
             LDD   DUMPADDR
             STD   HEXBUF
             CLR   DUMPCOL
@@ -8044,7 +8024,7 @@ DUHEXBYTE:  LDX   DUMPADDR
             JSR   HEXBYTE
             LDD   #32
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             LDX   DUMPADDR
             LEAX  1,X
             STX   DUMPADDR
@@ -8055,11 +8035,11 @@ DUHEXBYTE:  LDX   DUMPADDR
             BRA   DUHEX
 DUHEXPAD:   LDD   #32
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             INC   DUMPCOL
             LDB   DUMPCOL
             CMPB  #16
@@ -8067,7 +8047,7 @@ DUHEXPAD:   LDD   #32
             BRA   DUASCII
 DUASCII:    LDD   #32
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             CLR   DUMPCOL
 DUACHAR:    LDB   DUMPCOL
             CMPB  #16
@@ -8088,72 +8068,72 @@ DUDOT:      LDA   #'.'
 DUPRINT:    TFR   A,B
             CLRA
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             INC   DUMPCOL
             BRA   DUACHAR
 DUABLANK:   LDD   #32
             PSHU  D
-            JSR   EMIT
+            JSR   EMITW
             INC   DUMPCOL
             BRA   DUACHAR
 DULEND:     JSR   CRW
             LDD   DUMPCNT
-            LBNE  DULINE            ; was BNE - out of short-branch range
+            LBNE  DULINE            ; more bytes: next line
 DUDONE:     RTS
 
 ; ============================================================
-; SECTION 26: TRUE / FALSE. This section used to also hold
-; ABORT/QUIT's hand-built dictionary headers (ABORTHDR/QUITHDR) -
-; moved into BASEDICT and renamed to H_ABORT/H_QUIT (see the end
-; of SECTION 27) so every header in this ROM lives in one
-; contiguous block, rather than header data sitting apart from
-; the rest of the dictionary inside BASECODE.
+; SECTION 26: CONSTANT-VALUE WORDS (TRUE, FALSE, 1, -1, 2, -2)
 ; ============================================================
 ; ------------------------------------------------------------
-; TRUE / FALSE - simple subroutines, not the CONSTANT/DODOES
-; pattern these used before (JSR DODOES + FDB ATSIGN + a value
-; cell, matching what interactive CONSTANT compiles). Each is now
-; a direct LDD/PSHU/RTS, like every other ordinary ROM word's CFA
-; - no indirection, no value cell.
-;
-; RESOLVED: the previous version of this code deliberately inverted
-; TRUE/FALSE's values from the system's own convention, per an
-; earlier explicit request - FALSE pushed $FFFF and TRUE pushed
-; $0000, disagreeing with TRUEV/FALSEV ($FFFF/$0000) and every
-; comparison operator (=, <, >, and the rest), which all still
-; returned TRUEV for a true result and FALSEV for false. Restored
-; to the standard convention now: TRUE pushes $FFFF, FALSE pushes
-; $0000, matching TRUEV/FALSEV and every comparison operator again.
-; Each is a direct LDD/PSHU/RTS, like every other ordinary ROM
-; word's CFA - no indirection, no value cell, no DODOES trampoline.
+; TRUE  ( -- flag )
+; Push true ($FFFF), the value of TRUEV. A direct LDD/PSHU/RTS: no
+; DODOES trampoline and no value cell.
+; Original comment: shadow TRUEW.0.
 ; ------------------------------------------------------------
-TRUEBODY:   LDD   #$FFFF
-            PSHU  D
-            RTS
-
-FALSEBODY:  LDD   #$0000
+TRUEW:      LDD   #$FFFF
             PSHU  D
             RTS
 
 ; ------------------------------------------------------------
-; 1 / -1 / 2 / -2 - simple immediate-value words, same pattern as
-; TRUE/FALSE above: direct LDD/PSHU/RTS, no indirection, no value
-; cell. Headers are H_1/H_M1/H_2/H_M2 (SECTION 27, chained after
-; H_FIND) - "1"/"-1"/"2"/"-2" aren't valid 6809 assembler labels.
+; FALSE  ( -- flag )
+; Push false ($0000), the value of FALSEV.
 ; ------------------------------------------------------------
-ONEBODY:    LDD   #1
+FALSEW:     LDD   #$0000
             PSHU  D
             RTS
 
-MONEBODY:   LDD   #-1
+; ------------------------------------------------------------
+; 1  ( -- 1 )
+; Push the constant 1. The words -1, 2 and -2 below work the same way.
+; Their headers are H_POSONE, H_NEGONE, H_POSTWO and H_NEGTWO (Section
+; 27), since "1" and "-1" are not valid assembler labels.
+; Original comment: shadow POSONEW.0.
+; ------------------------------------------------------------
+POSONEW:    LDD   #1
             PSHU  D
             RTS
 
-TWOBODY:    LDD   #2
+; ------------------------------------------------------------
+; -1  ( -- -1 )
+; Push the constant -1.
+; ------------------------------------------------------------
+NEGONEW:    LDD   #-1
             PSHU  D
             RTS
 
-MTWOBODY:   LDD   #-2
+; ------------------------------------------------------------
+; 2  ( -- 2 )
+; Push the constant 2.
+; ------------------------------------------------------------
+POSTWOW:    LDD   #2
+            PSHU  D
+            RTS
+
+; ------------------------------------------------------------
+; -2  ( -- -2 )
+; Push the constant -2.
+; ------------------------------------------------------------
+NEGTWOW:    LDD   #-2
             PSHU  D
             RTS
 
@@ -8171,7 +8151,20 @@ BASEND:
 ; ============================================================
 ; SECTION 2: INIT CODE (COLDSTRT / WARM)
 ; ============================================================
-            ORG   INITCODE          ; INITCODE is $FFA9 (was $FFA2, before that $FFA0, before that literal $FFC0)
+            ORG   INITCODE          ; init code block
+
+; ------------------------------------------------------------
+; Cold start, entered from the reset vector: mask interrupts, set up
+; the stacks and the direct page, clear GLOBALS, initialise the ACIA,
+; unmask interrupts, run the unit tests if they are built in, then
+; enter COLD.
+; COLDSTRT
+;    Inputs:
+;        hardware reset
+;    Outputs:
+;        does not return
+;    Registers: all registers initialised.
+; ------------------------------------------------------------
 COLDSTRT:
             ORCC  #$50              ; Disable IRQ & FIRQ
             LDS   #RSTACK+1
@@ -8189,101 +8182,50 @@ CLRGLOB:    CLR   ,X+
 
             ANDCC #$AF              ; Enable IRQ & FIRQ
 
-                                    ; BUG FIX: confirmed via MAME - COLDSTRT's own
-                                    ; ORCC #$50 above (masking IRQ+FIRQ during the
-                                    ; critical early setup: stack pointers, DP,
-                                    ; GLOBALS, SERBUF) was never paired with a
-                                    ; matching unmask anywhere on this path - only
-                                    ; WARM (below) had one, on its own, separate
-                                    ; entry point. Under SERIALPOLL=1 (the
-                                    ; longstanding default) this never mattered,
-                                    ; since IRQH is just an RTI stub and nothing
-                                    ; on that path ever depends on interrupts
-                                    ; actually firing. It surfaced only once
-                                    ; SERIALPOLL=0 (interrupt-driven ACIA I/O) was
-                                    ; actually selected and tested: with IRQ left
-                                    ; permanently masked, the ACIA's own interrupt
-                                    ; (now correctly wired to the CPU - see the
-                                    ; MAME driver's own irq_handler fix) could
-                                    ; never actually be serviced, regardless of
-                                    ; how correctly it reached the CPU pin -
-                                    ; keystrokes were silently dropped and the
-                                    ; warm-boot message never got typed out.
-                                    ; Confirmed directly: manually clearing the I
-                                    ; bit via the MAME debugger (cc=EF) mid-
-                                    ; session immediately unblocked both. Placed
-                                    ; here, right after INITSERIAL returns (the
-                                    ; ACIA is configured and every piece of ring-
-                                    ; buffer state IRQH depends on is already
-                                    ; zeroed by CLRGLOB above), and before
-                                    ; TSTRUNNER runs, so the unit test framework's
-                                    ; own interrupt-driven output works correctly
-                                    ; too, not just the eventual interactive
-                                    ; session. Matches WARM's own, already-correct
-                                    ; ANDCC #$AF exactly, for consistency - FIRQ
-                                    ; is harmless to unmask alongside IRQ, since
-                                    ; nothing on this system ever drives it
-                                    ; (FIRQH is an RTI stub, same as the other
-                                    ; unused vectors).
+            ; IRQ and FIRQ are unmasked above. See bugfix: COLDSTRT.1
 
             IFNE  UNITTESTS         ; >>>>>>>>>>
             JSR   TSTRUNNER
             ELSE                    ; <<<<<>>>>>
-            NOP                     ; BUG FIX (see the historical note above this
-            NOP                     ; call site's own comment, describing the
-            NOP                     ; original bug): this call site used to emit
-                                    ; 0 bytes when UNITTESTS' flag meaning
-                                    ; excluded the test framework, meaning
-                                    ; COLDSTRT's own size varied by 3 bytes
-                                    ; depending on UNITTESTS - with INITCODE's
-                                    ; own position fixed regardless, that risked
-                                    ; the code overflowing into VECTORS whenever
-                                    ; UNITTESTS was toggled on. Three NOPs here
-                                    ; are byte-for-byte the same size as the
-                                    ; JSR TSTRUNNER they replace, so this block
-                                    ; now always contributes exactly 3 bytes to
-                                    ; COLDSTRT either way - COLDSTRT's total size
-                                    ; no longer depends on UNITTESTS at all.
+            NOP                     ; same size as JSR TSTRUNNER
+            NOP                     ; See bugfix: COLDSTRT.2
+            NOP
             ENDC                    ; <<<<<<<<<<
 
             JMP   COLD
 
+; ------------------------------------------------------------
+; Warm start, entered from the NMI vector: mask interrupts, reset the
+; stacks and direct page, re-initialise the ACIA, print the warm-start
+; message, unmask interrupts and ABORT. GLOBALS is not cleared.
+; WARM
+;    Inputs:
+;        NMI
+;    Outputs:
+;        does not return
+;    Registers: all registers initialised.
+; ------------------------------------------------------------
 WARM:       ORCC  #$50              ; Disable IRQ & FIRQ
             CLRA
             TFR   A,DP
             LDU   #SP0
             LDS   #RP0
 
-            JSR   INITSERIAL        ; BUG FIX: previously WARM never re-ran
-                                    ; this at all, meaning a warm reboot never
-                                    ; reset the ring buffer pointers (only
-                                    ; COLDSTRT's own, separate path did, and
-                                    ; only partially - see SERBUFCLR's own
-                                    ; comment) nor re-issued the ACIA's own
-                                    ; master-reset sequence. If a lockup or
-                                    ; stuck-overrun condition (observed and
-                                    ; reported separately) left either side
-                                    ; in a corrupted state, a warm reboot
-                                    ; would previously have inherited it
-                                    ; unchanged rather than genuinely
-                                    ; recovering. Placed here, matching
-                                    ; COLDSTRT's own established ordering
-                                    ; exactly: while IRQ is still masked,
-                                    ; with the later ANDCC #$AF unmasking
-                                    ; only once setup is complete.
+            JSR   INITSERIAL        ; See bugfix: WARM.1
 
             LDX   #WARMMSG
             PSHU  X
             LDD   #WARMMSGL
             PSHU  D
-            JSR   TYPE
-            ANDCC #$AF
-            JMP   ABORT             ; Enable IRQ & FIRQ
+            JSR   TYPEW
+            ANDCC #$AF              ; Enable IRQ & FIRQ
+            JMP   ABORT             ; restart the interpreter
 
 WARMMSG:    FCC   "  warm"
 WARMMSGL    EQU   *-WARMMSG
 
-INITEND     EQU   *                 ; Verify no collision with vectors, value should match vector ORG
+            ; Verify no collision with vectors: INITEND should equal VECTORS.
+INITEND     EQU   *
 INITSIZE    EQU   INITEND-INITCODE
 
 ; Prevent the assembler from extinguishing the gap between the
@@ -8294,17 +8236,17 @@ INITSIZE    EQU   INITEND-INITCODE
 ; ============================================================
 ; SECTION 1: HARDWARE VECTOR TABLE
 ; ============================================================
-            ORG   VECTORS           ; VECTORS is $FFF0
+            ORG   VECTORS           ; hardware vector table
 VRESV       FDB   $0000
-VSWI3       FDB   SWI3H
-VSWI2       FDB   SWI2H
-VFIRQ       FDB   FIRQH
-VIRQ        FDB   IRQH
-VSWI        FDB   SWIH
+VSWI3       FDB   SWI3H             ; SWI3
+VSWI2       FDB   SWI2H             ; SWI2
+VFIRQ       FDB   FIRQH             ; FIRQ
+VIRQ        FDB   IRQH              ; IRQ
+VSWI        FDB   SWIH              ; SWI
 VNMI        FDB   WARM              ; NMI -> warm restart
-VRESET      FDB   COLDSTRT
+VRESET      FDB   COLDSTRT          ; reset
 
-VECTOREND   EQU   *                 ; Verify vectors size, value should match $10.
+VECTOREND   EQU   *                 ; vectors size, should be $10
 VECTORSIZE  EQU   VECTOREND-VECTORS
 
 ; ============================================================

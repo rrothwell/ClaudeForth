@@ -1,45 +1,24 @@
 ; ============================================================
 ; UNIT TEST FRAMEWORK
 ;
-; Self-checking assembly-level tests for this ROM's own
-; primitives, gated by UNITTESTS below and run once at cold
-; boot, right after INITSERIAL and before COLD (so U/S are
-; already valid - COLDSTRT sets them at its very start - but
-; nothing else has been initialized yet: APPVARS/DPHERE/
-; CODEHERE/LATEST/BASE all still hold whatever COLD is about to
-; set them to). Lives here, in previously-unused ROM space right
-; after INOUT's shadow, since this was pure FILL padding before
-; this existed - the default build (UNITTESTS undefined, or
-; defined as 0) removes it entirely and this block reverts to
-; exactly that padding, computed automatically below via the ROM
-; label rather than a fixed byte count, so it's correct either
-; way without needing to be hand-adjusted. Pass
-; --define=UNITTESTS on the lwasm command line (see the example
-; at the end of this comment) to include it.
+; Self-checking assembly-level tests of this ROM's primitives. Built
+; in when UNITTESTS is 1; run once at cold boot, after INITSERIAL and
+; before COLD (U and S are valid, but nothing else is initialised).
 ;
-; Each test is independent by construction: it saves the data
-; stack pointer (U) before touching anything, and unconditionally
-; restores it at the end regardless of pass or fail - so one
-; test's assertions failing can never leave stack residue for the
-; next test to inherit. Test scratch variables live in the very
-; start of APPVARS - safe only because tests run strictly before
-; COLD initializes VARHERE to that same address; COLD immediately
-; and correctly re-purposes that space afterward.
+; Each test saves U on entry and restores it on exit, so one test's
+; failure cannot disturb the next. Scratch variables live at the
+; start of APPVARS (safe: COLD re-purposes that space afterwards).
+; Each test reports its name and OK or FAIL through TSTREPORT.
 ;
-; Reporting: each test's name (a counted string, matching how
-; BADWORD itself prints a failing word) is printed via COUNT+TYPE,
-; followed by " OK" or " FAIL", followed by a CR - all via
-; TSTREPORT, shared by every test rather than duplicated in each.
-;
-; Test groups are further gated by TSTSELECTOR (see below), one
-; group at a time, since assembling every group together exhausts
-; the available unused ROM space. Example command line, testing
-; group 2 with tests included:
+; TSTSELECTOR picks one test group per build, because all groups
+; together do not fit in the unused ROM. Example, group 2:
 ;
 ;   lwasm --6809 --format=raw \
 ;   --output=forth6809.bin --list=forth6809.lst \
 ;   --define=UNITTESTS --define=TSTSELECTOR=2 \
 ;   forth6809.asm
+;
+; The original header comment is shadow UNITTEST.0.
 ; ============================================================
 
 TSTU0       EQU   APPVARS           ; saved U, before a test touches it
@@ -47,174 +26,51 @@ TSTUB4      EQU   APPVARS+2         ; U immediately before the op under test
 TSTUAF      EQU   APPVARS+4         ; U immediately after the op under test
 TSTFLAG     EQU   APPVARS+6         ; scratch for TSTREPORT's pass/fail arg
 
-TSTGUARD    EQU   $3C7A             ; sentinel value, pushed below the value
-                                    ; under test, to prove an operation
-                                    ; doesn't disturb what's beneath it
-TSTVAL1     EQU   $59E1             ; the value under test itself - neither
-                                    ; constant is 0, 1, or -1, so a test
-                                    ; that only appears to pass due to a
-                                    ; trivial/special-cased value would be
-                                    ; caught rather than masked
+TSTGUARD    EQU   $3C7A             ; sentinel beneath the value under test
+TSTVAL1     EQU   $59E1             ; the value under test (non-trivial)
 TSTVAL2     EQU   $2468             ; additional distinct, non-trivial
 TSTVAL3     EQU   $7B3D             ; values for multi-item tests (SWAP,
 TSTVAL4     EQU   $4E2C             ; OVER, ROT, 2DUP, 2ROT, etc) - none are
 TSTVAL5     EQU   $19A7             ; 0, 1, -1, TSTGUARD, or any of each
 TSTVAL6     EQU   $6D95             ; other
 
-TSTSCR      EQU   APPVARS+8         ; extra scratch cell - for tests (DEPTH)
-                                    ; that need to compute an expected value
-                                    ; independently before comparing
+TSTSCR      EQU   APPVARS+8         ; extra scratch cell (DEPTH test)
 
-TSTCBUF     EQU   APPVARS+10        ; compile-time test harness (section 3.8,
-                                    ; control flow): scratch buffer real
-                                    ; compile-time words (IF/THEN/DO/LOOP/
-                                    ; etc) actually compile into - CODEHERE
-                                    ; is redirected here for the duration of
-                                    ; each compile, then restored, so the
-                                    ; real ROM/dictionary is never touched.
-                                    ; 80 bytes - generous headroom for the
-                                    ; small test snippets planned (the
-                                    ; largest, CASE with two OF clauses,
-                                    ; comes nowhere close)
-TSTCSAV     EQU   APPVARS+90        ; saved CODEHERE, across a redirected
-                                    ; compile
-TSTCSPS     EQU   APPVARS+92        ; saved CSP, across a redirected compile -
-                                    ; EXIT's own frame-counting scan depends
-                                    ; on CSP marking the right baseline
-TSTLSAV     EQU   APPVARS+94        ; saved LATEST, across a RECURSE test
-                                    ; (which reads LATEST directly)
-TSTFHDR     EQU   APPVARS+96        ; fake dictionary header, for RECURSE to
-                                    ; read via a redirected LATEST - 16
-                                    ; bytes (LEN/FL + name + LINK + CFA,
-                                    ; comfortably fits any short test name)
+TSTCBUF     EQU   APPVARS+10        ; 80-byte compile target buffer
+TSTCSAV     EQU   APPVARS+90        ; saved CODEHERE
+TSTCSPS     EQU   APPVARS+92        ; saved CSP
+TSTLSAV     EQU   APPVARS+94        ; saved LATEST (RECURSE test)
+TSTFHDR     EQU   APPVARS+96        ; 16-byte fake dictionary header
 
-TSTDBUF     EQU   APPVARS+112       ; defining-words test harness (section
-                                    ; 3.9): scratch dictionary buffer -
-                                    ; DPHERE is redirected here for the
-                                    ; duration of each defining-word call,
-                                    ; so a real header never lands in the
-                                    ; real dictionary. 40 bytes.
+TSTDBUF     EQU   APPVARS+112       ; 40-byte scratch dictionary buffer
 TSTDSAV     EQU   APPVARS+152       ; saved DPHERE
-TSTVBUF     EQU   APPVARS+154       ; scratch VARHERE buffer, for VARIABLE/
-                                    ; VALUE/2VARIABLE/BUFFER: to reserve
-                                    ; their own mutable space into. 20
-                                    ; bytes.
+TSTVBUF     EQU   APPVARS+154       ; 20-byte scratch VARHERE buffer
 TSTVSAV     EQU   APPVARS+174       ; saved VARHERE
-TSTNAMEB    EQU   APPVARS+176       ; scratch fake source text, for HEADER's
-                                    ; own WORD-based name parsing (every
-                                    ; defining word reads a name from the
-                                    ; input source - unlike anything in
-                                    ; section 3.8) - 16 bytes
+TSTNAMEB    EQU   APPVARS+176       ; 16-byte fake source text for name parsing
 TSTSASAV    EQU   APPVARS+192       ; saved SRCADDR
 TSTSLSAV    EQU   APPVARS+194       ; saved SRCLEN
 TSTTISAV    EQU   APPVARS+196       ; saved TOIN
-TSTWCFA     EQU   APPVARS+198       ; the newly-defined test word's own CFA -
-                                    ; equal to CODEHERE (redirected) at the
-                                    ; moment the defining word is called,
-                                    ; saved so the compiled trampoline can
-                                    ; be executed afterward to verify its
-                                    ; runtime behavior
+TSTWCFA     EQU   APPVARS+198       ; CFA of the newly defined test word
 TSTSTSAV    EQU   APPVARS+200       ; saved STATE, across a :/; test
 TSTSMFLG    EQU   APPVARS+202       ; scratch: header SMUDGE-bit check result
-TSTDOESA    EQU   APPVARS+204       ; address of a compiled "JSR SETDOES" -
-                                    ; JSR'd directly to simulate an outer
-                                    ; defining word reaching that point,
-                                    ; without needing to actually build one
-TSTCSAV2    EQU   APPVARS+212       ; MARKER test: CODEHERE right after
-                                    ; executing the marker word (before it's
-                                    ; overwritten by this test's own restore)
+TSTDOESA    EQU   APPVARS+204       ; address of a compiled JSR SETDOES
+TSTCSAV2    EQU   APPVARS+212       ; MARKER test: CODEHERE after marker ran
 TSTDSAV2    EQU   APPVARS+214       ; same, DPHERE
 TSTVSAV2    EQU   APPVARS+216       ; same, VARHERE
 TSTLSAV2    EQU   APPVARS+218       ; same, LATEST
-TSTCBUF2    EQU   APPVARS+220       ; a SECOND, separate CODEHERE-redirect
-                                    ; target - real bug found via MAME: WORD
-                                    ; writes its parsed-token output directly
-                                    ; at CODEHERE (by its own documented
-                                    ; design, matching the ANS transient-
-                                    ; region contract - confirmed by reading
-                                    ; WORD's own code, not assumed). Any test
-                                    ; that parses a SECOND name later (TO,
-                                    ; IS, ACTION-OF) must NOT redirect
-                                    ; CODEHERE back to TSTCBUF for that
-                                    ; second parse, since TSTCBUF still holds
-                                    ; the FIRST word's already-compiled
-                                    ; trampoline at that point - WORD would
-                                    ; silently overwrite it, corrupting the
-                                    ; CFA that TSTWCFA still points to before
-                                    ; it gets a second chance to execute. 20
-                                    ; bytes - comfortably fits any short
-                                    ; parsed name plus its length byte.
-TSTUMID     EQU   APPVARS+240       ; intermediate U capture (section 3.3,
-                                    ; return stack): >R/2>R tests capture U
-                                    ; right after moving a value to the
-                                    ; return stack, before moving it back -
-                                    ; a round-trip-only check could pass even
-                                    ; if both the move-out and move-back were
-                                    ; broken no-ops, since the value would
-                                    ; never have actually left; this catches
-                                    ; that specifically.
+TSTCBUF2    EQU   APPVARS+220       ; second 20-byte CODEHERE redirect target
+                                    ; See bugfix: TSTCBUF2.1
+TSTUMID     EQU   APPVARS+240       ; U captured mid round trip (>R, 2>R)
 
-TSTOHSAV    EQU   APPVARS+242       ; section 3.1 (System/Console I/O):
-                                    ; saves OUTHEAD (the output ring buffer's
-                                    ; write index) before an EMIT-family call,
-                                    ; so the test can confirm the character(s)
-                                    ; were genuinely queued into OUTBUF - not
-                                    ; just that the call returned without
-                                    ; crashing.
+TSTOHSAV    EQU   APPVARS+242       ; saved OUTHEAD (EMIT-family tests)
 
-TSTBASAV    EQU   APPVARS+243       ; section 3.13 (Numeric Output): saves the
-                                    ; real BASE across tests that do digit
-                                    ; conversion. Real bug found via MAME:
-                                    ; this whole test framework runs before
-                                    ; COLD (confirmed by tracing the boot
-                                    ; sequence directly - COLDSTRT clears all
-                                    ; of GLOBALS, including BASE, to zero,
-                                    ; then calls TSTRUNNER, with COLD's own
-                                    ; "BASE=10" initialization not running
-                                    ; until later) - so BASE reads as zero at
-                                    ; test time, not 10. With BASE=0,
-                                    ; UDDIGIT's own restoring-division
-                                    ; algorithm degrades into an unconditional
-                                    ; shift (the "subtract and check" step
-                                    ; never actually subtracts, since nothing
-                                    ; can compare below zero), so the value
-                                    ; being converted never genuinely
-                                    ; decreases - NUMSIGNS' own loop-until-
-                                    ; zero condition then never becomes true.
-                                    ; Every test in this section doing digit
-                                    ; conversion now explicitly saves BASE,
-                                    ; sets it to 10, and restores it
-                                    ; afterward - the same save/set/restore
-                                    ; pattern already established for
-                                    ; CODEHERE/STATE/SRCADDR etc throughout
-                                    ; this whole session, just not initially
-                                    ; applied to BASE since it was assumed
-                                    ; (incorrectly, for this specific,
-                                    ; pre-COLD execution context) to already
-                                    ; hold a valid value.
+TSTBASAV    EQU   APPVARS+243       ; saved BASE. See bugfix: TSTBASAV.1
 
-TSTHANDSAV  EQU   APPVARS+245       ; section 3.15 (Exception Handling): saves
-                                    ; the real HANDLER across a test verifying
-                                    ; CATCH correctly restores it afterward,
-                                    ; on both the success and throw paths -
-                                    ; confirmed via CATCH's own code that it
-                                    ; saves/restores HANDLER around every
-                                    ; call regardless of outcome, matching its
-                                    ; own documented "restores... HANDLER on
-                                    ; either path".
+TSTHANDSAV  EQU   APPVARS+245       ; saved HANDLER (CATCH test)
 
-TSTSISAV    EQU   APPVARS+247       ; section 3.17 (Environmental & System
-                                    ; Queries): saves the real SRCID across
-                                    ; TSTSOURCEID's and TSTREFILL's own tests,
-                                    ; both of which redirect SRCID directly.
+TSTSISAV    EQU   APPVARS+247       ; saved SRCID (SOURCE-ID, REFILL tests)
 
-TSTNEG1     EQU   $CFC7             ; -12345 - distinct, non-trivial negative
-                                    ; test values, needed for arithmetic
-                                    ; tests (ABS, NEGATE, MIN/MAX, signed
-                                    ; division, 2/) whose logic genuinely
-                                    ; branches on sign - TSTVAL1-6 above are
-                                    ; all positive, which wouldn't exercise
-                                    ; those branches
+TSTNEG1     EQU   $CFC7             ; -12345: a non-trivial negative value
 TSTNEG2     EQU   $FEBF             ; -321
 
 TSTD1HI     EQU   $0001             ; TSTDBL1 = 70000 (positive, exceeds 16
@@ -228,15 +84,21 @@ TSTDSHI     EQU   $0000             ; TSTDBLSMALL = 500 - small enough to fit
 TSTDSLO     EQU   $01F4             ; in a single cell, for D>S
 
 ; ------------------------------------------------------------
-; TSTREPORT - ( testname-caddr passflag -- ) shared by every
-; test. Prints the test's name (via COUNT+TYPE), then " OK" or
-; " FAIL" depending on passflag (TRUEV = pass, FALSEV = fail),
-; then a CR, readying the terminal for the next test's line.
+; Report one test result: print the test name, then OK or FAIL,
+; then a CR.
+; TSTREPORT
+;    Inputs:
+;        data stack: passflag (TRUEV = pass), testname-caddr
+;        beneath it (counted string)
+;    Outputs:
+;        name, then " OK" or " FAIL", then CR, queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTREPORT.0.
 ; ------------------------------------------------------------
 TSTREPORT:  PULU  D
             STD   TSTFLAG
-            JSR   COUNT
-            JSR   TYPE
+            JSR   COUNTW
+            JSR   TYPEW
             LDD   TSTFLAG
             BEQ   TSTFAILR
             LDD   #TSTOKMSG
@@ -248,7 +110,7 @@ TSTFAILR:   LDD   #TSTFAILMSG
             PSHU  D
             LDD   #TSTFAILMSGL
             PSHU  D
-TSTPRINT:   JSR   TYPE
+TSTPRINT:   JSR   TYPEW
             JSR   CRW
             RTS
 
@@ -258,8 +120,14 @@ TSTFAILMSG: FCC   " FAIL"
 TSTFAILMSGL EQU   *-TSTFAILMSG
 
 ; ------------------------------------------------------------
-; TSTRUNNER - calls each test group in turn. Add new groups
-; here as they're written.
+; Run each test group in turn.
+; TSTRUNNER
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTRUNNER.0.
 ; ------------------------------------------------------------
 TSTRUNNER:  JSR   TSTSYSIO
             JSR   TSTSTACK
@@ -282,33 +150,22 @@ TSTRUNNER:  JSR   TSTSYSIO
             RTS
 
 ; ------------------------------------------------------------
-; TSTSYSIO - System/Console I/O tests (glossary section 3.1, 12
-; words, 7 tests). Six words are deliberately NOT tested here -
-; KEY, ACCEPT, EXPECT, and QUERY all genuinely block on real
-; input during automated, headless boot-time testing (confirmed
-; by reading their own implementations: KEY spins on itself,
-; ACCEPT calls KEY directly, EXPECT/QUERY both call ACCEPT); and
-; ABORT/QUIT are both designed to never return (ABORT falls
-; through into QUIT, which resets the return stack, discarding
-; this entire call chain and hijacking the boot sequence into
-; the interpreter's own top-level loop). See this group's own
-; leading comment block, right before TSTKEYQ, for the full
-; reasoning.
-;
-; EMIT/TYPE/CR/SPACE/SPACES are safe and already proven so - this
-; whole test framework has used TYPE and CR (via TSTREPORT)
-; thousands of times already across every prior test group.
-; Each test here verifies the real queuing mechanism (OUTHEAD/
-; OUTBUF), reading the actual character(s) back out of the
-; output ring buffer to confirm they were genuinely queued, not
-; just that the call returned without crashing.
+; System/Console I/O tests (glossary section 3.1, 12 words,
+; 7 tests).
+; TSTSYSIO
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTSYSIO.0.
 ; ------------------------------------------------------------
 TSTSYSIO:   JSR   CRW
             LDX   #TSTSYSIOMSG
             PSHU  X
             LDD   #5
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-0     ; >>>>
@@ -331,39 +188,20 @@ TSTSYSIOMSG:
             IFEQ  TSTSELECTOR-0     ; >>>>
 
 ; ------------------------------------------------------------
-; System/Console I/O test harness (glossary section 3.1). Half
-; of this section's 12 words are deliberately NOT tested here,
-; for reasons confirmed by reading their own implementations
-; directly, not assumed from the glossary alone:
-;
-; KEY genuinely spins forever without real input (both its
-; interrupt-driven and polled variants branch back to
-; themselves - "BEQ KEY" - until a character arrives); ACCEPT
-; calls KEY directly in its own main loop, and EXPECT/QUERY both
-; call ACCEPT - all four inherit the same block. None of these
-; can complete during automated, headless boot-time testing,
-; where no real input will ever arrive.
-;
-; ABORT falls straight through into QUIT, which resets S to
-; RP0 - discarding this entire call chain, including the path
-; back to TSTRUNNER - and enters the interpreter's own top-level
-; loop. Calling either directly would hijack the boot sequence
-; entirely, not just fail one test.
-;
-; EMIT/TYPE/CR/SPACE/SPACES are safe and already proven so - this
-; whole test framework has used TYPE and CR (via TSTREPORT)
-; thousands of times already across every prior test group
-; without incident. Each test here verifies the actual queuing
-; mechanism (OUTHEAD/OUTBUF), not just "didn't crash" - reading
-; the real character(s) back out of the output ring buffer to
-; confirm they were genuinely queued, not just that the call
-; returned.
+; System/Console I/O test harness (glossary section 3.1).
+; Original comment: shadow TSTSYSIO.1.
 ; ------------------------------------------------------------
 
 ; ------------------------------------------------------------
-; TSTKEYQ - unit test for KEY?. With no real input pending
-; during automated boot-time testing, expects FALSE - the
-; normal, expected case for this kind of test run.
+; unit test for KEY?. With no real input pending during
+; automated boot-time testing, expects FALSE - the normal,
+; expected case for this kind of test run.
+; TSTKEYQ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTKEYQ OK" or "TSTKEYQ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTKEYQ:    STU   TSTU0
 
@@ -371,7 +209,7 @@ TSTKEYQ:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   KEYQ
+            JSR   KEYQW
 
             STU   TSTUAF
 
@@ -403,12 +241,18 @@ TSTKEYQNAME:
             FCC   "TSTKEYQ"
 
 ; ------------------------------------------------------------
-; TSTEMIT - unit test for EMIT. Verifies the actual queuing
-; mechanism: saves OUTHEAD before the call, then confirms it
-; advanced by exactly one (wrapping correctly via OUTBUFSZ, a
-; power of two) and that the queued byte at the old OUTHEAD
-; position genuinely matches the character emitted - not just
-; that the call returned.
+; unit test for EMIT. Verifies the actual queuing mechanism:
+; saves OUTHEAD before the call, then confirms it advanced
+; by exactly one (wrapping correctly via OUTBUFSZ, a power
+; of two) and that the queued byte at the old OUTHEAD
+; position genuinely matches the character emitted - not
+; just that the call returned.
+; TSTEMIT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTEMIT OK" or "TSTEMIT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTEMIT:    STU   TSTU0
 
@@ -418,27 +262,11 @@ TSTEMIT:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   EMIT
+            JSR   EMITW
 
             STU   TSTUAF
 
-            LDA   EMITCH            ; BUG FIX: was checking OUTHEAD/OUTBUF, assuming
-                                    ; the interrupt-driven EMIT (SERIALPOLL=0). Real
-                                    ; bug found via MAME: EMIT has two entirely
-                                    ; different implementations, gated the same way
-                                    ; as KEY's own two variants - the polling one
-                                    ; (SERIALPOLL=1, confirmed the currently active
-                                    ; build) writes directly to ACIADR and never
-                                    ; touches OUTHEAD/OUTBUF at all, so that check
-                                    ; always failed despite the character genuinely
-                                    ; being transmitted (confirmed in the terminal
-                                    ; output itself). EMITCH, by contrast, is set
-                                    ; unconditionally by both variants as their very
-                                    ; first step, before either mode-specific branch
-                                    ; - checking it verifies the argument was
-                                    ; correctly extracted from the stack regardless
-                                    ; of which EMIT variant is active, with no
-                                    ; conditional needed.
+            LDA   EMITCH            ; See bugfix: TSTEMIT.1
             CMPA  #65
             BNE   EMFAIL
 
@@ -467,13 +295,19 @@ TSTEMITNAME:
             FCC   "TSTEMIT"
 
 ; ------------------------------------------------------------
-; TSTCR - unit test for CR. Verifies both queued bytes (13 then
-; 10, CR then LF, matching the documented "CR then LF") land
+; unit test for CR. Verifies both queued bytes (13 then 10,
+; CR then LF, matching the documented "CR then LF") land
 ; correctly in the output ring buffer, in order.
+; TSTCR
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCR OK" or "TSTCR FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTCR:      STU   TSTU0
 
-            IFEQ  SERIALPOLL        ; >>>>
+            IFEQ  SERIALPOLL        ; >>>> full check: interrupt-driven EMIT
             LDA   OUTHEAD
             STA   TSTOHSAV
             ENDC                    ; <<<<
@@ -488,8 +322,6 @@ TSTCR:      STU   TSTU0
             STU   TSTUAF
 
             IFEQ  SERIALPOLL        ; >>>> full check: interrupt-driven EMIT
-                                    ; queues both bytes into OUTBUF, verifiable
-                                    ; in order
             LDA   TSTOHSAV
             ADDA  #2
             ANDA  #OUTBUFSZ-1
@@ -506,25 +338,7 @@ TSTCR:      STU   TSTU0
             LDA   B,X
             CMPA  #10
             BNE   CRFAIL
-            ELSE                    ; <<<<>>>> BUG FIX: was unconditionally checking OUTHEAD/
-                                    ; OUTBUF, assuming the interrupt-driven EMIT.
-                                    ; Real bug found via MAME: EMIT has two
-                                    ; entirely different implementations, gated
-                                    ; the same way as KEY's own two variants - the
-                                    ; polling one (SERIALPOLL=1, confirmed the
-                                    ; currently active build) writes directly to
-                                    ; ACIADR and never touches OUTHEAD/OUTBUF at
-                                    ; all, so this check always failed despite
-                                    ; both characters genuinely being transmitted
-                                    ; (confirmed in the terminal output itself).
-                                    ; EMITCH only reflects the LAST of the two
-                                    ; characters CRW emits (10, the LF) by the
-                                    ; time this runs, since each EMIT call
-                                    ; overwrites it - checking that plus the
-                                    ; depth check below is the most this variant
-                                    ; genuinely allows verifying; a direct
-                                    ; hardware write has no other inspectable,
-                                    ; persistent state.
+            ELSE                    ; <<<<>>>> See bugfix: TSTCR.3
             LDA   EMITCH
             CMPA  #10
             BNE   CRFAIL
@@ -554,8 +368,14 @@ TSTCRNAME:  FCB   5
             FCC   "TSTCR"
 
 ; ------------------------------------------------------------
-; TSTSPACE - unit test for SPACE. Verifies one space (32) is
-; genuinely queued.
+; unit test for SPACE. Verifies one space (32) is genuinely
+; queued.
+; TSTSPACE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSPACE OK" or "TSTSPACE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSPACE:   STU   TSTU0
 
@@ -567,12 +387,7 @@ TSTSPACE:   STU   TSTU0
 
             STU   TSTUAF
 
-            LDA   EMITCH            ; BUG FIX: was checking OUTHEAD/OUTBUF - same
-                                    ; fix and same reasoning as TSTEMIT's own fix
-                                    ; (see its comment). SPACEW calls EMIT
-                                    ; internally with a single character (32), so
-                                    ; EMITCH correctly reflects it regardless of
-                                    ; which EMIT variant is active.
+            LDA   EMITCH            ; See bugfix: TSTSPACE.1
             CMPA  #32
             BNE   SCFAIL
 
@@ -601,13 +416,19 @@ TSTSPACENAME:
             FCC   "TSTSPACE"
 
 ; ------------------------------------------------------------
-; TSTSPACES - unit test for SPACES, normal (n=3) case. Verifies
-; all three queued bytes are genuinely spaces (32), not just
+; unit test for SPACES, normal (n=3) case. Verifies all
+; three queued bytes are genuinely spaces (32), not just
 ; that OUTHEAD advanced by the right count.
+; TSTSPACES
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSPACES OK" or "TSTSPACES FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSPACES:  STU   TSTU0
 
-            IFEQ  SERIALPOLL        ; >>>>
+            IFEQ  SERIALPOLL        ; >>>> full check: interrupt-driven EMIT
             LDA   OUTHEAD
             STA   TSTOHSAV
             ENDC                    ; <<<<
@@ -646,18 +467,7 @@ TSTSPACES:  STU   TSTU0
             LDA   B,X
             CMPA  #32
             BNE   SSFAIL
-            ELSE                    ; <<<<>>>> BUG FIX: was unconditionally checking
-                                    ; OUTHEAD/OUTBUF - same fix and reasoning as
-                                    ; TSTCR's own fix. In polling mode, EMITCH
-                                    ; only reflects the LAST of the three
-                                    ; identical spaces emitted, and there is no
-                                    ; persistent per-call count to verify
-                                    ; exactly three calls happened, not just
-                                    ; one or two - a genuine limitation of a
-                                    ; direct hardware write with no buffering,
-                                    ; not something this test can work around.
-                                    ; The depth check below still confirms n=3
-                                    ; was correctly consumed as an argument.
+            ELSE                    ; <<<<>>>> See bugfix: TSTSPACES.2
             LDA   EMITCH
             CMPA  #32
             BNE   SSFAIL
@@ -688,9 +498,15 @@ TSTSPACESNAME:
             FCC   "TSTSPACES"
 
 ; ------------------------------------------------------------
-; TSTSPACESZ - unit test for SPACES, n<=0 case. Documented
-; behavior is "no output if n <= 0" - verifies OUTHEAD genuinely
-; doesn't advance at all, not just that the call didn't crash.
+; unit test for SPACES, n<=0 case. Documented behavior is
+; "no output if n <= 0" - verifies OUTHEAD genuinely doesn't
+; advance at all, not just that the call didn't crash.
+; TSTSPACESZ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSPACESZ OK" or "TSTSPACESZ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSPACESZ: LDA   OUTHEAD
             STA   TSTOHSAV
@@ -736,10 +552,16 @@ TSTSPACESZNAME:
             FCC   "TSTSPACESZ"
 
 ; ------------------------------------------------------------
-; TSTTYPE - unit test for TYPE. Writes a known 2-character
-; string into scratch, calls TYPE on it, and verifies both
-; queued bytes genuinely match the source string, in order -
-; not just that OUTHEAD advanced by the right count.
+; unit test for TYPE. Writes a known 2-character string into
+; scratch, calls TYPE on it, and verifies both queued bytes
+; genuinely match the source string, in order - not just
+; that OUTHEAD advanced by the right count.
+; TSTTYPE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTTYPE OK" or "TSTTYPE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTTYPE:    LDA   #'A'
             STA   TSTNAMEB
@@ -761,7 +583,7 @@ TSTTYPE:    LDA   #'A'
             PSHU  D
             STU   TSTUB4
 
-            JSR   TYPE
+            JSR   TYPEW
 
             STU   TSTUAF
 
@@ -785,13 +607,7 @@ TSTTYPE:    LDA   #'A'
             LDA   B,X
             CMPA  #'B'
             BNE   TEFAIL
-            ELSE                    ; <<<<>>>> BUG FIX: was unconditionally checking OUTHEAD/
-                                    ; OUTBUF - same fix and reasoning as TSTCR's
-                                    ; own fix. EMITCH only reflects the LAST of
-                                    ; the two characters TYPE emits ('B') by the
-                                    ; time this runs; the depth check below still
-                                    ; confirms the addr/len arguments were
-                                    ; correctly consumed.
+            ELSE                    ; <<<<>>>> See bugfix: TSTTYPE.1
             LDA   EMITCH
             CMPA  #'B'
             BNE   TEFAIL
@@ -824,15 +640,21 @@ TSTTYPENAME:
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
-; TSTSTACK - data stack operation tests. Add new tests here as
-; they're written.
+; data stack operation tests.
+; TSTSTACK
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTSTACK.0.
 ; ------------------------------------------------------------
 TSTSTACK:   JSR   CRW
             LDX   #TSTSTACKMSG
             PSHU  X
             LDD   #5
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-1     ; >>>>
@@ -865,12 +687,18 @@ TSTSTACKMSG:
             IFEQ  TSTSELECTOR-1     ; >>>>
 
 ; ------------------------------------------------------------
-; TSTDUP - unit test for DUP ( x -- x x ). Verifies both the
-; stack's contents (the duplicate and the original both equal
-; the pushed test value, and the guard beneath is undisturbed)
+; unit test for DUP ( x -- x x ). Verifies both the stack's
+; contents (the duplicate and the original both equal the
+; pushed test value, and the guard beneath is undisturbed)
 ; and the data stack pointer's movement (exactly one cell, 2
 ; bytes - DUP's own net effect, not conflated with the two
 ; pushes that set the test up).
+; TSTDUP
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDUP OK" or "TSTDUP FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDUP:     STU   TSTU0
 
@@ -880,7 +708,7 @@ TSTDUP:     STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   DUP
+            JSR   DUPW
 
             STU   TSTUAF
 
@@ -914,12 +742,18 @@ TSTDUPNAME: FCB   6
             FCC   "TSTDUP"
 
 ; ------------------------------------------------------------
-; TSTDROP - unit test for DROP ( x -- ). Verifies both the
-; stack's contents (the guard beneath the dropped value is left
+; unit test for DROP ( x -- ). Verifies both the stack's
+; contents (the guard beneath the dropped value is left
 ; undisturbed, and is now the new top) and the data stack
-; pointer's movement (exactly one cell, 2 bytes, freed - DROP's
-; own net effect, not conflated with the two pushes that set the
-; test up).
+; pointer's movement (exactly one cell, 2 bytes, freed -
+; DROP's own net effect, not conflated with the two pushes
+; that set the test up).
+; TSTDROP
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDROP OK" or "TSTDROP FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDROP:    STU   TSTU0
 
@@ -929,7 +763,7 @@ TSTDROP:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   DROP
+            JSR   DROPW
 
             STU   TSTUAF
 
@@ -958,9 +792,15 @@ TSTDROPNAME:
             FCC   "TSTDROP"
 
 ; ------------------------------------------------------------
-; TSTSWAP - unit test for SWAP ( n1 n2 -- n2 n1 ). Verifies the
-; two items exchange places, the guard beneath is undisturbed,
+; unit test for SWAP ( n1 n2 -- n2 n1 ). Verifies the two
+; items exchange places, the guard beneath is undisturbed,
 ; and the net stack depth is unchanged.
+; TSTSWAP
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSWAP OK" or "TSTSWAP FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSWAP:    STU   TSTU0
 
@@ -972,7 +812,7 @@ TSTSWAP:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   SWAP
+            JSR   SWAPW
 
             STU   TSTUAF
 
@@ -1007,9 +847,15 @@ TSTSWAPNAME:
             FCC   "TSTSWAP"
 
 ; ------------------------------------------------------------
-; TSTOVER - unit test for OVER ( n1 n2 -- n1 n2 n1 ). Verifies
-; the copy of n1 is correct, the originals and guard are
+; unit test for OVER ( n1 n2 -- n1 n2 n1 ). Verifies the
+; copy of n1 is correct, the originals and guard are
 ; undisturbed, and exactly one cell was added.
+; TSTOVER
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTOVER OK" or "TSTOVER FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTOVER:    STU   TSTU0
 
@@ -1021,7 +867,7 @@ TSTOVER:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   OVER
+            JSR   OVERW
 
             STU   TSTUAF
 
@@ -1059,9 +905,15 @@ TSTOVERNAME:
             FCC   "TSTOVER"
 
 ; ------------------------------------------------------------
-; TSTROT - unit test for ROT ( n1 n2 n3 -- n2 n3 n1 ). Verifies
-; the rotation order, the guard beneath is undisturbed, and the
+; unit test for ROT ( n1 n2 n3 -- n2 n3 n1 ). Verifies the
+; rotation order, the guard beneath is undisturbed, and the
 ; net stack depth is unchanged.
+; TSTROT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTROT OK" or "TSTROT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTROT:     STU   TSTU0
 
@@ -1075,7 +927,7 @@ TSTROT:     STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   ROT
+            JSR   ROTW
 
             STU   TSTUAF
 
@@ -1112,12 +964,19 @@ TSTROTNAME: FCB   6
             FCC   "TSTROT"
 
 ; ------------------------------------------------------------
-; TSTQDUPNZ - unit test for ?DUP ( n -- n n | 0 ), nonzero case.
-; Verifies the nonzero value is duplicated, the guard beneath is
-; undisturbed, and exactly one cell was added - same as DUP's
-; own behavior for this case. ?DUP needs two tests, one per
-; condition, since DUP-like and no-op are genuinely different
-; code paths (QDUP branches on the popped value).
+; unit test for ?DUP ( n -- n n | 0 ), nonzero case.
+; Verifies the nonzero value is duplicated, the guard
+; beneath is undisturbed, and exactly one cell was added -
+; same as DUP's own behavior for this case. ?DUP needs two
+; tests, one per condition, since DUP-like and no-op are
+; genuinely different code paths (QDUP branches on the
+; popped value).
+; TSTQDUPNZ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTQDUPNZ OK" or "TSTQDUPNZ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTQDUPNZ:  STU   TSTU0
 
@@ -1127,7 +986,7 @@ TSTQDUPNZ:  STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   QDUP
+            JSR   QDUPW
 
             STU   TSTUAF
 
@@ -1161,10 +1020,16 @@ TSTQNNAME:  FCB   9
             FCC   "TSTQDUPNZ"
 
 ; ------------------------------------------------------------
-; TSTQDUPZ - unit test for ?DUP ( n -- n n | 0 ), zero case.
-; Verifies zero is left alone - no duplicate is pushed - the
-; guard beneath is undisturbed, and the net stack depth is
+; unit test for ?DUP ( n -- n n | 0 ), zero case. Verifies
+; zero is left alone - no duplicate is pushed - the guard
+; beneath is undisturbed, and the net stack depth is
 ; unchanged.
+; TSTQDUPZ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTQDUPZ OK" or "TSTQDUPZ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTQDUPZ:   STU   TSTU0
 
@@ -1174,7 +1039,7 @@ TSTQDUPZ:   STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   QDUP
+            JSR   QDUPW
 
             STU   TSTUAF
 
@@ -1205,13 +1070,14 @@ TSTQZNAME:  FCB   8
             FCC   "TSTQDUPZ"
 
 ; ------------------------------------------------------------
-; TSTDEPTH - unit test for DEPTH ( -- n ). Independently
-; computes the expected depth via the same (SP0-U)/2 formula
-; DEPTH itself uses, rather than assuming a fixed starting
-; depth - robust regardless of whatever is already on the stack
-; when this test runs. Also verifies DEPTH's own net effect
-; (exactly one cell pushed) and that the three items pushed to
-; set up the test are left undisturbed.
+; unit test for DEPTH ( -- n ).
+; TSTDEPTH
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDEPTH OK" or "TSTDEPTH FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTDEPTH.0.
 ; ------------------------------------------------------------
 TSTDEPTH:   STU   TSTU0
 
@@ -1223,7 +1089,7 @@ TSTDEPTH:   STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   DEPTH
+            JSR   DEPTHW
 
             STU   TSTUAF
 
@@ -1268,9 +1134,15 @@ TSTDEPTHNAME:
             FCC   "TSTDEPTH"
 
 ; ------------------------------------------------------------
-; TSTDDUP - unit test for 2DUP ( x1 x2 -- x1 x2 x1 x2 ).
-; Verifies the duplicated pair, the originals and guard are
-; undisturbed, and exactly two cells were added.
+; unit test for 2DUP ( x1 x2 -- x1 x2 x1 x2 ). Verifies the
+; duplicated pair, the originals and guard are undisturbed,
+; and exactly two cells were added.
+; TSTDDUP
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDDUP OK" or "TSTDDUP FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDDUP:    STU   TSTU0
 
@@ -1282,7 +1154,7 @@ TSTDDUP:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   DDUP
+            JSR   DDUPW
 
             STU   TSTUAF
 
@@ -1323,9 +1195,15 @@ TSTDDUPNAME:
             FCC   "TSTDDUP"
 
 ; ------------------------------------------------------------
-; TSTDDROP - unit test for 2DROP ( x1 x2 -- ). Verifies both
-; items are removed, the guard beneath is undisturbed, and
-; exactly two cells were freed.
+; unit test for 2DROP ( x1 x2 -- ). Verifies both items are
+; removed, the guard beneath is undisturbed, and exactly two
+; cells were freed.
+; TSTDDROP
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDDROP OK" or "TSTDDROP FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDDROP:   STU   TSTU0
 
@@ -1337,7 +1215,7 @@ TSTDDROP:   STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   DDROP
+            JSR   DDROPW
 
             STU   TSTUAF
 
@@ -1366,9 +1244,15 @@ TSTDDROPNAME:
             FCC   "TSTDDROP"
 
 ; ------------------------------------------------------------
-; TSTDSWAP - unit test for 2SWAP ( x1 x2 x3 x4 -- x3 x4 x1 x2 ).
-; Verifies the two pairs exchange places, the guard beneath is
-; undisturbed, and the net stack depth is unchanged.
+; unit test for 2SWAP ( x1 x2 x3 x4 -- x3 x4 x1 x2 ).
+; Verifies the two pairs exchange places, the guard beneath
+; is undisturbed, and the net stack depth is unchanged.
+; TSTDSWAP
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDSWAP OK" or "TSTDSWAP FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDSWAP:   STU   TSTU0
 
@@ -1384,7 +1268,7 @@ TSTDSWAP:   STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   DSWAP
+            JSR   DSWAPW
 
             STU   TSTUAF
 
@@ -1425,10 +1309,15 @@ TSTDSWAPNAME:
             FCC   "TSTDSWAP"
 
 ; ------------------------------------------------------------
-; TSTDOVER - unit test for 2OVER
-; ( x1 x2 x3 x4 -- x1 x2 x3 x4 x1 x2 ). Verifies the copied
-; pair, the originals and guard are undisturbed, and exactly
-; two cells were added.
+; unit test for 2OVER ( x1 x2 x3 x4 -- x1 x2 x3 x4 x1 x2 ).
+; Verifies the copied pair, the originals and guard are
+; undisturbed, and exactly two cells were added.
+; TSTDOVER
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDOVER OK" or "TSTDOVER FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDOVER:   STU   TSTU0
 
@@ -1444,7 +1333,7 @@ TSTDOVER:   STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   DOVER
+            JSR   DOVERW
 
             STU   TSTUAF
 
@@ -1491,9 +1380,15 @@ TSTDOVERNAME:
             FCC   "TSTDOVER"
 
 ; ------------------------------------------------------------
-; TSTNIP - unit test for NIP ( x1 x2 -- x2 ). Verifies the
-; second item is discarded, x2 is left on top, the guard beneath
-; is undisturbed, and exactly one cell was freed.
+; unit test for NIP ( x1 x2 -- x2 ). Verifies the second
+; item is discarded, x2 is left on top, the guard beneath is
+; undisturbed, and exactly one cell was freed.
+; TSTNIP
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTNIP OK" or "TSTNIP FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTNIP:     STU   TSTU0
 
@@ -1505,7 +1400,7 @@ TSTNIP:     STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   NIP
+            JSR   NIPW
 
             STU   TSTUAF
 
@@ -1536,9 +1431,15 @@ TSTNIPNAME: FCB   6
             FCC   "TSTNIP"
 
 ; ------------------------------------------------------------
-; TSTTUCK - unit test for TUCK ( x1 x2 -- x2 x1 x2 ). Verifies
-; the copy of x2 is tucked correctly beneath x1, the guard
+; unit test for TUCK ( x1 x2 -- x2 x1 x2 ). Verifies the
+; copy of x2 is tucked correctly beneath x1, the guard
 ; beneath is undisturbed, and exactly one cell was added.
+; TSTTUCK
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTTUCK OK" or "TSTTUCK FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTTUCK:    STU   TSTU0
 
@@ -1550,7 +1451,7 @@ TSTTUCK:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   TUCK
+            JSR   TUCKW
 
             STU   TSTUAF
 
@@ -1588,13 +1489,17 @@ TSTTUCKNAME:
             FCC   "TSTTUCK"
 
 ; ------------------------------------------------------------
-; TSTPICK - unit test for PICK ( xu ... x0 u -- xu ... x0 xu ),
-; using u=2 as a concrete representative case (0 PICK is DUP,
-; 1 PICK is OVER; 2 PICK is the first case distinct from both).
-; Verifies the correct item (the one 2 cells deep after u itself
-; is popped) is copied to the top, everything beneath is
-; undisturbed, and the net stack depth is unchanged (u popped,
-; one copy pushed).
+; unit test for PICK ( xu ... x0 u -- xu ... x0 xu ), using
+; u=2 as a concrete representative case (0 PICK is DUP, 1
+; PICK is OVER; 2 PICK is the first case distinct from
+; both).
+; TSTPICK
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTPICK OK" or "TSTPICK FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTPICK.0.
 ; ------------------------------------------------------------
 TSTPICK:    STU   TSTU0
 
@@ -1610,7 +1515,7 @@ TSTPICK:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   PICK
+            JSR   PICKW
 
             STU   TSTUAF
 
@@ -1651,14 +1556,17 @@ TSTPICKNAME:
             FCC   "TSTPICK"
 
 ; ------------------------------------------------------------
-; TSTROLL - unit test for ROLL
-; ( xu ... x0 u -- xu-1 ... x0 xu ), using u=2 as a concrete
-; representative case (matches TSTPICK's own choice of u, so
-; the two tests are directly comparable). Verifies the item 2
-; cells deep is removed and moved to the top, the items above it
-; shift down by one slot each, the guard beneath is undisturbed,
-; and exactly one cell was freed (u popped, nothing replaces it
-; numerically - the rolled item moves within the existing space).
+; unit test for ROLL ( xu ... x0 u -- xu-1 ... x0 xu ),
+; using u=2 as a concrete representative case (matches
+; TSTPICK's own choice of u, so the two tests are directly
+; comparable).
+; TSTROLL
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTROLL OK" or "TSTROLL FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTROLL.0.
 ; ------------------------------------------------------------
 TSTROLL:    STU   TSTU0
 
@@ -1674,7 +1582,7 @@ TSTROLL:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   ROLL
+            JSR   ROLLW
 
             STU   TSTUAF
 
@@ -1712,10 +1620,16 @@ TSTROLLNAME:
             FCC   "TSTROLL"
 
 ; ------------------------------------------------------------
-; TSTDROT - unit test for 2ROT
-; ( x1 x2 x3 x4 x5 x6 -- x3 x4 x5 x6 x1 x2 ). Verifies the
-; rotation order of all three cell pairs, the guard beneath is
-; undisturbed, and the net stack depth is unchanged.
+; unit test for 2ROT ( x1 x2 x3 x4 x5 x6 -- x3 x4 x5 x6 x1
+; x2 ). Verifies the rotation order of all three cell pairs,
+; the guard beneath is undisturbed, and the net stack depth
+; is unchanged.
+; TSTDROT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDROT OK" or "TSTDROT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDROT:    STU   TSTU0
 
@@ -1735,7 +1649,7 @@ TSTDROT:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   DROT
+            JSR   DROTW
 
             STU   TSTUAF
 
@@ -1784,21 +1698,19 @@ TSTDROTNAME:
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
-; TSTRETSTACK - return-stack tests (glossary section 3.3, 6
-; words, 4 tests since >R/R> and 2>R/2R> are each combined into
-; one round-trip test, matching how they can only be meaningfully
-; tested together - the "must be balanced within the same
-; definition" constraint each word's own glossary entry
-; documents). Every >R/2>R in these tests is balanced by a
-; matching R>/2R> before this group's own RTS - these words
-; operate directly on the return stack, the same stack holding
-; real subroutine return addresses, so leaving one unbalanced
-; would corrupt the path back to whatever called this test.
-;
-; R@/2R@ tests specifically verify "non-destructive" for real:
-; peek, then retrieve the original afterward and confirm it's
-; still correct - not just that the peek itself returned the
-; right value once.
+; return-stack tests (glossary section 3.3, 6 words, 4 tests
+; since >R/R> and 2>R/2R> are each combined into one
+; round-trip test, matching how they can only be
+; meaningfully tested together - the "must be balanced
+; within the same definition" constraint each word's own
+; glossary entry documents).
+; TSTRETSTACK
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTRETSTACK.0.
 ; ------------------------------------------------------------
 TSTRETSTACK:
             JSR   CRW
@@ -1806,7 +1718,7 @@ TSTRETSTACK:
             PSHU  X
             LDD   #8
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-2     ; >>>>
@@ -1825,29 +1737,22 @@ TSTRETMSG:  FCC   "RetStack"
             IFEQ  TSTSELECTOR-2     ; >>>>
 
 ; ------------------------------------------------------------
-; Return-stack test harness (glossary section 3.3). Unlike
-; every other test group in this file, these words operate
-; directly on the return stack (S) - the same stack holding
-; real subroutine return addresses, including this very test
-; subroutine's own. Every >R/2>R is balanced by a matching
-; R>/2R> within the same test body, before this test's own
-; RTS - leaving one unbalanced would corrupt the return address
-; needed to get back to TSTRUNNER (or whatever called it).
-; Traced each word's own PULS/PSHS juggling by hand first to
-; confirm this: >R/R>/2>R/2R> all temporarily lift the caller's
-; own return address off S, do the actual move, then restore it
-; on top - so the moved value ends up correctly nested one level
-; inside the current subroutine's own return-stack frame,
-; retrievable by a later R>/2R> in the same body, and cleanly
-; gone by the time this test's own RTS runs.
+; Return-stack test harness (glossary section 3.3).
+; Original comment: shadow TSTRETSTACK.1.
 ; ------------------------------------------------------------
 
 ; ------------------------------------------------------------
-; TSTTOR - unit test for >R and R> together. Includes an
-; intermediate check (right after >R, before R>) confirming the
-; value genuinely left the data stack - a pure round-trip check
-; could pass even if both words were broken no-ops, since the
-; value would never actually have left.
+; unit test for >R and R> together. Includes an intermediate
+; check (right after >R, before R>) confirming the value
+; genuinely left the data stack - a pure round-trip check
+; could pass even if both words were broken no-ops, since
+; the value would never actually have left.
+; TSTTOR
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTTOR OK" or "TSTTOR FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTTOR:     STU   TSTU0
 
@@ -1857,7 +1762,7 @@ TSTTOR:     STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   TOR
+            JSR   TORW
 
             STU   TSTUMID
 
@@ -1866,7 +1771,7 @@ TSTTOR:     STU   TSTU0
             CMPD  #-2
             BNE   TRFAIL
 
-            JSR   FROMR
+            JSR   FROMRW
 
             STU   TSTUAF
 
@@ -1897,12 +1802,18 @@ TSTTORNAME: FCB   6
             FCC   "TSTTOR"
 
 ; ------------------------------------------------------------
-; TSTRFETCH - unit test for R@. Moves a value to the return
-; stack via >R, peeks it via R@ (verifying the copy matches),
-; then retrieves the original via R> (verifying R@ genuinely
-; left it there undisturbed, not just that R@ itself returned
-; the right value once) - confirming "non-destructive" for real,
+; unit test for R@. Moves a value to the return stack via
+; >R, peeks it via R@ (verifying the copy matches), then
+; retrieves the original via R> (verifying R@ genuinely left
+; it there undisturbed, not just that R@ itself returned the
+; right value once) - confirming "non-destructive" for real,
 ; not assumed from the name.
+; TSTRFETCH
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTRFETCH OK" or "TSTRFETCH FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTRFETCH:  STU   TSTU0
 
@@ -1912,9 +1823,9 @@ TSTRFETCH:  STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   TOR
-            JSR   RFETCH
-            JSR   FROMR
+            JSR   TORW
+            JSR   RFETCHW
+            JSR   FROMRW
 
             STU   TSTUAF
 
@@ -1949,10 +1860,16 @@ TSTRFETCHNAME:
             FCC   "TSTRFETCH"
 
 ; ------------------------------------------------------------
-; TSTTWOTOR - unit test for 2>R and 2R> together. Same
-; intermediate-check reasoning as TSTTOR, applied to the pair -
-; confirms both cells genuinely left the data stack before
-; verifying the round trip.
+; unit test for 2>R and 2R> together. Same
+; intermediate-check reasoning as TSTTOR, applied to the
+; pair - confirms both cells genuinely left the data stack
+; before verifying the round trip.
+; TSTTWOTOR
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTTWOTOR OK" or "TSTTWOTOR FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTTWOTOR:  STU   TSTU0
 
@@ -1964,7 +1881,7 @@ TSTTWOTOR:  STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   TWOTOR
+            JSR   TWOTORW
 
             STU   TSTUMID
 
@@ -1973,7 +1890,7 @@ TSTTWOTOR:  STU   TSTU0
             CMPD  #-4
             BNE   T2RFAIL
 
-            JSR   TWOFROMR
+            JSR   TWOFROMRW
 
             STU   TSTUAF
 
@@ -2008,11 +1925,17 @@ TSTTWOTORNAME:
             FCC   "TSTTWOTOR"
 
 ; ------------------------------------------------------------
-; TSTTWORFETCH - unit test for 2R@. Same reasoning as
-; TSTRFETCH, applied to the pair: moves x1,x2 to the return
-; stack via 2>R, peeks via 2R@ (verifying both cells, correctly
-; ordered), then retrieves the originals via 2R> (verifying 2R@
-; genuinely left them there undisturbed).
+; unit test for 2R@. Same reasoning as TSTRFETCH, applied to
+; the pair: moves x1,x2 to the return stack via 2>R, peeks
+; via 2R@ (verifying both cells, correctly ordered), then
+; retrieves the originals via 2R> (verifying 2R@ genuinely
+; left them there undisturbed).
+; TSTTWORFETCH
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTTWORFETCH OK" or "TSTTWORFETCH FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTTWORFETCH:
             STU   TSTU0
@@ -2025,9 +1948,9 @@ TSTTWORFETCH:
             PSHU  D
             STU   TSTUB4
 
-            JSR   TWOTOR
-            JSR   TWORFETCH
-            JSR   TWOFROMR
+            JSR   TWOTORW
+            JSR   TWORFETCHW
+            JSR   TWOFROMRW
 
             STU   TSTUAF
 
@@ -2070,21 +1993,21 @@ TSTTWORFETCHNAME:
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
-; TSTSARITH - single-cell arithmetic tests (glossary section 3.4).
-; Covers every word in that section, with representative
-; positive/negative/zero cases per word - not an exhaustive sign
-; combination sweep, but enough to exercise each word's actual
-; branches (sign handling, division's throw-on-zero, multiply's
-; defined-truncation-not-error overflow behavior). See the
-; open-items checklist for the full reasoning behind the specific
-; cases chosen.
+; single-cell arithmetic tests (glossary section 3.4).
+; TSTSARITH
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTSARITH.0.
 ; ------------------------------------------------------------
 TSTSARITH:  JSR   CRW
             LDX   #TSTSARITHMSG
             PSHU  X
             LDD   #11
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-3     ; >>>>
@@ -2128,7 +2051,13 @@ TSTSARITHMSG:
             IFEQ  TSTSELECTOR-3     ; >>>>
 
 ; ------------------------------------------------------------
-; TSTPLUS - unit test for PLUS. n1 + n2, mixed signs.
+; unit test for PLUS. n1 + n2, mixed signs.
+; TSTPLUS
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTPLUS OK" or "TSTPLUS FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTPLUS:    STU   TSTU0
 
@@ -2140,7 +2069,7 @@ TSTPLUS:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   PLUS
+            JSR   PLUSW
 
             STU   TSTUAF
 
@@ -2172,7 +2101,13 @@ TSTPLUSNAME:
             FCC   "TSTPLUS"
 
 ; ------------------------------------------------------------
-; TSTMINUS - unit test for MINUS. n1 - n2 (operand order matters).
+; unit test for MINUS. n1 - n2 (operand order matters).
+; TSTMINUS
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTMINUS OK" or "TSTMINUS FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTMINUS:   STU   TSTU0
 
@@ -2184,7 +2119,7 @@ TSTMINUS:   STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   MINUS
+            JSR   MINUSW
 
             STU   TSTUAF
 
@@ -2216,7 +2151,13 @@ TSTMINUSNAME:
             FCC   "TSTMINUS"
 
 ; ------------------------------------------------------------
-; TSTSTAR1 - unit test for STAR. normal signed multiply.
+; unit test for STAR. normal signed multiply.
+; TSTSTAR1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSTAR1 OK" or "TSTSTAR1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSTAR1:   STU   TSTU0
 
@@ -2228,7 +2169,7 @@ TSTSTAR1:   STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   STAR
+            JSR   STARW
 
             STU   TSTUAF
 
@@ -2260,7 +2201,14 @@ TSTSTAR1NAME:
             FCC   "TSTSTAR1"
 
 ; ------------------------------------------------------------
-; TSTSTAR2 - unit test for STAR. overflow case - product exceeds 16-bit range; ANS defines * as truncating, not erroring.
+; unit test for STAR. overflow case - product exceeds 16-bit
+; range; ANS defines * as truncating, not erroring.
+; TSTSTAR2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSTAR2 OK" or "TSTSTAR2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSTAR2:   STU   TSTU0
 
@@ -2272,7 +2220,7 @@ TSTSTAR2:   STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   STAR
+            JSR   STARW
 
             STU   TSTUAF
 
@@ -2304,7 +2252,15 @@ TSTSTAR2NAME:
             FCC   "TSTSTAR2"
 
 ; ------------------------------------------------------------
-; TSTSLASH1 - unit test for SLASH. normal signed symmetric division (quotient only - SLASH pushes DIVNUM, not the remainder too).
+; unit test for SLASH. normal signed symmetric division
+; (quotient only - SLASH pushes DIVNUM, not the remainder
+; too).
+; TSTSLASH1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSLASH1 OK" or "TSTSLASH1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSLASH1:  STU   TSTU0
 
@@ -2316,7 +2272,7 @@ TSTSLASH1:  STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   SLASH
+            JSR   SLASHW
 
             STU   TSTUAF
 
@@ -2348,7 +2304,14 @@ TSTSLASH1NAME:
             FCC   "TSTSLASH1"
 
 ; ------------------------------------------------------------
-; TSTSLASH2 - unit test for SLASH. negative dividend, symmetric division.
+; unit test for SLASH. negative dividend, symmetric
+; division.
+; TSTSLASH2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSLASH2 OK" or "TSTSLASH2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSLASH2:  STU   TSTU0
 
@@ -2360,7 +2323,7 @@ TSTSLASH2:  STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   SLASH
+            JSR   SLASHW
 
             STU   TSTUAF
 
@@ -2392,15 +2355,14 @@ TSTSLASH2NAME:
             FCC   "TSTSLASH2"
 
 ; ------------------------------------------------------------
-; TSTSLASHZ - unit test for SLASH, divide-by-zero case. n2 = 0.
-; Verifies THROW -10 fires (per this system's documented ANS
-; behavior for a zero divisor) and that CATCH's own depth-
-; restoration contract holds (net 0 change across the JSR CATCH,
-; xt's slot effectively replaced by the throw code). Per CATCH's
-; own spec, the i*x arguments' VALUES are explicitly unspecified
-; after a catch, not just untested here - the final, unconditional
-; stack restore discards them without needing to know how many
-; there are.
+; unit test for SLASH, divide-by-zero case. n2 = 0.
+; TSTSLASHZ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSLASHZ OK" or "TSTSLASHZ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTSLASHZ.0.
 ; ------------------------------------------------------------
 TSTSLASHZ:  STU   TSTU0
 
@@ -2408,11 +2370,11 @@ TSTSLASHZ:  STU   TSTU0
             PSHU  D
             LDD   #$0000
             PSHU  D
-            LDX   #SLASH
+            LDX   #SLASHW
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -2441,7 +2403,14 @@ TSTSLASHZNAME:
             FCC   "TSTSLASHZ"
 
 ; ------------------------------------------------------------
-; TSTMODW - unit test for MODW. negative dividend, symmetric remainder.
+; unit test for MODW. negative dividend, symmetric
+; remainder.
+; TSTMODW
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTMODW OK" or "TSTMODW FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTMODW:    STU   TSTU0
 
@@ -2485,15 +2454,14 @@ TSTMODWNAME:
             FCC   "TSTMODW"
 
 ; ------------------------------------------------------------
-; TSTMODZ - unit test for MODW, divide-by-zero case. n2 = 0.
-; Verifies THROW -10 fires (per this system's documented ANS
-; behavior for a zero divisor) and that CATCH's own depth-
-; restoration contract holds (net 0 change across the JSR CATCH,
-; xt's slot effectively replaced by the throw code). Per CATCH's
-; own spec, the i*x arguments' VALUES are explicitly unspecified
-; after a catch, not just untested here - the final, unconditional
-; stack restore discards them without needing to know how many
-; there are.
+; unit test for MODW, divide-by-zero case. n2 = 0.
+; TSTMODZ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTMODZ OK" or "TSTMODZ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTMODZ.0.
 ; ------------------------------------------------------------
 TSTMODZ:    STU   TSTU0
 
@@ -2505,7 +2473,7 @@ TSTMODZ:    STU   TSTU0
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -2534,7 +2502,14 @@ TSTMODZNAME:
             FCC   "TSTMODZ"
 
 ; ------------------------------------------------------------
-; TSTSLMOD - unit test for SLASHMOD. /MOD together - both remainder and quotient.
+; unit test for SLASHMOD. /MOD together - both remainder and
+; quotient.
+; TSTSLMOD
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSLMOD OK" or "TSTSLMOD FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSLMOD:   STU   TSTU0
 
@@ -2546,7 +2521,7 @@ TSTSLMOD:   STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   SLASHMOD
+            JSR   SLASHMODW
 
             STU   TSTUAF
 
@@ -2581,15 +2556,14 @@ TSTSLMODNAME:
             FCC   "TSTSLMOD"
 
 ; ------------------------------------------------------------
-; TSTSLMODZ - unit test for SLASHMOD, divide-by-zero case. n2 = 0.
-; Verifies THROW -10 fires (per this system's documented ANS
-; behavior for a zero divisor) and that CATCH's own depth-
-; restoration contract holds (net 0 change across the JSR CATCH,
-; xt's slot effectively replaced by the throw code). Per CATCH's
-; own spec, the i*x arguments' VALUES are explicitly unspecified
-; after a catch, not just untested here - the final, unconditional
-; stack restore discards them without needing to know how many
-; there are.
+; unit test for SLASHMOD, divide-by-zero case. n2 = 0.
+; TSTSLMODZ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSLMODZ OK" or "TSTSLMODZ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTSLMODZ.0.
 ; ------------------------------------------------------------
 TSTSLMODZ:  STU   TSTU0
 
@@ -2597,11 +2571,11 @@ TSTSLMODZ:  STU   TSTU0
             PSHU  D
             LDD   #$0000
             PSHU  D
-            LDX   #SLASHMOD
+            LDX   #SLASHMODW
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -2630,7 +2604,13 @@ TSTSLMODZNAME:
             FCC   "TSTSLMODZ"
 
 ; ------------------------------------------------------------
-; TSTNEGATE - unit test for NEGATE. two's-complement negate.
+; unit test for NEGATE. two's-complement negate.
+; TSTNEGATE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTNEGATE OK" or "TSTNEGATE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTNEGATE:  STU   TSTU0
 
@@ -2640,7 +2620,7 @@ TSTNEGATE:  STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   NEGATE
+            JSR   NEGATEW
 
             STU   TSTUAF
 
@@ -2672,7 +2652,14 @@ TSTNEGATENAME:
             FCC   "TSTNEGATE"
 
 ; ------------------------------------------------------------
-; TSTABS1 - unit test for ABSW. positive input - already non-negative, unchanged.
+; unit test for ABSW. positive input - already non-negative,
+; unchanged.
+; TSTABS1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTABS1 OK" or "TSTABS1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTABS1:    STU   TSTU0
 
@@ -2714,7 +2701,14 @@ TSTABS1NAME:
             FCC   "TSTABS1"
 
 ; ------------------------------------------------------------
-; TSTABS2 - unit test for ABSW. negative input - the branch that actually negates.
+; unit test for ABSW. negative input - the branch that
+; actually negates.
+; TSTABS2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTABS2 OK" or "TSTABS2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTABS2:    STU   TSTU0
 
@@ -2756,7 +2750,14 @@ TSTABS2NAME:
             FCC   "TSTABS2"
 
 ; ------------------------------------------------------------
-; TSTMIN1 - unit test for MIN. n1 < n2 - n1 is the min, left unchanged.
+; unit test for MIN. n1 < n2 - n1 is the min, left
+; unchanged.
+; TSTMIN1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTMIN1 OK" or "TSTMIN1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTMIN1:    STU   TSTU0
 
@@ -2768,7 +2769,7 @@ TSTMIN1:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   MIN
+            JSR   MINW
 
             STU   TSTUAF
 
@@ -2800,7 +2801,13 @@ TSTMIN1NAME:
             FCC   "TSTMIN1"
 
 ; ------------------------------------------------------------
-; TSTMIN2 - unit test for MIN. n1 > n2 - n2 is the min, replaces n1.
+; unit test for MIN. n1 > n2 - n2 is the min, replaces n1.
+; TSTMIN2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTMIN2 OK" or "TSTMIN2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTMIN2:    STU   TSTU0
 
@@ -2812,7 +2819,7 @@ TSTMIN2:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   MIN
+            JSR   MINW
 
             STU   TSTUAF
 
@@ -2844,7 +2851,13 @@ TSTMIN2NAME:
             FCC   "TSTMIN2"
 
 ; ------------------------------------------------------------
-; TSTMAX1 - unit test for MAX. n1 < n2 - n2 is the max, replaces n1.
+; unit test for MAX. n1 < n2 - n2 is the max, replaces n1.
+; TSTMAX1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTMAX1 OK" or "TSTMAX1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTMAX1:    STU   TSTU0
 
@@ -2856,7 +2869,7 @@ TSTMAX1:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   MAX
+            JSR   MAXW
 
             STU   TSTUAF
 
@@ -2888,7 +2901,14 @@ TSTMAX1NAME:
             FCC   "TSTMAX1"
 
 ; ------------------------------------------------------------
-; TSTMAX2 - unit test for MAX. n1 > n2 - n1 is the max, left unchanged.
+; unit test for MAX. n1 > n2 - n1 is the max, left
+; unchanged.
+; TSTMAX2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTMAX2 OK" or "TSTMAX2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTMAX2:    STU   TSTU0
 
@@ -2900,7 +2920,7 @@ TSTMAX2:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   MAX
+            JSR   MAXW
 
             STU   TSTUAF
 
@@ -2932,7 +2952,13 @@ TSTMAX2NAME:
             FCC   "TSTMAX2"
 
 ; ------------------------------------------------------------
-; TSTONEP - unit test for ONEPLUS. add one.
+; unit test for ONEPLUS. add one.
+; TSTONEP
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTONEP OK" or "TSTONEP FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTONEP:    STU   TSTU0
 
@@ -2942,7 +2968,7 @@ TSTONEP:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   ONEPLUS
+            JSR   ONEPLUSW
 
             STU   TSTUAF
 
@@ -2974,7 +3000,13 @@ TSTONEPNAME:
             FCC   "TSTONEP"
 
 ; ------------------------------------------------------------
-; TSTONEM - unit test for ONEMINUS. subtract one.
+; unit test for ONEMINUS. subtract one.
+; TSTONEM
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTONEM OK" or "TSTONEM FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTONEM:    STU   TSTU0
 
@@ -2984,7 +3016,7 @@ TSTONEM:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   ONEMINUS
+            JSR   ONEMINUSW
 
             STU   TSTUAF
 
@@ -3016,7 +3048,13 @@ TSTONEMNAME:
             FCC   "TSTONEM"
 
 ; ------------------------------------------------------------
-; TSTTWOP - unit test for TWOPLUS. add two (not ANS-standard).
+; unit test for TWOPLUS. add two (not ANS-standard).
+; TSTTWOP
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTTWOP OK" or "TSTTWOP FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTTWOP:    STU   TSTU0
 
@@ -3026,7 +3064,7 @@ TSTTWOP:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   TWOPLUS
+            JSR   TWOPLUSW
 
             STU   TSTUAF
 
@@ -3058,7 +3096,13 @@ TSTTWOPNAME:
             FCC   "TSTTWOP"
 
 ; ------------------------------------------------------------
-; TSTTWOS - unit test for TWOSTAR. arithmetic shift left one bit.
+; unit test for TWOSTAR. arithmetic shift left one bit.
+; TSTTWOS
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTTWOS OK" or "TSTTWOS FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTTWOS:    STU   TSTU0
 
@@ -3068,7 +3112,7 @@ TSTTWOS:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   TWOSTAR
+            JSR   TWOSTARW
 
             STU   TSTUAF
 
@@ -3100,7 +3144,14 @@ TSTTWOSNAME:
             FCC   "TSTTWOS"
 
 ; ------------------------------------------------------------
-; TSTTWOD1 - unit test for TWOSLASH. positive input, arithmetic shift right.
+; unit test for TWOSLASH. positive input, arithmetic shift
+; right.
+; TSTTWOD1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTTWOD1 OK" or "TSTTWOD1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTTWOD1:   STU   TSTU0
 
@@ -3110,7 +3161,7 @@ TSTTWOD1:   STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   TWOSLASH
+            JSR   TWOSLASHW
 
             STU   TSTUAF
 
@@ -3142,7 +3193,14 @@ TSTTWOD1NAME:
             FCC   "TSTTWOD1"
 
 ; ------------------------------------------------------------
-; TSTTWOD2 - unit test for TWOSLASH. negative input - the case that actually tests sign-preservation.
+; unit test for TWOSLASH. negative input - the case that
+; actually tests sign-preservation.
+; TSTTWOD2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTTWOD2 OK" or "TSTTWOD2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTTWOD2:   STU   TSTU0
 
@@ -3152,7 +3210,7 @@ TSTTWOD2:   STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   TWOSLASH
+            JSR   TWOSLASHW
 
             STU   TSTUAF
 
@@ -3184,7 +3242,14 @@ TSTTWOD2NAME:
             FCC   "TSTTWOD2"
 
 ; ------------------------------------------------------------
-; TSTSTSL - unit test for STARSLASH. n1*n2/n3 via double-cell intermediate, no truncation until final divide.
+; unit test for STARSLASH. n1*n2/n3 via double-cell
+; intermediate, no truncation until final divide.
+; TSTSTSL
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSTSL OK" or "TSTSTSL FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSTSL:    STU   TSTU0
 
@@ -3198,7 +3263,7 @@ TSTSTSL:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   STARSLASH
+            JSR   STARSLASHW
 
             STU   TSTUAF
 
@@ -3230,15 +3295,14 @@ TSTSTSLNAME:
             FCC   "TSTSTSL"
 
 ; ------------------------------------------------------------
-; TSTSTSLZ - unit test for STARSLASH, divide-by-zero case. n3 = 0.
-; Verifies THROW -10 fires (per this system's documented ANS
-; behavior for a zero divisor) and that CATCH's own depth-
-; restoration contract holds (net 0 change across the JSR CATCH,
-; xt's slot effectively replaced by the throw code). Per CATCH's
-; own spec, the i*x arguments' VALUES are explicitly unspecified
-; after a catch, not just untested here - the final, unconditional
-; stack restore discards them without needing to know how many
-; there are.
+; unit test for STARSLASH, divide-by-zero case. n3 = 0.
+; TSTSTSLZ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSTSLZ OK" or "TSTSTSLZ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTSTSLZ.0.
 ; ------------------------------------------------------------
 TSTSTSLZ:   STU   TSTU0
 
@@ -3248,11 +3312,11 @@ TSTSTSLZ:   STU   TSTU0
             PSHU  D
             LDD   #$0000
             PSHU  D
-            LDX   #STARSLASH
+            LDX   #STARSLASHW
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -3281,7 +3345,14 @@ TSTSTSLZNAME:
             FCC   "TSTSTSLZ"
 
 ; ------------------------------------------------------------
-; TSTSTSM - unit test for STARSLASHMOD. */MOD together - remainder and quotient.
+; unit test for STARSLASHMOD. */MOD together - remainder and
+; quotient.
+; TSTSTSM
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSTSM OK" or "TSTSTSM FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSTSM:    STU   TSTU0
 
@@ -3295,7 +3366,7 @@ TSTSTSM:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   STARSLASHMOD
+            JSR   STARSLASHMODW
 
             STU   TSTUAF
 
@@ -3330,15 +3401,14 @@ TSTSTSMNAME:
             FCC   "TSTSTSM"
 
 ; ------------------------------------------------------------
-; TSTSTSMZ - unit test for STARSLASHMOD, divide-by-zero case. n3 = 0.
-; Verifies THROW -10 fires (per this system's documented ANS
-; behavior for a zero divisor) and that CATCH's own depth-
-; restoration contract holds (net 0 change across the JSR CATCH,
-; xt's slot effectively replaced by the throw code). Per CATCH's
-; own spec, the i*x arguments' VALUES are explicitly unspecified
-; after a catch, not just untested here - the final, unconditional
-; stack restore discards them without needing to know how many
-; there are.
+; unit test for STARSLASHMOD, divide-by-zero case. n3 = 0.
+; TSTSTSMZ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSTSMZ OK" or "TSTSTSMZ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTSTSMZ.0.
 ; ------------------------------------------------------------
 TSTSTSMZ:   STU   TSTU0
 
@@ -3348,11 +3418,11 @@ TSTSTSMZ:   STU   TSTU0
             PSHU  D
             LDD   #$0000
             PSHU  D
-            LDX   #STARSLASHMOD
+            LDX   #STARSLASHMODW
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -3383,32 +3453,22 @@ TSTSTSMZNAME:
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
-; TSTDARITH - mixed & double-precision arithmetic tests (glossary
-; section 3.5). Covers every word in that section. All 14 words
-; traced by hand against their real implementations before any
-; test was written - push/pop order for double-cell values (low
-; cell pushed first, high cell last/on top - confirmed identical
-; across every word here), and which of two operands is which
-; (d1 vs d2, dividend vs divisor) - not assumed from the glossary
-; stack-effect notation alone. FM/MOD (floored) and SM/REM
-; (symmetric) tested against the same negative-dividend case
-; specifically because that's where the two conventions actually
-; diverge - confirmed distinct expected results for each.
-;
-; TSTUMSM2 (added later) is a dedicated boundary-case regression
-; test for UM/MOD's own ANS Annex F MAX-UINT/MAX-UINT case
-; (F.6.1.2370), on top of TSTUMSM's ordinary mid-range case - see
-; TSTUMSM2's own header/comment for why only UM/MOD, of every word
-; in this section, can actually reach the UDIV32 bug it regression-
-; tests (the other division words here all derive UDIV32's divisor
-; from a signed single cell, too narrow a range to trigger it).
+; mixed & double-precision arithmetic tests (glossary
+; section 3.5).
+; TSTDARITH
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTDARITH.0.
 ; ------------------------------------------------------------
 TSTDARITH:  JSR   CRW
             LDX   #TSTDARITHMSG
             PSHU  X
             LDD   #11
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-4     ; >>>>
@@ -3443,9 +3503,13 @@ TSTDARITHMSG:
             IFEQ  TSTSELECTOR-4     ; >>>>
 
 ; ------------------------------------------------------------
-; TSTUMST - unit test for UMSTAR. unsigned single*single->double.
-; Arity: 2 cell(s) in, 2 cell(s) out -> depth check
-; 0 (derived, not hand-typed).
+; unit test for UMSTAR. unsigned single*single->double.
+; TSTUMST
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTUMST OK" or "TSTUMST FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTUMST:    STU   TSTU0
 
@@ -3457,7 +3521,7 @@ TSTUMST:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   UMSTAR
+            JSR   UMSTARW
 
             STU   TSTUAF
 
@@ -3492,9 +3556,14 @@ TSTUMSTNAME:
             FCC   "TSTUMST"
 
 ; ------------------------------------------------------------
-; TSTUMSM - unit test for UMSLASHMOD. unsigned double/single -> remainder, quotient.
-; Arity: 3 cell(s) in, 2 cell(s) out -> depth check
-; -2 (derived, not hand-typed).
+; unit test for UMSLASHMOD. unsigned double/single ->
+; remainder, quotient.
+; TSTUMSM
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTUMSM OK" or "TSTUMSM FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTUMSM:    STU   TSTU0
 
@@ -3508,7 +3577,7 @@ TSTUMSM:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   UMSLASHMOD
+            JSR   UMSLASHMODW
 
             STU   TSTUAF
 
@@ -3543,37 +3612,16 @@ TSTUMSMNAME:
             FCC   "TSTUMSM"
 
 ; ------------------------------------------------------------
-; TSTUMSM2 - unit test for UMSLASHMOD, MAX-UINT/MAX-UINT boundary
-; case (ANS Annex F F.6.1.2370: "MAX-UINT MAX-UINT UM* MAX-UINT
-; UM/MOD -> 0 MAX-UINT"). Direct regression test for the UDIV32 bug
-; found from a hardware report on exactly this case - see UDIV32's
-; own header/comment (forth6809.asm) for the full root-cause
-; analysis: a restoring-division boundary bug where the 16-bit
-; DIVREM register silently lost a 17th overflow bit whenever the
-; divisor was large enough (DIVDEN >= $8001) for the doubled-
-; remainder-plus-next-bit candidate to exceed $FFFF before the
-; compare-and-subtract step - wrongly skipping a subtraction (and
-; its quotient bit) it should have taken. Only UM/MOD can actually
-; reach that condition: it alone passes an arbitrary UNSIGNED
-; 16-bit divisor (up to $FFFF) straight through to UDIV32, where
-; SM/REM, FM/MOD, and plain /, MOD, /MOD all derive UDIV32's
-; divisor from a SIGNED single-cell value (magnitude capped at
-; $8000, from MIN-INT) - just low enough that 2*($8000-1)+1 =
-; $FFFF still fits in 16 bits, so none of those words can ever
-; trigger this particular bug regardless of input. That's why this
-; one boundary case, through UM/MOD specifically, is the test that
-; actually exercises the fixed code path - a plain mid-range
-; UMSLASHMOD case (TSTUMSM, above) does not.
-;
-; Dividend: MAX-UINT*MAX-UINT = $FFFE0001 (confirmed via UMSTAR's
-; own ANS Annex F case, F.6.1.2360: "MAX-UINT MAX-UINT UM* -> 1
-; 1 INVERT", i.e. low cell 1, high cell MAX-UINT/$FFFF - same
-; double value, split differently in that test's own terms).
-; Divisor: MAX-UINT ($FFFF). Expected: remainder 0, quotient
-; MAX-UINT ($FFFF) - verified against the buggy/fixed UDIV32
-; algorithm directly in a Python simulation and a 200,000-case
-; random fuzz run before applying the fix (see the project's own
-; learnings notes), not just by hand-tracing.
+; unit test for UMSLASHMOD, MAX-UINT/MAX-UINT boundary case
+; (ANS Annex F F.6.1.2370: "MAX-UINT MAX-UINT UM* MAX-UINT
+; UM/MOD -> 0 MAX-UINT").
+; TSTUMSM2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTUMSM2 OK" or "TSTUMSM2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTUMSM2.0.
 ; ------------------------------------------------------------
 TSTUMSM2:   STU   TSTU0
 
@@ -3587,7 +3635,7 @@ TSTUMSM2:   STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   UMSLASHMOD
+            JSR   UMSLASHMODW
 
             STU   TSTUAF
 
@@ -3622,9 +3670,13 @@ TSTUMSM2NAME:
             FCC   "TSTUMSM2"
 
 ; ------------------------------------------------------------
-; TSTMSTAR - unit test for MSTAR. signed single*single->double.
-; Arity: 2 cell(s) in, 2 cell(s) out -> depth check
-; 0 (derived, not hand-typed).
+; unit test for MSTAR. signed single*single->double.
+; TSTMSTAR
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTMSTAR OK" or "TSTMSTAR FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTMSTAR:   STU   TSTU0
 
@@ -3636,7 +3688,7 @@ TSTMSTAR:   STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   MSTAR
+            JSR   MSTARW
 
             STU   TSTUAF
 
@@ -3671,9 +3723,13 @@ TSTMSTARNAME:
             FCC   "TSTMSTAR"
 
 ; ------------------------------------------------------------
-; TSTFMSM - unit test for FMSLASHMOD. floored double/single division.
-; Arity: 3 cell(s) in, 2 cell(s) out -> depth check
-; -2 (derived, not hand-typed).
+; unit test for FMSLASHMOD. floored double/single division.
+; TSTFMSM
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTFMSM OK" or "TSTFMSM FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTFMSM:    STU   TSTU0
 
@@ -3687,7 +3743,7 @@ TSTFMSM:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   FMSLASHMOD
+            JSR   FMSLASHMODW
 
             STU   TSTUAF
 
@@ -3722,9 +3778,14 @@ TSTFMSMNAME:
             FCC   "TSTFMSM"
 
 ; ------------------------------------------------------------
-; TSTSMRM - unit test for SMSLASHREM. symmetric double/single division.
-; Arity: 3 cell(s) in, 2 cell(s) out -> depth check
-; -2 (derived, not hand-typed).
+; unit test for SMSLASHREM. symmetric double/single
+; division.
+; TSTSMRM
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSMRM OK" or "TSTSMRM FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSMRM:    STU   TSTU0
 
@@ -3738,7 +3799,7 @@ TSTSMRM:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   SMSLASHREM
+            JSR   SMSLASHREMW
 
             STU   TSTUAF
 
@@ -3773,9 +3834,14 @@ TSTSMRMNAME:
             FCC   "TSTSMRM"
 
 ; ------------------------------------------------------------
-; TSTDPLUS - unit test for DPLUS. double-cell add, with carry propagation.
-; Arity: 4 cell(s) in, 2 cell(s) out -> depth check
-; -4 (derived, not hand-typed).
+; unit test for DPLUS. double-cell add, with carry
+; propagation.
+; TSTDPLUS
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDPLUS OK" or "TSTDPLUS FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDPLUS:   STU   TSTU0
 
@@ -3791,7 +3857,7 @@ TSTDPLUS:   STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   DPLUS
+            JSR   DPLUSW
 
             STU   TSTUAF
 
@@ -3826,9 +3892,14 @@ TSTDPLUSNAME:
             FCC   "TSTDPLUS"
 
 ; ------------------------------------------------------------
-; TSTDMIN2 - unit test for DMINUS. double-cell subtract, with borrow propagation.
-; Arity: 4 cell(s) in, 2 cell(s) out -> depth check
-; -4 (derived, not hand-typed).
+; unit test for DMINUS. double-cell subtract, with borrow
+; propagation.
+; TSTDMIN2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDMIN2 OK" or "TSTDMIN2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDMIN2:   STU   TSTU0
 
@@ -3844,7 +3915,7 @@ TSTDMIN2:   STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   DMINUS
+            JSR   DMINUSW
 
             STU   TSTUAF
 
@@ -3879,9 +3950,14 @@ TSTDMIN2NAME:
             FCC   "TSTDMIN2"
 
 ; ------------------------------------------------------------
-; TSTDNEG - unit test for DNEGATEW. double-cell two's-complement negate.
-; Arity: 2 cell(s) in, 2 cell(s) out -> depth check
-; 0 (derived, not hand-typed).
+; unit test for DNEGATEW. double-cell two's-complement
+; negate.
+; TSTDNEG
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDNEG OK" or "TSTDNEG FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDNEG:    STU   TSTU0
 
@@ -3928,9 +4004,14 @@ TSTDNEGNAME:
             FCC   "TSTDNEG"
 
 ; ------------------------------------------------------------
-; TSTDABS1 - unit test for DABSW. positive double - already non-negative, unchanged.
-; Arity: 2 cell(s) in, 2 cell(s) out -> depth check
-; 0 (derived, not hand-typed).
+; unit test for DABSW. positive double - already
+; non-negative, unchanged.
+; TSTDABS1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDABS1 OK" or "TSTDABS1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDABS1:   STU   TSTU0
 
@@ -3977,9 +4058,14 @@ TSTDABS1NAME:
             FCC   "TSTDABS1"
 
 ; ------------------------------------------------------------
-; TSTDABS2 - unit test for DABSW. negative double - the branch that actually negates.
-; Arity: 2 cell(s) in, 2 cell(s) out -> depth check
-; 0 (derived, not hand-typed).
+; unit test for DABSW. negative double - the branch that
+; actually negates.
+; TSTDABS2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDABS2 OK" or "TSTDABS2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDABS2:   STU   TSTU0
 
@@ -4026,9 +4112,14 @@ TSTDABS2NAME:
             FCC   "TSTDABS2"
 
 ; ------------------------------------------------------------
-; TSTMPLUS - unit test for MPLUS. add a single-cell value into a double.
-; Arity: 3 cell(s) in, 2 cell(s) out -> depth check
-; -2 (derived, not hand-typed).
+; unit test for MPLUS. add a single-cell value into a
+; double.
+; TSTMPLUS
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTMPLUS OK" or "TSTMPLUS FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTMPLUS:   STU   TSTU0
 
@@ -4042,7 +4133,7 @@ TSTMPLUS:   STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   MPLUS
+            JSR   MPLUSW
 
             STU   TSTUAF
 
@@ -4077,9 +4168,15 @@ TSTMPLUSNAME:
             FCC   "TSTMPLUS"
 
 ; ------------------------------------------------------------
-; TSTSTOD - unit test for STOD. sign-extend a negative single to double (this word's own documented bug history was in this exact case).
-; Arity: 1 cell(s) in, 2 cell(s) out -> depth check
-; 2 (derived, not hand-typed).
+; unit test for STOD. sign-extend a negative single to
+; double (this word's own documented bug history was in this
+; exact case).
+; TSTSTOD
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSTOD OK" or "TSTSTOD FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSTOD:    STU   TSTU0
 
@@ -4089,7 +4186,7 @@ TSTSTOD:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   STOD
+            JSR   STODW
 
             STU   TSTUAF
 
@@ -4124,9 +4221,14 @@ TSTSTODNAME:
             FCC   "TSTSTOD"
 
 ; ------------------------------------------------------------
-; TSTDTOS - unit test for DTOS. narrow a double that fits to a single cell.
-; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
-; -2 (derived, not hand-typed).
+; unit test for DTOS. narrow a double that fits to a single
+; cell.
+; TSTDTOS
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDTOS OK" or "TSTDTOS FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDTOS:    STU   TSTU0
 
@@ -4138,7 +4240,7 @@ TSTDTOS:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   DTOS
+            JSR   DTOSW
 
             STU   TSTUAF
 
@@ -4170,9 +4272,14 @@ TSTDTOSNAME:
             FCC   "TSTDTOS"
 
 ; ------------------------------------------------------------
-; TSTDMAX - unit test for DMAXW. double-cell signed maximum, cross-sign case.
-; Arity: 4 cell(s) in, 2 cell(s) out -> depth check
-; -4 (derived, not hand-typed).
+; unit test for DMAXW. double-cell signed maximum,
+; cross-sign case.
+; TSTDMAX
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDMAX OK" or "TSTDMAX FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDMAX:    STU   TSTU0
 
@@ -4223,9 +4330,14 @@ TSTDMAXNAME:
             FCC   "TSTDMAX"
 
 ; ------------------------------------------------------------
-; TSTDMIN - unit test for DMINW. double-cell signed minimum, cross-sign case.
-; Arity: 4 cell(s) in, 2 cell(s) out -> depth check
-; -4 (derived, not hand-typed).
+; unit test for DMINW. double-cell signed minimum,
+; cross-sign case.
+; TSTDMIN
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDMIN OK" or "TSTDMIN FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDMIN:    STU   TSTU0
 
@@ -4276,10 +4388,16 @@ TSTDMINNAME:
             FCC   "TSTDMIN"
 
 ; ------------------------------------------------------------
-; TSTUMSZ - unit test for UMSLASHMOD, divide-by-zero case. u1 = 0.
-; Verifies THROW -10 and CATCH's own depth-restoration contract
-; (net 0 change across the JSR CATCH) - same pattern established
-; in the section 3.4 tests.
+; unit test for UMSLASHMOD, divide-by-zero case. u1 = 0.
+; Verifies THROW -10 and CATCH's own depth-restoration
+; contract (net 0 change across the JSR CATCH) - same
+; pattern established in the section 3.4 tests.
+; TSTUMSZ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTUMSZ OK" or "TSTUMSZ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTUMSZ:    STU   TSTU0
 
@@ -4289,11 +4407,11 @@ TSTUMSZ:    STU   TSTU0
             PSHU  D
             LDD   #$0000
             PSHU  D
-            LDX   #UMSLASHMOD
+            LDX   #UMSLASHMODW
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -4322,10 +4440,16 @@ TSTUMSZNAME:
             FCC   "TSTUMSZ"
 
 ; ------------------------------------------------------------
-; TSTFMSZ - unit test for FMSLASHMOD, divide-by-zero case. n1 = 0.
-; Verifies THROW -10 and CATCH's own depth-restoration contract
-; (net 0 change across the JSR CATCH) - same pattern established
-; in the section 3.4 tests.
+; unit test for FMSLASHMOD, divide-by-zero case. n1 = 0.
+; Verifies THROW -10 and CATCH's own depth-restoration
+; contract (net 0 change across the JSR CATCH) - same
+; pattern established in the section 3.4 tests.
+; TSTFMSZ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTFMSZ OK" or "TSTFMSZ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTFMSZ:    STU   TSTU0
 
@@ -4335,11 +4459,11 @@ TSTFMSZ:    STU   TSTU0
             PSHU  D
             LDD   #$0000
             PSHU  D
-            LDX   #FMSLASHMOD
+            LDX   #FMSLASHMODW
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -4368,10 +4492,16 @@ TSTFMSZNAME:
             FCC   "TSTFMSZ"
 
 ; ------------------------------------------------------------
-; TSTSMRZ - unit test for SMSLASHREM, divide-by-zero case. n1 = 0.
-; Verifies THROW -10 and CATCH's own depth-restoration contract
-; (net 0 change across the JSR CATCH) - same pattern established
-; in the section 3.4 tests.
+; unit test for SMSLASHREM, divide-by-zero case. n1 = 0.
+; Verifies THROW -10 and CATCH's own depth-restoration
+; contract (net 0 change across the JSR CATCH) - same
+; pattern established in the section 3.4 tests.
+; TSTSMRZ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSMRZ OK" or "TSTSMRZ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSMRZ:    STU   TSTU0
 
@@ -4381,11 +4511,11 @@ TSTSMRZ:    STU   TSTU0
             PSHU  D
             LDD   #$0000
             PSHU  D
-            LDX   #SMSLASHREM
+            LDX   #SMSLASHREMW
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -4416,28 +4546,22 @@ TSTSMRZNAME:
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
-; TSTLOGIC - logic, shift, and address-arithmetic tests (glossary
-; section 3.6). Covers every word in that section. Several of
-; these (INVERT, CELLS, CELL+, CHARS, CHAR+, ALIGNED) modify the
-; top of stack in place (LDD/op/STD) rather than PULU/PSHU - the
-; tests verify what's observable via the stack either way, not
-; how each implementation gets there. Three words (CHARS, ALIGN,
-; ALIGNED) are documented no-ops on this system; CHARS/ALIGNED
-; still get a normal single-value test (verifying identity),
-; while ALIGN - which takes no stack arguments at all - gets a
-; dedicated test pushing decoy values to confirm the whole stack,
-; not just one value, is genuinely undisturbed. RSHIFT tested
-; against a negative input specifically, since it's documented
-; logical (zero-fill), not arithmetic (sign-preserving) - the
-; case that actually distinguishes the two conventions, same
-; reasoning already applied to 2/ and FM/MOD vs SM/REM earlier.
+; logic, shift, and address-arithmetic tests (glossary
+; section 3.6).
+; TSTLOGIC
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTLOGIC.0.
 ; ------------------------------------------------------------
 TSTLOGIC:   JSR   CRW
             LDX   #TSTLOGICMSG
             PSHU  X
             LDD   #5
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-5     ; >>>>
@@ -4465,9 +4589,13 @@ TSTLOGICMSG:
             IFEQ  TSTSELECTOR-5     ; >>>>
 
 ; ------------------------------------------------------------
-; TSTAND - unit test for ANDW. bitwise AND.
-; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
-; -2 (derived, not hand-typed).
+; unit test for ANDW. bitwise AND.
+; TSTAND
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTAND OK" or "TSTAND FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTAND:     STU   TSTU0
 
@@ -4510,9 +4638,13 @@ TSTANDNAME: FCB   6
             FCC   "TSTAND"
 
 ; ------------------------------------------------------------
-; TSTOR - unit test for ORW. bitwise OR.
-; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
-; -2 (derived, not hand-typed).
+; unit test for ORW. bitwise OR.
+; TSTOR
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTOR OK" or "TSTOR FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTOR:      STU   TSTU0
 
@@ -4555,9 +4687,13 @@ TSTORNAME:  FCB   5
             FCC   "TSTOR"
 
 ; ------------------------------------------------------------
-; TSTXOR - unit test for XORW. bitwise exclusive OR.
-; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
-; -2 (derived, not hand-typed).
+; unit test for XORW. bitwise exclusive OR.
+; TSTXOR
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTXOR OK" or "TSTXOR FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTXOR:     STU   TSTU0
 
@@ -4600,9 +4736,16 @@ TSTXORNAME: FCB   6
             FCC   "TSTXOR"
 
 ; ------------------------------------------------------------
-; TSTINV - unit test for INVERT. one's-complement, in-place (never touches U itself, unlike most words - the test only cares what's observable via the stack, not how the implementation gets there).
-; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
-; 0 (derived, not hand-typed).
+; unit test for INVERT. one's-complement, in-place (never
+; touches U itself, unlike most words - the test only cares
+; what's observable via the stack, not how the
+; implementation gets there).
+; TSTINV
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTINV OK" or "TSTINV FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTINV:     STU   TSTU0
 
@@ -4612,7 +4755,7 @@ TSTINV:     STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   INVERT
+            JSR   INVERTW
 
             STU   TSTUAF
 
@@ -4643,9 +4786,14 @@ TSTINVNAME: FCB   6
             FCC   "TSTINV"
 
 ; ------------------------------------------------------------
-; TSTLSH - unit test for LSHIFT. logical shift left, zero-fill, truncated to 16 bits.
-; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
-; -2 (derived, not hand-typed).
+; unit test for LSHIFT. logical shift left, zero-fill,
+; truncated to 16 bits.
+; TSTLSH
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTLSH OK" or "TSTLSH FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTLSH:     STU   TSTU0
 
@@ -4657,7 +4805,7 @@ TSTLSH:     STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   LSHIFT
+            JSR   LSHIFTW
 
             STU   TSTUAF
 
@@ -4688,9 +4836,15 @@ TSTLSHNAME: FCB   6
             FCC   "TSTLSH"
 
 ; ------------------------------------------------------------
-; TSTRSH - unit test for RSHIFT. logical shift right, zero-fill (not arithmetic/sign-preserving) - negative input is the case that actually distinguishes this from an arithmetic shift.
-; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
-; -2 (derived, not hand-typed).
+; unit test for RSHIFT. logical shift right, zero-fill (not
+; arithmetic/sign-preserving) - negative input is the case
+; that actually distinguishes this from an arithmetic shift.
+; TSTRSH
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTRSH OK" or "TSTRSH FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTRSH:     STU   TSTU0
 
@@ -4702,7 +4856,7 @@ TSTRSH:     STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   RSHIFT
+            JSR   RSHIFTW
 
             STU   TSTUAF
 
@@ -4733,9 +4887,14 @@ TSTRSHNAME: FCB   6
             FCC   "TSTRSH"
 
 ; ------------------------------------------------------------
-; TSTCELS - unit test for CELLSW. convert a cell count to a byte offset (x2, this system's cell size).
-; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
-; 0 (derived, not hand-typed).
+; unit test for CELLSW. convert a cell count to a byte
+; offset (x2, this system's cell size).
+; TSTCELS
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCELS OK" or "TSTCELS FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTCELS:    STU   TSTU0
 
@@ -4777,9 +4936,13 @@ TSTCELSNAME:
             FCC   "TSTCELS"
 
 ; ------------------------------------------------------------
-; TSTCELP - unit test for CELLPLUS. add one cell's size (2 bytes).
-; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
-; 0 (derived, not hand-typed).
+; unit test for CELLPLUS. add one cell's size (2 bytes).
+; TSTCELP
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCELP OK" or "TSTCELP FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTCELP:    STU   TSTU0
 
@@ -4789,7 +4952,7 @@ TSTCELP:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   CELLPLUS
+            JSR   CELLPLUSW
 
             STU   TSTUAF
 
@@ -4821,9 +4984,15 @@ TSTCELPNAME:
             FCC   "TSTCELP"
 
 ; ------------------------------------------------------------
-; TSTCHRS - unit test for CHARSW. convert a character count to a byte offset - documented no-op on this system (1 byte per character already).
-; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
-; 0 (derived, not hand-typed).
+; unit test for CHARSW. convert a character count to a byte
+; offset - documented no-op on this system (1 byte per
+; character already).
+; TSTCHRS
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCHRS OK" or "TSTCHRS FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTCHRS:    STU   TSTU0
 
@@ -4865,9 +5034,13 @@ TSTCHRSNAME:
             FCC   "TSTCHRS"
 
 ; ------------------------------------------------------------
-; TSTCHRP - unit test for CHARPLUS. add one character's size (1 byte).
-; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
-; 0 (derived, not hand-typed).
+; unit test for CHARPLUS. add one character's size (1 byte).
+; TSTCHRP
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCHRP OK" or "TSTCHRP FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTCHRP:    STU   TSTU0
 
@@ -4877,7 +5050,7 @@ TSTCHRP:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   CHARPLUS
+            JSR   CHARPLUSW
 
             STU   TSTUAF
 
@@ -4909,9 +5082,14 @@ TSTCHRPNAME:
             FCC   "TSTCHRP"
 
 ; ------------------------------------------------------------
-; TSTALGD - unit test for ALIGNEDW. align a given address - documented no-op on the 6809 (no alignment restrictions to enforce).
-; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
-; 0 (derived, not hand-typed).
+; unit test for ALIGNEDW. align a given address - documented
+; no-op on the 6809 (no alignment restrictions to enforce).
+; TSTALGD
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTALGD OK" or "TSTALGD FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTALGD:    STU   TSTU0
 
@@ -4953,9 +5131,16 @@ TSTALGDNAME:
             FCC   "TSTALGD"
 
 ; ------------------------------------------------------------
-; TSTALGN - unit test for ALIGNW. align HERE to a cell boundary - documented no-op on the 6809, and takes no stack arguments at all. Verifies pushed decoy values are entirely undisturbed, not just a single value's persistence.
-; Arity: 0 cell(s) in, 0 cell(s) out -> depth check
-; 0 (derived, not hand-typed).
+; unit test for ALIGNW. align HERE to a cell boundary -
+; documented no-op on the 6809, and takes no stack arguments
+; at all. Verifies pushed decoy values are entirely
+; undisturbed, not just a single value's persistence.
+; TSTALGN
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTALGN OK" or "TSTALGN FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTALGN:    STU   TSTU0
 
@@ -5004,28 +5189,21 @@ TSTALGNNAME:
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
-; TSTCOMPARE - comparison tests (glossary section 3.7). Covers
-; every word in that section. Like several words in the previous
-; group, most of these modify the top of stack in place rather
-; than PULU/PSHU - the tests verify what's observable via the
-; stack either way. Signed vs unsigned comparisons (</U<, >/U>)
-; each tested with a case that would give the opposite answer
-; under the other convention, confirming genuine sign-awareness
-; rather than an accidentally-shared implementation. WITHIN
-; tested against a wraparound range specifically (n2 near $FFFF,
-; n3 wrapped past $0000), both inside and outside cases - the
-; documented special case its own unsigned-offset implementation
-; exists to handle, not just an ordinary non-wrapping range. D</
-; DU< both tested with equal high cells and different low cells -
-; the documented tie-break case a naive high-cell-only comparison
-; would get wrong.
+; comparison tests (glossary section 3.7).
+; TSTCOMPARE
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTCOMPARE.0.
 ; ------------------------------------------------------------
 TSTCOMPARE: JSR   CRW
             LDX   #TSTCOMPMSG
             PSHU  X
             LDD   #7
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-6     ; >>>>
@@ -5055,9 +5233,14 @@ TSTCOMPMSG: FCC   "Compare"
             IFEQ  TSTSELECTOR-6     ; >>>>
 
 ; ------------------------------------------------------------
-; TSTEQ - unit test for EQUALW. true if equal - tested with matching values, the case that actually exercises the true branch.
-; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
-; -2 (derived, not hand-typed).
+; unit test for EQUALW. true if equal - tested with matching
+; values, the case that actually exercises the true branch.
+; TSTEQ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTEQ OK" or "TSTEQ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTEQ:      STU   TSTU0
 
@@ -5100,9 +5283,15 @@ TSTEQNAME:  FCB   5
             FCC   "TSTEQ"
 
 ; ------------------------------------------------------------
-; TSTLT - unit test for LESSW. true if n1 signed less than n2 - tested with a negative n1 and positive n2, the case that distinguishes signed from unsigned comparison.
-; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
-; -2 (derived, not hand-typed).
+; unit test for LESSW. true if n1 signed less than n2 -
+; tested with a negative n1 and positive n2, the case that
+; distinguishes signed from unsigned comparison.
+; TSTLT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTLT OK" or "TSTLT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTLT:      STU   TSTU0
 
@@ -5145,9 +5334,14 @@ TSTLTNAME:  FCB   5
             FCC   "TSTLT"
 
 ; ------------------------------------------------------------
-; TSTGT - unit test for GREATERW. true if n1 signed greater than n2 - same reasoning as < , reversed operands.
-; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
-; -2 (derived, not hand-typed).
+; unit test for GREATERW. true if n1 signed greater than n2
+; - same reasoning as < , reversed operands.
+; TSTGT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTGT OK" or "TSTGT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTGT:      STU   TSTU0
 
@@ -5190,9 +5384,15 @@ TSTGTNAME:  FCB   5
             FCC   "TSTGT"
 
 ; ------------------------------------------------------------
-; TSTZEQ - unit test for ZEROEQ. true if n is zero - tested with a nonzero value, confirming false is genuinely reachable, not just the trivial zero case.
-; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
-; 0 (derived, not hand-typed).
+; unit test for ZEROEQ. true if n is zero - tested with a
+; nonzero value, confirming false is genuinely reachable,
+; not just the trivial zero case.
+; TSTZEQ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTZEQ OK" or "TSTZEQ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTZEQ:     STU   TSTU0
 
@@ -5202,7 +5402,7 @@ TSTZEQ:     STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   ZEROEQ
+            JSR   ZEROEQW
 
             STU   TSTUAF
 
@@ -5233,9 +5433,13 @@ TSTZEQNAME: FCB   6
             FCC   "TSTZEQ"
 
 ; ------------------------------------------------------------
-; TSTZLT - unit test for ZEROLT. true if n is negative.
-; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
-; 0 (derived, not hand-typed).
+; unit test for ZEROLT. true if n is negative.
+; TSTZLT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTZLT OK" or "TSTZLT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTZLT:     STU   TSTU0
 
@@ -5245,7 +5449,7 @@ TSTZLT:     STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   ZEROLT
+            JSR   ZEROLTW
 
             STU   TSTUAF
 
@@ -5276,9 +5480,16 @@ TSTZLTNAME: FCB   6
             FCC   "TSTZLT"
 
 ; ------------------------------------------------------------
-; TSTULT - unit test for ULESSW. true if u1 unsigned less than u2 - tested with TSTVAL1 vs TSTNEG1's raw bit pattern (a large unsigned magnitude), the case that would invert under signed comparison, confirming this is genuinely unsigned.
-; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
-; -2 (derived, not hand-typed).
+; unit test for ULESSW. true if u1 unsigned less than u2 -
+; tested with TSTVAL1 vs TSTNEG1's raw bit pattern (a large
+; unsigned magnitude), the case that would invert under
+; signed comparison, confirming this is genuinely unsigned.
+; TSTULT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTULT OK" or "TSTULT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTULT:     STU   TSTU0
 
@@ -5321,9 +5532,13 @@ TSTULTNAME: FCB   6
             FCC   "TSTULT"
 
 ; ------------------------------------------------------------
-; TSTNE - unit test for NOTEQUAL. true if not equal.
-; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
-; -2 (derived, not hand-typed).
+; unit test for NOTEQUAL. true if not equal.
+; TSTNE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTNE OK" or "TSTNE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTNE:      STU   TSTU0
 
@@ -5335,7 +5550,7 @@ TSTNE:      STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   NOTEQUAL
+            JSR   NOTEQUALW
 
             STU   TSTUAF
 
@@ -5366,9 +5581,13 @@ TSTNENAME:  FCB   5
             FCC   "TSTNE"
 
 ; ------------------------------------------------------------
-; TSTZNE - unit test for ZERONE. true if n is not zero.
-; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
-; 0 (derived, not hand-typed).
+; unit test for ZERONE. true if n is not zero.
+; TSTZNE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTZNE OK" or "TSTZNE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTZNE:     STU   TSTU0
 
@@ -5378,7 +5597,7 @@ TSTZNE:     STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   ZERONE
+            JSR   ZERONEW
 
             STU   TSTUAF
 
@@ -5409,9 +5628,15 @@ TSTZNENAME: FCB   6
             FCC   "TSTZNE"
 
 ; ------------------------------------------------------------
-; TSTZGT - unit test for ZEROGT. true if n is greater than zero - tested with a negative value, confirming the comparison correctly excludes negatives (not just zero).
-; Arity: 1 cell(s) in, 1 cell(s) out -> depth check
-; 0 (derived, not hand-typed).
+; unit test for ZEROGT. true if n is greater than zero -
+; tested with a negative value, confirming the comparison
+; correctly excludes negatives (not just zero).
+; TSTZGT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTZGT OK" or "TSTZGT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTZGT:     STU   TSTU0
 
@@ -5421,7 +5646,7 @@ TSTZGT:     STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   ZEROGT
+            JSR   ZEROGTW
 
             STU   TSTUAF
 
@@ -5452,9 +5677,16 @@ TSTZGTNAME: FCB   6
             FCC   "TSTZGT"
 
 ; ------------------------------------------------------------
-; TSTUGT - unit test for UGREATER. true if u1 unsigned greater than u2 - same reasoning as U< : TSTNEG1's raw bit pattern is a large unsigned magnitude, genuinely greater than TSTVAL1's here.
-; Arity: 2 cell(s) in, 1 cell(s) out -> depth check
-; -2 (derived, not hand-typed).
+; unit test for UGREATER. true if u1 unsigned greater than
+; u2 - same reasoning as U< : TSTNEG1's raw bit pattern is a
+; large unsigned magnitude, genuinely greater than TSTVAL1's
+; here.
+; TSTUGT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTUGT OK" or "TSTUGT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTUGT:     STU   TSTU0
 
@@ -5466,7 +5698,7 @@ TSTUGT:     STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   UGREATER
+            JSR   UGREATERW
 
             STU   TSTUAF
 
@@ -5497,9 +5729,17 @@ TSTUGTNAME: FCB   6
             FCC   "TSTUGT"
 
 ; ------------------------------------------------------------
-; TSTWI1 - unit test for WITHINW. true if n2<=n1<n3 - tested with a wraparound range (n2 near $FFFF, n3 wrapped past $0000), the documented special case this word's own unsigned-offset implementation exists to handle correctly, with n1 inside the wrapped range.
-; Arity: 3 cell(s) in, 1 cell(s) out -> depth check
-; -4 (derived, not hand-typed).
+; unit test for WITHINW. true if n2<=n1<n3 - tested with a
+; wraparound range (n2 near $FFFF, n3 wrapped past $0000),
+; the documented special case this word's own
+; unsigned-offset implementation exists to handle correctly,
+; with n1 inside the wrapped range.
+; TSTWI1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTWI1 OK" or "TSTWI1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTWI1:     STU   TSTU0
 
@@ -5544,9 +5784,15 @@ TSTWI1NAME: FCB   6
             FCC   "TSTWI1"
 
 ; ------------------------------------------------------------
-; TSTWI2 - unit test for WITHINW. same wraparound range as TSTWI1, with n1 genuinely outside it - confirms the wraparound handling correctly excludes as well as includes.
-; Arity: 3 cell(s) in, 1 cell(s) out -> depth check
-; -4 (derived, not hand-typed).
+; unit test for WITHINW. same wraparound range as TSTWI1,
+; with n1 genuinely outside it - confirms the wraparound
+; handling correctly excludes as well as includes.
+; TSTWI2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTWI2 OK" or "TSTWI2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTWI2:     STU   TSTU0
 
@@ -5591,9 +5837,14 @@ TSTWI2NAME: FCB   6
             FCC   "TSTWI2"
 
 ; ------------------------------------------------------------
-; TSTDEQ - unit test for DEQUAL. double-cell equal - tested with matching double values.
-; Arity: 4 cell(s) in, 1 cell(s) out -> depth check
-; -6 (derived, not hand-typed).
+; unit test for DEQUAL. double-cell equal - tested with
+; matching double values.
+; TSTDEQ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDEQ OK" or "TSTDEQ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDEQ:     STU   TSTU0
 
@@ -5609,7 +5860,7 @@ TSTDEQ:     STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
-            JSR   DEQUAL
+            JSR   DEQUALW
 
             STU   TSTUAF
 
@@ -5640,9 +5891,17 @@ TSTDEQNAME: FCB   6
             FCC   "TSTDEQ"
 
 ; ------------------------------------------------------------
-; TSTDLT - unit test for DLESSW. double-cell signed less than - tested with equal high cells and different low cells, the tie-break case this word's own documented behavior specifically calls out (compares low cells unsigned only when the high cells are equal).
-; Arity: 4 cell(s) in, 1 cell(s) out -> depth check
-; -6 (derived, not hand-typed).
+; unit test for DLESSW. double-cell signed less than -
+; tested with equal high cells and different low cells, the
+; tie-break case this word's own documented behavior
+; specifically calls out (compares low cells unsigned only
+; when the high cells are equal).
+; TSTDLT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDLT OK" or "TSTDLT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDLT:     STU   TSTU0
 
@@ -5689,9 +5948,15 @@ TSTDLTNAME: FCB   6
             FCC   "TSTDLT"
 
 ; ------------------------------------------------------------
-; TSTDULT - unit test for DULESSW. double-cell unsigned less than - same tie-break reasoning as D<, both tiers compared unsigned.
-; Arity: 4 cell(s) in, 1 cell(s) out -> depth check
-; -6 (derived, not hand-typed).
+; unit test for DULESSW. double-cell unsigned less than -
+; same tie-break reasoning as D<, both tiers compared
+; unsigned.
+; TSTDULT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDULT OK" or "TSTDULT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDULT:    STU   TSTU0
 
@@ -5741,34 +6006,17 @@ TSTDULTNAME:
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
-; TSTCTRLFLOW - control-flow tests (glossary section 3.8, 22
-; words - all except UNLOOP, which is a genuine runtime no-op
-; and tested directly like ALIGN's own test, needing none of
-; this section's compile-time harness). Every other test
-; redirects CODEHERE to a scratch buffer (TSTCBUF), calls the
-; real compile-time words directly (JSR IF, JSR THEN, JSR DO,
-; etc - the actual routines the compiler itself calls, not a
-; hand-simulated imitation), restores CODEHERE, then executes
-; the compiled snippet directly. Tests the real interaction
-; between compile-time correctness (right bytes, right patched
-; offsets) and runtime correctness (right control flow) in one
-; coherent check, without needing the outer interpreter, FIND,
-; or a real dictionary entry.
-;
-; Given the planned future application of the ANS test suite for
-; broader standards-compliance coverage, these tests focus on
-; this system's own compile/patch mechanism working correctly -
-; not full end-to-end parsing, which the ANS suite will cover.
-;
-; One case is deliberately NOT tested: DO with limit=index.
-; Traced precisely (simulated the real DOTEST increment-and-
-; compare-equal logic) and confirmed it takes a full 65536-
-; iteration wraparound to naturally reconverge on equality, not
-; one - true to the letter of "runs at least once" but
-; impractical for a boot-time self-check. ?DO's own equivalent
-; case IS tested (TSTQDOLPEQ) - its own skip check happens
-; before the loop is entered at all, confirmed fast and safe by
-; the same kind of trace.
+; control-flow tests (glossary section 3.8, 22 words - all
+; except UNLOOP, which is a genuine runtime no-op and tested
+; directly like ALIGN's own test, needing none of this
+; section's compile-time harness).
+; TSTCTRLFLOW
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTCTRLFLOW.0.
 ; ------------------------------------------------------------
 TSTCTRLFLOW:
             JSR   CRW
@@ -5776,7 +6024,7 @@ TSTCTRLFLOW:
             PSHU  X
             LDD   #8
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-7     ; >>>>
@@ -5811,47 +6059,36 @@ TSTCTRLMSG: FCC   "CtrlFlow"
             IFEQ  TSTSELECTOR-7     ; >>>>
 
 ; ------------------------------------------------------------
-; Control-flow test harness (glossary section 3.8). Each test
-; redirects CODEHERE to a scratch buffer (TSTCBUF), calls the
-; real compile-time control-flow words directly (JSR IF, JSR
-; THEN, etc - the same routines the compiler itself calls when
-; parsing IF/THEN/DO/LOOP/etc, not a hand-simulated imitation),
-; then restores CODEHERE and executes the compiled snippet
-; directly. This tests the actual interaction between compile-
-; time correctness (right bytes, right patched offsets) and
-; runtime correctness (right control flow) in one coherent
-; test, without needing the outer interpreter, FIND, or a
-; dictionary entry - matching the ANS test suite's own planned
-; role for broader standards-compliance coverage; these tests
-; specifically verify this system's own compile/patch mechanism
-; works correctly, not full end-to-end parsing.
+; Control-flow test harness (glossary section 3.8).
+; Original comment: shadow TSTCTRLFLOW.1.
 ; ------------------------------------------------------------
 
 ; ------------------------------------------------------------
-; TSTIFT1 - unit test for IF/THEN, true case. Compiles
-; "IF <lit 111> THEN" into scratch, then runs it with a true
-; flag - the branch is NOT taken, so 111 should be pushed.
-; Verified by hand-trace before writing: ZBRANCH's patched
-; offset comes out to 7 (from the placeholder field to just
-; past the compiled LIT+111), correctly skipping nothing when
-; the flag is true and falling through into the literal.
+; unit test for IF/THEN, true case.
+; TSTIFT1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTIFT1 OK" or "TSTIFT1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTIFT1.0.
 ; ------------------------------------------------------------
 TSTIFT1:    LDD   CODEHERE
             STD   TSTCSAV
             LDD   #TSTCBUF
             STD   CODEHERE
 
-            JSR   IF
+            JSR   IFW
 
             LDD   #111
             PSHU  D
             JSR   LITERALW
 
-            JSR   THEN
+            JSR   THENW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -5896,27 +6133,33 @@ TSTIFT1NAME:
             FCC   "TSTIFT1"
 
 ; ------------------------------------------------------------
-; TSTIFT2 - unit test for IF/THEN, false case. Same compiled
-; snippet as TSTIFT1, run with a false flag instead - the
-; branch IS taken, jumping straight past the LIT+111, so 111
-; should NOT appear; only the guard remains.
+; unit test for IF/THEN, false case. Same compiled snippet
+; as TSTIFT1, run with a false flag instead - the branch IS
+; taken, jumping straight past the LIT+111, so 111 should
+; NOT appear; only the guard remains.
+; TSTIFT2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTIFT2 OK" or "TSTIFT2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTIFT2:    LDD   CODEHERE
             STD   TSTCSAV
             LDD   #TSTCBUF
             STD   CODEHERE
 
-            JSR   IF
+            JSR   IFW
 
             LDD   #111
             PSHU  D
             JSR   LITERALW
 
-            JSR   THEN
+            JSR   THENW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -5958,35 +6201,42 @@ TSTIFT2NAME:
             FCC   "TSTIFT2"
 
 ; ------------------------------------------------------------
-; TSTIET1 - unit test for IF/ELSE/THEN, true case. Compiles
-; "IF <lit 111> ELSE <lit 222> THEN" into scratch. True flag
-; should take the IF-body (111) and skip the ELSE-body (222)
-; via ELSE's own unconditional branch. Verified by hand-trace:
+; unit test for IF/ELSE/THEN, true case. Compiles "IF <lit
+; 111> ELSE <lit 222> THEN" into scratch. True flag should
+; take the IF-body (111) and skip the ELSE-body (222) via
+; ELSE's own unconditional branch. Verified by hand-trace:
 ; IF's patched offset (12) lands exactly at the ELSE-body's
-; start; ELSE's own patched offset (7) lands exactly past it.
+; start; ELSE's own patched offset (7) lands exactly past
+; it.
+; TSTIET1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTIET1 OK" or "TSTIET1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTIET1:    LDD   CODEHERE
             STD   TSTCSAV
             LDD   #TSTCBUF
             STD   CODEHERE
 
-            JSR   IF
+            JSR   IFW
 
             LDD   #111
             PSHU  D
             JSR   LITERALW
 
-            JSR   ELSE
+            JSR   ELSEW
 
             LDD   #222
             PSHU  D
             JSR   LITERALW
 
-            JSR   THEN
+            JSR   THENW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -6031,32 +6281,38 @@ TSTIET1NAME:
             FCC   "TSTIET1"
 
 ; ------------------------------------------------------------
-; TSTIET2 - unit test for IF/ELSE/THEN, false case. Same
-; compiled snippet as TSTIET1, run with a false flag - should
-; take the ELSE-body (222) instead, IF-body (111) skipped.
+; unit test for IF/ELSE/THEN, false case. Same compiled
+; snippet as TSTIET1, run with a false flag - should take
+; the ELSE-body (222) instead, IF-body (111) skipped.
+; TSTIET2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTIET2 OK" or "TSTIET2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTIET2:    LDD   CODEHERE
             STD   TSTCSAV
             LDD   #TSTCBUF
             STD   CODEHERE
 
-            JSR   IF
+            JSR   IFW
 
             LDD   #111
             PSHU  D
             JSR   LITERALW
 
-            JSR   ELSE
+            JSR   ELSEW
 
             LDD   #222
             PSHU  D
             JSR   LITERALW
 
-            JSR   THEN
+            JSR   THENW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -6101,28 +6357,27 @@ TSTIET2NAME:
             FCC   "TSTIET2"
 
 ; ------------------------------------------------------------
-; TSTBGU - unit test for BEGIN/UNTIL. Compiles
-; "BEGIN 1+ DUP <lit 5> = UNTIL" into scratch - increments,
-; duplicates, compares to 5, loops back while not equal. Run
-; starting from 0; verified by hand-trace across all 5
-; iterations (0->1->2->3->4->5, exiting exactly on reaching 5,
-; not one iteration early or late) before writing. The patched
-; back-edge offset is negative (-17), the same PATCH routine
-; used for forward references handling both directions
-; correctly based on relative position.
+; unit test for BEGIN/UNTIL.
+; TSTBGU
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTBGU OK" or "TSTBGU FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTBGU.0.
 ; ------------------------------------------------------------
 TSTBGU:     LDD   CODEHERE
             STD   TSTCSAV
             LDD   #TSTCBUF
             STD   CODEHERE
 
-            JSR   BEGIN
+            JSR   BEGINW
 
-            LDD   #ONEPLUS
+            LDD   #ONEPLUSW
             PSHU  D
             JSR   CCALL
 
-            LDD   #DUP
+            LDD   #DUPW
             PSHU  D
             JSR   CCALL
 
@@ -6134,11 +6389,11 @@ TSTBGU:     LDD   CODEHERE
             PSHU  D
             JSR   CCALL
 
-            JSR   UNTIL
+            JSR   UNTILW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -6182,24 +6437,23 @@ TSTBGUNAME: FCB   6
             FCC   "TSTBGU"
 
 ; ------------------------------------------------------------
-; TSTBWR - unit test for BEGIN/WHILE/REPEAT. Compiles
-; "BEGIN DUP <lit 5> < WHILE 1+ REPEAT" - opposite polarity
-; from TSTBGU's UNTIL (continues on true, exits on false,
-; rather than the reverse) - starting from 0, increments while
-; less than 5. Naturally exercises both of WHILE's outcomes in
-; one test: the continue path 5 times, the exit path once.
-; Verified by hand-trace: WHILE's patched forward offset (10)
-; lands exactly at the final RTS; REPEAT's patched back-edge
-; (-22) lands exactly at BEGIN.
+; unit test for BEGIN/WHILE/REPEAT.
+; TSTBWR
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTBWR OK" or "TSTBWR FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTBWR.0.
 ; ------------------------------------------------------------
 TSTBWR:     LDD   CODEHERE
             STD   TSTCSAV
             LDD   #TSTCBUF
             STD   CODEHERE
 
-            JSR   BEGIN
+            JSR   BEGINW
 
-            LDD   #DUP
+            LDD   #DUPW
             PSHU  D
             JSR   CCALL
 
@@ -6211,17 +6465,17 @@ TSTBWR:     LDD   CODEHERE
             PSHU  D
             JSR   CCALL
 
-            JSR   WHILE
+            JSR   WHILEW
 
-            LDD   #ONEPLUS
+            LDD   #ONEPLUSW
             PSHU  D
             JSR   CCALL
 
-            JSR   REPEAT
+            JSR   REPEATW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -6265,33 +6519,31 @@ TSTBWRNAME: FCB   6
             FCC   "TSTBWR"
 
 ; ------------------------------------------------------------
-; TSTRECUR - unit test for RECURSE. RECURSE now compiles a call
-; to CURXT, the execution token recorded by ":" / ":NONAME" for
-; the definition in progress (it no longer walks LATEST's header,
-; which was wrong inside :NONAME). This test saves CURXT, sets it
-; to DUP's real address, calls RECURSE directly, and verifies a
-; correct call to DUP was compiled - tests the actual mechanism
-; (CURXT read, CCALL), not genuine self-recursion, which would
-; need a real in-progress compilation to set up meaningfully.
-; (Rewritten: the old version faked a dictionary header via
-; LATEST, which RECURSE no longer reads.)
+; unit test for RECURSE.
+; TSTRECUR
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTRECUR OK" or "TSTRECUR FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTRECUR.0.
 ; ------------------------------------------------------------
 TSTRECUR:   LDD   CURXT
             STD   TSTLSAV
             LDD   CODEHERE
             STD   TSTCSAV
 
-            LDD   #DUP
+            LDD   #DUPW
             STD   CURXT
 
             LDD   #TSTCBUF
             STD   CODEHERE
 
-            JSR   RECURSE
+            JSR   RECURSEW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -6341,42 +6593,35 @@ TSTRECURNAME:
             FCC   "TSTRECUR"
 
 ; ------------------------------------------------------------
-; TSTDOLP - unit test for DO/LOOP. Compiles "DO I + LOOP",
-; run with limit=5, start-index=0, and a seed accumulator of 0
-; already on the stack. Verifies the full I sequence (0,1,2,3,4)
-; by summing it via + each iteration - a wrong index sequence
-; (off-by-one, wrong direction, wrong starting value) would
-; produce a different sum than the correct 0+1+2+3+4=10, not
-; just "some number of iterations happened."
-;
-; The documented limit=index edge case (runs at least once) is
-; deliberately NOT tested here: traced precisely (simulated the
-; real DOTEST increment-and-compare-equal logic) and confirmed
-; it takes a full 65536 iterations to naturally reconverge on
-; equality, not one - true to the letter of "at least once" but
-; impractical for a boot-time self-check. Left untested, not
-; guessed at; noted in the open-items checklist.
+; unit test for DO/LOOP.
+; TSTDOLP
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDOLP OK" or "TSTDOLP FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTDOLP.0.
 ; ------------------------------------------------------------
 TSTDOLP:    LDD   CODEHERE
             STD   TSTCSAV
             LDD   #TSTCBUF
             STD   CODEHERE
 
-            JSR   DO
+            JSR   DOW
 
-            LDD   #IWORD
+            LDD   #IWORDW
             PSHU  D
             JSR   CCALL
 
-            LDD   #PLUS
+            LDD   #PLUSW
             PSHU  D
             JSR   CCALL
 
-            JSR   LOOP
+            JSR   LOOPW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -6425,30 +6670,36 @@ TSTDOLPNAME:
             FCC   "TSTDOLP"
 
 ; ------------------------------------------------------------
-; TSTQDOLP - unit test for ?DO/LOOP, normal (non-skip) case.
-; Same "?DO I + LOOP" structure and I-sum verification as
-; TSTDOLP, confirming ?DO behaves like DO when index != limit.
+; unit test for ?DO/LOOP, normal (non-skip) case. Same "?DO
+; I + LOOP" structure and I-sum verification as TSTDOLP,
+; confirming ?DO behaves like DO when index != limit.
+; TSTQDOLP
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTQDOLP OK" or "TSTQDOLP FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTQDOLP:   LDD   CODEHERE
             STD   TSTCSAV
             LDD   #TSTCBUF
             STD   CODEHERE
 
-            JSR   QDO
+            JSR   QDOW
 
-            LDD   #IWORD
+            LDD   #IWORDW
             PSHU  D
             JSR   CCALL
 
-            LDD   #PLUS
+            LDD   #PLUSW
             PSHU  D
             JSR   CCALL
 
-            JSR   LOOP
+            JSR   LOOPW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -6497,37 +6748,39 @@ TSTQDOLPNAME:
             FCC   "TSTQDOLP"
 
 ; ------------------------------------------------------------
-; TSTQDOLPEQ - unit test for ?DO/LOOP, limit=index case - the
-; documented case that DISTINGUISHES ?DO from plain DO: skips
-; the loop entirely, unlike DO's own limit=index behavior
-; (confirmed separately to take a full 65536-iteration
-; wraparound, not tested here - see TSTDOLP's own notes). This
-; case IS fast and safe to test directly: QDOSETUP's own skip
-; check happens before the loop is entered at all, confirmed by
-; hand-trace of its code. Same "?DO I + LOOP" body, but since
-; the body never runs, the seed should come back completely
-; unchanged (0, not 10).
+; unit test for ?DO/LOOP, limit=index case - the documented
+; case that DISTINGUISHES ?DO from plain DO: skips the loop
+; entirely, unlike DO's own limit=index behavior (confirmed
+; separately to take a full 65536-iteration wraparound, not
+; tested here - see TSTDOLP's own notes).
+; TSTQDOLPEQ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTQDOLPEQ OK" or "TSTQDOLPEQ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTQDOLPEQ.0.
 ; ------------------------------------------------------------
 TSTQDOLPEQ: LDD   CODEHERE
             STD   TSTCSAV
             LDD   #TSTCBUF
             STD   CODEHERE
 
-            JSR   QDO
+            JSR   QDOW
 
-            LDD   #IWORD
+            LDD   #IWORDW
             PSHU  D
             JSR   CCALL
 
-            LDD   #PLUS
+            LDD   #PLUSW
             PSHU  D
             JSR   CCALL
 
-            JSR   LOOP
+            JSR   LOOPW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -6576,27 +6829,27 @@ TSTQDOLPEQNAME:
             FCC   "TSTQDOLPEQ"
 
 ; ------------------------------------------------------------
-; TSTPLOOP - unit test for DO/+LOOP. Compiles
-; "DO I + 3 LITERAL +LOOP", run with limit=10, start=0 - a step
-; (3) that doesn't land exactly on the limit, deliberately
-; exercising the crossing-boundary exit condition rather than
-; landing-exactly-on-it, since those are handled by genuinely
-; different checks in DOPLUSTEST (confirmed by reading its own
-; code - crosses-sign OR lands-exactly, checked separately).
-; Visits I=0,3,6,9, exits when 9+3=12 crosses past 10. Sum=18.
+; unit test for DO/+LOOP.
+; TSTPLOOP
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTPLOOP OK" or "TSTPLOOP FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTPLOOP.0.
 ; ------------------------------------------------------------
 TSTPLOOP:   LDD   CODEHERE
             STD   TSTCSAV
             LDD   #TSTCBUF
             STD   CODEHERE
 
-            JSR   DO
+            JSR   DOW
 
-            LDD   #IWORD
+            LDD   #IWORDW
             PSHU  D
             JSR   CCALL
 
-            LDD   #PLUS
+            LDD   #PLUSW
             PSHU  D
             JSR   CCALL
 
@@ -6604,11 +6857,11 @@ TSTPLOOP:   LDD   CODEHERE
             PSHU  D
             JSR   LITERALW
 
-            JSR   PLUSLOOP
+            JSR   PLUSLOOPW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -6657,24 +6910,21 @@ TSTPLOOPNAME:
             FCC   "TSTPLOOP"
 
 ; ------------------------------------------------------------
-; TSTJIDX - unit test for J. Compiles a doubly-nested DO loop:
-; "DO 2 0 DO J 10 * I + + LOOP LOOP" - outer index 0..2, inner
-; 0..1, accumulating (outer*10+inner) each pass. Verifies BOTH
-; I and J are read correctly, and specifically at the right
-; return-stack offset once genuinely nested (J's own "8,S" -
-; not the "10,S" an earlier, already-documented bug used, per
-; this word's own extensive bug-fix history in the source
-; itself, retraced by hand here rather than assumed still
-; correct). Six (outer,inner) pairs, expected sum 63 - a wrong
-; nesting depth or wrong index read would produce a different
-; sum, not just "some accumulation happened."
+; unit test for J.
+; TSTJIDX
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTJIDX OK" or "TSTJIDX FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTJIDX.0.
 ; ------------------------------------------------------------
 TSTJIDX:    LDD   CODEHERE
             STD   TSTCSAV
             LDD   #TSTCBUF
             STD   CODEHERE
 
-            JSR   DO
+            JSR   DOW
 
             LDD   #2
             PSHU  D
@@ -6683,9 +6933,9 @@ TSTJIDX:    LDD   CODEHERE
             PSHU  D
             JSR   LITERALW
 
-            JSR   DO
+            JSR   DOW
 
-            LDD   #JWORD
+            LDD   #JWORDW
             PSHU  D
             JSR   CCALL
 
@@ -6693,29 +6943,29 @@ TSTJIDX:    LDD   CODEHERE
             PSHU  D
             JSR   LITERALW
 
-            LDD   #STAR
+            LDD   #STARW
             PSHU  D
             JSR   CCALL
 
-            LDD   #IWORD
+            LDD   #IWORDW
             PSHU  D
             JSR   CCALL
 
-            LDD   #PLUS
+            LDD   #PLUSW
             PSHU  D
             JSR   CCALL
 
-            LDD   #PLUS
+            LDD   #PLUSW
             PSHU  D
             JSR   CCALL
 
-            JSR   LOOP
+            JSR   LOOPW
 
-            JSR   LOOP
+            JSR   LOOPW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -6764,31 +7014,27 @@ TSTJIDXNAME:
             FCC   "TSTJIDX"
 
 ; ------------------------------------------------------------
-; TSTLEAVE - unit test for LEAVE. Compiles
-; "DO I DUP 3 LITERAL = IF LEAVE THEN + LOOP", limit=10,
-; start=0 - would normally visit I=0..9, but LEAVE forces exit
-; once I=3 is reached. LEAVE only sets a flag; the actual exit
-; happens at the NEXT LOOP check (per its own documented
-; behavior, "exit at its next LOOP") - confirmed by hand-trace
-; of DOTEST's own logic (checks the flag first, before its
-; normal increment/compare). Since + runs before LOOP's check,
-; I=3 IS accumulated before the loop exits - sum=0+1+2+3=6, not
-; 0+1+2=3 (which would indicate LEAVE incorrectly took effect
-; immediately) and not the full 0..9 (which would indicate
-; LEAVE didn't work at all).
+; unit test for LEAVE.
+; TSTLEAVE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTLEAVE OK" or "TSTLEAVE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTLEAVE.0.
 ; ------------------------------------------------------------
 TSTLEAVE:   LDD   CODEHERE
             STD   TSTCSAV
             LDD   #TSTCBUF
             STD   CODEHERE
 
-            JSR   DO
+            JSR   DOW
 
-            LDD   #IWORD
+            LDD   #IWORDW
             PSHU  D
             JSR   CCALL
 
-            LDD   #DUP
+            LDD   #DUPW
             PSHU  D
             JSR   CCALL
 
@@ -6800,23 +7046,23 @@ TSTLEAVE:   LDD   CODEHERE
             PSHU  D
             JSR   CCALL
 
-            JSR   IF
+            JSR   IFW
 
-            LDD   #LEAVE
+            LDD   #LEAVEW
             PSHU  D
             JSR   CCALL
 
-            JSR   THEN
+            JSR   THENW
 
-            LDD   #PLUS
+            LDD   #PLUSW
             PSHU  D
             JSR   CCALL
 
-            JSR   LOOP
+            JSR   LOOPW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -6865,22 +7111,14 @@ TSTLEAVENAME:
             FCC   "TSTLEAVE"
 
 ; ------------------------------------------------------------
-; TSTEXIT - unit test for EXIT. Compiles
-; "DO I 3 = IF UNLOOP EXIT THEN I + LOOP", limit=10, start=0,
-; seed sum=0 - EXIT fires when I=3. EXIT no longer discards
-; loop frames (standard: UNLOOP first), so the test calls UNLOOP
-; itself right before EXIT, then EXIT returns immediately.
-; (Rewritten: it used to rely on EXIT discarding the open DO
-; frame, which made EXIT return through the stale loop cells.)
-; Sets the real CSP to U's value right before the first control-flow marker is pushed
-; (matching what ":" does at the start of a real definition),
-; since EXIT's own compile-time frame count depends on it -
-; confirmed by hand-trace: at the point EXIT is compiled, U
-; holds IF's own pending (addr,TAGFWD) on top of DO's
-; (addr,TAGDO), and EXIT's scan correctly counts exactly one
-; TAGDO between U and CSP. Unlike TSTLEAVE, EXIT fires
-; immediately when reached - the following + never runs for
-; I=3, so sum=0+1+2=3, not 6.
+; unit test for EXIT.
+; TSTEXIT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTEXIT OK" or "TSTEXIT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTEXIT.0.
 ; ------------------------------------------------------------
 TSTEXIT:    LDD   CSP
             STD   TSTCSPS
@@ -6892,9 +7130,9 @@ TSTEXIT:    LDD   CSP
             TFR   U,D
             STD   CSP
 
-            JSR   DO
+            JSR   DOW
 
-            LDD   #IWORD
+            LDD   #IWORDW
             PSHU  D
             JSR   CCALL
 
@@ -6906,29 +7144,29 @@ TSTEXIT:    LDD   CSP
             PSHU  D
             JSR   CCALL
 
-            JSR   IF
+            JSR   IFW
 
-            LDD   #UNLOOP
+            LDD   #UNLOOPW
             PSHU  D
             JSR   CCALL
 
-            JSR   EXIT
+            JSR   EXITW
 
-            JSR   THEN
+            JSR   THENW
 
-            LDD   #IWORD
+            LDD   #IWORDW
             PSHU  D
             JSR   CCALL
 
-            LDD   #PLUS
+            LDD   #PLUSW
             PSHU  D
             JSR   CCALL
 
-            JSR   LOOP
+            JSR   LOOPW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -6979,16 +7217,14 @@ TSTEXITNAME:
             FCC   "TSTEXIT"
 
 ; ------------------------------------------------------------
-; TSTUNLOOP - unit test for UNLOOP. UNLOOP discards the 3-cell
-; DO frame (index, limit, LEAVE flag = 6 bytes) that sits on the
-; return stack directly beneath its own return address, and
-; leaves the data stack alone. The test pushes a fake 6-byte
-; frame on S, calls UNLOOP, and checks S rose by exactly 6 and U
-; did not move. (Rewritten: UNLOOP used to be a bare RTS, and the
-; old test called it with no frame on S - with the real UNLOOP
-; that would discard six bytes of the test's own return
-; addresses and crash the run.) Scratch: TSTUB4/TSTUAF hold the
-; S values here, TSTSCR holds U.
+; unit test for UNLOOP.
+; TSTUNLOOP
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTUNLOOP OK" or "TSTUNLOOP FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTUNLOOP.0.
 ; ------------------------------------------------------------
 TSTUNLOOP:  STU   TSTU0
 
@@ -7001,7 +7237,7 @@ TSTUNLOOP:  STU   TSTU0
             STS   TSTUB4            ; S with the fake frame in place
             STU   TSTSCR            ; U before
 
-            JSR   UNLOOP
+            JSR   UNLOOPW
 
             STS   TSTUAF            ; S after
 
@@ -7028,17 +7264,14 @@ TSTUNLOOPNAME:
             FCC   "TSTUNLOOP"
 
 ; ------------------------------------------------------------
-; TSTCASE1 - unit test for CASE/OF/ENDOF/ENDCASE, matching
-; clause. Compiles
-; "CASE 1 LITERAL OF 111 LITERAL ENDOF
-;       2 LITERAL OF 222 LITERAL ENDOF ENDCASE"
-; with selector=2, matching the second clause. Traced by hand:
-; OF compiles OVER/=/ZBRANCH<placeholder>/DROP - the DROP only
-; runs on a match, consuming the selector; ENDOF compiles an
-; unconditional branch past the remaining clauses AND patches
-; its own OF's placeholder to the next clause's OF; ENDCASE
-; patches every pending ENDOF branch to the true end and
-; compiles a final fallback DROP for the no-match case.
+; unit test for CASE/OF/ENDOF/ENDCASE, matching clause.
+; TSTCASE1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCASE1 OK" or "TSTCASE1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTCASE1.0.
 ; ------------------------------------------------------------
 TSTCASE1:   LDD   CODEHERE
             STD   TSTCSAV
@@ -7050,26 +7283,26 @@ TSTCASE1:   LDD   CODEHERE
             LDD   #1
             PSHU  D
             JSR   LITERALW
-            JSR   OF
+            JSR   OFW
             LDD   #111
             PSHU  D
             JSR   LITERALW
-            JSR   ENDOF
+            JSR   ENDOFW
 
             LDD   #2
             PSHU  D
             JSR   LITERALW
-            JSR   OF
+            JSR   OFW
             LDD   #222
             PSHU  D
             JSR   LITERALW
-            JSR   ENDOF
+            JSR   ENDOFW
 
-            JSR   ENDCASE
+            JSR   ENDCASEW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -7114,13 +7347,14 @@ TSTCASE1NAME:
             FCC   "TSTCASE1"
 
 ; ------------------------------------------------------------
-; TSTCASE2 - unit test for CASE/OF/ENDOF/ENDCASE, no-match
-; case. Same compiled snippet as TSTCASE1, run with a selector
-; (99) matching neither clause - should fall through both OF
-; checks (selector preserved across each non-match, per the
-; documented "( x n -- | x )" effect) and reach ENDCASE's own
-; fallback DROP, consuming the selector with nothing pushed in
-; its place.
+; unit test for CASE/OF/ENDOF/ENDCASE, no-match case.
+; TSTCASE2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCASE2 OK" or "TSTCASE2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTCASE2.0.
 ; ------------------------------------------------------------
 TSTCASE2:   LDD   CODEHERE
             STD   TSTCSAV
@@ -7132,26 +7366,26 @@ TSTCASE2:   LDD   CODEHERE
             LDD   #1
             PSHU  D
             JSR   LITERALW
-            JSR   OF
+            JSR   OFW
             LDD   #111
             PSHU  D
             JSR   LITERALW
-            JSR   ENDOF
+            JSR   ENDOFW
 
             LDD   #2
             PSHU  D
             JSR   LITERALW
-            JSR   OF
+            JSR   OFW
             LDD   #222
             PSHU  D
             JSR   LITERALW
-            JSR   ENDOF
+            JSR   ENDOFW
 
-            JSR   ENDCASE
+            JSR   ENDCASEW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -7193,16 +7427,14 @@ TSTCASE2NAME:
             FCC   "TSTCASE2"
 
 ; ------------------------------------------------------------
-; TSTTHENZ - unit test for THEN, tag-mismatch case. Pushes a
-; wrong value (0, matching none of TAGFWD/TAGBACK/TAGDO/TAGOF)
-; in place of the expected TAGFWD, then calls THEN via CATCH.
-; CFERR (confirmed by reading it directly) throws -22
-; immediately without ever touching CODEHERE - the error path
-; never reaches any compiling code - so this needs no CODEHERE
-; redirect, unlike every other test in this section. Same
-; CATCH-based pattern as the divide-by-zero tests in earlier
-; sections: verify the thrown code and CATCH's own depth-
-; restoration contract, not the unspecified i*x values.
+; unit test for THEN, tag-mismatch case.
+; TSTTHENZ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTTHENZ OK" or "TSTTHENZ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTTHENZ.0.
 ; ------------------------------------------------------------
 TSTTHENZ:   STU   TSTU0
 
@@ -7210,11 +7442,11 @@ TSTTHENZ:   STU   TSTU0
             PSHU  D
             LDD   #0
             PSHU  D
-            LDX   #THEN
+            LDX   #THENW
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -7243,8 +7475,14 @@ TSTTHENZNAME:
             FCC   "TSTTHENZ"
 
 ; ------------------------------------------------------------
-; TSTUNTILZ - unit test for UNTIL, tag-mismatch case. Same
-; pattern as TSTTHENZ - wrong value in place of TAGBACK.
+; unit test for UNTIL, tag-mismatch case. Same pattern as
+; TSTTHENZ - wrong value in place of TAGBACK.
+; TSTUNTILZ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTUNTILZ OK" or "TSTUNTILZ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTUNTILZ:  STU   TSTU0
 
@@ -7252,11 +7490,11 @@ TSTUNTILZ:  STU   TSTU0
             PSHU  D
             LDD   #0
             PSHU  D
-            LDX   #UNTIL
+            LDX   #UNTILW
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -7285,8 +7523,14 @@ TSTUNTLZNAME:
             FCC   "TSTUNTILZ"
 
 ; ------------------------------------------------------------
-; TSTENDOFZ - unit test for ENDOF, tag-mismatch case. Same
-; pattern - wrong value in place of TAGOF.
+; unit test for ENDOF, tag-mismatch case. Same pattern -
+; wrong value in place of TAGOF.
+; TSTENDOFZ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTENDOFZ OK" or "TSTENDOFZ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTENDOFZ:  STU   TSTU0
 
@@ -7294,11 +7538,11 @@ TSTENDOFZ:  STU   TSTU0
             PSHU  D
             LDD   #0
             PSHU  D
-            LDX   #ENDOF
+            LDX   #ENDOFW
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -7329,45 +7573,16 @@ TSTENDFZNAME:
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
-; TSTDEFWORDS - defining-words tests (glossary section 3.9, 17
-; words, 12 tests since VALUE/TO and IS/ACTION-OF are each
-; combined into one test). Every defining word parses a name
-; from the input source via WORD (HEADER's own mechanism,
-; shared by :/CREATE) - a complexity nothing in section 3.8 had.
-; Each test redirects CODEHERE, DPHERE, VARHERE, and
-; SRCADDR/SRCLEN/TOIN together (a fake name, "TESTWD", reused
-; safely across every test here since each redirect/restore
-; cycle is fully isolated), calls the real defining word
-; directly, saves the newly-defined word's own CFA (= CODEHERE
-; at the moment the defining word was called), restores
-; everything, then executes that CFA directly to verify runtime
-; behavior.
-;
-; A real, structurally important finding from this section:
-; HEADER writes to the real LATEST variable unconditionally, not
-; a redirectable copy like CODEHERE/DPHERE/VARHERE - every test
-; here explicitly saves and restores it, confirmed necessary by
-; reading HEADER's own code directly, not assumed safe by analogy
-; with the other three pointers.
-;
-; MARKER's own test is the one exception to the general
-; redirect-then-restore-then-execute order: DOMARKER (confirmed
-; by reading it directly) writes to the real DPHERE/CODEHERE/
-; VARHERE/LATEST unconditionally too, so that test executes the
-; marker word while still redirected, only restoring the real
-; environment afterward - getting this order backwards would
-; have corrupted the real dictionary pointers with scratch
-; addresses.
-;
-; Bare CREATE (never followed by DOES>) is deliberately not
-; tested on its own - traced its placeholder "behavior field"
-; (a genuine compiled JSR DOESRT0 instruction) and confirmed
-; DODOES reads that field as raw data, not as code to execute -
-; which only produces a valid jump target for the raw-address
-; form every other defining word uses (VARIABLE, CONSTANT, etc,
-; via CODECOMMA), not CREATE's own placeholder JSR instruction.
-; Bare CREATE's own direct-execution behavior isn't meant to be
-; relied upon before a DOES> patches it.
+; defining-words tests (glossary section 3.9, 17 words, 12
+; tests since VALUE/TO and IS/ACTION-OF are each combined
+; into one test).
+; TSTDEFWORDS
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTDEFWORDS.0.
 ; ------------------------------------------------------------
 TSTDEFWORDS:
             JSR   CRW
@@ -7375,7 +7590,7 @@ TSTDEFWORDS:
             PSHU  X
             LDD   #8
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-8     ; >>>>
@@ -7402,37 +7617,22 @@ TSTDEFMSG:  FCC   "DefWords"
             IFEQ  TSTSELECTOR-8     ; >>>>
 
 ; ------------------------------------------------------------
-; Defining-words test harness (glossary section 3.9). Every
-; defining word parses a name from the input source via WORD -
-; unlike anything in section 3.8's control-flow tests - so each
-; test redirects CODEHERE, DPHERE, VARHERE, and SRCADDR/SRCLEN/
-; TOIN together (a fake name text, "TESTWD", reused safely
-; across every test here since each redirect/restore cycle is
-; fully isolated), calls the real defining word directly, saves
-; the newly-defined word's own CFA (= CODEHERE at the moment the
-; defining word was called), restores everything, then executes
-; that CFA directly to verify runtime behavior. Traced by hand:
-; CREATE/VARIABLE/CONSTANT/etc all use HEADER (shared header-
-; building) then compile a fixed 5-byte trampoline (3-byte
-; "JSR DODOES" + a 2-byte "behavior field") before their own
-; PFA - confirmed the behavior field holds a genuine compiled
-; JSR instruction only for CREATE's own bare placeholder
-; (DOESRT0, later patched by DOES>); every other defining word
-; (VARIABLE, CONSTANT, DEFER, MARKER, VALUE) instead compiles a
-; raw 2-byte address there directly (via CODECOMMA, not CCALL) -
-; DODOES reads this field as data either way, which only works
-; correctly for the raw-address form. This is why bare CREATE,
-; executed before any DOES>, isn't tested here - its own
-; placeholder behavior field isn't meant to be read as data,
-; only ever overwritten by DOES> before first use.
+; Defining-words test harness (glossary section 3.9).
+; Original comment: shadow TSTDEFWORDS.1.
 ; ------------------------------------------------------------
 
 ; ------------------------------------------------------------
-; TSTVAR - unit test for VARIABLE. Compiles "VARIABLE TESTWD"
-; into scratch, then executes the result. Verifies it pushes
-; its own PFA address (TSTVBUF, since VARHERE was redirected
-; there) and that the cell there was correctly initialized to
-; zero - VARIABLE's own documented behavior, not assumed.
+; unit test for VARIABLE. Compiles "VARIABLE TESTWD" into
+; scratch, then executes the result. Verifies it pushes its
+; own PFA address (TSTVBUF, since VARHERE was redirected
+; there) and that the cell there was correctly initialized
+; to zero - VARIABLE's own documented behavior, not assumed.
+; TSTVAR
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTVAR OK" or "TSTVAR FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTVAR:     LDD   CODEHERE
             STD   TSTCSAV
@@ -7478,7 +7678,7 @@ TSTVAR:     LDD   CODEHERE
             LDD   CODEHERE
             STD   TSTWCFA
 
-            JSR   VARIABLE
+            JSR   VARIABLEW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -7539,13 +7739,14 @@ TSTVARNAME: FCB   6
             FCC   "TSTVAR"
 
 ; ------------------------------------------------------------
-; TSTCONST - unit test for CONSTANT. Compiles "5 CONSTANT
-; TESTWD" (5 already pushed before CONSTANT runs, matching its
-; own "x name --" signature) into scratch, then executes the
-; result. Verifies it pushes the stored value (5), not its own
-; address - confirmed by tracing CONSTANT's own behavior field:
-; it compiles a raw address to ATSIGN (@) there directly via
-; CODECOMMA, not CREATE's own placeholder mechanism.
+; unit test for CONSTANT.
+; TSTCONST
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCONST OK" or "TSTCONST FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTCONST.0.
 ; ------------------------------------------------------------
 TSTCONST:   LDD   CODEHERE
             STD   TSTCSAV
@@ -7593,7 +7794,7 @@ TSTCONST:   LDD   CODEHERE
 
             LDD   #5
             PSHU  D
-            JSR   CONSTANT
+            JSR   CONSTANTW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -7649,15 +7850,14 @@ TSTCONSTNAME:
             FCC   "TSTCONST"
 
 ; ------------------------------------------------------------
-; TSTCOLON - unit test for : and ; together. Compiles
-; ": TESTWD 111 ;" into scratch (COLON parses the name, builds
-; a smudged header, sets CSP to the current U as the control-
-; flow balance baseline, sets STATE compiling; a literal 111 is
-; compiled; SEMI compiles the closing RTS, checks the CSP
-; balance, un-smudges the header, restores STATE) - then
-; executes the result and verifies it pushes 111. Also verifies
-; the header's own SMUDGE bit is correctly clear after SEMI -
-; not just that execution happened to work.
+; unit test for : and ; together.
+; TSTCOLON
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCOLON OK" or "TSTCOLON FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTCOLON.0.
 ; ------------------------------------------------------------
 TSTCOLON:   LDD   CODEHERE
             STD   TSTCSAV
@@ -7707,13 +7907,13 @@ TSTCOLON:   LDD   CODEHERE
             LDD   CODEHERE
             STD   TSTWCFA
 
-            JSR   COLON
+            JSR   COLONW
 
             LDD   #111
             PSHU  D
             JSR   LITERALW
 
-            JSR   SEMI
+            JSR   SEMIW
 
             LDA   TSTDBUF
             ANDA  #$40
@@ -7780,26 +7980,14 @@ TSTCOLONNAME:
             FCC   "TSTCOLON"
 
 ; ------------------------------------------------------------
-; TSTCRDOES - unit test for CREATE/DOES> together. Compiles the
-; equivalent of "CREATE TESTWD 5 , DOES> @ 1+" directly (CREATE,
-; store 5 at the PFA, DOES>'s own compile action, then @ and 1+
-; compiled as the new behavior, terminated with RTS) - executing
-; TESTWD should push 6 (5 fetched, then incremented).
-;
-; DOES>'s own runtime action (SETDOES) does a documented "double
-; return": it patches LATEST's behavior field using the return
-; address ITS OWN "JSR SETDOES" call provides, then pops a
-; SECOND return address and jumps there - designed for the
-; normal case where DOES> is reached from inside an enclosing
-; defining word (like a real ": MAKETEST CREATE ... DOES> ... ;"
-; would compile), which itself has its own caller. Traced by
-; hand: calling directly into the compiled "JSR SETDOES"
-; instruction itself (not through an intermediate wrapper)
-; naturally supplies exactly the two stack levels SETDOES
-; expects - its own JSR provides the first (becoming the new
-; behavior field value), and this test's own call provides the
-; second (correctly resuming here afterward) - no extra
-; scaffolding needed, confirmed correct rather than assumed.
+; unit test for CREATE/DOES> together.
+; TSTCRDOES
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCRDOES OK" or "TSTCRDOES FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTCRDOES.0.
 ; ------------------------------------------------------------
 TSTCRDOES:  LDD   CODEHERE
             STD   TSTCSAV
@@ -7845,28 +8033,28 @@ TSTCRDOES:  LDD   CODEHERE
             LDD   CODEHERE
             STD   TSTWCFA
 
-            JSR   CREATE
+            JSR   CREATEW
 
             LDD   #5
             PSHU  D
-            JSR   COMMA
+            JSR   COMMAW
 
             LDD   CODEHERE
             STD   TSTDOESA
 
-            JSR   DOESGT
+            JSR   DOESGTW
 
-            LDD   #ATSIGN
+            LDD   #ATSIGNW
             PSHU  D
             JSR   CCALL
 
-            LDD   #ONEPLUS
+            LDD   #ONEPLUSW
             PSHU  D
             JSR   CCALL
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -7881,16 +8069,7 @@ TSTCRDOES:  LDD   CODEHERE
             LDD   TSTTISAV
             STD   TOIN
 
-            LDX   TSTDOESA          ; BUG FIX: was preceded by restoring LATEST
-                                    ; to its real value here - but SETDOES
-                                    ; (confirmed by reading its own code) reads
-                                    ; LATEST directly to find which header to
-                                    ; patch, so restoring it first meant SETDOES
-                                    ; patched the real, wrong word instead of
-                                    ; TESTWD, leaving TESTWD stuck on its
-                                    ; original DOESRT0 placeholder. LATEST now
-                                    ; stays pointed at TESTWD (this test's own
-                                    ; fake header) until right after this call.
+            LDX   TSTDOESA          ; See bugfix: TSTCRDOES.1
             JSR   ,X
 
             LDD   TSTLSAV
@@ -7935,10 +8114,16 @@ TSTCRDOESNAME:
             FCC   "TSTCRDOES"
 
 ; ------------------------------------------------------------
-; TST2VAR - unit test for 2VARIABLE. Compiles "2VARIABLE
-; TESTWD" into scratch, then executes the result. Verifies it
-; pushes its own PFA address (TSTVBUF) and that BOTH cells there
-; were correctly initialized to zero.
+; unit test for 2VARIABLE. Compiles "2VARIABLE TESTWD" into
+; scratch, then executes the result. Verifies it pushes its
+; own PFA address (TSTVBUF) and that BOTH cells there were
+; correctly initialized to zero.
+; TST2VAR
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TST2VAR OK" or "TST2VAR FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TST2VAR:    LDD   CODEHERE
             STD   TSTCSAV
@@ -7984,7 +8169,7 @@ TST2VAR:    LDD   CODEHERE
             LDD   CODEHERE
             STD   TSTWCFA
 
-            JSR   TWOVARIABLE
+            JSR   TWOVARIABLEW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -8049,12 +8234,19 @@ TST2VARNAME:
             FCC   "TST2VAR"
 
 ; ------------------------------------------------------------
-; TST2CONST - unit test for 2CONSTANT. Compiles
-; "100 200 2CONSTANT TESTWD" into scratch (x1=100 stored at the
-; lower address, x2=200 at the higher, matching 2@/2!'s own
-; convention), then executes the result. Verifies it pushes both
-; cells correctly ordered (200 on top/popped first, 100 deeper -
-; matching 2@'s own documented behavior), not their own address.
+; unit test for 2CONSTANT. Compiles "100 200 2CONSTANT
+; TESTWD" into scratch (x1=100 stored at the lower address,
+; x2=200 at the higher, matching 2@/2!'s own convention),
+; then executes the result. Verifies it pushes both cells
+; correctly ordered (200 on top/popped first, 100 deeper -
+; matching 2@'s own documented behavior), not their own
+; address.
+; TST2CONST
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TST2CONST OK" or "TST2CONST FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TST2CONST:  LDD   CODEHERE
             STD   TSTCSAV
@@ -8104,7 +8296,7 @@ TST2CONST:  LDD   CODEHERE
             PSHU  D
             LDD   #200
             PSHU  D
-            JSR   TWOCONSTANT
+            JSR   TWOCONSTANTW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -8163,15 +8355,14 @@ TST2CONSTNAME:
             FCC   "TST2CONST"
 
 ; ------------------------------------------------------------
-; TSTBUFC - unit test for BUFFER:. Compiles "10 BUFFER: TESTWD"
-; into scratch (u=10, the requested size, popped before the name
-; is even parsed - confirmed by reading BUFFERCOLON's own code,
-; which pops u as its very first action, before calling HEADER),
-; then executes the result. Verifies it pushes its own PFA
-; address (matching VARIABLE's own DOESRT0 behavior - BUFFER:
-; shares it) and that VARHERE genuinely advanced by exactly the
-; requested 10 bytes - not just that some space was reserved.
-; Contents are documented uninitialized, so not checked.
+; unit test for BUFFER:.
+; TSTBUFC
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTBUFC OK" or "TSTBUFC FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTBUFC.0.
 ; ------------------------------------------------------------
 TSTBUFC:    LDD   CODEHERE
             STD   TSTCSAV
@@ -8219,7 +8410,7 @@ TSTBUFC:    LDD   CODEHERE
 
             LDD   #10
             PSHU  D
-            JSR   BUFFERCOLON
+            JSR   BUFFERCOLONW
 
             LDD   VARHERE
             SUBD  #TSTVBUF
@@ -8284,16 +8475,14 @@ TSTBUFCNAME:
             FCC   "TSTBUFC"
 
 ; ------------------------------------------------------------
-; TSTVALTO - unit test for VALUE and TO together. Compiles
-; "42 VALUE TESTWD", executes it (expect 42), then interprets
-; "99 TO TESTWD" directly (TO parses "TESTWD" via WORD+FIND,
-; needing LATEST still pointed at it - not restored until this
-; whole test finishes, unlike every earlier test in this
-; section), executes TESTWD again (expect 99). Explicitly forces
-; STATE=0 (interpreting) before calling TO, since its own
-; behavior genuinely differs by STATE (confirmed by reading its
-; code: TOIMMED's direct store path only runs when STATE=0) -
-; not left to chance.
+; unit test for VALUE and TO together.
+; TSTVALTO
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTVALTO OK" or "TSTVALTO FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTVALTO.0.
 ; ------------------------------------------------------------
 TSTVALTO:   LDD   CODEHERE
             STD   TSTCSAV
@@ -8361,9 +8550,7 @@ TSTVALTO:   LDD   CODEHERE
 
             PULU  D
             CMPD  #42
-            LBNE  VTFAIL            ; was BNE - out of short-branch range, since
-                                    ; VTFAIL sits past this test's entire second
-                                    ; round (the TO reassignment and re-check)
+            LBNE  VTFAIL            ; was BNE: VTFAIL out of short range
             PULU  D
             CMPD  #TSTGUARD
             LBNE  VTFAIL            ; was BNE - same reason
@@ -8373,17 +8560,7 @@ TSTVALTO:   LDD   CODEHERE
             CMPD  #2
             LBNE  VTFAIL            ; was BNE - same reason
 
-            LDD   #TSTCBUF2         ; BUG FIX: was TSTCBUF - WORD writes its
-                                    ; parsed-token output directly at CODEHERE
-                                    ; (see TSTCBUF2's own comment), which would
-                                    ; silently overwrite TESTWD's own already-
-                                    ; compiled trampoline still sitting at
-                                    ; TSTCBUF, corrupting the CFA TSTWCFA points
-                                    ; to before this test's second execution.
-                                    ; Confirmed via MAME: a crash jumping into
-                                    ; invalid memory at TSTCBUF's own address,
-                                    ; landing on WORD's own leftover length byte
-                                    ; instead of the trampoline's real opcode.
+            LDD   #TSTCBUF2         ; See bugfix: TSTVALTO.2
             STD   CODEHERE
             LDA   #'T'
             STA   TSTNAMEB
@@ -8464,12 +8641,18 @@ TSTVALTONAME:
             FCC   "TSTVALTO"
 
 ; ------------------------------------------------------------
-; TSTDEFER1 - unit test for DEFER, default-action case. Compiles
-; "DEFER TESTWD" into scratch, then executes it via CATCH.
-; Verifies the default action throws -21 (per DEFER's own
-; documented behavior before IS/DEFER! sets a real target) and
-; that CATCH's own depth-restoration contract holds - same
+; unit test for DEFER, default-action case. Compiles "DEFER
+; TESTWD" into scratch, then executes it via CATCH. Verifies
+; the default action throws -21 (per DEFER's own documented
+; behavior before IS/DEFER! sets a real target) and that
+; CATCH's own depth-restoration contract holds - same
 ; pattern as the divide-by-zero tests in earlier sections.
+; TSTDEFER1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDEFER1 OK" or "TSTDEFER1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDEFER1:  LDD   CODEHERE
             STD   TSTCSAV
@@ -8538,7 +8721,7 @@ TSTDEFER1:  LDD   CODEHERE
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -8567,12 +8750,19 @@ TSTDEF1NAME:
             FCC   "TSTDEFER1"
 
 ; ------------------------------------------------------------
-; TSTDEFER2 - unit test for DEFER together with DEFER!/DEFER@.
-; Compiles "DEFER TESTWD", sets its target to DUP's own xt via
-; DEFER! (an ordinary runtime word - unlike DEFER's own name-
-; parsing, DEFER!/DEFER@ take an xt-defer directly, no WORD/FIND
-; needed), executes TESTWD (should now behave like DUP), then
-; reads the target back via DEFER@ to confirm it matches.
+; unit test for DEFER together with DEFER!/DEFER@. Compiles
+; "DEFER TESTWD", sets its target to DUP's own xt via DEFER!
+; (an ordinary runtime word - unlike DEFER's own name-
+; parsing, DEFER!/DEFER@ take an xt-defer directly, no
+; WORD/FIND needed), executes TESTWD (should now behave like
+; DUP), then reads the target back via DEFER@ to confirm it
+; matches.
+; TSTDEFER2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDEFER2 OK" or "TSTDEFER2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDEFER2:  LDD   CODEHERE
             STD   TSTCSAV
@@ -8635,11 +8825,11 @@ TSTDEFER2:  LDD   CODEHERE
             LDD   TSTLSAV
             STD   LATEST
 
-            LDD   #DUP
+            LDD   #DUPW
             PSHU  D
             LDX   TSTWCFA
             PSHU  X
-            JSR   DEFERSTORE
+            JSR   DEFERSTOREW
 
             STU   TSTU0
 
@@ -8671,10 +8861,10 @@ TSTDEFER2:  LDD   CODEHERE
 
             LDX   TSTWCFA
             PSHU  X
-            JSR   DEFERFETCH
+            JSR   DEFERFETCHW
 
             PULU  D
-            CMPD  #DUP
+            CMPD  #DUPW
             BNE   DF2FAIL
 
             LDD   #TRUEV
@@ -8693,15 +8883,14 @@ TSTDEF2NAME:
             FCC   "TSTDEFER2"
 
 ; ------------------------------------------------------------
-; TSTISOF - unit test for IS and ACTION-OF together. Compiles
-; "DEFER TESTWD", interprets "DUP IS TESTWD" directly (IS parses
-; "TESTWD" via WORD+FIND, needing LATEST still pointed at it -
-; not restored until this whole test finishes), executes TESTWD
-; (should now behave like DUP), then interprets "ACTION-OF
-; TESTWD" to fetch the current target by name and confirms it
-; matches DUP's own xt. Explicitly forces STATE=0 before both IS
-; and ACTION-OF, since both are documented to behave differently
-; by STATE, same reasoning as TSTVALTO's own TO test.
+; unit test for IS and ACTION-OF together.
+; TSTISOF
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTISOF OK" or "TSTISOF FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTISOF.0.
 ; ------------------------------------------------------------
 TSTISOF:    LDD   CODEHERE
             STD   TSTCSAV
@@ -8775,23 +8964,10 @@ TSTISOF:    LDD   CODEHERE
             LDD   #0
             STD   STATE
 
-            LDD   #TSTCBUF2         ; BUG FIX: this redirect was missing entirely
-                                    ; - WORD writes its parsed-token output
-                                    ; directly at CODEHERE regardless of STATE
-                                    ; (see TSTCBUF2's own comment), so without
-                                    ; this, ISW's own internal name-parse would
-                                    ; write into the real, unredirected CODEHERE -
-                                    ; unsafe during boot-time testing, before
-                                    ; COLD has set it to anything meaningful. Not
-                                    ; TSTCBUF specifically here (unlike TSTVALTO's
-                                    ; TO-phase fix), since nothing in this phase
-                                    ; needs TSTCBUF's own contents preserved yet -
-                                    ; but using the same dedicated buffer
-                                    ; throughout keeps every phase's redirect
-                                    ; consistent and safe regardless of order.
+            LDD   #TSTCBUF2         ; See bugfix: TSTISOF.1
             STD   CODEHERE
 
-            LDD   #DUP
+            LDD   #DUPW
             PSHU  D
             JSR   ISW
 
@@ -8810,9 +8986,7 @@ TSTISOF:    LDD   CODEHERE
 
             PULU  D
             CMPD  #TSTVAL1
-            LBNE  ISFAIL            ; was BNE - out of short-branch range, since
-                                    ; ISFAIL sits past this test's entire second
-                                    ; phase (the ACTION-OF lookup and re-check)
+            LBNE  ISFAIL            ; was BNE: ISFAIL out of short range
             PULU  D
             CMPD  #TSTVAL1
             BNE   ISFAIL
@@ -8844,13 +9018,10 @@ TSTISOF:    LDD   CODEHERE
             LDD   #0
             STD   TOIN
 
-            LDD   #TSTCBUF2         ; BUG FIX: same missing redirect as before
-                                    ; ISW above - ACTIONOF's own internal WORD
-                                    ; call needs somewhere safe to write its
-                                    ; parsed-token output too.
+            LDD   #TSTCBUF2         ; See bugfix: TSTISOF.3
             STD   CODEHERE
 
-            JSR   ACTIONOF
+            JSR   ACTIONOFW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -8870,7 +9041,7 @@ TSTISOF:    LDD   CODEHERE
             STD   LATEST
 
             PULU  D
-            CMPD  #DUP
+            CMPD  #DUPW
             BNE   ISFAIL
 
             LDD   #TRUEV
@@ -8889,28 +9060,14 @@ TSTISOFNAME:
             FCC   "TSTISOF"
 
 ; ------------------------------------------------------------
-; TSTMARKER - unit test for MARKER. Compiles "MARKER TESTWD"
-; (CODEHERE/DPHERE/VARHERE redirected to scratch, as with every
-; other test in this section), then simulates "something was
-; defined after the marker" by manually advancing the redirected
-; pointers further and pointing the real LATEST elsewhere,
-; executes the marker word, and verifies everything was restored
-; to TSTCBUF/TSTDBUF/TSTVBUF directly - the state BEFORE the
-; marker word itself was created, not the state right after.
-; MARKER's own documented behavior is "forgets itself too" -
-; traced MARKERW's own code and confirmed its internal snapshot
-; is taken at its very start, before HEADER or any compiling
-; runs at all, so that's genuinely the correct restore target,
-; not assumed.
-;
-; DOMARKER (confirmed by reading it directly) writes to the
-; real DPHERE/CODEHERE/VARHERE/LATEST unconditionally, not to
-; any redirected copy - so this test must execute the marker
-; word while CODEHERE/DPHERE/VARHERE are still redirected (their
-; real values are restored only afterward), unlike every other
-; test in this section, which restores first and executes
-; second. Getting this order backwards would have corrupted the
-; real dictionary pointers with scratch addresses.
+; unit test for MARKER.
+; TSTMARKER
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTMARKER OK" or "TSTMARKER FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTMARKER.0.
 ; ------------------------------------------------------------
 TSTMARKER:  LDD   CODEHERE
             STD   TSTCSAV
@@ -9018,20 +9175,7 @@ TSTMARKER:  LDD   CODEHERE
             BNE   MKFAIL
 
             LDD   TSTCSAV2          ; BUG FIX: was compared against TSTMKCOD, a
-            CMPD  #TSTCBUF          ; captured snapshot of CODEHERE right AFTER
-                                    ; MARKERW finished building its own header -
-                                    ; wrong target. MARKER's own documented
-                                    ; behavior is "forgets itself too" - traced
-                                    ; MARKERW's own code and confirmed its
-                                    ; snapshot (MKDP/MKCODE/MKVAR/MKLATEST) is
-                                    ; taken at its very start, before HEADER or
-                                    ; any compiling runs at all - so DOMARKER
-                                    ; correctly restores to the state BEFORE the
-                                    ; marker word itself was created (TSTCBUF
-                                    ; directly), not the state right after. The
-                                    ; real dictionary/compile mechanism was
-                                    ; already working correctly; only this
-                                    ; test's own comparison target was wrong.
+            CMPD  #TSTCBUF          ; See bugfix: TSTMARKER.1
             BNE   MKFAIL
             LDD   TSTDSAV2
             CMPD  #TSTDBUF
@@ -9066,39 +9210,19 @@ TSTMARKERNAME:
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
-; TSTCOMPWORDS - compiling-words tests (glossary section 3.10,
-; 14 words, 19 tests since several get separate cases: TICK
-; found/not-found, ['] compiling/interpreting state, POSTPONE
-; normal/immediate word, [COMPILE] normal/immediate word,
-; SLITERAL compiling/interpreting state, ABORT" false/true flag).
-; Reuses the scratch infrastructure established for sections
-; 3.8/3.9 throughout.
-;
-; POSTPONE is this section's hardest case: a genuine two-level
-; compile-time mechanism. Traced its own code first - for a
-; normal word, it compiles code that ITSELF compiles a call to
-; that word later, when the current definition eventually runs,
-; not immediately (standard ANS semantics: POSTPONE appends a
-; word's own compilation semantics to the current definition,
-; and for an ordinary word that semantics IS "compile a call to
-; it", so appending it only makes sense if the current
-; definition later performs that compiling action itself,
-; against whatever's being compiled at that later point).
-; Verified via the compiled byte sequence directly rather than
-; fully executing a triple-nested compile chain.
-;
-; [COMPILE] is POSTPONE's obsolescent predecessor (added for ANS
-; Annex F test coverage, F.6.2.2530) - simpler to verify since it
-; makes no normal/immediate distinction at all: both its test
-; cases (TSTXCOMPILE1/2) check for the exact same direct-call
-; byte sequence POSTPONE only produces for the immediate case
-; (TSTPOSTPONE2) - see XCOMPILE's own header/comment for why.
-;
-; ABORT" is safely testable for both its flag cases - confirmed
-; by reading its own runtime code that it uses THROW -2
-; internally, not the raw, never-returns ABORT mechanism plain
-; ABORT itself uses (still deliberately untested, per section
-; 3.1's own reasoning).
+; compiling-words tests (glossary section 3.10, 14 words, 19
+; tests since several get separate cases: TICK
+; found/not-found, ['] compiling/interpreting state,
+; POSTPONE normal/immediate word, [COMPILE] normal/immediate
+; word, SLITERAL compiling/interpreting state, ABORT"
+; false/true flag).
+; TSTCOMPWORDS
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTCOMPWORDS.0.
 ; ------------------------------------------------------------
 TSTCOMPWORDS:
             JSR   CRW
@@ -9106,7 +9230,7 @@ TSTCOMPWORDS:
             PSHU  X
             LDD   #9
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-9     ; >>>>
@@ -9140,28 +9264,23 @@ TSTCWMSG:   FCC   "CompWords"
             IFEQ  TSTSELECTOR-9     ; >>>>
 
 ; ------------------------------------------------------------
-; Compiling-words test harness (glossary section 3.10). Reuses
-; the scratch infrastructure established for sections 3.8/3.9
-; (TSTCBUF/TSTCBUF2 for CODEHERE redirects, TSTFHDR for a fake
-; dictionary header, TSTNAMEB for a fake source name). POSTPONE
-; is this section's own hardest case: a genuine two-level
-; compile-time mechanism (compiling code that, for a normal
-; word, itself compiles a call to that word later, when the
-; current definition eventually runs - not immediately, unlike
-; every other compile-time word tested so far). ABORT" is safely
-; testable for both its true and false flag cases - traced its
-; own runtime behavior directly and confirmed it uses THROW -2
-; internally, not the raw, never-returns ABORT mechanism plain
-; ABORT itself uses (which remains untested, per section 3.1's
-; own reasoning).
+; Compiling-words test harness (glossary section 3.10).
+; Original comment: shadow TSTCOMPWORDS.1.
 ; ------------------------------------------------------------
 
 ; ------------------------------------------------------------
-; TSTIMMED - unit test for IMMEDIATE. Builds a fake header (LEN/
-; FL=3, no flags), points LATEST at it, calls IMMEDIATE, and
+; unit test for IMMEDIATE. Builds a fake header (LEN/ FL=3,
+; no flags), points LATEST at it, calls IMMEDIATE, and
 ; verifies the header's own LEN/FL byte now has bit 7 set -
-; confirmed a memory-only operation with no data-stack effect,
-; so the guard check is the whole verification beyond that.
+; confirmed a memory-only operation with no data-stack
+; effect, so the guard check is the whole verification
+; beyond that.
+; TSTIMMED
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTIMMED OK" or "TSTIMMED FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTIMMED:   LDD   LATEST
             STD   TSTLSAV
@@ -9176,7 +9295,7 @@ TSTIMMED:   LDD   LATEST
             STA   TSTFHDR+3
             LDD   #0
             STD   TSTFHDR+4
-            LDD   #DUP
+            LDD   #DUPW
             STD   TSTFHDR+6
 
             LDD   #TSTFHDR
@@ -9188,7 +9307,7 @@ TSTIMMED:   LDD   LATEST
             PSHU  D
             STU   TSTUB4
 
-            JSR   IMMEDIATE
+            JSR   IMMEDIATEW
 
             STU   TSTUAF
 
@@ -9224,9 +9343,15 @@ TSTIMMEDNAME:
             FCC   "TSTIMMED"
 
 ; ------------------------------------------------------------
-; TSTSTATE - unit test for STATE. Verifies it pushes the address
-; of the real STATE variable (a plain variable, per its own
+; unit test for STATE. Verifies it pushes the address of the
+; real STATE variable (a plain variable, per its own
 ; documented "( -- addr )" effect - not its current value).
+; TSTSTATE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSTATE OK" or "TSTSTATE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSTATE:   STU   TSTU0
 
@@ -9266,10 +9391,15 @@ TSTSTATENAME:
             FCC   "TSTSTATE"
 
 ; ------------------------------------------------------------
-; TSTBRACKETS - unit test for [ and ] together. Verifies ]
-; sets STATE to -1 (compiling) and [ sets it back to 0
-; (interpreting) - both memory-only operations, no data-stack
-; effect.
+; unit test for [ and ] together. Verifies ] sets STATE to
+; -1 (compiling) and [ sets it back to 0 (interpreting) -
+; both memory-only operations, no data-stack effect.
+; TSTBRACKETS
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTBRACKETS OK" or "TSTBRACKETS FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTBRACKETS:
             LDD   STATE
@@ -9281,13 +9411,13 @@ TSTBRACKETS:
             PSHU  D
             STU   TSTUB4
 
-            JSR   RBRACKET
+            JSR   RBRACKETW
 
             LDD   STATE
             CMPD  #-1
             BNE   BKFAIL
 
-            JSR   LBRACKET
+            JSR   LBRACKETW
 
             STU   TSTUAF
 
@@ -9323,14 +9453,14 @@ TSTBRACKETSNAME:
             FCC   "TSTBRACKETS"
 
 ; ------------------------------------------------------------
-; TSTTICK1 - unit test for ' (tick), found case. Builds a fake
-; header pointing at DUP's own CFA, redirects LATEST to it and
-; SRCADDR to a matching fake name, and verifies TICK returns the
-; correct xt. Redirects CODEHERE too, even though TICK doesn't
-; itself compile anything - WORD's own internal parse still
-; writes through it regardless (the same real bug found via MAME
-; earlier applies to any word that calls WORD, not just the
-; defining words that originally surfaced it).
+; unit test for ' (tick), found case.
+; TSTTICK1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTTICK1 OK" or "TSTTICK1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTTICK1.0.
 ; ------------------------------------------------------------
 TSTTICK1:   LDD   CODEHERE
             STD   TSTCSAV
@@ -9353,7 +9483,7 @@ TSTTICK1:   LDD   CODEHERE
             STA   TSTFHDR+3
             LDD   #0
             STD   TSTFHDR+4
-            LDD   #DUP
+            LDD   #DUPW
             STD   TSTFHDR+6
 
             LDA   #'F'
@@ -9380,7 +9510,7 @@ TSTTICK1:   LDD   CODEHERE
             PSHU  D
             STU   TSTUB4
 
-            JSR   TICK
+            JSR   TICKW
 
             STU   TSTUAF
 
@@ -9396,7 +9526,7 @@ TSTTICK1:   LDD   CODEHERE
             STD   TOIN
 
             PULU  D
-            CMPD  #DUP
+            CMPD  #DUPW
             BNE   TK1FAIL
             PULU  D
             CMPD  #TSTGUARD
@@ -9423,10 +9553,16 @@ TSTTICK1NAME:
             FCC   "TSTTICK1"
 
 ; ------------------------------------------------------------
-; TSTTICK2 - unit test for ' (tick), not-found case. Redirects
-; LATEST to an empty chain (0, the standard chain-terminator
+; unit test for ' (tick), not-found case. Redirects LATEST
+; to an empty chain (0, the standard chain-terminator
 ; sentinel used throughout this ROM), so FIND has nothing to
 ; match. Verifies -13 via CATCH.
+; TSTTICK2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTTICK2 OK" or "TSTTICK2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTTICK2:   LDD   CODEHERE
             STD   TSTCSAV
@@ -9459,11 +9595,11 @@ TSTTICK2:   LDD   CODEHERE
 
             STU   TSTU0
 
-            LDX   #TICK
+            LDX   #TICKW
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -9503,10 +9639,16 @@ TSTTICK2NAME:
             FCC   "TSTTICK2"
 
 ; ------------------------------------------------------------
-; TSTCOMPCOMMA - unit test for COMPILE,. Compiles a call to
-; DUP's own xt into scratch, then executes the result with a
-; known value to confirm it genuinely behaves like DUP - not
-; just that some bytes were written.
+; unit test for COMPILE,. Compiles a call to DUP's own xt
+; into scratch, then executes the result with a known value
+; to confirm it genuinely behaves like DUP - not just that
+; some bytes were written.
+; TSTCOMPCOMMA
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCOMPCOMMA OK" or "TSTCOMPCOMMA FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTCOMPCOMMA:
             LDD   CODEHERE
@@ -9515,13 +9657,13 @@ TSTCOMPCOMMA:
             LDD   #TSTCBUF
             STD   CODEHERE
 
-            LDD   #DUP
+            LDD   #DUPW
             PSHU  D
-            JSR   COMPILECOMMA
+            JSR   COMPILECOMMAW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -9569,11 +9711,18 @@ TSTCCNAME:  FCB   12
             FCC   "TSTCOMPCOMMA"
 
 ; ------------------------------------------------------------
-; TSTLITERAL - unit test for LITERAL. Already used extensively
-; as an internal helper throughout sections 3.8/3.9's own tests,
+; unit test for LITERAL. Already used extensively as an
+; internal helper throughout sections 3.8/3.9's own tests,
 ; but gets its own dedicated, direct test here too, per this
-; section's own coverage. Compiles a known value as a literal,
-; then executes the result to confirm it genuinely pushes it.
+; section's own coverage. Compiles a known value as a
+; literal, then executes the result to confirm it genuinely
+; pushes it.
+; TSTLITERAL
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTLITERAL OK" or "TSTLITERAL FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTLITERAL: LDD   CODEHERE
             STD   TSTCSAV
@@ -9587,7 +9736,7 @@ TSTLITERAL: LDD   CODEHERE
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -9630,12 +9779,18 @@ TSTLITNAME: FCB   10
             FCC   "TSTLITERAL"
 
 ; ------------------------------------------------------------
-; TSTBRACKTICK1 - unit test for ['], compiling-state case.
-; Compile-only, so STATE must be -1 for this to work at all
-; (confirmed by reading its own code: throws -14 otherwise).
-; Builds a fake header pointing at DUP, compiles a literal of
-; its xt via ['], then executes the result to confirm it
-; genuinely pushes DUP's own xt.
+; unit test for ['], compiling-state case. Compile-only, so
+; STATE must be -1 for this to work at all (confirmed by
+; reading its own code: throws -14 otherwise). Builds a fake
+; header pointing at DUP, compiles a literal of its xt via
+; ['], then executes the result to confirm it genuinely
+; pushes DUP's own xt.
+; TSTBRACKTICK1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTBRACKTICK1 OK" or "TSTBRACKTICK1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTBRACKTICK1:
             LDD   CODEHERE
@@ -9661,7 +9816,7 @@ TSTBRACKTICK1:
             STA   TSTFHDR+3
             LDD   #0
             STD   TSTFHDR+4
-            LDD   #DUP
+            LDD   #DUPW
             STD   TSTFHDR+6
 
             LDA   #'F'
@@ -9684,11 +9839,11 @@ TSTBRACKTICK1:
             LDD   #-1
             STD   STATE
 
-            JSR   BRACKTICK
+            JSR   BRACKTICKW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -9715,7 +9870,7 @@ TSTBRACKTICK1:
             STU   TSTUAF
 
             PULU  D
-            CMPD  #DUP
+            CMPD  #DUPW
             BNE   BT1FAIL
             PULU  D
             CMPD  #TSTGUARD
@@ -9741,8 +9896,14 @@ TSTBT1NAME: FCB   13
             FCC   "TSTBRACKTICK1"
 
 ; ------------------------------------------------------------
-; TSTBRACKTICK2 - unit test for ['], interpreting-state case.
-; STATE=0, verifies -14 via CATCH.
+; unit test for ['], interpreting-state case. STATE=0,
+; verifies -14 via CATCH.
+; TSTBRACKTICK2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTBRACKTICK2 OK" or "TSTBRACKTICK2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTBRACKTICK2:
             LDD   CODEHERE
@@ -9780,11 +9941,11 @@ TSTBRACKTICK2:
 
             STU   TSTU0
 
-            LDX   #BRACKTICK
+            LDX   #BRACKTICKW
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -9825,21 +9986,14 @@ TSTBT2NAME: FCB   13
             FCC   "TSTBRACKTICK2"
 
 ; ------------------------------------------------------------
-; TSTPOSTPONE1 - unit test for POSTPONE, normal (non-immediate)
-; word case. Traced its own code first: for a normal word,
-; POSTPONE compiles "[LIT xt][JSR COMPILE,]" into the current
-; definition - NOT a direct call to the word itself. This is
-; standard ANS semantics (POSTPONE appends a word's own
-; compilation semantics to the current definition; for an
-; ordinary word, that semantics IS "compile a call to it", so
-; the current definition, when it later runs, must itself
-; perform that compiling action against whatever definition is
-; being compiled at that later point - not immediately). Given
-; the genuine complexity of fully executing that second level
-; (which would need a further redirected CODEHERE and a further
-; round of execute-and-verify), this test instead verifies the
-; compiled byte sequence directly - still a meaningful,
-; unambiguous check of POSTPONE's own documented mechanism.
+; unit test for POSTPONE, normal (non-immediate) word case.
+; TSTPOSTPONE1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTPOSTPONE1 OK" or "TSTPOSTPONE1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTPOSTPONE1.0.
 ; ------------------------------------------------------------
 TSTPOSTPONE1:
             LDD   CODEHERE
@@ -9865,7 +10019,7 @@ TSTPOSTPONE1:
             STA   TSTFHDR+3
             LDD   #0
             STD   TSTFHDR+4
-            LDD   #DUP
+            LDD   #DUPW
             STD   TSTFHDR+6
 
             LDA   #'F'
@@ -9929,13 +10083,13 @@ TSTPOSTPONE1:
             CMPD  #LIT
             BNE   PP1FAIL
             LDD   3,X
-            CMPD  #DUP
+            CMPD  #DUPW
             BNE   PP1FAIL
             LDA   5,X
             CMPA  #OPJSR
             BNE   PP1FAIL
             LDD   6,X
-            CMPD  #COMPILECOMMA
+            CMPD  #COMPILECOMMAW
             BNE   PP1FAIL
 
             LDD   #TRUEV
@@ -9953,13 +10107,14 @@ TSTPP1NAME: FCB   12
             FCC   "TSTPOSTPONE1"
 
 ; ------------------------------------------------------------
-; TSTPOSTPONE2 - unit test for POSTPONE, immediate word case.
-; Confirmed via FIND's own code that it pushes 1 for immediate
-; words, -1 otherwise - POSTPONEW branches on exactly that. For
-; an immediate word, its own "compilation semantics" IS
-; "execute it now" (that's what immediate means), so POSTPONE
-; compiles a direct call to it - simpler to verify than the
-; normal-word case, no second level involved.
+; unit test for POSTPONE, immediate word case.
+; TSTPOSTPONE2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTPOSTPONE2 OK" or "TSTPOSTPONE2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTPOSTPONE2.0.
 ; ------------------------------------------------------------
 TSTPOSTPONE2:
             LDD   CODEHERE
@@ -10064,22 +10219,14 @@ TSTPP2NAME: FCB   12
             FCC   "TSTPOSTPONE2"
 
 ; ------------------------------------------------------------
-; TSTXCOMPILE1 - unit test for [COMPILE], normal (non-immediate)
-; word case. Unlike POSTPONE (TSTPOSTPONE1, above), [COMPILE]
-; makes no LIT/COMPILE, distinction by flag at all - traced
-; XCOMPILE's own code: it always compiles a direct call
-; ("[JSR xt]") to the found word, right now, regardless of
-; whether FIND reported it immediate or not. So this case (a
-; plain, non-immediate word, DUP) verifies the exact same simple
-; byte sequence as TSTPOSTPONE2's immediate-word case below -
-; that agreement, for an ordinary word, is itself the point:
-; [COMPILE] and POSTPONE only diverge on a default-compilation
-; word, which neither this nor TSTXCOMPILE2 constructs (seeing
-; that divergence would need a CREATE/DOES>-built compiling word,
-; not attempted here - the ANS Annex F test in
-; 13_compiling_words.tests.fs exercises [COMPILE] against DUP, a
-; user-defined IMMEDIATE word, and IF, which is the ordinary case
-; this implementation handles correctly either way).
+; unit test for [COMPILE], normal (non-immediate) word case.
+; TSTXCOMPILE1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTXCOMPILE1 OK" or "TSTXCOMPILE1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTXCOMPILE1.0.
 ; ------------------------------------------------------------
 TSTXCOMPILE1:
             LDD   CODEHERE
@@ -10105,7 +10252,7 @@ TSTXCOMPILE1:
             STA   TSTFHDR+3
             LDD   #0
             STD   TSTFHDR+4
-            LDD   #DUP
+            LDD   #DUPW
             STD   TSTFHDR+6
 
             LDA   #'F'
@@ -10134,7 +10281,7 @@ TSTXCOMPILE1:
             PSHU  D
             STU   TSTUB4
 
-            JSR   XCOMPILE
+            JSR   XCOMPILEW
 
             STU   TSTUAF
 
@@ -10166,7 +10313,7 @@ TSTXCOMPILE1:
             CMPA  #OPJSR
             BNE   XC1FAIL
             LDD   1,X
-            CMPD  #DUP
+            CMPD  #DUPW
             BNE   XC1FAIL
 
             LDD   #TRUEV
@@ -10184,12 +10331,18 @@ TSTXC1NAME: FCB   13
             FCC   "TSTXCOMPILE1"
 
 ; ------------------------------------------------------------
-; TSTXCOMPILE2 - unit test for [COMPILE], immediate word case.
-; Same fake header shape as TSTPOSTPONE2 (flags byte $83 - the
-; $80 IMMEDIATE bit set), to confirm XCOMPILE compiles the exact
-; same direct-call byte sequence here as it did for the plain
-; word above - i.e. that it genuinely ignores FIND's immediate
-; flag entirely, unlike POSTPONE.
+; unit test for [COMPILE], immediate word case. Same fake
+; header shape as TSTPOSTPONE2 (flags byte $83 - the $80
+; IMMEDIATE bit set), to confirm XCOMPILE compiles the exact
+; same direct-call byte sequence here as it did for the
+; plain word above - i.e. that it genuinely ignores FIND's
+; immediate flag entirely, unlike POSTPONE.
+; TSTXCOMPILE2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTXCOMPILE2 OK" or "TSTXCOMPILE2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTXCOMPILE2:
             LDD   CODEHERE
@@ -10244,7 +10397,7 @@ TSTXCOMPILE2:
             PSHU  D
             STU   TSTUB4
 
-            JSR   XCOMPILE
+            JSR   XCOMPILEW
 
             STU   TSTUAF
 
@@ -10294,27 +10447,14 @@ TSTXC2NAME: FCB   13
             FCC   "TSTXCOMPILE2"
 
 ; ------------------------------------------------------------
-; TSTTOBODY - unit test for >BODY. Already used extensively as
-; an internal helper throughout section 3.9's DEFER@/DEFER!/TO/
-; IS tests, but gets its own dedicated test here too.
-;
-; BUG FIX: this test originally assumed TOBODY returns xt+5
-; itself (a pure address computation) - wrong, confirmed via
-; MAME: TOBODY computes xt+5, then DEREFERENCES it ("LDD ,X"),
-; returning the VALUE stored there, not the address itself. This
-; is genuinely correct behavior for this system's own trampoline
-; design, not a bug in TOBODY - reconciled directly against why
-; section 3.9's DEFER@/DEFER!/TO/IS tests, which relied on this
-; same TOBODY and passed on real hardware, never surfaced this:
-; those tests set up real trampolines (via VALUEW/DEFERW) whose
-; own compile-time code stores a genuinely meaningful value at
-; xt+5 (for DEFER, the current target xt; for VALUE, the stored
-; value) - "the body" for this system's own design IS the value
-; at xt+5, not xt+5's own address. This test never initialized
-; TSTCBUF+5 to anything at all, so it was comparing against
-; whatever garbage happened to already be there - now sets a
-; known value there first and verifies TOBODY returns exactly
-; that.
+; unit test for >BODY.
+; TSTTOBODY
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTTOBODY OK" or "TSTTOBODY FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTTOBODY.0.
 ; ------------------------------------------------------------
 TSTTOBODY:  LDD   #TSTVAL1
             STD   TSTCBUF+5
@@ -10327,7 +10467,7 @@ TSTTOBODY:  LDD   #TSTVAL1
             PSHU  D
             STU   TSTUB4
 
-            JSR   TOBODY
+            JSR   TOBODYW
 
             STU   TSTUAF
 
@@ -10358,9 +10498,15 @@ TSTTBNAME:  FCB   9
             FCC   "TSTTOBODY"
 
 ; ------------------------------------------------------------
-; TSTEXECUTE - unit test for EXECUTE. Executes DUP via its own
-; xt with a known value, confirming it genuinely behaves like
-; DUP - not just that the call returned.
+; unit test for EXECUTE. Executes DUP via its own xt with a
+; known value, confirming it genuinely behaves like DUP -
+; not just that the call returned.
+; TSTEXECUTE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTEXECUTE OK" or "TSTEXECUTE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTEXECUTE: STU   TSTU0
 
@@ -10368,11 +10514,11 @@ TSTEXECUTE: STU   TSTU0
             PSHU  D
             LDD   #TSTVAL1
             PSHU  D
-            LDD   #DUP
+            LDD   #DUPW
             PSHU  D
             STU   TSTUB4
 
-            JSR   EXECUTE
+            JSR   EXECUTEW
 
             STU   TSTUAF
 
@@ -10407,13 +10553,14 @@ TSTEXECNAME:
             FCC   "TSTEXECUTE"
 
 ; ------------------------------------------------------------
-; TSTSLITERAL1 - unit test for SLITERAL, compiling-state case.
-; Compile-only (throws -14 otherwise, per its own code). Pushes
-; a known 2-character string, compiles it as a runtime literal,
-; then executes the result to confirm it genuinely pushes the
-; correct (addr len) pair - checking the actual content at the
-; returned address, not just that some address and a length of
-; 2 came back.
+; unit test for SLITERAL, compiling-state case.
+; TSTSLITERAL1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSLITERAL1 OK" or "TSTSLITERAL1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTSLITERAL1.0.
 ; ------------------------------------------------------------
 TSTSLITERAL1:
             LDD   CODEHERE
@@ -10439,7 +10586,7 @@ TSTSLITERAL1:
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -10494,8 +10641,14 @@ TSTSL1NAME: FCB   12
             FCC   "TSTSLITERAL1"
 
 ; ------------------------------------------------------------
-; TSTSLITERAL2 - unit test for SLITERAL, interpreting-state
-; case. STATE=0, verifies -14 via CATCH.
+; unit test for SLITERAL, interpreting-state case. STATE=0,
+; verifies -14 via CATCH.
+; TSTSLITERAL2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSLITERAL2 OK" or "TSTSLITERAL2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSLITERAL2:
             LDD   CODEHERE
@@ -10518,7 +10671,7 @@ TSTSLITERAL2:
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -10551,14 +10704,14 @@ TSTSL2NAME: FCB   12
             FCC   "TSTSLITERAL2"
 
 ; ------------------------------------------------------------
-; TSTABORTQ1 - unit test for ABORT", false-flag case. Compile-
-; only (throws -14 otherwise). Compiles ABORT" with a known
-; message ("HI"), executes with a false flag, and verifies
-; execution genuinely resumes right after the embedded message
-; text - confirmed by hand-tracing DOABORTQUOTE's own code: on
-; false, it skips past the inline message and returns normally,
-; matching its own documented "on false flag: does nothing
-; further".
+; unit test for ABORT", false-flag case.
+; TSTABORTQ1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTABORTQ1 OK" or "TSTABORTQ1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTABORTQ1.0.
 ; ------------------------------------------------------------
 TSTABORTQ1: LDD   CODEHERE
             STD   TSTCSAV
@@ -10589,11 +10742,11 @@ TSTABORTQ1: LDD   CODEHERE
             LDD   #-1
             STD   STATE
 
-            JSR   ABORTQUOTE
+            JSR   ABORTQUOTEW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -10643,14 +10796,14 @@ TSTAQ1NAME: FCB   10
             FCC   "TSTABORTQ1"
 
 ; ------------------------------------------------------------
-; TSTABORTQ2 - unit test for ABORT", true-flag case. Same
-; compiled snippet as TSTABORTQ1, executed via CATCH with a true
-; flag instead. Confirmed by reading DOABORTQUOTE's own code
-; that it uses THROW -2 internally, not the raw, never-returns
-; ABORT mechanism plain ABORT itself uses (which remains
-; deliberately untested, per section 3.1's own reasoning) - so
-; this case is safe to test directly, unlike plain ABORT would
-; be.
+; unit test for ABORT", true-flag case.
+; TSTABORTQ2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTABORTQ2 OK" or "TSTABORTQ2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTABORTQ2.0.
 ; ------------------------------------------------------------
 TSTABORTQ2: LDD   CODEHERE
             STD   TSTCSAV
@@ -10681,11 +10834,11 @@ TSTABORTQ2: LDD   CODEHERE
             LDD   #-1
             STD   STATE
 
-            JSR   ABORTQUOTE
+            JSR   ABORTQUOTEW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -10706,7 +10859,7 @@ TSTABORTQ2: LDD   CODEHERE
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -10736,27 +10889,26 @@ TSTAQ2NAME: FCB   10
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
-; TSTMEMORY - memory tests (glossary section 3.11, 22 words, 16
-; tests since several are combined into round-trip tests that
-; can only be meaningfully verified together: @/!, C@/C!, 2@/2!,
-; and the CODEHERE-region words (,/C,/ALLOT/HERE) and VARHERE-
-; region words (V,/VC,/VALLOT/VHERE) each combined into one
-; sequential walk-through per region.
-;
-; MOVE is traced from its own code to genuinely choose its copy
-; direction by comparing src and dst addresses, delegating to
-; CMOVE or CMOVE> to stay overlap-safe - so its own tests
-; specifically include both overlap directions (TSTMOVE2/
-; TSTMOVE3), each with its expected result hand-derived and
-; independently simulated in Python before writing the test, not
-; a trivial non-overlapping case alone (TSTMOVE1).
+; memory tests (glossary section 3.11, 22 words, 16 tests
+; since several are combined into round-trip tests that can
+; only be meaningfully verified together: @/!, C@/C!, 2@/2!,
+; and the CODEHERE-region words (,/C,/ALLOT/HERE) and
+; VARHERE- region words (V,/VC,/VALLOT/VHERE) each combined
+; into one sequential walk-through per region.
+; TSTMEMORY
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTMEMORY.0.
 ; ------------------------------------------------------------
 TSTMEMORY:  JSR   CRW
             LDX   #TSTMEMMSG
             PSHU  X
             LDD   #6
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-10    ; >>>>
@@ -10787,26 +10939,20 @@ TSTMEMMSG:  FCC   "Memory"
             IFEQ  TSTSELECTOR-10    ; >>>>
 
 ; ------------------------------------------------------------
-; Memory test harness (glossary section 3.11). Mostly simpler,
-; direct memory-access words (no compile-time behavior, no
-; name-parsing) - but , C, ALLOT HERE PAD touch CODEHERE, and
-; V, VC, VALLOT VHERE touch VARHERE, so those still need the
-; same redirect-based safety established for sections 3.8/3.9.
-; TSTCBUF is reused here as general scratch memory for the
-; simpler fetch/store tests, safe since each TSTSELECTOR group
-; runs exclusively of every other.
-;
-; MOVE is traced to genuinely choose its copy direction based on
-; comparing src and dst addresses (delegating to CMOVE or
-; CMOVE> as appropriate) - so its own tests specifically include
-; overlapping regions in both directions, not just a trivial
-; non-overlapping case, to verify that claim for real.
+; Memory test harness (glossary section 3.11).
+; Original comment: shadow TSTMEMORY.1.
 ; ------------------------------------------------------------
 
 ; ------------------------------------------------------------
-; TSTFETCHSTORE - unit test for @ and ! together (can only be
-; meaningfully tested as a round trip). Stores a known value at
-; scratch, fetches it back, verifies the match.
+; unit test for @ and ! together (can only be meaningfully
+; tested as a round trip). Stores a known value at scratch,
+; fetches it back, verifies the match.
+; TSTFETCHSTORE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTFETCHSTORE OK" or "TSTFETCHSTORE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTFETCHSTORE:
             STU   TSTU0
@@ -10824,7 +10970,7 @@ TSTFETCHSTORE:
             LDD   #TSTCBUF
             PSHU  D
 
-            JSR   ATSIGN
+            JSR   ATSIGNW
 
             STU   TSTUAF
 
@@ -10855,25 +11001,14 @@ TSTFSNAME:  FCB   13
             FCC   "TSTFETCHSTORE"
 
 ; ------------------------------------------------------------
-; TSTCFETCHSTORE - unit test for C@ and C! together. Pre-fills
-; the cell with a distinctive nonzero pattern ($FFFF) via a
-; direct write (not through C!/C@ themselves), then confirms C!
-; genuinely only touches the single byte at the exact address
-; given - not the "other half" of a 2-byte cell in some assumed
-; sense - and that C@ genuinely zero-extends (not just returns
-; whatever was there).
-;
-; BUG FIX: this test's own expected value after C! was wrong,
-; not CSTOREW - confirmed via MAME: expected $FF34 (assuming
-; the untouched byte, from the $FFFF pre-fill, would end up as
-; the high byte of the word), but CSTOREW writes directly at
-; the given address (TSTCBUF itself, the LOWER address), leaving
-; TSTCBUF+1 (the higher address) untouched at $FF - and since
-; LDD on this big-endian 6809 reads the high byte of the word
-; from the lower address first, that's $34FF, not $FF34. The
-; single-byte write and the zero-extending fetch were both
-; already correct; only this test's own arithmetic about which
-; byte ends up where was wrong.
+; unit test for C@ and C! together.
+; TSTCFETCHSTORE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCFETCHSTORE OK" or "TSTCFETCHSTORE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTCFETCHSTORE.0.
 ; ------------------------------------------------------------
 TSTCFETCHSTORE:
             LDD   #$FFFF
@@ -10898,7 +11033,7 @@ TSTCFETCHSTORE:
             LDD   #TSTCBUF
             PSHU  D
 
-            JSR   CFETCH
+            JSR   CFETCHW
 
             STU   TSTUAF
 
@@ -10929,9 +11064,15 @@ TSTCFNAME:  FCB   14
             FCC   "TSTCFETCHSTORE"
 
 ; ------------------------------------------------------------
-; TSTPLUSSTORE - unit test for +!. Pre-initializes the cell to a
-; known value, adds a known delta, and verifies the sum landed
+; unit test for +!. Pre-initializes the cell to a known
+; value, adds a known delta, and verifies the sum landed
 ; correctly.
+; TSTPLUSSTORE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTPLUSSTORE OK" or "TSTPLUSSTORE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTPLUSSTORE:
             LDD   #TSTVAL1
@@ -10947,7 +11088,7 @@ TSTPLUSSTORE:
             PSHU  D
             STU   TSTUB4
 
-            JSR   PLUSSTORE
+            JSR   PLUSSTOREW
 
             STU   TSTUAF
 
@@ -10979,12 +11120,14 @@ TSTPSNAME:  FCB   12
             FCC   "TSTPLUSSTORE"
 
 ; ------------------------------------------------------------
-; TST2FETCHSTORE - unit test for 2@ and 2! together. Stores a
-; known pair, fetches it back, and verifies the standard
-; ordering: ( x1 x2 a-addr -- ) stores x2 at a-addr (the lower
-; address) and x1 at a-addr+cell, and 2@ restores x1 x2.
-; (Corrected: this test used to expect x1 at the lower address,
-; the reverse of the standard - ANS Annex F section 18 caught it.)
+; unit test for 2@ and 2! together.
+; TST2FETCHSTORE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TST2FETCHSTORE OK" or "TST2FETCHSTORE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TST2FETCHSTORE.0.
 ; ------------------------------------------------------------
 TST2FETCHSTORE:
             STU   TSTU0
@@ -10999,12 +11142,12 @@ TST2FETCHSTORE:
             PSHU  D
             STU   TSTUB4
 
-            JSR   DSTORE
+            JSR   DSTOREW
 
             LDD   #TSTCBUF
             PSHU  D
 
-            JSR   DFETCH
+            JSR   DFETCHW
 
             STU   TSTUAF
 
@@ -11045,15 +11188,15 @@ TSTDFNAME:  FCB   14
             FCC   "TST2FETCHSTORE"
 
 ; ------------------------------------------------------------
-; TSTCODEHERE - combined unit test for , C, ALLOT, and HERE
-; together (glossary section 3.11's own CODEHERE-region words).
-; Redirects CODEHERE to scratch and walks through a sequence:
-; HERE reports the redirected value, COMMA appends a cell (and
-; the written cell is verified directly, not just the advance),
-; C, appends a byte (verified the same way), ALLOT reserves then
-; releases bytes (confirming both directions work, matching
-; "reserve (or release, if negative)"), and a final HERE
-; confirms the cumulative result.
+; combined unit test for , C, ALLOT, and HERE together
+; (glossary section 3.11's own CODEHERE-region words).
+; TSTCODEHERE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCODEHERE OK" or "TSTCODEHERE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTCODEHERE.0.
 ; ------------------------------------------------------------
 TSTCODEHERE:
             LDD   CODEHERE
@@ -11075,7 +11218,7 @@ TSTCODEHERE:
 
             LDD   #TSTVAL1
             PSHU  D
-            JSR   COMMA
+            JSR   COMMAW
             LDD   TSTCBUF
             CMPD  #TSTVAL1
             BNE   CHFAIL
@@ -11085,7 +11228,7 @@ TSTCODEHERE:
 
             LDD   #$56
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
             LDA   TSTCBUF+2
             CMPA  #$56
             BNE   CHFAIL
@@ -11095,14 +11238,14 @@ TSTCODEHERE:
 
             LDD   #10
             PSHU  D
-            JSR   ALLOT
+            JSR   ALLOTW
             LDD   CODEHERE
             CMPD  #TSTCBUF+13
             BNE   CHFAIL
 
             LDD   #-4
             PSHU  D
-            JSR   ALLOT
+            JSR   ALLOTW
             LDD   CODEHERE
             CMPD  #TSTCBUF+9
             BNE   CHFAIL
@@ -11141,9 +11284,15 @@ TSTCHNAME:  FCB   11
             FCC   "TSTCODEHERE"
 
 ; ------------------------------------------------------------
-; TSTVARHERE - combined unit test for V, VC, VALLOT, and VHERE
-; together - same structure as TSTCODEHERE, but for the
+; combined unit test for V, VC, VALLOT, and VHERE together -
+; same structure as TSTCODEHERE, but for the
 ; mutable/variable region (VARHERE) instead.
+; TSTVARHERE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTVARHERE OK" or "TSTVARHERE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTVARHERE: LDD   VARHERE
             STD   TSTVSAV
@@ -11164,7 +11313,7 @@ TSTVARHERE: LDD   VARHERE
 
             LDD   #TSTVAL1
             PSHU  D
-            JSR   VCOMMA
+            JSR   VCOMMAW
             LDD   TSTVBUF
             CMPD  #TSTVAL1
             BNE   VHFAIL
@@ -11174,7 +11323,7 @@ TSTVARHERE: LDD   VARHERE
 
             LDD   #$56
             PSHU  D
-            JSR   VCCOMMA
+            JSR   VCCOMMAW
             LDA   TSTVBUF+2
             CMPA  #$56
             BNE   VHFAIL
@@ -11184,14 +11333,14 @@ TSTVARHERE: LDD   VARHERE
 
             LDD   #10
             PSHU  D
-            JSR   VALLOT
+            JSR   VALLOTW
             LDD   VARHERE
             CMPD  #TSTVBUF+13
             BNE   VHFAIL
 
             LDD   #-4
             PSHU  D
-            JSR   VALLOT
+            JSR   VALLOTW
             LDD   VARHERE
             CMPD  #TSTVBUF+9
             BNE   VHFAIL
@@ -11230,9 +11379,16 @@ TSTVHNAME:  FCB   10
             FCC   "TSTVARHERE"
 
 ; ------------------------------------------------------------
-; TSTPAD - unit test for PAD. Redirects CODEHERE, verifies PAD
-; reports CODEHERE+PADOFFSET, using the same symbolic constant
-; PADW's own code uses rather than a hardcoded number.
+; unit test for PAD. Redirects CODEHERE, verifies PAD
+; reports CODEHERE+PADOFFSET, using the same symbolic
+; constant PADW's own code uses rather than a hardcoded
+; number.
+; TSTPAD
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTPAD OK" or "TSTPAD FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTPAD:     LDD   CODEHERE
             STD   TSTCSAV
@@ -11280,9 +11436,15 @@ TSTPADNAME: FCB   6
             FCC   "TSTPAD"
 
 ; ------------------------------------------------------------
-; TSTUNUSED - unit test for UNUSED. Redirects CODEHERE, verifies
-; UNUSED reports CODETOP-CODEHERE, using the same symbolic
-; constant UNUSEDW's own code uses.
+; unit test for UNUSED. Redirects CODEHERE, verifies UNUSED
+; reports CODETOP-CODEHERE, using the same symbolic constant
+; UNUSEDW's own code uses.
+; TSTUNUSED
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTUNUSED OK" or "TSTUNUSED FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTUNUSED:  LDD   CODEHERE
             STD   TSTCSAV
@@ -11330,12 +11492,14 @@ TSTUNNAME:  FCB   9
             FCC   "TSTUNUSED"
 
 ; ------------------------------------------------------------
-; TSTVUNUSED - unit test for VUNUSED. Redirects VARHERE, verifies
-; VUNUSED reports APPVARSEND-VARHERE, using the same symbolic
-; constant VUNUSEDW's own code uses (per its own bug-fix comment,
-; confirmed already correct - this was the real bug found and
-; fixed earlier in a prior session, not something to re-litigate
-; here, just confirm holds).
+; unit test for VUNUSED.
+; TSTVUNUSED
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTVUNUSED OK" or "TSTVUNUSED FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTVUNUSED.0.
 ; ------------------------------------------------------------
 TSTVUNUSED: LDD   VARHERE
             STD   TSTVSAV
@@ -11383,9 +11547,15 @@ TSTVUNNAME: FCB   10
             FCC   "TSTVUNUSED"
 
 ; ------------------------------------------------------------
-; TSTFILL - unit test for FILL. Fills 5 scratch bytes with a
-; known character, then verifies every one of the 5 bytes
+; unit test for FILL. Fills 5 scratch bytes with a known
+; character, then verifies every one of the 5 bytes
 ; individually - not just spot-checking the first and last.
+; TSTFILL
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTFILL OK" or "TSTFILL FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTFILL:    STU   TSTU0
 
@@ -11435,9 +11605,15 @@ TSTFLNAME:  FCB   7
             FCC   "TSTFILL"
 
 ; ------------------------------------------------------------
-; TSTERASE - unit test for ERASE. Pre-fills scratch with a
-; nonzero pattern first (so a no-op couldn't accidentally pass),
+; unit test for ERASE. Pre-fills scratch with a nonzero
+; pattern first (so a no-op couldn't accidentally pass),
 ; erases it, and verifies every byte is genuinely zero.
+; TSTERASE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTERASE OK" or "TSTERASE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTERASE:   LDX   #TSTCBUF
             LDB   #5
@@ -11492,12 +11668,19 @@ TSTERNAME:  FCB   8
             FCC   "TSTERASE"
 
 ; ------------------------------------------------------------
-; TSTCMOVE - unit test for CMOVE. Non-overlapping regions (well
+; unit test for CMOVE. Non-overlapping regions (well
 ; separated within TSTCBUF's own 80 bytes) - CMOVE's own
 ; overlap-unsafe behavior in the high-over-low direction is
 ; exactly what MOVE exists to route around, so CMOVE's own
-; tests stick to the simple, well-defined case; see TSTMOVE2/
-; TSTMOVE3 below for the overlap-specific verification.
+; tests stick to the simple, well-defined case; see
+; TSTMOVE2/ TSTMOVE3 below for the overlap-specific
+; verification.
+; TSTCMOVE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCMOVE OK" or "TSTCMOVE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTCMOVE:   LDA   #'A'
             STA   TSTCBUF
@@ -11566,8 +11749,14 @@ TSTCMNAME:  FCB   8
             FCC   "TSTCMOVE"
 
 ; ------------------------------------------------------------
-; TSTCMOVEGT - unit test for CMOVE>. Non-overlapping regions,
-; same reasoning as TSTCMOVE.
+; unit test for CMOVE>. Non-overlapping regions, same
+; reasoning as TSTCMOVE.
+; TSTCMOVEGT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCMOVEGT OK" or "TSTCMOVEGT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTCMOVEGT: LDA   #'A'
             STA   TSTCBUF
@@ -11592,7 +11781,7 @@ TSTCMOVEGT: LDA   #'A'
             PSHU  D
             STU   TSTUB4
 
-            JSR   CMOVEGT
+            JSR   CMOVEGTW
 
             STU   TSTUAF
 
@@ -11636,7 +11825,13 @@ TSTCGNAME:  FCB   10
             FCC   "TSTCMOVEGT"
 
 ; ------------------------------------------------------------
-; TSTMOVE1 - unit test for MOVE, non-overlapping sanity case.
+; unit test for MOVE, non-overlapping sanity case.
+; TSTMOVE1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTMOVE1 OK" or "TSTMOVE1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTMOVE1:   LDA   #'A'
             STA   TSTCBUF
@@ -11705,15 +11900,16 @@ TSTMV1NAME: FCB   8
             FCC   "TSTMOVE1"
 
 ; ------------------------------------------------------------
-; TSTMOVE2 - unit test for MOVE, overlapping case with dst >
-; src (dst = TSTCBUF+2, src = TSTCBUF, 5 bytes - a 2-byte
-; forward shift). MOVE's own code compares addresses and
-; delegates to CMOVE> (high-to-low) whenever dst > src,
-; specifically to avoid the corruption a naive low-to-high copy
-; would cause here (byte 2 would get overwritten by the copy
-; before ever being read as a source byte). Expected result
-; hand-derived and independently simulated in Python before
-; writing this test, not guessed: "ABABCDE" across bytes 0-6.
+; unit test for MOVE, overlapping case with dst > src (dst =
+; TSTCBUF+2, src = TSTCBUF, 5 bytes - a 2-byte forward
+; shift).
+; TSTMOVE2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTMOVE2 OK" or "TSTMOVE2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTMOVE2.0.
 ; ------------------------------------------------------------
 TSTMOVE2:   LDA   #'A'
             STA   TSTCBUF
@@ -11792,14 +11988,16 @@ TSTMV2NAME: FCB   8
             FCC   "TSTMOVE2"
 
 ; ------------------------------------------------------------
-; TSTMOVE3 - unit test for MOVE, overlapping case with dst <
-; src (dst = TSTCBUF, src = TSTCBUF+2, 5 bytes - a 2-byte
-; backward shift). MOVE delegates to plain CMOVE (low-to-high)
-; whenever dst < src, avoiding the mirror-image corruption a
-; naive high-to-low copy would cause here. Expected result
-; hand-derived and independently simulated before writing:
-; "ABCDEDE" across bytes 0-6 (bytes 5-6 untouched, outside the
-; destination range).
+; unit test for MOVE, overlapping case with dst < src (dst =
+; TSTCBUF, src = TSTCBUF+2, 5 bytes - a 2-byte backward
+; shift).
+; TSTMOVE3
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTMOVE3 OK" or "TSTMOVE3 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTMOVE3.0.
 ; ------------------------------------------------------------
 TSTMOVE3:   LDA   #'X'
             STA   TSTCBUF
@@ -11880,34 +12078,20 @@ TSTMV3NAME: FCB   8
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
-; TSTSTRPARSE - strings & parsing tests (glossary section 3.12,
-; 16 words, 19 tests since several get separate cases: [CHAR]
-; compiling/interpreting state, S" compiling/interpreting state
-; (this word genuinely has both), SEARCH found/not-found,
-; REPLACES/SUBSTITUTE combined across two tests (covering all 4
-; of SUBSTITUTE's own documented %-delimiter cases), SNAME
-; found/not-found.
-;
-; . has no STATE check at all in its own code (confirmed by
-; reading it directly - matches "no interpretation semantics,
-; per ANS" without a specific -14 throw, unlike [CHAR]/S"), so
-; only its compiling case is tested. Its own runtime calls TYPE
-; internally, so its own test applies the SERIALPOLL-conditional
-; lesson from section 3.1 from the start, rather than
-; re-discovering it via a failed MAME run.
-;
-; SUBSTITUTE/REPLACES/UNESCAPE all carry extensive prior-session
-; bug-fix history in their own comments - confirmed fresh against
-; the actual current code (not re-derived from scratch), and
-; SUBSTITUTE's own expected outputs independently simulated in
-; Python against the traced algorithm before writing the tests,
-; not hand-derived and assumed correct.
-;
-; Note: this section's own COMPARE (string comparison) word's
-; test is named TSTSCOMPARE, not TSTCOMPARE - the latter was
-; already taken by section 3.7's own comparison-operators group
-; wrapper, caught by the standard collision check before
-; insertion.
+; strings & parsing tests (glossary section 3.12, 16 words,
+; 19 tests since several get separate cases: [CHAR]
+; compiling/interpreting state, S" compiling/interpreting
+; state (this word genuinely has both), SEARCH
+; found/not-found, REPLACES/SUBSTITUTE combined across two
+; tests (covering all 4 of SUBSTITUTE's own documented
+; %-delimiter cases), SNAME found/not-found.
+; TSTSTRPARSE
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTSTRPARSE.0.
 ; ------------------------------------------------------------
 TSTSTRPARSE:
             JSR   CRW
@@ -11915,7 +12099,7 @@ TSTSTRPARSE:
             PSHU  X
             LDD   #8
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-11    ; >>>>
@@ -11949,28 +12133,20 @@ TSTSTRPMSG: FCC   "StrParse"
             IFEQ  TSTSELECTOR-11    ; >>>>
 
 ; ------------------------------------------------------------
-; Strings & Parsing test harness (glossary section 3.12). Reuses
-; the redirect infrastructure from sections 3.8-3.10 for the
-; name-parsing words (WORD/CHAR/[CHAR]/S"/."). DOTQUOTE's own
-; runtime (DOTSTR) calls TYPE internally, which - per section
-; 3.1's own already-debugged finding - has two entirely
-; different implementations gated by SERIALPOLL; its own test
-; below applies that same lesson from the start rather than
-; re-discovering it.
-;
-; SUBSTITUTE/REPLACES/UNESCAPE all have extensive prior-session
-; bug-fix history baked into their own comments (SUBSTITUTE's
-; %-delimiter algorithm, UNESCAPE's doubling-not-escaping
-; behavior) - trusted as ground truth here (each confirmed via a
-; prior MAME-tested session), verified fresh against the actual
-; code rather than re-derived from scratch, and tested against
-; that confirmed, current behavior.
+; Strings & Parsing test harness (glossary section 3.12).
+; Original comment: shadow TSTSTRPARSE.1.
 ; ------------------------------------------------------------
 
 ; ------------------------------------------------------------
-; TSTCOUNT - unit test for COUNT. Builds a counted string at
-; scratch, verifies the returned (addr len) correctly skips the
-; count byte and reports its value.
+; unit test for COUNT. Builds a counted string at scratch,
+; verifies the returned (addr len) correctly skips the count
+; byte and reports its value.
+; TSTCOUNT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCOUNT OK" or "TSTCOUNT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTCOUNT:   LDA   #5
             STA   TSTCBUF
@@ -11993,7 +12169,7 @@ TSTCOUNT:   LDA   #5
             PSHU  D
             STU   TSTUB4
 
-            JSR   COUNT
+            JSR   COUNTW
 
             STU   TSTUAF
 
@@ -12027,11 +12203,17 @@ TSTCTNAME:  FCB   8
             FCC   "TSTCOUNT"
 
 ; ------------------------------------------------------------
-; TSTCHARW - unit test for CHAR. Redirects CODEHERE (WORD's own
-; parse output still lands there internally, even though CHAR
+; unit test for CHAR. Redirects CODEHERE (WORD's own parse
+; output still lands there internally, even though CHAR
 ; itself doesn't compile anything) and the source, parses a
-; space-delimited fake source ("AB CD"), and verifies it returns
-; 'A' - the first character of the first word.
+; space-delimited fake source ("AB CD"), and verifies it
+; returns 'A' - the first character of the first word.
+; TSTCHARW
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCHARW OK" or "TSTCHARW FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTCHARW:   LDD   CODEHERE
             STD   TSTCSAV
@@ -12108,10 +12290,16 @@ TSTCWNAME:  FCB   8
             FCC   "TSTCHARW"
 
 ; ------------------------------------------------------------
-; TSTBRACKCHAR1 - unit test for [CHAR], compiling-state case.
-; Compile-only (throws -14 otherwise, per its own STATE check).
-; Compiles the character as a literal, then executes the result
-; to confirm it genuinely pushes 'A'.
+; unit test for [CHAR], compiling-state case. Compile-only
+; (throws -14 otherwise, per its own STATE check). Compiles
+; the character as a literal, then executes the result to
+; confirm it genuinely pushes 'A'.
+; TSTBRACKCHAR1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTBRACKCHAR1 OK" or "TSTBRACKCHAR1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTBRACKCHAR1:
             LDD   CODEHERE
@@ -12143,11 +12331,11 @@ TSTBRACKCHAR1:
             LDD   #-1
             STD   STATE
 
-            JSR   BRACKCHAR
+            JSR   BRACKCHARW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -12198,8 +12386,14 @@ TSTBC1NAME: FCB   13
             FCC   "TSTBRACKCHAR1"
 
 ; ------------------------------------------------------------
-; TSTBRACKCHAR2 - unit test for [CHAR], interpreting-state case.
-; STATE=0, verifies -14 via CATCH.
+; unit test for [CHAR], interpreting-state case. STATE=0,
+; verifies -14 via CATCH.
+; TSTBRACKCHAR2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTBRACKCHAR2 OK" or "TSTBRACKCHAR2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTBRACKCHAR2:
             LDD   CODEHERE
@@ -12233,11 +12427,11 @@ TSTBRACKCHAR2:
 
             STU   TSTU0
 
-            LDX   #BRACKCHAR
+            LDX   #BRACKCHARW
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -12276,12 +12470,19 @@ TSTBC2NAME: FCB   13
             FCC   "TSTBRACKCHAR2"
 
 ; ------------------------------------------------------------
-; TSTPARSE - unit test for PARSE. Uses a fake source starting
-; with the delimiter itself (",XY", delimiter ',') specifically
-; to verify PARSE's own documented distinguishing behavior -
-; "does not skip leading delimiters, unlike WORD" - the leading
-; comma should be hit immediately, returning a zero-length token
-; right where TOIN started, not skipped over to find "XY".
+; unit test for PARSE. Uses a fake source starting with the
+; delimiter itself (",XY", delimiter ',') specifically to
+; verify PARSE's own documented distinguishing behavior -
+; "does not skip leading delimiters, unlike WORD" - the
+; leading comma should be hit immediately, returning a
+; zero-length token right where TOIN started, not skipped
+; over to find "XY".
+; TSTPARSE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTPARSE OK" or "TSTPARSE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTPARSE:   LDD   SRCADDR
             STD   TSTSASAV
@@ -12353,11 +12554,17 @@ TSTPRNAME:  FCB   8
             FCC   "TSTPARSE"
 
 ; ------------------------------------------------------------
-; TSTPARSENAME - unit test for PARSE-NAME. Fake source with 2
-; leading spaces before the token ("  AB CD"), verifying it
-; genuinely skips them - the opposite of PARSE's own behavior,
-; confirming the two aren't accidentally sharing one code path
-; that only happens to work for one of them.
+; unit test for PARSE-NAME. Fake source with 2 leading
+; spaces before the token ("  AB CD"), verifying it
+; genuinely skips them - the opposite of PARSE's own
+; behavior, confirming the two aren't accidentally sharing
+; one code path that only happens to work for one of them.
+; TSTPARSENAME
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTPARSENAME OK" or "TSTPARSENAME FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTPARSENAME:
             LDD   SRCADDR
@@ -12395,7 +12602,7 @@ TSTPARSENAME:
             PSHU  D
             STU   TSTUB4
 
-            JSR   PARSENAME
+            JSR   PARSENAMEW
 
             STU   TSTUAF
 
@@ -12436,10 +12643,16 @@ TSTPNNAME:  FCB   12
             FCC   "TSTPARSENAME"
 
 ; ------------------------------------------------------------
-; TSTSQUOTE1 - unit test for S", compiling-state case. Compiles
-; a known 2-character string, then executes the result to
-; confirm it genuinely pushes (addr len) with the correct
-; content at addr - not just that the call returned two numbers.
+; unit test for S", compiling-state case. Compiles a known
+; 2-character string, then executes the result to confirm it
+; genuinely pushes (addr len) with the correct content at
+; addr - not just that the call returned two numbers.
+; TSTSQUOTE1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSQUOTE1 OK" or "TSTSQUOTE1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSQUOTE1: LDD   CODEHERE
             STD   TSTCSAV
@@ -12470,11 +12683,11 @@ TSTSQUOTE1: LDD   CODEHERE
             LDD   #-1
             STD   STATE
 
-            JSR   SQUOTE
+            JSR   SQUOTEW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -12535,13 +12748,14 @@ TSTSQ1NAME: FCB   10
             FCC   "TSTSQUOTE1"
 
 ; ------------------------------------------------------------
-; TSTSQUOTE2 - unit test for S", interpreting-state case.
-; Redirects CODEHERE first so PAD's own computed address (which
-; SQUOTE's own interpreting branch writes to) is predictable,
-; then calls S" directly (no compile/execute step needed, since
-; interpreting S" stages the string and returns immediately) and
-; verifies the returned (addr len) content, plus that addr
-; genuinely landed at PAD's current, redirected address.
+; unit test for S", interpreting-state case.
+; TSTSQUOTE2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSQUOTE2 OK" or "TSTSQUOTE2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTSQUOTE2.0.
 ; ------------------------------------------------------------
 TSTSQUOTE2: LDD   CODEHERE
             STD   TSTCSAV
@@ -12578,7 +12792,7 @@ TSTSQUOTE2: LDD   CODEHERE
             PSHU  D
             STU   TSTUB4
 
-            JSR   SQUOTE
+            JSR   SQUOTEW
 
             STU   TSTUAF
 
@@ -12633,20 +12847,14 @@ TSTSQ2NAME: FCB   10
             FCC   "TSTSQUOTE2"
 
 ; ------------------------------------------------------------
-; TSTDOTQUOTE - unit test for .". No STATE check at all in its
-; own code (confirmed by reading it directly - matches "no
-; interpretation semantics, per ANS" without a specific -14
-; throw, unlike [CHAR]/S"), so only the compiling case is
-; tested, matching how it's actually meant to be used. Its own
-; runtime (DOTSTR) calls TYPE internally, which has two entirely
-; different implementations gated by SERIALPOLL (the same real
-; finding from section 3.1) - applying that lesson from the
-; start here rather than re-discovering it: EMITCH works
-; universally for a single-character check, but this outputs
-; multiple characters, so - matching TSTCR's own established
-; fix - the full OUTHEAD/OUTBUF check only applies under
-; SERIALPOLL=0, with a narrower EMITCH-based check (last
-; character only, plus the stack-depth check) for SERIALPOLL=1.
+; unit test for .".
+; TSTDOTQUOTE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDOTQUOTE OK" or "TSTDOTQUOTE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTDOTQUOTE.0.
 ; ------------------------------------------------------------
 TSTDOTQUOTE:
             LDD   CODEHERE
@@ -12674,11 +12882,11 @@ TSTDOTQUOTE:
             LDD   #0
             STD   TOIN
 
-            JSR   DOTQUOTE
+            JSR   DOTQUOTEW
 
             LDD   #OPRTS
             PSHU  D
-            JSR   CCOMMA
+            JSR   CCOMMAW
 
             LDD   TSTCSAV
             STD   CODEHERE
@@ -12752,14 +12960,14 @@ TSTDQNAME:  FCB   11
             FCC   "TSTDOTQUOTE"
 
 ; ------------------------------------------------------------
-; TSTSCOMPARE - unit test for COMPARE. Four sequential sub-cases
-; within one test body, each popping and verifying its own
-; result immediately: less-than, equal, greater-than, and the
-; prefix tie-break case specifically (a shorter string that's a
-; true prefix of a longer one compares less, per the standard
-; three-way convention) - not just LT/EQ/GT on same-length
-; strings, which alone wouldn't exercise the tie-break path at
-; all.
+; unit test for COMPARE.
+; TSTSCOMPARE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSCOMPARE OK" or "TSTSCOMPARE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTSCOMPARE.0.
 ; ------------------------------------------------------------
 TSTSCOMPARE:
             LDA   #'A'
@@ -12855,10 +13063,16 @@ TSTCQNAME:  FCB   11
             FCC   "TSTSCOMPARE"
 
 ; ------------------------------------------------------------
-; TSTSEARCH1 - unit test for SEARCH, found case. Haystack
-; "HELLOWORLD", needle "WOR" - verifies the returned addr3 lands
-; exactly at the match position (not just that flag is true),
-; len3 equals the needle's own length, and flag is true.
+; unit test for SEARCH, found case. Haystack "HELLOWORLD",
+; needle "WOR" - verifies the returned addr3 lands exactly
+; at the match position (not just that flag is true), len3
+; equals the needle's own length, and flag is true.
+; TSTSEARCH1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSEARCH1 OK" or "TSTSEARCH1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSEARCH1: LDA   #'H'
             STA   TSTCBUF
@@ -12939,9 +13153,15 @@ TSTSR1NAME: FCB   10
             FCC   "TSTSEARCH1"
 
 ; ------------------------------------------------------------
-; TSTSEARCH2 - unit test for SEARCH, not-found case. Verifies
-; addr3/len3 fall back to the original haystack (addr1/len1)
-; unchanged, and flag is false.
+; unit test for SEARCH, not-found case. Verifies addr3/len3
+; fall back to the original haystack (addr1/len1) unchanged,
+; and flag is false.
+; TSTSEARCH2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSEARCH2 OK" or "TSTSEARCH2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSEARCH2: LDA   #'H'
             STA   TSTCBUF
@@ -13010,10 +13230,16 @@ TSTSR2NAME: FCB   10
             FCC   "TSTSEARCH2"
 
 ; ------------------------------------------------------------
-; TSTDASHTRAILING - unit test for -TRAILING. "AB   " (2 letters,
-; 3 trailing spaces, len=5) trims to len=2, addr unchanged -
-; confirmed via its own code that it's a peek-and-modify-top
-; operation on the stack, not a pop-then-push of a new addr.
+; unit test for -TRAILING. "AB   " (2 letters, 3 trailing
+; spaces, len=5) trims to len=2, addr unchanged - confirmed
+; via its own code that it's a peek-and-modify-top operation
+; on the stack, not a pop-then-push of a new addr.
+; TSTDASHTRAILING
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDASHTRAILING OK" or "TSTDASHTRAILING FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDASHTRAILING:
             LDA   #'A'
@@ -13037,7 +13263,7 @@ TSTDASHTRAILING:
             PSHU  D
             STU   TSTUB4
 
-            JSR   DASHTRAILING
+            JSR   DASHTRAILINGW
 
             STU   TSTUAF
 
@@ -13071,9 +13297,15 @@ TSTDTNAME:  FCB   15
             FCC   "TSTDASHTRAILING"
 
 ; ------------------------------------------------------------
-; TSTSLASHSTRING - unit test for /STRING. "HELLO" trimmed by 2
-; from the front - verifies both the advanced address and the
-; reduced length.
+; unit test for /STRING. "HELLO" trimmed by 2 from the front
+; - verifies both the advanced address and the reduced
+; length.
+; TSTSLASHSTRING
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSLASHSTRING OK" or "TSTSLASHSTRING FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSLASHSTRING:
             LDA   #'H'
@@ -13099,7 +13331,7 @@ TSTSLASHSTRING:
             PSHU  D
             STU   TSTUB4
 
-            JSR   SLASHSTRING
+            JSR   SLASHSTRINGW
 
             STU   TSTUAF
 
@@ -13133,19 +13365,16 @@ TSTSLSNAME: FCB   14
             FCC   "TSTSLASHSTRING"
 
 ; ------------------------------------------------------------
-; TSTREPLSUBS1 - unit test for REPLACES and SUBSTITUTE together
-; (can only be meaningfully tested together - SUBSTITUTE depends
-; on a prior REPLACES registration). Registers "X"->"Z", then
-; runs the template "%%A%X%B%Y%" through SUBSTITUTE - covering
-; three of the four documented cases in one pass: "%%" collapses
-; to a single '%', "%X%" (a registered name) gets replaced
-; (count incremented), and "%Y%" (not registered) passes through
-; unchanged, delimiters included. Expected result ("%AZB%Y%",
-; count=1) independently simulated in Python against the actual
-; traced algorithm before writing this test, not hand-derived
-; and hoped correct - see TSTREPLSUBS2 for the fourth case
-; (unpaired trailing '%'), tested separately for clearer failure
-; diagnosis.
+; unit test for REPLACES and SUBSTITUTE together (can only
+; be meaningfully tested together - SUBSTITUTE depends on a
+; prior REPLACES registration).
+; TSTREPLSUBS1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTREPLSUBS1 OK" or "TSTREPLSUBS1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTREPLSUBS1.0.
 ; ------------------------------------------------------------
 TSTREPLSUBS1:
             LDA   #'Z'
@@ -13260,15 +13489,16 @@ TSTRS1NAME: FCB   12
             FCC   "TSTREPLSUBS1"
 
 ; ------------------------------------------------------------
-; TSTREPLSUBS2 - unit test for SUBSTITUTE's fourth documented
-; case: an unpaired trailing '%' with no closing delimiter
-; anywhere in the remainder passes the residue through
-; unchanged. Template "AB%CD" (the '%' never finds a partner)
-; -> "AB%CD", count=0. Same REPLACES registration reused from
-; TSTREPLSUBS1's own reasoning - a second REPLACES call
-; overwrites the first (documented as single-slot only), so this
-; test registers its own pair fresh rather than relying on any
-; prior test's own registration still being active.
+; unit test for SUBSTITUTE's fourth documented case: an
+; unpaired trailing '%' with no closing delimiter anywhere
+; in the remainder passes the residue through unchanged.
+; TSTREPLSUBS2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTREPLSUBS2 OK" or "TSTREPLSUBS2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTREPLSUBS2.0.
 ; ------------------------------------------------------------
 TSTREPLSUBS2:
             LDA   #'Z'
@@ -13367,36 +13597,30 @@ TSTRS2NAME: FCB   12
             FCC   "TSTREPLSUBS2"
 
 ; ------------------------------------------------------------
-; TSTSNAME1 - unit test for SNAME, found case. Searches the
-; real, live dictionary (confirmed via its own code that it
-; walks from the real LATEST, not a redirectable copy - no
-; redirect needed or possible here) for DUP's own xt, verifying
-; the returned name content matches "DUP" exactly, not just a
+; unit test for SNAME, found case. Searches the real, live
+; dictionary (confirmed via its own code that it walks from
+; the real LATEST, not a redirectable copy - no redirect
+; needed or possible here) for DUP's own xt, verifying the
+; returned name content matches "DUP" exactly, not just a
 ; nonzero length.
+; TSTSNAME1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSNAME1 OK" or "TSTSNAME1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSNAME1:  LDD   LATEST
             STD   TSTLSAV
 
             LDD   #BASELATEST       ; BUG FIX: confirmed via a real MAME run -
-            STD   LATEST            ; SNAMEW starts its walk from LATEST
-                                    ; (LDD LATEST/STD SNXT), the same real,
-                                    ; pre-COLD dependency found and fixed in
-                                    ; section 3.17's own TSTEVALUATE. With
-                                    ; LATEST=0 (only set by COLD, which
-                                    ; hasn't run yet at this whole test
-                                    ; framework's own pre-COLD execution
-                                    ; point), SNLOOP's own "BEQ SNNOTFOUND"
-                                    ; fires immediately, before ever
-                                    ; comparing against DUP's own CFA - this
-                                    ; test was written in section 3.12,
-                                    ; before the LATEST=0 finding existed at
-                                    ; all, so it never got the fix applied.
+            STD   LATEST            ; See bugfix: TSTSNAME1.1
 
             STU   TSTU0
 
             LDD   #TSTGUARD
             PSHU  D
-            LDD   #DUP
+            LDD   #DUPW
             PSHU  D
             STU   TSTUB4
 
@@ -13447,25 +13671,23 @@ TSTSN1NAME: FCB   9
             FCC   "TSTSNAME1"
 
 ; ------------------------------------------------------------
-; TSTSNAME2 - unit test for SNAME, not-found case. TSTCBUF (a
-; scratch APPVARS address, nowhere near the real code/dictionary
+; unit test for SNAME, not-found case. TSTCBUF (a scratch
+; APPVARS address, nowhere near the real code/dictionary
 ; region) doesn't match any real word's own CFA - verifies
-; SNAME correctly reports (0 0) rather than a false match or a
-; crash walking off the end of the chain.
+; SNAME correctly reports (0 0) rather than a false match or
+; a crash walking off the end of the chain.
+; TSTSNAME2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSNAME2 OK" or "TSTSNAME2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSNAME2:  LDD   LATEST
             STD   TSTLSAV
 
             LDD   #BASELATEST       ; BUG FIX: same real, pre-COLD dependency
-            STD   LATEST            ; as TSTSNAME1 above - without this,
-                                    ; SNAMEW's own chain walk starts and
-                                    ; ends at LATEST=0 immediately, so this
-                                    ; test was only ever exercising the
-                                    ; degenerate "empty chain" case, not
-                                    ; genuinely walking a real, populated
-                                    ; chain and finding no match for
-                                    ; TSTCBUF's own address - which is what
-                                    ; this test actually claims to verify.
+            STD   LATEST            ; See bugfix: TSTSNAME2.1
 
             STU   TSTU0
 
@@ -13512,13 +13734,14 @@ TSTSN2NAME: FCB   9
             FCC   "TSTSNAME2"
 
 ; ------------------------------------------------------------
-; TSTUNESCAPE - unit test for UNESCAPE. Source "A%B" (3 chars,
-; one '%' in the middle) doubles the '%' to produce "A%%B" (4
-; chars) - confirmed via its own code and a prior session's
-; already-corrected design comment that this is genuinely a
-; doubling operation, not backslash-sequence decoding. Verifies
-; every output character individually and the grown length,
-; not just that some output was produced.
+; unit test for UNESCAPE.
+; TSTUNESCAPE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTUNESCAPE OK" or "TSTUNESCAPE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTUNESCAPE.0.
 ; ------------------------------------------------------------
 TSTUNESCAPE:
             LDA   #'A'
@@ -13591,46 +13814,24 @@ TSTUENAME:  FCB   11
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
-; TSTNUMOUT - numeric output tests (glossary section 3.13, 14
-; words, 13 tests since #S and #> are combined into one test,
-; matching how they're naturally used together as the tail of
-; the standard pictured-output idiom "<# ... #S #>").
-;
-; The pictured-numeric-output core (<# # #S #> HOLD HOLDS) is
-; pure string-building with no I/O, tested directly. SIGN
-; carries real bug-fix history - a prior bare BPL right after
-; PULU didn't affect condition codes on real 6809 hardware, and
-; the bug was masked for every internal caller by caller-side
-; luck (each ran a flag-setting LDD right before calling SIGN).
-; This section's own SIGN test deliberately poisons the flags
-; with an unrelated CMPX immediately before each direct call,
-; so it exercises the exact previously-broken scenario rather
-; than repeating the same kind of luck that hid the bug.
-;
-; The high-level printing words (./U./.R/U.R/?/D./D.R) all
-; produce real output via TYPE/EMIT internally, so each applies
-; the SERIALPOLL-conditional split established in section 3.1 -
-; full OUTHEAD/OUTBUF verification under SERIALPOLL=0, an
-; EMITCH-based last-character check under SERIALPOLL=1. .R/U.R/
-; D.R specifically test the padding path (a width wider than the
-; actual digits), not just a no-padding sanity case. D./D.R use
-; a genuine double-cell value (-100000, computed and verified
-; independently in Python before writing the tests) to exercise
-; the 32-bit negation path, not a value that happens to fit in
-; one cell.
-;
-; Note: this section's own COMPARE-adjacent naming risk doesn't
-; apply here, but every group wrapper name (TSTNUMOUT) and every
-; internal FAIL/DONE prefix was still checked against the whole
-; file before insertion, per the standard practice that caught
-; the TSTCOMPARE collision in the prior section.
+; numeric output tests (glossary section 3.13, 14 words, 13
+; tests since #S and #> are combined into one test, matching
+; how they're naturally used together as the tail of the
+; standard pictured-output idiom "<# ... #S #>").
+; TSTNUMOUT
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTNUMOUT.0.
 ; ------------------------------------------------------------
 TSTNUMOUT:  JSR   CRW
             LDX   #TSTNUMOUTMSG
             PSHU  X
             LDD   #6
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-12    ; >>>>
@@ -13659,38 +13860,19 @@ TSTNUMOUTMSG:
             IFEQ  TSTSELECTOR-12    ; >>>>
 
 ; ------------------------------------------------------------
-; Numeric Output test harness (glossary section 3.13). The
-; pictured-numeric-output core (<# # #S #> HOLD HOLDS SIGN) is
-; pure string-building with no I/O, tested directly. The
-; high-level printing words (./U./.R/U.R/?/D./D.R) all produce
-; real output via TYPE and/or EMIT internally, so per section
-; 3.1's own already-debugged finding, each applies the
-; SERIALPOLL-conditional split established there: full OUTHEAD/
-; OUTBUF verification under SERIALPOLL=0, an EMITCH-based check
-; of the last character under SERIALPOLL=1 - accepted as a
-; known, honest limitation for words ending in a trailing space
-; (./U./D. all print a fixed final space character, so the
-; polling-mode check there confirms less than for the
-; no-trailing-space words, but is still correct and consistent
-; with the same trade-off already established for TSTCR/
-; TSTSPACES/TSTTYPE/TSTDOTQUOTE in earlier sections).
-;
-; SIGN itself carries real bug-fix history: a prior version used
-; a bare BPL immediately after PULU, which doesn't affect
-; condition codes on real 6809 hardware - the bug was masked for
-; every internal caller by "caller-side luck" (each happened to
-; run a flag-setting LDD right before calling SIGN). This
-; section's own SIGN test deliberately poisons the flags with an
-; unrelated, known-positive value immediately before the actual
-; PSHU/JSR SIGN sequence specifically so a standalone call - the
-; exact scenario the bug-fix comment says was previously broken
-; - is what gets tested, not a scenario that happens to work via
-; the same kind of caller-side luck that hid the original bug.
+; Numeric Output test harness (glossary section 3.13).
+; Original comment: shadow TSTNUMOUT.1.
 ; ------------------------------------------------------------
 
 ; ------------------------------------------------------------
-; TSTLTNUM - unit test for <#. No stack effect of its own -
-; verifies it sets HLD to PAD's current (redirected) address.
+; unit test for <#. No stack effect of its own - verifies it
+; sets HLD to PAD's current (redirected) address.
+; TSTLTNUM
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTLTNUM OK" or "TSTLTNUM FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTLTNUM:   LDD   CODEHERE
             STD   TSTCSAV
@@ -13704,7 +13886,7 @@ TSTLTNUM:   LDD   CODEHERE
             PSHU  D
             STU   TSTUB4
 
-            JSR   LTNUM
+            JSR   LTNUMW
 
             STU   TSTUAF
 
@@ -13739,11 +13921,17 @@ TSTLNNAME:  FCB   8
             FCC   "TSTLTNUM"
 
 ; ------------------------------------------------------------
-; TSTHOLD - unit test for HOLD. Holds 'A' then 'B' - since HOLD
-; grows the buffer downward and prepends (decrements HLD first,
+; unit test for HOLD. Holds 'A' then 'B' - since HOLD grows
+; the buffer downward and prepends (decrements HLD first,
 ; then writes at the new, lower position), the second-held
 ; character ends up at the lower address, so reading forward
 ; from the final HLD should give "BA", not "AB".
+; TSTHOLD
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTHOLD OK" or "TSTHOLD FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTHOLD:    LDD   CODEHERE
             STD   TSTCSAV
@@ -13757,15 +13945,15 @@ TSTHOLD:    LDD   CODEHERE
             PSHU  D
             STU   TSTUB4
 
-            JSR   LTNUM
+            JSR   LTNUMW
 
             LDD   #'A'
             PSHU  D
-            JSR   HOLD
+            JSR   HOLDW
 
             LDD   #'B'
             PSHU  D
-            JSR   HOLD
+            JSR   HOLDW
 
             STU   TSTUAF
 
@@ -13804,12 +13992,18 @@ TSTHDNAME:  FCB   7
             FCC   "TSTHOLD"
 
 ; ------------------------------------------------------------
-; TSTHOLDS - unit test for HOLDS. Holds the string "XY" - since
-; HOLDS iterates its source backward (last character first) and
-; HOLD itself prepends, the two behaviors combine to preserve
-; the original forward order in the pictured buffer, matching
-; its own documented "depends on HOLD's exact decrement-by-one
-; behavior".
+; unit test for HOLDS. Holds the string "XY" - since HOLDS
+; iterates its source backward (last character first) and
+; HOLD itself prepends, the two behaviors combine to
+; preserve the original forward order in the pictured
+; buffer, matching its own documented "depends on HOLD's
+; exact decrement-by-one behavior".
+; TSTHOLDS
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTHOLDS OK" or "TSTHOLDS FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTHOLDS:   LDD   CODEHERE
             STD   TSTCSAV
@@ -13828,13 +14022,13 @@ TSTHOLDS:   LDD   CODEHERE
             PSHU  D
             STU   TSTUB4
 
-            JSR   LTNUM
+            JSR   LTNUMW
 
             LDD   #TSTNAMEB
             PSHU  D
             LDD   #2
             PSHU  D
-            JSR   HOLDS
+            JSR   HOLDSW
 
             STU   TSTUAF
 
@@ -13873,20 +14067,14 @@ TSTHSNAME:  FCB   8
             FCC   "TSTHOLDS"
 
 ; ------------------------------------------------------------
-; TSTSIGN - unit test for SIGN. Deliberately poisons the CPU
-; flags with an unrelated CMPX (setting them to reflect a
-; positive comparison result, without touching D or the value
-; about to be pushed) immediately before each PSHU/JSR SIGN
-; call - specifically so this test exercises the exact scenario
-; the word's own bug-fix comment says was previously broken (a
-; direct, standalone call not preceded by a flag-setting LDD of
-; the true value), rather than relying on the same kind of
-; caller-side luck that hid the original bug. Two sub-cases:
-; negative (with flags poisoned toward positive, confirming the
-; minus sign still gets added - would fail if SIGN reverted to
-; testing stale flags instead of the value it just popped) and
-; positive (with flags poisoned toward negative, confirming no
-; minus sign gets added incorrectly).
+; unit test for SIGN.
+; TSTSIGN
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSIGN OK" or "TSTSIGN FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTSIGN.0.
 ; ------------------------------------------------------------
 TSTSIGN:    LDD   CODEHERE
             STD   TSTCSAV
@@ -13900,26 +14088,26 @@ TSTSIGN:    LDD   CODEHERE
             PSHU  D
             STU   TSTUB4
 
-            JSR   LTNUM
+            JSR   LTNUMW
 
             LDD   #-5
             LDX   #1
             CMPX  #0
             PSHU  D
-            JSR   SIGN
+            JSR   SIGNW
 
             LDX   HLD
             LDA   ,X
             CMPA  #'-'
             BNE   SGFAIL
 
-            JSR   LTNUM
+            JSR   LTNUMW
 
             LDD   #5
             LDX   #-1
             CMPX  #0
             PSHU  D
-            JSR   SIGN
+            JSR   SIGNW
 
             STU   TSTUAF
 
@@ -13954,11 +14142,17 @@ TSTSGNAME:  FCB   7
             FCC   "TSTSIGN"
 
 ; ------------------------------------------------------------
-; TSTNUMSIGN - unit test for #. Converts one digit of 25 (base
-; 10, ud1 = (25, 0)) - verifies the held character is '5' (the
+; unit test for #. Converts one digit of 25 (base 10, ud1 =
+; (25, 0)) - verifies the held character is '5' (the
 ; least-significant digit, processed first per the standard
 ; pictured-output convention) and the returned ud2 is the
 ; quotient (2, 0).
+; TSTNUMSIGN
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTNUMSIGN OK" or "TSTNUMSIGN FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTNUMSIGN: LDD   CODEHERE
             STD   TSTCSAV
@@ -13976,13 +14170,13 @@ TSTNUMSIGN: LDD   CODEHERE
             PSHU  D
             STU   TSTUB4
 
-            JSR   LTNUM
+            JSR   LTNUMW
 
             LDD   #25
             PSHU  D
             LDD   #0
             PSHU  D
-            JSR   NUMSIGN
+            JSR   NUMSIGNW
 
             STU   TSTUAF
 
@@ -14007,19 +14201,7 @@ TSTNUMSIGN: LDD   CODEHERE
 
             LDD   TSTUB4
             SUBD  TSTUAF
-            CMPD  #4                ; BUG FIX: was 0 - mistakenly copied the net-
-                                    ; zero reasoning from TSTNUMSIGNSGT (which calls
-                                    ; #> to consume ud2 before capturing TSTUAF).
-                                    ; This test captures TSTUAF right after NUMSIGN
-                                    ; returns, with ud2 (the quotient) still sitting
-                                    ; on the stack - confirmed via MAME: the user's
-                                    ; own register dump showed D=$0004 at this exact
-                                    ; comparison, precisely matching the 2 extra
-                                    ; cells (quotient low+high) genuinely present at
-                                    ; TSTUAF's own capture point that aren't present
-                                    ; at TSTUB4's (captured before NUMSIGN even ran).
-                                    ; NUMSIGN itself was never broken; only this
-                                    ; test's own expected depth value was wrong.
+            CMPD  #4                ; See bugfix: TSTNUMSIGN.1
             BNE   NZFAIL
 
             LDD   #TRUEV
@@ -14040,11 +14222,17 @@ TSTNSNAME:  FCB   10
             FCC   "TSTNUMSIGN"
 
 ; ------------------------------------------------------------
-; TSTNUMSIGNSGT - combined unit test for #S and #> (naturally
-; used together as the tail of the standard pictured-output
-; idiom "<# ... #S #>"). Converts ud1=(12345,0) fully via #S,
-; then #> to get (addr len) - verifies both the string content
+; combined unit test for #S and #> (naturally used together
+; as the tail of the standard pictured-output idiom "<# ...
+; #S #>"). Converts ud1=(12345,0) fully via #S, then #> to
+; get (addr len) - verifies both the string content
 ; ("12345", all 5 digits in correct order) and the length.
+; TSTNUMSIGNSGT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTNUMSIGNSGT OK" or "TSTNUMSIGNSGT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTNUMSIGNSGT:
             LDD   CODEHERE
@@ -14063,14 +14251,14 @@ TSTNUMSIGNSGT:
             PSHU  D
             STU   TSTUB4
 
-            JSR   LTNUM
+            JSR   LTNUMW
 
             LDD   #12345
             PSHU  D
             LDD   #0
             PSHU  D
-            JSR   NUMSIGNS
-            JSR   NUMGT
+            JSR   NUMSIGNSW
+            JSR   NUMGTW
 
             STU   TSTUAF
 
@@ -14126,14 +14314,14 @@ TSTNGNAME:  FCB   13
             FCC   "TSTNUMSIGNSGT"
 
 ; ------------------------------------------------------------
-; TSTDOT - unit test for . (DOT). Prints -42, expecting "-42 "
-; (4 chars: minus, two digits, trailing space). Under SERIALPOLL=0
-; verifies all 4 queued bytes directly; under SERIALPOLL=1 (the
-; polling variant, confirmed the active build), verifies only the
-; last-emitted character via EMITCH - a fixed trailing space in
-; this word's case, a known, accepted, less-discriminating check
-; consistent with the same trade-off already established for
-; TSTCR/TSTSPACES/TSTTYPE/TSTDOTQUOTE.
+; unit test for .
+; TSTDOT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDOT OK" or "TSTDOT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTDOT.0.
 ; ------------------------------------------------------------
 TSTDOT:     LDD   CODEHERE
             STD   TSTCSAV
@@ -14158,7 +14346,7 @@ TSTDOT:     LDD   CODEHERE
             PSHU  D
             STU   TSTUB4
 
-            JSR   DOT
+            JSR   DOTW
 
             STU   TSTUAF
 
@@ -14224,8 +14412,14 @@ TSTDTNAME2: FCB   6
             FCC   "TSTDOT"
 
 ; ------------------------------------------------------------
-; TSTUDOT - unit test for U. Prints 42, expecting "42 " (3
-; chars: two digits, trailing space).
+; unit test for U. Prints 42, expecting "42 " (3 chars: two
+; digits, trailing space).
+; TSTUDOT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTUDOT OK" or "TSTUDOT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTUDOT:    LDD   CODEHERE
             STD   TSTCSAV
@@ -14250,7 +14444,7 @@ TSTUDOT:    LDD   CODEHERE
             PSHU  D
             STU   TSTUB4
 
-            JSR   UDOT
+            JSR   UDOTW
 
             STU   TSTUAF
 
@@ -14311,10 +14505,16 @@ TSTUDNAME:  FCB   7
             FCC   "TSTUDOT"
 
 ; ------------------------------------------------------------
-; TSTDOTR - unit test for .R. Prints 42 with width 5, expecting
-; "   42" (3 leading spaces + 2 digits = 5 chars total, no
-; trailing space) - specifically exercising the padding path,
-; not just a no-padding sanity case.
+; unit test for .R. Prints 42 with width 5, expecting "
+; 42" (3 leading spaces + 2 digits = 5 chars total, no
+; trailing space) - specifically exercising the padding
+; path, not just a no-padding sanity case.
+; TSTDOTR
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDOTR OK" or "TSTDOTR FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDOTR:    LDD   CODEHERE
             STD   TSTCSAV
@@ -14341,7 +14541,7 @@ TSTDOTR:    LDD   CODEHERE
             PSHU  D
             STU   TSTUB4
 
-            JSR   DOTR
+            JSR   DOTRW
 
             STU   TSTUAF
 
@@ -14412,8 +14612,14 @@ TSTDRNAME:  FCB   7
             FCC   "TSTDOTR"
 
 ; ------------------------------------------------------------
-; TSTUDOTR - unit test for U.R. Prints 42 with width 5,
-; expecting "   42" - same padding-path reasoning as TSTDOTR.
+; unit test for U.R. Prints 42 with width 5, expecting "
+; 42" - same padding-path reasoning as TSTDOTR.
+; TSTUDOTR
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTUDOTR OK" or "TSTUDOTR FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTUDOTR:   LDD   CODEHERE
             STD   TSTCSAV
@@ -14440,7 +14646,7 @@ TSTUDOTR:   LDD   CODEHERE
             PSHU  D
             STU   TSTUB4
 
-            JSR   UDOTR
+            JSR   UDOTRW
 
             STU   TSTUAF
 
@@ -14511,10 +14717,16 @@ TSTURNAME:  FCB   8
             FCC   "TSTUDOTR"
 
 ; ------------------------------------------------------------
-; TSTQMARK - unit test for ?. Stores -7 at a scratch cell
-; (separate from the CODEHERE-redirected pictured-output
-; region, to avoid conflict), calls ? with its address, expects
-; "-7 " (fetches and prints signed, via DOT internally).
+; unit test for ?. Stores -7 at a scratch cell (separate
+; from the CODEHERE-redirected pictured-output region, to
+; avoid conflict), calls ? with its address, expects "-7 "
+; (fetches and prints signed, via DOT internally).
+; TSTQMARK
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTQMARK OK" or "TSTQMARK FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTQMARK:   LDD   CODEHERE
             STD   TSTCSAV
@@ -14542,7 +14754,7 @@ TSTQMARK:   LDD   CODEHERE
             PSHU  D
             STU   TSTUB4
 
-            JSR   QMARK
+            JSR   QMARKW
 
             STU   TSTUAF
 
@@ -14603,12 +14815,18 @@ TSTQMNAME:  FCB   8
             FCC   "TSTQMARK"
 
 ; ------------------------------------------------------------
-; TSTDDOT - unit test for D. Prints d = -100000 (a genuine
-; double-cell value: high cell $FFFE, low cell $7960, computed
-; and verified independently in Python before writing this
-; test - specifically exercising the 32-bit negation path
-; (MNEG32), not just a value that happens to fit in one cell).
-; Expects "-100000 " (8 chars).
+; unit test for D. Prints d = -100000 (a genuine double-cell
+; value: high cell $FFFE, low cell $7960, computed and
+; verified independently in Python before writing this test
+; - specifically exercising the 32-bit negation path
+; (MNEG32), not just a value that happens to fit in one
+; cell). Expects "-100000 " (8 chars).
+; TSTDDOT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDDOT OK" or "TSTDDOT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDDOT:    LDD   CODEHERE
             STD   TSTCSAV
@@ -14635,7 +14853,7 @@ TSTDDOT:    LDD   CODEHERE
             PSHU  D
             STU   TSTUB4
 
-            JSR   DDOT
+            JSR   DDOTW
 
             STU   TSTUAF
 
@@ -14721,9 +14939,15 @@ TSTDDNAME:  FCB   7
             FCC   "TSTDDOT"
 
 ; ------------------------------------------------------------
-; TSTDDOTR - unit test for D.R. Same d = -100000 as TSTDDOT,
-; width 10 - "-100000" is 7 chars, so padding = 3 spaces,
-; expecting "   -100000" (10 chars total, no trailing space).
+; unit test for D.R. Same d = -100000 as TSTDDOT, width 10 -
+; "-100000" is 7 chars, so padding = 3 spaces, expecting "
+; -100000" (10 chars total, no trailing space).
+; TSTDDOTR
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDDOTR OK" or "TSTDDOTR FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTDDOTR:   LDD   CODEHERE
             STD   TSTCSAV
@@ -14752,7 +14976,7 @@ TSTDDOTR:   LDD   CODEHERE
             PSHU  D
             STU   TSTUB4
 
-            JSR   DDOTR
+            JSR   DDOTRW
 
             STU   TSTUAF
 
@@ -14850,11 +15074,17 @@ TSTDRRNAME: FCB   8
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
-; TSTBASERADIX - base/radix control tests (glossary section
-; 3.14, 4 words, 1 combined test - each word's own effect is a
-; single BASE read/write, trivially covered together rather than
-; separately). No I/O involved, so no SERIALPOLL-conditional
-; complexity needed here, unlike the printing-heavy sections.
+; base/radix control tests (glossary section 3.14, 4 words,
+; 1 combined test - each word's own effect is a single BASE
+; read/write, trivially covered together rather than
+; separately).
+; TSTBASERADIX
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTBASERADIX.0.
 ; ------------------------------------------------------------
 TSTBASERADIX:
             JSR   CRW
@@ -14862,7 +15092,7 @@ TSTBASERADIX:
             PSHU  X
             LDD   #9
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-13    ; >>>>
@@ -14878,27 +15108,19 @@ TSTBRMSG:   FCC   "BaseRadix"
             IFEQ  TSTSELECTOR-13    ; >>>>
 
 ; ------------------------------------------------------------
-; Base/Radix Control test harness (glossary section 3.14). All
-; four words are pure state-setting/reading with no I/O
-; involved, so none of this section's tests need the
-; SERIALPOLL-conditional complexity used throughout the printing
-; sections. Combined into one test, given each word's own
-; effect is trivially verified by reading BASE directly - four
-; separate tests would just repeat the same save/set/verify/
-; restore shape four times over. TSTBASAV (added in section
-; 3.13, when the real, pre-COLD BASE=0 bug was found and fixed)
-; is reused here to save/restore the real BASE across this test
-; too, per the same established reasoning.
+; Base/Radix Control test harness (glossary section 3.14).
+; Original comment: shadow TSTBASERADIX.1.
 ; ------------------------------------------------------------
 
 ; ------------------------------------------------------------
-; TSTBASE - combined unit test for BASE, DECIMAL, HEX, and
-; BINARY. Sets BASE via each of HEX/BINARY/DECIMAL in turn,
-; verifying the correct value lands each time, then calls BASE
-; itself and verifies both that it returns the variable's own
-; address (not its value, per "( -- addr )") and that reading
-; through that address reflects DECIMAL's own, most recent
-; setting (10).
+; combined unit test for BASE, DECIMAL, HEX, and BINARY.
+; TSTBASE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTBASE OK" or "TSTBASE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTBASE.0.
 ; ------------------------------------------------------------
 TSTBASE:    LDD   BASE
             STD   TSTBASAV
@@ -14915,7 +15137,7 @@ TSTBASE:    LDD   BASE
             CMPD  #2
             BNE   BSFAIL
 
-            JSR   DECIMAL
+            JSR   DECIMALW
             LDD   BASE
             CMPD  #10
             BNE   BSFAIL
@@ -14966,35 +15188,17 @@ TSTBSNAME:  FCB   7
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
-; TSTEXCEPTION - exception handling tests (glossary section
-; 3.15, 2 words, 4 tests since CATCH/THROW can only be
-; meaningfully tested together - THROW's own effect is only
-; observable through a CATCH that traps it). Already used
-; extensively as this whole session's own error-testing
-; mechanism throughout sections 3.8-3.14, so their correctness
-; has substantial indirect evidence already; this section still
-; gets its own, direct, dedicated tests.
-;
-; Critical safety constraint, confirmed by reading THROW's own
-; code directly: with no active CATCH, THROW jumps straight to
-; ABORT (unsafe to trigger directly - it resets the return
-; stack, destroying this whole test framework's own call chain,
-; per section 3.1's own established reasoning). Every THROW in
-; this section's own tests is either wrapped in a genuine,
-; active CATCH (via a dedicated internal helper, TSTTHROWHLP,
-; that only ever gets invoked that way), or is a THROW(0) call -
-; confirmed via THROW's own code to be a pure, unconditional
-; no-op that never touches HANDLER or ABORT at all, so that one
-; specific case is safe to call directly.
-;
-; TSTCATCHTHROW specifically verifies the two dummy values
-; TSTTHROWHLP pushes before throwing are genuinely gone
-; afterward, confirming CATCH's own documented "restores data
-; stack depth... on either path" for real. TSTHANDLERSAVE
-; verifies the HANDLER half of that same documented guarantee
-; directly, by reading HANDLER itself before and after CATCH
-; calls on both the success and throw paths, rather than only
-; inferring it from stack-level behavior.
+; exception handling tests (glossary section 3.15, 2 words,
+; 4 tests since CATCH/THROW can only be meaningfully tested
+; together - THROW's own effect is only observable through a
+; CATCH that traps it).
+; TSTEXCEPTION
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTEXCEPTION.0.
 ; ------------------------------------------------------------
 TSTEXCEPTION:
             JSR   CRW
@@ -15002,7 +15206,7 @@ TSTEXCEPTION:
             PSHU  X
             LDD   #6
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-14    ; >>>>
@@ -15022,30 +15226,21 @@ TSTEXCMSG:  FCC   "Except"
 
 ; ------------------------------------------------------------
 ; Exception Handling test harness (glossary section 3.15).
-; CATCH/THROW have already been used extensively as this whole
-; session's own error-testing mechanism throughout sections
-; 3.8-3.14, so their correctness has substantial indirect
-; evidence already - this section still gets its own, direct
-; tests, matching the established practice of every section
-; getting dedicated coverage rather than relying on incidental
-; use elsewhere.
-;
-; Critical safety constraint, confirmed by reading THROW's own
-; code directly: with no active CATCH, THROW jumps straight to
-; ABORT (already established elsewhere in this session as unsafe
-; to trigger directly - it resets the return stack, destroying
-; this whole test framework's own call chain). Every THROW in
-; this section's own tests is either wrapped in a genuine,
-; active CATCH, or is a THROW(0) call - confirmed via CATCH's own
-; code to be a pure no-op that never touches HANDLER or ABORT at
-; all, so that specific case is safe to call directly.
+; Original comment: shadow TSTEXCEPTION.1.
 ; ------------------------------------------------------------
 
 ; ------------------------------------------------------------
-; TSTCATCHOK - unit test for CATCH, success path. Wraps DUP (a
-; genuine, real dictionary word, not a synthetic stand-in) and
-; verifies both that DUP's own effect genuinely happened (the
-; value really was duplicated) and that CATCH itself returns 0.
+; unit test for CATCH, success path. Wraps DUP (a genuine,
+; real dictionary word, not a synthetic stand-in) and
+; verifies both that DUP's own effect genuinely happened
+; (the value really was duplicated) and that CATCH itself
+; returns 0.
+; TSTCATCHOK
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCATCHOK OK" or "TSTCATCHOK FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTCATCHOK: STU   TSTU0
 
@@ -15053,11 +15248,11 @@ TSTCATCHOK: STU   TSTU0
             PSHU  D
             LDD   #TSTVAL1
             PSHU  D
-            LDX   #DUP
+            LDX   #DUPW
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -15094,14 +15289,15 @@ TSTCONAME:  FCB   10
             FCC   "TSTCATCHOK"
 
 ; ------------------------------------------------------------
-; TSTTHROWHLP - internal helper, not a dictionary word or a
-; test of its own. Pushes two dummy values (to verify CATCH's
-; own stack-depth restoration genuinely discards them, not just
-; that a thrown code arrives correctly) then throws a known,
-; distinctive, non-trivial code. Only ever invoked via CATCH
-; (below), never called directly - calling it any other way
-; would hit THROW's own uncaught path (JMP ABORT), which this
-; whole test framework cannot survive.
+; Helper for the CATCH tests (not a test itself): push three
+; dummy values, then THROW a known code. Only called via CATCH.
+; TSTTHROWHLP
+;    Inputs:
+;        none
+;    Outputs:
+;        pushes three dummy values, then THROWs a known code
+;    Registers: all changed.
+; Original comment: shadow TSTTHROWHLP.0.
 ; ------------------------------------------------------------
 TSTTHROWHLP:
             LDD   #TSTVAL1
@@ -15114,15 +15310,17 @@ TSTTHROWHLP:
             RTS
 
 ; ------------------------------------------------------------
-; TSTCATCHTHROW - unit test for CATCH, exception path, and for
-; THROW's own non-local exit together (the two can only be
-; meaningfully tested as a pair - THROW's own effect is only
-; observable through a CATCH that traps it). Verifies CATCH
-; returns the exact thrown code, and specifically verifies the
-; two dummy values TSTTHROWHLP pushes before throwing are
-; genuinely gone afterward - confirming the documented "restores
-; data stack depth... on either path" for real, not just that
-; the final result happens to look right.
+; unit test for CATCH, exception path, and for THROW's own
+; non-local exit together (the two can only be meaningfully
+; tested as a pair - THROW's own effect is only observable
+; through a CATCH that traps it).
+; TSTCATCHTHROW
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCATCHTHROW OK" or "TSTCATCHTHROW FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTCATCHTHROW.0.
 ; ------------------------------------------------------------
 TSTCATCHTHROW:
             STU   TSTU0
@@ -15133,7 +15331,7 @@ TSTCATCHTHROW:
             PSHU  X
             STU   TSTUB4
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -15164,13 +15362,14 @@ TSTCTNAME2: FCB   13
             FCC   "TSTCATCHTHROW"
 
 ; ------------------------------------------------------------
-; TSTTHROWZERO - unit test for THROW(0). Confirmed via its own
-; code that N=0 is a genuine, unconditional no-op (BEQ THDONE
-; skips everything, never touching HANDLER or ABORT), so this
-; is the one THROW call in this section safe to make directly,
-; without any CATCH wrapping it. Verifies it consumes its
-; argument and does nothing else - no non-local exit, no stack
-; disturbance beyond popping the 0 itself.
+; unit test for THROW(0).
+; TSTTHROWZERO
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTTHROWZERO OK" or "TSTTHROWZERO FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTTHROWZERO.0.
 ; ------------------------------------------------------------
 TSTTHROWZERO:
             STU   TSTU0
@@ -15209,13 +15408,16 @@ TSTTZNAME:  FCB   12
             FCC   "TSTTHROWZERO"
 
 ; ------------------------------------------------------------
-; TSTHANDLERSAVE - unit test verifying CATCH correctly restores
-; HANDLER afterward, on both paths - the success path (wrapping
-; DUP) and the throw path (wrapping TSTTHROWHLP again). Confirms
-; the documented "restores... HANDLER on either path" directly,
-; by reading HANDLER itself before and after each call, rather
-; than only inferring it from the stack-level behavior CATCH's
-; other tests already cover.
+; unit test verifying CATCH correctly restores HANDLER
+; afterward, on both paths - the success path (wrapping DUP)
+; and the throw path (wrapping TSTTHROWHLP again).
+; TSTHANDLERSAVE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTHANDLERSAVE OK" or "TSTHANDLERSAVE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTHANDLERSAVE.0.
 ; ------------------------------------------------------------
 TSTHANDLERSAVE:
             LDD   HANDLER
@@ -15229,10 +15431,10 @@ TSTHANDLERSAVE:
 
             LDD   #TSTVAL1
             PSHU  D
-            LDX   #DUP
+            LDX   #DUPW
             PSHU  X
 
-            JSR   CATCH
+            JSR   CATCHW
 
             LDD   HANDLER
             CMPD  TSTHANDSAV
@@ -15251,7 +15453,7 @@ TSTHANDLERSAVE:
             LDX   #TSTTHROWHLP
             PSHU  X
 
-            JSR   CATCH
+            JSR   CATCHW
 
             STU   TSTUAF
 
@@ -15289,14 +15491,14 @@ TSTHNNAME:  FCB   14
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
-; TSTCOMMENTS - comments tests (glossary section 3.16, 2 words).
-; Both immediate and parse from source, so both redirect
-; SRCADDR/SRCLEN/TOIN, matching the established pattern from
-; sections 3.8-3.12. ( specifically carries real bug-fix history
-; (a stray value left on the data stack, confirmed and fixed via
-; MAME in a prior session) that this section's own test verifies
-; directly - the data stack is genuinely unchanged after a
-; comment, not just that parsing advanced correctly.
+; comments tests (glossary section 3.16, 2 words).
+; TSTCOMMENTS
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTCOMMENTS.0.
 ; ------------------------------------------------------------
 TSTCOMMENTS:
             JSR   CRW
@@ -15304,7 +15506,7 @@ TSTCOMMENTS:
             PSHU  X
             LDD   #8
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-15    ; >>>>
@@ -15321,31 +15523,19 @@ TSTCOMMSG:  FCC   "Comments"
             IFEQ  TSTSELECTOR-15    ; >>>>
 
 ; ------------------------------------------------------------
-; Comments test harness (glossary section 3.16). Both words
-; parse from source, so both redirect SRCADDR/SRCLEN/TOIN,
-; matching the established pattern from sections 3.8-3.12.
-;
-; ( specifically carries real bug-fix history worth verifying
-; directly, not just noting: a prior version omitted consuming
-; WORD's own returned c-addr, leaving a stray value on the data
-; stack after every "(...)" comment - confirmed via MAME at the
-; time, symptomatic both as a visible stray value in interpret
-; mode and as a -22 CSP mismatch for any colon definition
-; containing one. This section's own test specifically confirms
-; the data stack is genuinely unchanged (net 0), not just that
-; parsing advanced correctly.
+; Comments test harness (glossary section 3.16).
+; Original comment: shadow TSTCOMMENTS.1.
 ; ------------------------------------------------------------
 
 ; ------------------------------------------------------------
-; TSTLPAREN - unit test for (. Fake source "hi)m" with TOIN
-; starting at 0 - verifies TOIN lands exactly past the closing
-; paren (at 3, immediately before "m", not consuming it), and
-; that the data stack is genuinely unchanged - the specific
-; behavior the bug-fix comment describes as previously broken.
-; Since ( only ever advances TOIN, never SRCADDR itself, the
-; fake source's own known address (TSTNAMEB) is used directly to
-; verify the character just past the paren, with no need to
-; re-read SRCADDR after the call.
+; unit test for (.
+; TSTLPAREN
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTLPAREN OK" or "TSTLPAREN FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTLPAREN.0.
 ; ------------------------------------------------------------
 TSTLPAREN:  LDD   SRCADDR
             STD   TSTSASAV
@@ -15376,7 +15566,7 @@ TSTLPAREN:  LDD   SRCADDR
             PSHU  D
             STU   TSTUB4
 
-            JSR   LPAREN
+            JSR   LPARENW
 
             STU   TSTUAF
 
@@ -15419,15 +15609,14 @@ TSTLPNAME:  FCB   9
             FCC   "TSTLPAREN"
 
 ; ------------------------------------------------------------
-; TSTBACKSLASH - unit test for \. Fake source with SRCLEN=10,
-; TOIN starting partway through at 3 (simulating being midway
-; through a line) - verifies TOIN lands exactly at SRCLEN,
-; consuming the rest of the line. Confirmed via its own code
-; that it reads SRCLEN directly (not a fixed buffer length),
-; matching its own documented "follows SOURCE... operates
-; correctly inside EVALUATE" - this test's own redirect of
-; SRCLEN specifically, rather than relying on the real terminal
-; input buffer's own length, is what actually exercises that.
+; unit test for \.
+; TSTBACKSLASH
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTBACKSLASH OK" or "TSTBACKSLASH FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTBACKSLASH.0.
 ; ------------------------------------------------------------
 TSTBACKSLASH:
             LDD   SRCLEN
@@ -15446,7 +15635,7 @@ TSTBACKSLASH:
             PSHU  D
             STU   TSTUB4
 
-            JSR   BACKSLASH
+            JSR   BACKSLASHW
 
             STU   TSTUAF
 
@@ -15485,40 +15674,25 @@ TSTBLNAME:  FCB   12
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
-; TSTENVSYS - environmental & system queries tests (glossary
-; section 3.17, 10 words, 8 tests since TIB/#TIB/>IN/SPAN/BL are
-; combined into one test, and ENVIRONMENT? gets three separate
-; tests of its own - single-cell, double-cell, and unsupported-
-; string cases).
-;
-; REFILL genuinely blocks on real input when the source is the
-; terminal (confirmed by reading its own code: the terminal
-; branch calls QUERY, which per section 3.1's own already-
-; established finding calls ACCEPT, which calls KEY, which spins
-; forever without real input) - only its safely-testable path
-; (source is a string) is tested here, matching the same
-; reasoning already applied to KEY/ACCEPT/EXPECT/QUERY
-; themselves. EVALUATE genuinely executes its given string as
-; real Forth source via JSR INTERPRET - confirmed safe via
-; INTERPRET's own code (it simply stops when input is exhausted,
-; no automatic REFILL, so no blocking risk), making a short,
-; deliberately harmless string ("1 2 +") safe to evaluate
-; directly.
-;
-; ENVIRONMENT? carries substantial, already-documented bug-fix
-; history (a COMPAREW-clobbers-X bug, confirmed via MAME with the
-; exact $4E4D symptom). This section's own tests specifically
-; query "/COUNTED-STRING" immediately followed by "MAX-N" - the
-; exact adjacent pair the bug-fix comment describes - so a
-; regression of that specific mechanism would be caught again,
-; not just assumed fixed from the comment alone.
+; environmental & system queries tests (glossary section
+; 3.17, 10 words, 8 tests since TIB/#TIB/>IN/SPAN/BL are
+; combined into one test, and ENVIRONMENT? gets three
+; separate tests of its own - single-cell, double-cell, and
+; unsupported- string cases).
+; TSTENVSYS
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTENVSYS.0.
 ; ------------------------------------------------------------
 TSTENVSYS:  JSR   CRW
             LDX   #TSTENVSYSMSG
             PSHU  X
             LDD   #6
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-16    ; >>>>
@@ -15542,43 +15716,21 @@ TSTENVSYSMSG:
             IFEQ  TSTSELECTOR-16    ; >>>>
 
 ; ------------------------------------------------------------
-; Environmental & System Queries test harness (glossary section
-; 3.17). Five words (TIB/#TIB/>IN/SPAN/BL) are simple constant/
-; variable readers, combined into one test rather than five
-; separate ones, matching the established approach from section
-; 3.14's own TSTBASE.
-;
-; REFILL genuinely blocks on real input when the source is the
-; terminal (confirmed by reading its own code directly: the
-; terminal branch calls QUERY, which - per section 3.1's own
-; already-established finding - calls ACCEPT, which calls KEY,
-; which spins forever without real input). Only its safely-
-; testable path (source is a string, SRCID<>0) is tested here,
-; matching the same reasoning already applied to KEY/ACCEPT/
-; EXPECT/QUERY themselves in section 3.1.
-;
-; EVALUATE genuinely executes its given string as real Forth
-; source via JSR INTERPRET - confirmed via INTERPRET's own code
-; that it simply stops and returns when input is exhausted (no
-; automatic REFILL, so no blocking risk), making a short,
-; deliberately harmless string ("1 2 +") safe to evaluate
-; directly.
-;
-; ENVIRONMENT? carries substantial, already-documented bug-fix
-; history (a COMPAREW-clobbers-X bug, confirmed via MAME with the
-; exact $4E4D symptom - reading two bytes of the NEXT table
-; entry's own name text as if they were the current entry's
-; value). This section's own tests specifically query
-; "/COUNTED-STRING" immediately followed by "MAX-N" - the exact
-; adjacent pair the bug-fix comment describes - so a regression
-; of that specific mechanism would be caught again, not just
-; assumed fixed from the comment alone.
+; Environmental & System Queries test harness (glossary
+; section 3.17).
+; Original comment: shadow TSTENVSYS.1.
 ; ------------------------------------------------------------
 
 ; ------------------------------------------------------------
-; TSTENVVARS - combined unit test for TIB, #TIB, >IN, SPAN, and
-; BL. The first four are variables (return their own address);
-; BL is a constant (returns 32 directly).
+; combined unit test for TIB, #TIB, >IN, SPAN, and BL. The
+; first four are variables (return their own address); BL is
+; a constant (returns 32 directly).
+; TSTENVVARS
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTENVVARS OK" or "TSTENVVARS FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTENVVARS: STU   TSTU0
 
@@ -15637,9 +15789,14 @@ TSTEVNAME:  FCB   10
             FCC   "TSTENVVARS"
 
 ; ------------------------------------------------------------
-; TSTSOURCE - unit test for SOURCE. Redirects SRCADDR/SRCLEN to
-; known, distinctive values, verifies SOURCE returns exactly
-; those.
+; unit test for SOURCE. Redirects SRCADDR/SRCLEN to known,
+; distinctive values, verifies SOURCE returns exactly those.
+; TSTSOURCE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSOURCE OK" or "TSTSOURCE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSOURCE:  LDD   SRCADDR
             STD   TSTSASAV
@@ -15696,9 +15853,15 @@ TSTSONAME:  FCB   9
             FCC   "TSTSOURCE"
 
 ; ------------------------------------------------------------
-; TSTSOURCEID - unit test for SOURCE-ID. Redirects SRCID to a
-; known, distinctive value, verifies SOURCE-ID returns exactly
+; unit test for SOURCE-ID. Redirects SRCID to a known,
+; distinctive value, verifies SOURCE-ID returns exactly
 ; that.
+; TSTSOURCEID
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSOURCEID OK" or "TSTSOURCEID FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTSOURCEID:
             LDD   SRCID
@@ -15713,7 +15876,7 @@ TSTSOURCEID:
             PSHU  D
             STU   TSTUB4
 
-            JSR   SOURCEID
+            JSR   SOURCEIDW
 
             STU   TSTUAF
 
@@ -15747,17 +15910,14 @@ TSTSINAME:  FCB   11
             FCC   "TSTSOURCEID"
 
 ; ------------------------------------------------------------
-; TSTREFILL - unit test for REFILL, string-source path only.
-; Confirmed via its own code that the terminal-source path
-; (SRCID=0) genuinely blocks on real input (calls QUERY, which
-; per section 3.1's own established finding calls ACCEPT, which
-; calls KEY, which spins forever without it) - deliberately not
-; tested, matching the same reasoning already applied to KEY/
-; ACCEPT/EXPECT/QUERY themselves. Only the safely-testable path
-; (source is a string, SRCID<>0) is exercised: redirects SRCID
-; to a nonzero value and verifies REFILL correctly reports
-; false, matching its own documented "fails (false) if the
-; current source is a string, per ANS".
+; unit test for REFILL, string-source path only.
+; TSTREFILL
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTREFILL OK" or "TSTREFILL FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTREFILL.0.
 ; ------------------------------------------------------------
 TSTREFILL:  LDD   SRCID
             STD   TSTSISAV
@@ -15805,16 +15965,14 @@ TSTRFNAME2: FCB   9
             FCC   "TSTREFILL"
 
 ; ------------------------------------------------------------
-; TSTEVALUATE - unit test for EVALUATE. Evaluates the string
-; "1 2 +" (confirmed safe via INTERPRET's own code: it simply
-; stops and returns when input is exhausted, no automatic
-; REFILL, so no blocking risk) - verifies the result (3) lands
-; on the data stack, and that the whole input-source state
-; (SRCADDR/SRCLEN/SRCID/TOIN) is genuinely restored to what it
-; was before the call, not left pointing at the evaluated
-; string. BASE is explicitly saved/set/restored too, per section
-; 3.13's own established lesson, so "1"/"2" parse as decimal
-; regardless of what BASE happened to hold at test time.
+; unit test for EVALUATE.
+; TSTEVALUATE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTEVALUATE OK" or "TSTEVALUATE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTEVALUATE.0.
 ; ------------------------------------------------------------
 TSTEVALUATE:
             LDD   SRCADDR
@@ -15835,67 +15993,10 @@ TSTEVALUATE:
             LDD   #10
             STD   BASE
             LDD   #BASELATEST       ; BUG FIX: confirmed via MAME - LATEST,
-            STD   LATEST            ; like BASE, is only set by COLD (right
-                                    ; alongside "BASE=10", in the very same
-                                    ; init block), which hasn't run yet at
-                                    ; this whole test framework's own,
-                                    ; pre-COLD execution point. With
-                                    ; LATEST=0, FIND reports every word,
-                                    ; including the real "+" this test
-                                    ; evaluates, as not found - INTERPRET
-                                    ; then falls through trying to parse
-                                    ; "+" as a number, fails that too, and
-                                    ; throws an error this test never
-                                    ; catches, landing at THUNCAU's own
-                                    ; JMP ABORT - which resets the return
-                                    ; stack, explaining exactly why the
-                                    ; user's own test run terminated
-                                    ; without ever reaching TSTENVQUERY1/2/
-                                    ; 3. The same class of gap as section
-                                    ; 3.13's own BASE=0 finding, just for a
-                                    ; different variable this section's
-                                    ; own EVALUATE test was the first to
-                                    ; genuinely depend on.
+            STD   LATEST            ; See bugfix: TSTEVALUATE.1
 
-            LDD   #TSTCBUF2         ; SECOND BUG FIX: the LATEST fix above
-            STD   CODEHERE          ; alone didn't resolve this - confirmed
-                                    ; via a second MAME run (the failure
-                                    ; persisted, with the terminal output
-                                    ; varying between runs, a strong sign
-                                    ; of memory corruption rather than a
-                                    ; single deterministic missing-value
-                                    ; problem). Root cause: CODEHERE, like
-                                    ; BASE and LATEST, is only set by COLD
-                                    ; and was never redirected by this
-                                    ; test at all - unlike every other
-                                    ; test in this whole session involving
-                                    ; WORD (which EVALUATE's own internal
-                                    ; JSR INTERPRET calls repeatedly, once
-                                    ; per token). With CODEHERE=0
-                                    ; (unredirected), WORD's own write of
-                                    ; each parsed token's [len][text]
-                                    ; landed straight at address $0000 -
-                                    ; which is STATE's own address (offset
-                                    ; $00, the very first bytes of
-                                    ; GLOBALS, confirmed by re-reading its
-                                    ; own RMB declaration directly). Even
-                                    ; a single-character token like "1"
-                                    ; overwrites STATE with a nonzero
-                                    ; value, flipping INTERPRET into
-                                    ; thinking it's compiling rather than
-                                    ; interpreting mid-parse - explaining
-                                    ; both the sequence's own termination
-                                    ; and why the visible output varied
-                                    ; between runs (the exact corruption
-                                    ; pattern depends on residual memory
-                                    ; state from whatever ran immediately
-                                    ; before). Redirected to TSTCBUF2, not
-                                    ; TSTCBUF, specifically because TSTCBUF
-                                    ; already holds this test's own source
-                                    ; string ("1 2 +") - redirecting to the
-                                    ; same buffer would let WORD overwrite
-                                    ; the very source text still being
-                                    ; parsed.
+            LDD   #TSTCBUF2         ; See bugfix: TSTEVALUATE.2
+            STD   CODEHERE
 
             LDA   #'1'
             STA   TSTCBUF
@@ -15969,15 +16070,20 @@ TSTELNAME:  FCB   11
             FCC   "TSTEVALUATE"
 
 ; ------------------------------------------------------------
-; TSTENVQUERY1 - unit test for ENVIRONMENT?, verifying the exact
+; unit test for ENVIRONMENT?, verifying the exact
 ; adjacent-entry pair its own bug-fix comment describes:
 ; "/COUNTED-STRING" (255) immediately followed by "MAX-N"
-; (32767) - the specific mechanism that once let COMPAREW's own
-; X-clobbering read bytes from the wrong table entry, confirmed
-; via MAME with the exact $4E4D symptom (per the code's own
-; comment). Querying this exact pair again here means a
-; regression of that specific mechanism would be caught, not
-; just assumed still fixed from the comment alone.
+; (32767) - the specific mechanism that once let COMPAREW's
+; own X-clobbering read bytes from the wrong table entry,
+; confirmed via MAME with the exact $4E4D symptom (per the
+; code's own comment).
+; TSTENVQUERY1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTENVQUERY1 OK" or "TSTENVQUERY1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTENVQUERY1.0.
 ; ------------------------------------------------------------
 TSTENVQUERY1:
             LDA   #'/'
@@ -16032,7 +16138,7 @@ TSTENVQUERY1:
             PSHU  D
             LDD   #15
             PSHU  D
-            JSR   ENVQUERY
+            JSR   ENVQUERYW
 
             PULU  D
             CMPD  #TRUEV
@@ -16045,7 +16151,7 @@ TSTENVQUERY1:
             PSHU  D
             LDD   #5
             PSHU  D
-            JSR   ENVQUERY
+            JSR   ENVQUERYW
 
             STU   TSTUAF
 
@@ -16080,11 +16186,17 @@ TSTEN1NAME: FCB   12
             FCC   "TSTENVQUERY1"
 
 ; ------------------------------------------------------------
-; TSTENVQUERY2 - unit test for ENVIRONMENT?, double-cell case.
-; Queries "MAX-D" - confirmed via its own table entry to be
-; $7FFFFFFF (low cell $FFFF, high cell $7FFF) - exercising the
-; separate double-cell table path (ENVTABLE2/ENV2START), not
-; just the single-cell one TSTENVQUERY1 already covers.
+; unit test for ENVIRONMENT?, double-cell case. Queries
+; "MAX-D" - confirmed via its own table entry to be
+; $7FFFFFFF (low cell $FFFF, high cell $7FFF) - exercising
+; the separate double-cell table path (ENVTABLE2/ENV2START),
+; not just the single-cell one TSTENVQUERY1 already covers.
+; TSTENVQUERY2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTENVQUERY2 OK" or "TSTENVQUERY2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTENVQUERY2:
             LDA   #'M'
@@ -16108,7 +16220,7 @@ TSTENVQUERY2:
             PSHU  D
             LDD   #5
             PSHU  D
-            JSR   ENVQUERY
+            JSR   ENVQUERYW
 
             STU   TSTUAF
 
@@ -16146,10 +16258,16 @@ TSTEW2NAME: FCB   12
             FCC   "TSTENVQUERY2"
 
 ; ------------------------------------------------------------
-; TSTENVQUERY3 - unit test for ENVIRONMENT?, unsupported string
-; case. Queries "ZZZZZ" - genuinely absent from both tables -
-; verifies false is reported, matching the documented "-- false"
-; result for an unrecognized string.
+; unit test for ENVIRONMENT?, unsupported string case.
+; Queries "ZZZZZ" - genuinely absent from both tables -
+; verifies false is reported, matching the documented "--
+; false" result for an unrecognized string.
+; TSTENVQUERY3
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTENVQUERY3 OK" or "TSTENVQUERY3 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
 ; ------------------------------------------------------------
 TSTENVQUERY3:
             LDA   #'Z'
@@ -16169,7 +16287,7 @@ TSTENVQUERY3:
             PSHU  D
             LDD   #5
             PSHU  D
-            JSR   ENVQUERY
+            JSR   ENVQUERYW
 
             STU   TSTUAF
 
@@ -16202,26 +16320,21 @@ TSTEW3NAME: FCB   12
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
-; TSTTOOLS - tools word set tests (glossary section 3.18, 3
-; words). WORDS depends directly on LATEST (confirmed via its
-; own code) - redirected for this test, applying the same
-; lesson section 3.17's own TSTEVALUATE surfaced. DUMP dumps a
-; deliberately non-multiple-of-16 byte count (5), the exact
-; scenario its own already-documented DUVALID bug fix addresses,
-; and this section's own test specifically verifies the ASCII
-; column's blanking for the unused portion, not just the real
-; data. .S prints the entire real data stack, including whatever
-; the calling chain already left there - unlike every other test
-; in this session, the full output can't be predicted in
-; advance, so this section's own test verifies the core,
-; documented "non-destructive" guarantee directly instead.
+; tools word set tests (glossary section 3.18, 3 words).
+; TSTTOOLS
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; Original comment: shadow TSTTOOLS.0.
 ; ------------------------------------------------------------
 TSTTOOLS:   JSR   CRW
             LDX   #TSTTOOLSMSG
             PSHU  X
             LDD   #5
             PSHU  D
-            JSR   TYPE
+            JSR   TYPEW
             JSR   CRW
 
             IFEQ  TSTSELECTOR-17    ; >>>>
@@ -16240,76 +16353,25 @@ TSTTOOLSMSG:
             IFEQ  TSTSELECTOR-17    ; >>>>
 
 ; ------------------------------------------------------------
-; Tools test harness (glossary section 3.18). WORDS depends
-; directly on LATEST (confirmed via its own code: it walks from
-; LATEST until the chain terminates at 0) - the same real, pre-
-; COLD dependency section 3.17's own TSTEVALUATE was found to
-; need, so this section's own WORDS test redirects LATEST too,
-; applying that lesson from the start rather than rediscovering
-; it. All three words produce visible output, so all apply the
-; SERIALPOLL-conditional split established in section 3.1.
-;
-; .S prints the ENTIRE real data stack, including whatever this
-; whole calling chain (TSTRUNNER and everything above it) already
-; left there before this test even started - unlike every other
-; test in this session, there's no way to know the full, exact
-; output in advance. This test's own verification is deliberately
-; narrower as a result: confirms the core, documented guarantee
-; directly (the stack is genuinely unchanged afterward, non-
-; destructive for real) plus, in interrupt mode only (where the
-; first characters queued are unambiguously this test's own top
-; value, since .S starts from the current top of stack), that the
-; very first characters match - rather than attempting to predict
-; or verify the complete printed output.
-;
-; DUMP carries real, already-documented bug-fix history: a prior
-; version's ASCII column read past the actual byte count on a
-; partial final line, showing garbage characters for the unused
-; portion - fixed via DUVALID tracking. This section's own test
-; specifically dumps a non-multiple-of-16 byte count (5), the
-; exact scenario that bug affected, verifying the ASCII column's
-; own blanking for the remaining, invalid columns.
+; Tools test harness (glossary section 3.18).
+; Original comment: shadow TSTTOOLS.1.
 ; ------------------------------------------------------------
 
 ; ------------------------------------------------------------
-; TSTDOTS - unit test for .S. Pushes two known values (no guard
-; sentinel below them, since .S would print that too), calls .S,
-; and verifies the stack is genuinely unchanged afterward - the
-; core, documented "non-destructive" guarantee, confirmed
-; directly rather than inferred. In interrupt mode specifically,
-; also confirms the very first characters queued match the top
-; value's own printed form (unambiguous, since .S starts from
-; the current top of stack); polling mode only confirms some
-; output occurred, given EMITCH alone can't distinguish this
-; test's own output from whatever the rest of the real stack
-; contributes afterward.
+; unit test for .S.
+; TSTDOTS
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDOTS OK" or "TSTDOTS FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTDOTS.0.
 ; ------------------------------------------------------------
 TSTDOTS:    LDD   BASE
             STD   TSTBASAV
 
             LDD   #10
-            STD   BASE              ; BUG FIX: confirmed via MAME - the same
-                                    ; BASE=0 infinite loop already found and
-                                    ; fixed in section 3.13. .S internally calls
-                                    ; DOT for each stack item, which calls
-                                    ; NUMSIGN/UDDIGIT - the same restoring-
-                                    ; division mechanism that degrades into an
-                                    ; unconditional shift when BASE=0 (only set
-                                    ; by COLD, which hasn't run yet at this
-                                    ; whole test framework's own pre-COLD
-                                    ; execution point), so the value being
-                                    ; converted never genuinely decreases.
-                                    ; Forgot to apply this section 3.13 lesson
-                                    ; to this specific test when first writing
-                                    ; it. WORDS and DUMP were checked and
-                                    ; confirmed NOT to need this same fix: WORDS
-                                    ; does no numeric conversion at all (just
-                                    ; TYPEs name text), and DUMP's own hex
-                                    ; conversion (HEXDIGIT/HEXBYTE) is a fixed,
-                                    ; hardcoded base-16 converter, confirmed via
-                                    ; its own code to never reference BASE at
-                                    ; all - genuinely independent of it, not
-                                    ; just assumed safe.
+            STD   BASE              ; See bugfix: TSTDOTS.1
 
             STU   TSTU0
 
@@ -16324,7 +16386,7 @@ TSTDOTS:    LDD   BASE
             PSHU  D
             STU   TSTUB4
 
-            JSR   DOTS
+            JSR   DOTSW
 
             STU   TSTUAF
 
@@ -16381,15 +16443,14 @@ TSTDSNAME:  FCB   7
             FCC   "TSTDOTS"
 
 ; ------------------------------------------------------------
-; TSTWORDS - unit test for WORDS. Builds two small, linked fake
-; headers ("CD" pointing back to "AB", terminated with 0) and
-; redirects LATEST to the more recent one - confirmed via its
-; own code that WORDS walks directly from LATEST until the chain
-; terminates, so this is the one dependency it genuinely has.
-; Verifies the full expected output ("CD AB " followed by CR/LF,
-; 8 bytes total) under SERIALPOLL=0; under SERIALPOLL=1, only the
-; last character (LF, from the trailing CR) is checkable via
-; EMITCH.
+; unit test for WORDS.
+; TSTWORDS
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTWORDS OK" or "TSTWORDS FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTWORDS.0.
 ; ------------------------------------------------------------
 TSTWORDS:   LDD   LATEST
             STD   TSTLSAV
@@ -16402,7 +16463,7 @@ TSTWORDS:   LDD   LATEST
             STA   TSTCBUF+2
             LDD   #0
             STD   TSTCBUF+3
-            LDD   #DUP
+            LDD   #DUPW
             STD   TSTCBUF+5
 
             LDA   #2
@@ -16413,7 +16474,7 @@ TSTWORDS:   LDD   LATEST
             STA   TSTCBUF+12
             LDD   #TSTCBUF
             STD   TSTCBUF+13
-            LDD   #DUP
+            LDD   #DUPW
             STD   TSTCBUF+15
 
             LDD   #TSTCBUF+10
@@ -16507,21 +16568,14 @@ TSTWONAME:  FCB   8
             FCC   "TSTWORDS"
 
 ; ------------------------------------------------------------
-; TSTDUMP - unit test for DUMP. Dumps 5 bytes ("ABCDE") -
-; deliberately less than 16, the exact scenario the word's own
-; already-documented bug fix (DUVALID tracking) addresses:
-; without it, the ASCII column read past the actual byte count
-; on a partial final line, showing garbage for the unused
-; portion instead of blanks. Under SERIALPOLL=0, verifies the
-; total byte count (69: leading CR/LF, 5 real hex byte pairs, 11
-; padded hex slots, 1 separator, the 16-character ASCII column,
-; trailing CR/LF), the 5 real hex digit pairs at their known
-; offsets, and - the specific, bug-relevant check - the full
-; 16-character ASCII column itself: the first 5 characters match
-; "ABCDE" and the remaining 11 are genuinely blank (32), verified
-; via a loop rather than 11 unrolled checks. Under SERIALPOLL=1,
-; only the last character (LF, from the trailing CR) is
-; checkable via EMITCH.
+; unit test for DUMP.
+; TSTDUMP
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDUMP OK" or "TSTDUMP FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; Original comment: shadow TSTDUMP.0.
 ; ------------------------------------------------------------
 TSTDUMP:    LDA   #'A'
             STA   TSTCBUF

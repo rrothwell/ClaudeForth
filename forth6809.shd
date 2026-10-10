@@ -1,0 +1,2827 @@
+================================================================
+HEADER.0  [history]  (lines 1-82 of the stage-3p file)
+----------------------------------------------------------------
+; ============================================================
+; 6809 ANS FORTH - consolidated source
+; Assembled from the full design conversation.
+;
+; GLOBALS LAYOUT: applied. Every scratch/global cell now has a
+; fixed RMB-assigned address in page zero ($0000-$00FF, DP=$00
+; at reset) - see the GLOBALS section below for the full layout
+; and its byte budget (256 of 256 bytes used, 0 free - the page
+; is now fully packed; any future scratch cell will need to
+; reuse an existing one or move a cell out of page zero).
+;
+; SERIAL HANDSHAKING: RTS (hardware, output) is implemented -
+; IRQH/KEY toggle it based on the input ring's fill level
+; against INHIWATER/INLOWATER (see SECTION 3). CTS (input) needs
+; no firmware logic at all: the 6850 hardware automatically
+; inhibits TDRE while CTS is deasserted, and this system's
+; existing TDRE-gated transmit logic already respects that with
+; no code changes. Software (XON/XOFF) handshaking remains not
+; implemented - this system still neither transmits nor
+; recognizes those bytes.
+;
+; DICTIONARY: applied (SECTION 27), 220 entries (215 original +
+; DOES> + TRUE + FALSE + [COMPILE], added in later passes - see
+; below). [COMPILE] (XCOMPILE, section 13) is the obsolescent
+; predecessor to POSTPONE, added for ANS Annex F test coverage
+; (F.6.2.2530) - see XCOMPILE's own header/comment for how it
+; differs from POSTPONE, and BASECODE's EQU below for the
+; resulting header-table growth.
+; Every primitive with a real code label now has a real ROM
+; header, chained via LINK, CFA pointing directly at its code.
+; Building this surfaced two real findings, not just mechanical
+; work: (1) the original 1024-byte BASEDICT could not hold the
+; header table (1954 bytes needed) - BASEDICT was resized to
+; 2048 bytes ($E000-$E7FF), taking the space from BASECODE (then
+; $E800-$FFBF, 6080 bytes, was 7104). This resize was based on
+; the header-table budget alone; the actual assembled byte size
+; of BASECODE's code was never measured with a real 6809
+; assembler, so whether 6080 bytes was enough for all ~530
+; routine labels in this file was never verified before BASECODE
+; moved again (below). (2) DOES>
+; initially had no corresponding code anywhere in the file -
+; SETDOES and the DOES> compiling word (code label DOESGT, since
+; a literal ">" is not a valid 6809 assembler label) were added
+; in a follow-up pass, alongside DODOES/DOESRT0, closing that
+; gap; DOESBEH was added to the GLOBALS layout to support it,
+; using 2 of the page's last 3 free bytes (1 now remains). TRUE
+; and FALSE were added in a still later pass: CONSTANT TRUE -1
+; and CONSTANT FALSE 0, the first CONSTANT-pattern ROM-resident
+; words in this system (TRUEBODY/FALSEBODY, section 26) - every
+; other ROM word's CFA is a plain code label, but a CONSTANT's
+; CFA is the DODOES-trampoline pattern, built by hand here with
+; fixed, assemble-time addresses since there is no interactive
+; CREATE/CONSTANT phase for ROM content.
+;
+; BASEDICT now holds 1992 bytes ($D83F-$E006) - grown from the
+; earlier exact-fit 1973 bytes when H_ABORT/H_QUIT (formerly
+; ABORTHDR/QUITHDR) and BASELATEST moved in from their own
+; section so every dictionary header lives in one contiguous
+; block. BASECODE's start ($DFF4) did not move to match, since
+; it's a fixed address, not derived from BASEDICT's real size -
+; this reintroduces a real overlap, 19 bytes ($DFF4-$E006),
+; between the two. Not resolved here; see the open-items
+; checklist. USROMSTRT/USROMEND, INOUT, RSTACK, DSTACK, CODETOP,
+; APPCODE, APPDICT, and APPVARS remain mutually consistent
+; otherwise, with no other overlaps anywhere in the current
+; memory map. See the ROM Size Required section of the
+; documentation and the open-items checklist for real content
+; totals and remaining margin.
+;
+; This file preserves the code exactly as derived and verified
+; turn-by-turn in the conversation, including the corrected
+; versions of every bug that was caught and fixed in place.
+; SUBSTITUTE is complete but deliberately scoped to a single
+; registered name/value pair, not a full table (see REPLACES).
+; ENVTABLE's /HOLD and /PAD entries were both added this session
+; (HOLDMINSIZE and PADMINSIZE respectively - see the entries
+; themselves for why each uses its own, conceptually correct
+; constant rather than the numerically-equal PADOFFSET). The
+; DPHERE/CODEHERE/VARHERE boundary checks remain explicitly
+; incomplete/absent - see the inline notes preserved from that
+; discussion, and the open-items checklist.
+; ============================================================
+
+================================================================
+MEMMAP.1  [explanatory]  (lines 87-92 of the stage-3p file)
+----------------------------------------------------------------
+ROMSTRT     EQU   $C000             ; true physical start of the 16K EPROM's own
+                                    ; address decode (distinct from USROMSTRT
+                                    ; below, which excludes INOUT's 256-byte
+                                    ; shadow) - see the ROM Size Required section
+                                    ; of the documentation, and the ROM: padding
+                                    ; block right before SECTION 27
+
+================================================================
+MEMMAP.2  [explanatory]  (lines 93-97 of the stage-3p file)
+----------------------------------------------------------------
+USROMSTRT   EQU   $C100             ; Usable ROM start. Beginning of the usable
+                                    ; EPROM address range. INITCODE, BASECODE,
+                                    ; and BASEDICT must all fall within
+                                    ; USROMSTRT..USROMEND - see the verification
+                                    ; note below each one's EQU.
+
+================================================================
+MEMMAP.3  [history]  (lines 98-104 of the stage-3p file)
+----------------------------------------------------------------
+USROMEND    EQU   VECTORS-1         ; Usable ROM end. Corrected: 1 before VECTORS'
+                                    ; start ($FFEF), not one past VECTORS' end as
+                                    ; originally defined - this is a real 16-bit
+                                    ; address (the last byte available before the
+                                    ; reserved vector table), usable directly in
+                                    ; comparisons or as a memory operand, unlike
+                                    ; the previous $10000 definition
+
+================================================================
+MEMMAP.4  [history]  (lines 106-162 of the stage-3p file)
+----------------------------------------------------------------
+INITCODE    EQU   $FFA4             ; was $FFA9 - shifted down 3 bytes, per
+                                    ; explicit request, to make room for the
+                                    ; UNITTESTS call site's own fix (below):
+                                    ; that site now always emits exactly 3 bytes
+                                    ; (either the real JSR TSTRUNNER, or 3 NOPs
+                                    ; as a placeholder when the test framework is
+                                    ; excluded), so COLDSTRT's total size no
+                                    ; longer depends on UNITTESTS at all -
+                                    ; previously it did (JSR TSTRUNNER only
+                                    ; existed when included, with nothing emitted
+                                    ; when excluded - using this file's original,
+                                    ; since-reversed UNITTESTS convention at the
+                                    ; time this fix was made), meaning INITCODE's
+                                    ; fixed position here could be correct for
+                                    ; one setting and wrong for the other, risking
+                                    ; an overflow into VECTORS when tests were
+                                    ; compiled in. Prior
+                                    ; history: was $FFA2 - shifted up 7 bytes to
+                                    ; reduce the overlap with BASECODE's nominal
+                                    ; end ($FFB4) from 19 bytes to 12 - improved,
+                                    ; not resolved. CORRECTED: INITCODE's real
+                                    ; content is 71 bytes ($47), confirmed by an
+                                    ; actual assembler run - not the 78-byte
+                                    ; manual estimate relied on for several
+                                    ; turns, which was wrong by 7 bytes. That
+                                    ; 71-byte figure was measured with the old
+                                    ; structure (test framework excluded emitting
+                                    ; 0 bytes for
+                                    ; the TSTRUNNER call site) - with the fix
+                                    ; above, that site now always emits 3 bytes
+                                    ; either way, so real content is reasoned to
+                                    ; be 74 bytes now (71+3), not yet re-measured
+                                    ; by a real assembler run. At $FFA6, that
+                                    ; reasoned end is $FFEF - unchanged, since
+                                    ; the 3-byte shift in INITCODE's own start
+                                    ; and the 3-byte growth in content offset
+                                    ; exactly - still one byte below VECTORS, if
+                                    ; the reasoning above holds; confirm on
+                                    ; assembly. A prior turn claimed this general
+                                    ; shift created a new 7-byte VECTORS overlap;
+                                    ; that was based on the incorrect 78-byte
+                                    ; estimate and was wrong - retracted here. The
+                                    ; BASECODE overlap (12 bytes against its
+                                    ; nominal budget) is separate and unaffected
+                                    ; by this correction; not resolved. See the
+                                    ; open-items checklist.
+                                    ;
+                                    ; UPDATE: shifted down a further 2 bytes,
+                                    ; $FFA6 -> $FFA4, confirmed working by the
+                                    ; user against a real assembler run. Reason:
+                                    ; COLDSTRT's own interrupt-mask bug fix
+                                    ; (ANDCC #$AF, added right after JSR
+                                    ; INITSERIAL - see COLDSTRT's own comment)
+                                    ; is a 2-byte instruction, growing COLDSTRT's
+                                    ; total size by exactly that much; INITCODE's
+                                    ; own fixed budget against VECTORS needed the
+                                    ; same 2 bytes back to stay within it.
+
+================================================================
+MEMMAP.5  [commented-out code]  (lines 163-173 of the stage-3p file)
+----------------------------------------------------------------
+;BASECODE EQU  $DE2E     ; was $DE5E ($DE7A, $DEEA, $DF6A, $DF8A, $DFCA,
+;BASECODE EQU  $DD2E     ; was $DE5E ($DE7A, $DEEA, $DF6A, $DF8A, $DFCA,
+;BASECODE EQU  $DD3A     ; shifted up $0C (12 bytes) from $DD2E: BASEDICT
+                                    ; grew by :NONAME's header entry (FCB + the
+                                    ; 7-char name + two FDBs = 12 bytes), which a
+                                    ; byte-count check mistakenly said still fit
+                                    ; under the old BASECODE address (an error in
+                                    ; that count, not in BASEDICT's real size) -
+                                    ; actually assembling showed BASEDICT's real
+                                    ; content overflowing $DD2E by 3 bytes. $DD3A
+                                    ; left 9 bytes of margin.
+
+================================================================
+MEMMAP.6  [history]  (lines 174-250 of the stage-3p file)
+----------------------------------------------------------------
+BASECODE    EQU   $DD54             ; shifted up another $0E (14 bytes) from $DD46:
+                                    ; BASEDICT grew again by H_XCOMPILE's header
+                                    ; entry (FCB + the 9-char name "[COMPILE]" +
+                                    ; two FDBs = 14 bytes), added to give the new
+                                    ; [COMPILE] word (see XCOMPILE, section 13) a
+                                    ; dictionary entry. Same 9-byte margin as
+                                    ; before this entry was added, assuming that
+                                    ; margin was still accurate going in - not
+                                    ; reverified by a real assembler run yet (no
+                                    ; lwasm/lwtools available in this environment);
+                                    ; confirm on assembly before relying on it.
+;BASECODE EQU  $DD46    ; shifted up another $0C (12 bytes) from $DD3A:
+                                    ; BASEDICT grew again by H_TONUMBER's header
+                                    ; entry (same shape as :NONAME's - FCB + a
+                                    ; 7-char name + two FDBs = 12 bytes), added to
+                                    ; give >NUMBER a dictionary entry (it had working
+                                    ; code but was unreachable by name). Using the
+                                    ; corrected 5-bytes-per-entry-overhead formula
+                                    ; this time (not the 4-byte one that caused the
+                                    ; earlier $DD2E mistake): same 9-byte margin as
+                                    ; before this entry was added.
+                                    ; Prior history (pre-:NONAME): was $DE5E
+                                    ; ($DE7A, $DEEA, $DF6A, $DF8A, $DFCA, $DFDA,
+                                    ; $DFEA, $E02A before that) - shifted down a
+                                    ; further $30 (48 bytes) that time.
+                                    ; Reason: IRQH was rewritten for symmetry
+                                    ; between its RX/TX halves and single-point-
+                                    ; of-exit (all paths RTI through IRQDONE),
+                                    ; and gained new FE/OVRN/PE receiver-error
+                                    ; counting (SR_FE/SR_OVRN/SR_PE, tested from
+                                    ; the same ACIASR read, before ACIADR is
+                                    ; read, incrementing FECOUNT/OVRNCOUNT/
+                                    ; PECOUNT and discarding the byte rather than
+                                    ; storing it in INBUF when any is flagged) -
+                                    ; both add code, and the single-exit style
+                                    ; costs extra bytes/branches versus falling
+                                    ; through. Value provided by the user
+                                    ; directly; not independently re-derived or
+                                    ; re-verified here. Confirm on assembly/MAME
+                                    ; rather than trust a static estimate.
+                                    ;
+                                    ; Earlier history, preserved below in order:
+                                    ;
+                                    ; UPDATE: was $DE7A - shifted down a
+                                    ; further $70 (112 bytes) at that point. Unlike every
+                                    ; earlier shift in this chain (each resolving
+                                    ; a memory-map overlap from reorganizing
+                                    ; other regions), this one is for a different
+                                    ; reason: SERIALPOLL=0 (interrupt-driven ACIA
+                                    ; I/O, IRQH servicing INBUF/OUTBUF ring
+                                    ; buffers with RTS/CTS flow control) is
+                                    ; genuinely larger code than the SERIALPOLL=1
+                                    ; polling path it replaces, and the two are
+                                    ; mutually exclusive (IFEQ/ELSE/ENDC on the
+                                    ; same flag, never both assembled at once) -
+                                    ; but BASECODE's own budget was only ever
+                                    ; sized against the polling path's smaller
+                                    ; footprint, so selecting SERIALPOLL=0
+                                    ; collided against BASEDICT below. Value
+                                    ; provided by the user directly to resolve
+                                    ; that collision; not independently re-
+                                    ; derived or re-verified here. Confirm on
+                                    ; assembly/MAME rather than trust a static
+                                    ; estimate. See the open-items checklist.
+                                    ;
+                                    ; UPDATE: shifted down a further $1C (28
+                                    ; bytes), $DE7A -> $DE5E, confirmed working
+                                    ; by the user against a real assembler run.
+                                    ; Reason: the ECHOEMIT non-blocking-echo fix
+                                    ; (see ACCEPT's own comment) added a new
+                                    ; routine to the interrupt-driven code path,
+                                    ; growing its total size by that much; also
+                                    ; added, in the same change: a FILL directive
+                                    ; right before SECTION 1 (VECTORS), to stop
+                                    ; the assembler from omitting the gap between
+                                    ; INITCODE and VECTORS when generating the
+                                    ; raw .bin file.
+
+================================================================
+MEMMAP.7  [commented-out code]  (lines 251-251 of the stage-3p file)
+----------------------------------------------------------------
+;BASEDICT EQU  $D643     ; was $D673 ($D68F, $D6FF, $D77F, $D79F, $D7DF,
+
+================================================================
+MEMMAP.8  [history]  (lines 252-281 of the stage-3p file)
+----------------------------------------------------------------
+BASEDICT    EQU   $D543             ; was $D673 ($D68F, $D6FF, $D77F, $D79F, $D7DF,
+                                    ; $D7EF, $D7FF, $D83F before that) - shifted
+                                    ; down the same further $30 (48 bytes) as
+                                    ; BASECODE above, for the same reason (the
+                                    ; rewritten, symmetric/single-exit IRQH plus
+                                    ; the new FE/OVRN/PE receiver-error counting -
+                                    ; see BASECODE's own comment for the full
+                                    ; explanation). Value provided by the user
+                                    ; directly; not independently re-derived or
+                                    ; re-verified here. Confirm on assembly/MAME
+                                    ; rather than trust a static estimate.
+                                    ;
+                                    ; Earlier history, preserved below in order:
+                                    ;
+                                    ; UPDATE: shifted down the same $70 (112 bytes)
+                                    ; as BASECODE above, at that point, for the
+                                    ; same reason (making room for SERIALPOLL=0's
+                                    ; larger, interrupt-driven code path - see
+                                    ; BASECODE's own comment for the full
+                                    ; explanation). Value provided by the user
+                                    ; directly; not independently re-derived or
+                                    ; re-verified here. Confirm on assembly/MAME
+                                    ; rather than trust a static estimate. See the
+                                    ; open-items checklist.
+                                    ;
+                                    ; UPDATE: shifted down the same further $1C
+                                    ; (28 bytes) as BASECODE above, $D68F -> $D673,
+                                    ; same reason and same confirmation - see
+                                    ; BASECODE's own comment for the full
+                                    ; explanation.
+
+================================================================
+MEMMAP.9  [history]  (lines 282-294 of the stage-3p file)
+----------------------------------------------------------------
+INOUT       EQU   $C000             ; was $DF00 - moved so INOUT (256 B) sits
+                                    ; directly below USROMSTRT ($C100), contiguous,
+                                    ; no gap. This also resolves the INOUT portion
+                                    ; of the collision flagged when BASEDICT moved
+                                    ; to $D85D: INOUT no longer overlaps BASEDICT
+                                    ; ($D85D-$E011), since $C0FF < $D85D. The
+                                    ; DSTACK and RSTACK portions of that same
+                                    ; collision were NOT touched by this specific
+                                    ; change, but were resolved separately when
+                                    ; those two regions moved (see below). This
+                                    ; move ALSO overlapped APPCODE at the time
+                                    ; ($7000-$D7FF then) - since resolved too, when
+                                    ; APPCODE moved down $2000 (see below).
+
+================================================================
+MEMMAP.10  [history]  (lines 296-300 of the stage-3p file)
+----------------------------------------------------------------
+RSTACK      EQU   $BFFF             ; was $BEFF - occupied range is $BD00-$BFFF
+                                    ; (768 bytes, unchanged size). RESOLVED: once a
+                                    ; 512-byte gap sat between this and DSTACK
+                                    ; below; DSTACK moving up $200 closed it - now
+                                    ; exactly contiguous, no gap
+
+================================================================
+MEMMAP.11  [history]  (lines 301-306 of the stage-3p file)
+----------------------------------------------------------------
+DSTACK      EQU   $BCFF             ; was $BAFF - moved up $200. RESOLVED (both):
+                                    ; occupied range is now $B900-$BCFF, which
+                                    ; exactly matches CODETOP ($B900) as its true
+                                    ; bottom - the 512-byte mismatch is gone - and
+                                    ; is now exactly contiguous with RSTACK's
+                                    ; bottom ($BD00), closing that gap too
+
+================================================================
+MEMMAP.12  [history]  (lines 307-312 of the stage-3p file)
+----------------------------------------------------------------
+CODETOP     EQU   $B900             ; was $B800 - code space ceiling (data stack
+                                    ; begins here). RESOLVED: this once no longer
+                                    ; matched DSTACK's true occupied bottom (was
+                                    ; $B700, a 512-byte mismatch) - now that DSTACK
+                                    ; moved up $200 to $B900, CODETOP matches it
+                                    ; exactly again
+
+================================================================
+PADSIZE.0  [explanatory]  (lines 314-353 of the stage-3p file)
+----------------------------------------------------------------
+; ANS transient-region minimums (forth-standard.org/standard/usage,
+; section 3.3.3.6 "Other transient regions"), verified against this
+; system's actual layout and used to replace the bare "84" that used
+; to sit directly inside PADW with a named, documented constant:
+;   PADMINSIZE  - PAD's own scratch region, size in characters. WORD
+;                 originally used a separate, fixed WORDBUF that
+;                 happened to meet its own 33-character minimum
+;                 exactly (WORDBUF's span up to where SIBUF used to
+;                 begin was precisely 33 bytes, confirmed by address
+;                 subtraction) - but WORD has since been redesigned
+;                 (see below, and WORD itself in the Header/Compiling
+;                 section) to use this same CODEHERE-to-PAD gap
+;                 instead, matching the traditional fig-Forth layout,
+;                 so WORDBUF itself is retired along with SIBUF.
+;   HOLDMINSIZE - pictured numeric output buffer, size in characters,
+;                 (2 * n) + 2 where n = bits per cell (16 here) = 34.
+;                 LTNUM ("<#") anchors HLD to PADW's own return value
+;                 and HOLD decrements before storing, so this buffer
+;                 grows downward from PAD into the CODEHERE-to-PAD
+;                 gap, not into PAD's own region above it - confirmed
+;                 by tracing LTNUM/HOLD. The gap must be at least
+;                 HOLDMINSIZE wide for this to fit.
+; PADOFFSET (below) satisfies both: it equals PADMINSIZE, which is
+; itself well above HOLDMINSIZE (128 vs 34, 94 bytes of margin) - kept
+; as a single, larger-than-either-strict-minimum offset rather than
+; two separately-tuned numbers, matching "larger than minimum is
+; satisfactory" for a small system.
+;
+; PADMINSIZE was raised from the original 84 to 128 after the 84
+; value was found to cap WORDMAXCHARS (below) at 46 characters,
+; silently truncating any S" string longer than that (WORD would
+; stop scanning at the cap without having seen the closing '"',
+; leaving unconsumed text to be misparsed as a bogus next word).
+; The longest S" strings actually in use (ans_tests/ttester.fs) run
+; to 62 characters, so 128 leaves headroom well beyond that. PAD is
+; computed dynamically as CODEHERE+PADOFFSET (see PADW) rather than
+; living at a fixed address, so this change carries no collision
+; risk with anything else in memory - the only cost is a small,
+; negligible reduction in dictionary headroom before CODEHERE+
+; PADOFFSET could reach CODETOP.
+
+================================================================
+PADSIZE.1  [explanatory]  (lines 357-362 of the stage-3p file)
+----------------------------------------------------------------
+PADOFFSET   EQU   PADMINSIZE        ; CODEHERE-to-PAD gap; also governs how
+                                    ; much of PAD's own upward-growing region
+                                    ; (now used by both the user and, per this
+                                    ; change, interpreted-mode S" text) is
+                                    ; guaranteed available before something
+                                    ; else might claim it
+
+================================================================
+WORDMAXCHARS.1  [explanatory]  (lines 364-384 of the stage-3p file)
+----------------------------------------------------------------
+                                    ; max characters WORD can
+                                    ; scan when using the CODEHERE-to-PAD gap
+                                    ; (see WORD, below) - reserves HOLDMINSIZE
+                                    ; bytes at the PAD end for the pictured
+                                    ; numeric output buffer (which grows
+                                    ; downward from PAD into this same gap),
+                                    ; using the remaining space at the
+                                    ; CODEHERE end, less 1 byte for WORD's own
+                                    ; leading count byte, less a further 3
+                                    ; bytes for the worst case: S"/."/ABORT"
+                                    ; all reserve 3 bytes ahead of CODEHERE
+                                    ; before calling WORD (see SQUOTE/
+                                    ; DOTQUOTE/AQSTOK), so their text lands 3
+                                    ; bytes further into this same gap than
+                                    ; plain WORD-parsing (e.g. a dictionary
+                                    ; name for FIND) does. Sized for that
+                                    ; worst case uniformly, rather than giving
+                                    ; different callers different effective
+                                    ; limits - simpler and safer than trying
+                                    ; to track which caller needs which cap.
+                                    ; 128-34-1-3 = 90.
+
+================================================================
+MEMMAP.13  [history]  (lines 386-392 of the stage-3p file)
+----------------------------------------------------------------
+APPCODE     EQU   $7000             ; was $5000 - back to its original address.
+                                    ; RESOLVED: this once overlapped DSTACK's true
+                                    ; range by 512 bytes ($B700-$B8FF), a direct
+                                    ; consequence of the CODETOP/DSTACK mismatch -
+                                    ; now that DSTACK moved and CODETOP matches it
+                                    ; again, APPCODE's nominal range (up to
+                                    ; CODETOP-1) no longer reaches into DSTACK
+
+================================================================
+MEMMAP.14  [history]  (lines 393-399 of the stage-3p file)
+----------------------------------------------------------------
+APPDICT     EQU   $2000             ; was $015B - moved up, size unchanged (20133
+                                    ; bytes, now $2000-$6EA4). REDUCED BUT NOT
+                                    ; RESOLVED: still overlaps APPVARS below by 347
+                                    ; bytes ($2000-$215A), though SIBUF/WORDBUF/
+                                    ; TIBBUF/OUTBUF (swallowed by the previous
+                                    ; APPDICT address) are now clear. See the
+                                    ; open-items checklist
+
+================================================================
+MEMMAP.15  [history]  (lines 400-406 of the stage-3p file)
+----------------------------------------------------------------
+APPVARS     EQU   $021B             ; grown from 256 to 8000 bytes (end now $215A,
+                                    ; was $031A), taking the space directly from
+                                    ; APPDICT above it; start address unchanged.
+                                    ; That 8000-byte figure describes the original
+                                    ; intent, not the current actual usable size -
+                                    ; see APPVARSEND below, which now tracks
+                                    ; APPDICT's real position instead
+
+================================================================
+MEMMAP.16  [history]  (lines 407-414 of the stage-3p file)
+----------------------------------------------------------------
+APPVARSEND  EQU   APPDICT-1         ; was APPVARS+8000 ($215B) - now derives
+                                    ; directly from wherever APPDICT actually
+                                    ; starts, currently $1FFF (7653 bytes usable,
+                                    ; down from the static 8000). Self-correcting:
+                                    ; this can no longer go stale if APPDICT moves
+                                    ; again, unlike the previous fixed-size
+                                    ; definition. VUNUSEDW (below) is unchanged -
+                                    ; it already computed against APPVARSEND
+
+================================================================
+MEMMAP.17  [history]  (lines 415-433 of the stage-3p file)
+----------------------------------------------------------------
+; SIBUF EQU $01FB retired - was interpreted-mode S"'s fixed, dedicated
+; 32-byte scratch buffer; S" now writes into PAD instead (see SQINTERP,
+; String Words section), which is both larger and correctly per-call
+; rather than a single buffer shared by every S" call in a session.
+; The $01FB-$021A range it used to occupy is left unclaimed rather
+; than reassigned - APPVARS below still starts at its own, unchanged
+; address ($021B) - to avoid any risk to the rest of this carefully-
+; verified memory map for the sake of reclaiming 32 bytes on a system
+; with headroom to spare; reclaiming it would need APPVARS to move,
+; a separate, larger change not undertaken here.
+; WORDBUF EQU $01DA also retired, for the same reason as SIBUF above -
+; WORD now uses the CODEHERE-to-PAD gap directly (see WORD in the
+; Header/Compiling section, and WORDMAXCHARS above) rather than a
+; fixed, separately-allocated buffer capped at 31 characters. The
+; $01DA-$01FA range it used to occupy is left unclaimed, same
+; reasoning as SIBUF's retirement above - EXCEPT for its first 3
+; bytes, now claimed below for FECOUNT/OVRNCOUNT/PECOUNT (IRQH's
+; receiver-error counters); $01DD-$01FA (30 bytes) is still
+; unclaimed, and SIBUF's own $01FB-$021A range is untouched.
+
+================================================================
+MEMMAP.18  [commented-out code]  (lines 435-435 of the stage-3p file)
+----------------------------------------------------------------
+;TIBBUF   EQU  $018A     ; was $0284
+
+================================================================
+MEMMAP.19  [history]  (lines 436-436 of the stage-3p file)
+----------------------------------------------------------------
+; was $018A
+
+================================================================
+MEMMAP.20  [history]  (lines 437-437 of the stage-3p file)
+----------------------------------------------------------------
+; $50, next free address is
+
+================================================================
+SERIALPOLL.1  [history]  (lines 454-466 of the stage-3p file)
+----------------------------------------------------------------
+;
+; Was a fixed EQU, meaning it could only ever be changed by
+; editing this file directly - unlike UNITTESTS/TSTSELECTOR
+; below, a plain EQU cannot be overridden via lwasm's own -D
+; command-line option (EQU is a one-time, permanent binding;
+; -D's own documented behavior is to predefine a symbol "as
+; though...defined using the SET directive," which a later EQU
+; for the same symbol does not honor). Switched to the same
+; IFNDEF/SET/ENDC pattern as UNITTESTS/TSTSELECTOR immediately
+; below for exactly that reason: SERIALPOLL can now be selected
+; at build time with -DSERIALPOLL=0 (interrupt-driven) or
+; -DSERIALPOLL=1 (polling, same as omitting -D entirely, since 1
+; remains the fallback default here).
+
+================================================================
+CRRXTX.1  [history]  (lines 499-506 of the stage-3p file)
+----------------------------------------------------------------
+CR_RXTX     EQU   %10110101         ; ($B5) (Rx Int Enabled, Tx Int/RTS Control, 8-N-1, /16 Clock) -
+                                    ; stray trailing "|" before this comment removed: a dangling
+                                    ; bitwise-OR operator with nothing on its right, presumably a
+                                    ; typo left over from editing. Left alone, lwasm's expression
+                                    ; parser evidently tolerated it (whitespace before ";" likely
+                                    ; meant the "|" and comment were never actually joined into one
+                                    ; malformed expression token) - but it was never intentional and
+                                    ; is worth removing before it causes a real problem elsewhere.
+
+================================================================
+MEMMAP.21  [history]  (lines 531-540 of the stage-3p file)
+----------------------------------------------------------------
+SERBUF      EQU   $0180             ; was $0200 - USER0/USER1 removed entirely (see
+                                    ; below); the 4 buffers (SERBUF's 4-byte index
+                                    ; block, INBUF, OUTBUF, TIBBUF) still sit
+                                    ; contiguously right after MVSCRATCH, with no
+                                    ; gap - WORDBUF and SIBUF, which used to sit
+                                    ; right after TIBBUF and WORDBUF respectively
+                                    ; (closing what was once an 11-byte gap,
+                                    ; $02F5-$02FF, in an earlier address scheme),
+                                    ; are now both retired (see above) rather than
+                                    ; part of this contiguous run
+
+================================================================
+INHIWATER.1  [explanatory]  (lines 543-547 of the stage-3p file)
+----------------------------------------------------------------
+INHIWATER   EQU   48                ; input ring fill level (of 64) at/above which RTS is
+                                    ; asserted high, telling the remote device to pause
+INLOWATER   EQU   16                ; fill level at/below which RTS is reasserted low;
+                                    ; deliberately well below INHIWATER (hysteresis) so
+                                    ; RTS doesn't chatter right at a single threshold
+
+================================================================
+TAGQDO.1  [bugfix]  (lines 587-599 of the stage-3p file)
+----------------------------------------------------------------
+TAGQDO      EQU   7                 ; ?DO's own pending zero-trip forward-branch marker,
+                  ; distinct from TAGFWD - LOOP/PLUSLOOP peek past their
+                  ; TAGDO frame for exactly this tag to decide whether
+                  ; there's a ?DO patch waiting. Reusing TAGFWD for that
+                  ; peek was a real bug: DO ... LOOP nested inside an
+                  ; still-open IF/WHILE (which legitimately has its own
+                  ; TAGFWD sitting in that exact spot) got its frame
+                  ; mistaken for a ?DO patch and consumed by LOOP,
+                  ; leaving the enclosing THEN/REPEAT to find the wrong
+                  ; tag and throw -22. A plain DO never has anything
+                  ; genuine for LOOP to find here, so nothing needs to
+                  ; match TAGQDO in that case - the enclosing frame is
+                  ; now left alone as it should be.
+
+================================================================
+GLOBALS.0  [history]  (lines 601-616 of the stage-3p file)
+----------------------------------------------------------------
+; ============================================================
+; GLOBALS - real layout, applied. Every scratch/state cell
+; referenced across the whole build now has a fixed address
+; in page zero (DP = $00 at reset, set in COLDSTRT), laid out
+; in RMB order below. Total: 256 of 256 bytes used - the page
+; is fully packed. (DOESBEH and RTSSTATE were added in later
+; passes, after this comment was first written with 253/256;
+; they used up the last 3 bytes of headroom entirely.)
+;
+; SNEND, which appeared in the original placeholder list
+; (documented under S"/."/SLITERAL/ABORT"'s string runtime),
+; was dropped here: a full pass over every reference confirmed
+; it is never actually read or written anywhere - SCNT/SPTR
+; alone carry that runtime. CSAVE was removed earlier (see the
+; COMMA/CODECOMMA history) and was never part of this layout.
+; ============================================================
+
+================================================================
+CURXT.1  [explanatory]  (lines 654-662 of the stage-3p file)
+----------------------------------------------------------------
+; CURXT is an EQU alias for this same cell, not a second RMB (direct
+; page is already full at 256/256 bytes - see the layout note above).
+; HEADER's own use of NEWHDR (the new header's address, needed only
+; to set LATEST at the end of HEADER, before HEADER's own RTS) is
+; always finished by the time COLON/NONAME run their next instruction
+; after calling HEADER - so it's safe for COLON and NONAME to then
+; reuse the same cell to record the xt of the word currently being
+; compiled, under this second name, for RECURSE to read back. See
+; RECURSE's own comment for why this was needed.
+
+================================================================
+GLOBALS.1  [history]  (lines 769-770 of the stage-3p file)
+----------------------------------------------------------------
+                                    ; GLOBALS page is now
+                                    ; fully packed bar 1: 255 of 256 bytes used, 1 free.
+
+================================================================
+MVSCRATCH.1  [history]  (lines 792-794 of the stage-3p file)
+----------------------------------------------------------------
+; FILLCNT/FILLADDR (formerly aliasing MVCNT/MVDST) were removed once
+; genuinely unused - FILLW now keeps its count and address directly
+; in Y/X rather than round-tripping through memory each iteration.
+
+================================================================
+RTSSTATE.1  [open question]  (lines 815-815 of the stage-3p file)
+----------------------------------------------------------------
+; RTSSTATE -> INREQUEST ?
+
+================================================================
+FECOUNT.1  [explanatory]  (lines 822-823 of the stage-3p file)
+----------------------------------------------------------------
+FECOUNT     RMB   1                 ; framing-error count, incremented by IRQH (interrupt
+                                    ; build) or by polling KEY (polling build - see below)
+
+================================================================
+POLLREADYCNT.1  [explanatory]  (lines 827-837 of the stage-3p file)
+----------------------------------------------------------------
+            RMB   1                 ; polling build only: counts every KEY call that found
+                                    ; RDRF already set on its very first check, before
+                                    ; spinning at all - i.e. a character was already
+                                    ; sitting queued when we came back to poll for it.
+                                    ; A high count relative to total characters received
+                                    ; is evidence the host is running ahead of what the
+                                    ; 6809 has actually consumed (a transport-buffered
+                                    ; backlog), distinct from a genuine ACIA overrun
+                                    ; (which OVRNCOUNT would show instead) - last free
+                                    ; byte in this block, right before SERBUF's 64-byte
+                                    ; alignment at $0180.
+
+================================================================
+UNITTESTS.1  [history]  (lines 855-865 of the stage-3p file)
+----------------------------------------------------------------
+                  ; Flag meaning reversed from this file's original
+                  ; UNITTESTS convention (0=included,1=excluded under
+                  ; IFEQ) to support overriding via lwasm's -D command
+                  ; line option: default (0, no -D given) now means
+                  ; EXCLUDED - production builds get plain FILL
+                  ; padding here with no test-framework code, by
+                  ; default. Pass -DUNITTESTS=1 (or any nonzero value)
+                  ; to INCLUDE the test framework - tested and
+                  ; confirmed working on real MAME hardware under the
+                  ; old convention; this reversal only changes how the
+                  ; choice is made, not what including it does.
+
+================================================================
+SECTION27.0  [history]  (lines 428-468 of the stage-3q file)
+----------------------------------------------------------------
+; SECTION 27: FORTH DICTIONARY (ROM base dictionary headers)
+; Every primitive word in the Glossary gets a real header here,
+; chained via LINK, living in BASEDICT ($D83F-$E006, an exact fit
+; for this dictionary's 1992 bytes - was $E000-$E7FF). CFA points
+; directly at each primitive's own code label for every entry -
+; these are all raw code entries, CFA = the label itself,
+; including TRUE and FALSE (added in a later pass, chain's newest
+; entries before H_ABORT/H_QUIT below), which originally used the
+; DODOES-trampoline pattern matching interactive CONSTANT, but are
+; now simple LDD/PSHU/RTS subroutines like everything else here -
+; see TRUEBODY/FALSEBODY, section 26, for the current code and why
+; they no longer need indirection.
+;
+; DOES> is included (H_DOESGT) - added in a follow-up pass after
+; the original 214-entry generation flagged it as missing, then
+; moved again so it sits immediately after CREATE in the chain
+; (H_CREATE -> H_DOESGT -> H_VARIABLE) rather than at the chain's
+; newest end, since the two words are tightly coupled and read
+; better adjacent. SETDOES (the runtime it compiles a call to)
+; lives beside DODOES/DOESRT0; DOESGT is DOES>'s code label,
+; since a literal ">" is not valid in a 6809 assembler label.
+;
+; H_ABORT and H_QUIT (formerly ABORTHDR/QUITHDR, renamed to match
+; this file's H_ naming convention) are hand-built, not produced
+; by the same generation pass as the other 217 entries - see the
+; note where they're defined, at the end of this section, for why
+; HEADER/CREATE couldn't be used directly for these two. They used
+; to live physically apart from the rest of the dictionary, inside
+; BASECODE rather than BASEDICT, despite being header data rather
+; than code - moved here so every header lives in one place and
+; the chain (H_QUIT -> H_ABORT -> (newest entry below) -> ... ->
+; (oldest entry) -> 0) is visible in one block. BASELATEST remains
+; H_QUIT, the chain's true overall head.
+;
+; H_ABORT's LINK field, a placeholder 0 since it was first built,
+; is resolved here: it now points to this chain's newest entry.
+;
+; Names containing a literal double-quote (S", .", ABORT") have
+; that character split into a standalone FCB $22 rather than
+; escaped inside FCC - see emit_name's comment for why.
+; ============================================================
+
+================================================================
+H_NONAME.1  [explanatory]  (lines 1038-1039 of the stage-3q file)
+----------------------------------------------------------------
+            FCB   $07               ; not IMMEDIATE - ordinary word, same as
+                                    ; COLON (only ever runs during INTERPRET)
+
+================================================================
+H_TONUMBER.1  [history]  (lines 1422-1426 of the stage-3q file)
+----------------------------------------------------------------
+            FCB   $07               ; audit finding: TONUMBER (the code for
+            FCC   ">NUMBER"         ; >NUMBER) existed and worked, but had no
+            FDB   H_SIGN            ; dictionary header at all - unreachable by
+            FDB   TONUMBERW         ; name. Spliced in here next to the other
+                                    ; number/string-conversion words.
+
+================================================================
+H_ABORT.0  [history]  (lines 1580-1590 of the stage-3q file)
+----------------------------------------------------------------
+; H_ABORT and H_QUIT are hand-built, not produced by the same
+; generation pass as the 217 entries above - ABORT and QUIT need
+; to be findable at the prompt, but HEADER/CREATE couldn't be used
+; directly for these two (see the source conversation this file
+; was derived from for why). Moved here from their own separate
+; section so every header in this ROM lives in one contiguous
+; block, with the chain visible end to end: H_M2 -> H_2 -> H_M1 ->
+; H_1 -> H_FIND -> H_QUIT -> H_ABORT -> H_FALSE (the newest of the
+; 217 generated entries) -> ... -> H_KEY -> 0. H_M2 is now the true
+; head (see BASELATEST below) - H_FIND and the four number words
+; were chained on after H_QUIT in a later turn.
+
+================================================================
+H_ABORT.1  [history]  (lines 1593-1596 of the stage-3q file)
+----------------------------------------------------------------
+            FDB   H_FALSE           ; resolved - was placeholder 0, then H_DUMPW,
+                                    ; then H_DOESGT, then H_DUMPW again once
+                                    ; DOES> moved out of the chain's newest slot;
+                                    ; now H_FALSE, the chain's newest entry
+
+================================================================
+H_ABORT.2  [bugfix]  (lines 1597-1599 of the stage-3q file)
+----------------------------------------------------------------
+            FDB   ABORTW            ; BUG FIX: the ABORT *word* is -1 THROW so CATCH
+                                    ; can intercept it (26's t6 c6); the bare ABORT
+                                    ; label stays the unconditional reset.
+
+================================================================
+H_FIND.1  [history]  (lines 1606-1611 of the stage-3q file)
+----------------------------------------------------------------
+; FIND had no dictionary entry at all - confirmed by checking for
+; any H_FIND label or FCC "FIND" string anywhere in this file
+; before adding this. Its actual implementation (verified before
+; exposing it) already matches the standard stack effect exactly:
+; success pushes xt then 1 (immediate) or -1 (normal); failure
+; reconstructs and pushes the original c-addr, then 0.
+
+================================================================
+BASELATEST.1  [history]  (lines 1637-1644 of the stage-3q file)
+----------------------------------------------------------------
+BASELATEST  EQU   H_NEGTWO          ; the ROM dictionary's true head - referenced by
+                                    ; COLD to initialize LATEST. Was H_QUIT before
+                                    ; FIND and the four number words (1/-1/2/-2)
+                                    ; were chained on after it; before that,
+                                    ; QUITHDR before the H_QUIT rename; before
+                                    ; that, undefined entirely - a real bug, not
+                                    ; a placeholder, found and fixed several turns
+                                    ; before this one.
+
+================================================================
+BASECODE.1  [bugfix]  (stage-2 source lines 2115-2123)
+----------------------------------------------------------------
+            ORG   BASECODE          ; BASECODE is $E02A. This ORG was missing
+                                    ; entirely - every routine from here through
+                                    ; SECTION 26 (IRQH, COLD/ABORT/QUIT, and
+                                    ; every primitive) would otherwise have
+                                    ; continued growing from wherever SECTION 2's
+                                    ; WARM message left the location counter,
+                                    ; inside INIT's 48-byte $FFC0-$FFEF budget,
+                                    ; overflowing directly into VECTORS ($FFF0)
+                                    ; instead of landing in BASECODE at all
+
+================================================================
+SERBUFCLR.0  [explanatory]  (stage-2 source lines 2132-2139)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; SERBUFCLR - zeros all four ring-buffer pointers (INHEAD/
+; INTAIL/OUTHEAD/OUTTAIL, the four bytes of SERBUF) plus
+; RTSSTATE, plus (added alongside IRQH's new receiver-error
+; counting) FECOUNT/OVRNCOUNT/PECOUNT, so a cold or warm boot
+; always starts those three counts at zero rather than whatever
+; MAME's/real RAM's arbitrary startup contents happened to hold -
+; same reasoning as the OUTHEAD/OUTTAIL bug fix described below.
+
+================================================================
+SERBUFCLR.1  [bugfix]  (stage-2 source lines 2140-2151)
+----------------------------------------------------------------
+; BUG FIX: the code this replaced (formerly inline in
+; COLDSTRT) only ever cleared INHEAD/INTAIL (2 of SERBUF's own 4
+; bytes) - OUTHEAD/OUTTAIL were never zeroed at all, even on a
+; cold boot, meaning the TX ring buffer could start from
+; whatever arbitrary contents MAME's own RAM happened to hold
+; (MAME does not guarantee zeroed RAM on start), a real,
+; independent, latent risk of exactly the kind of "transmit
+; buffer appears full immediately" spin-wait lockup separately
+; observed and reported. Called from INITSERIAL itself (below),
+; so both COLDSTRT's own existing call and WARM's new one (see
+; WARM's own comment) share this single, complete reset point -
+; not duplicated logic in either place.
+
+================================================================
+INITSERIAL.0  [explanatory]  (stage-2 source lines 2125-2131)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; INITSERIAL - initializes the ACIA: master reset, then selects
+; interrupt-driven or polling operation depending on SERIALPOLL.
+; Extracted from COLDSTRT, which now just JSRs here - moved into
+; this section so the ACIA's own init code sits next to the rest
+; of its interrupt/polling logic rather than inline in COLDSTRT.
+; ------------------------------------------------------------
+
+================================================================
+INITSERIAL.1  [bugfix]  (stage-2 source lines 2179-2179)
+----------------------------------------------------------------
+; was "STA ACIA" - same fix
+
+================================================================
+UPDATE_RTS.1  [open question]  (stage-2 source lines 2226-2226)
+----------------------------------------------------------------
+; Why is OUTACTIVITY not updated here?
+
+================================================================
+CHKHI.0  [explanatory]  (stage-2 source lines 2234-2255)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; CHKHI/CHKLO - replace the old combined CHKWATERLEVEL. That
+; routine always paid for a TST RTSSTATE/BNE to pick a
+; direction (hi vs lo) before checking either watermark - but
+; the direction picked never actually depended on which caller
+; was asking, only on the current RTSSTATE, and each caller
+; only ever moves fill one way: INCHAR (via CHKHI) only ever
+; adds to the ring, so only the hi threshold can ever usefully
+; fire from that side; GETCHAR (via CHKLO) only ever drains it,
+; so only the lo threshold can fire from that side. Whenever
+; the old routing sent a caller into the "wrong" branch for its
+; own direction (e.g. INCHAR landing in CHK_LO while RTSSTATE
+; was REJECT), the comparison was provably always a no-op from
+; that caller - the fill level only ever moves the way that
+; caller pushes it, so the other threshold's condition can't
+; newly become true there. Splitting into two direction-fixed
+; routines removes that dead branch+comparison from both
+; callers, and both take the current fill level pre-computed in
+; RegB rather than reloading INHEAD/INTAIL themselves, so a
+; caller that already has one of the two pointers in a register
+; (see INCHAR) doesn't pay for a redundant reload.
+; ------------------------------------------------------------
+
+================================================================
+FLUSHOUTBUFFER.1  [bugfix]  (stage-2 source lines 2275-2290)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; BUG FIX: this used to loop internally (BRA back to the top)
+; until the whole OUTBUF drained or CTS blocked - an unbounded
+; spin of up to ~64 characters (~5.5ms at 115200 baud). In
+; practice only one character was ever observed to be processed
+; per call anyway (TDRE is rarely ready again this soon after
+; sending), so this now makes that explicit: sends at most ONE
+; character per call and returns unconditionally, whatever the
+; reason (buffer empty, CTS-blocked, TDRE not ready yet, or a
+; character actually sent - including the TDRE-not-ready case,
+; which used to spin-wait right here and now instead just
+; returns to try again on the next call). Every caller (KEY,
+; PUTCHAR) already calls this once per character it handles on
+; its own side, so the buffer still drains at essentially the
+; same rate - this removes the unbounded worst case and the
+; TDRE spin-wait, without changing normal-case throughput.
+
+================================================================
+PUTCHAR.1  [bugfix]  (stage-2 source lines 2343-2355)
+----------------------------------------------------------------
+            ; RTS is high (REJECT): CR_RTSHI hardware-disables the TX
+            ; interrupt, so nothing will ever drain OUTBUF except this
+            ; polling fallback. BUG FIX: FLUSHOUTBUFFER can take until
+            ; the whole OUTBUF drains (up to ~64 chars, ~5.5ms at 115200
+            ; baud) - running that under PUTCHAR's own ORCC #$50 masked
+            ; IRQ+FIRQ for the entire span, which is exactly why RTS
+            ; went high in the first place: the receiver was under
+            ; pressure, and masking IRQ here stops IRQH's own INCHAR
+            ; path from servicing it, guaranteeing overruns. Unmask
+            ; around the call - FLUSHOUTBUFFER only touches OUTHEAD/
+            ; OUTTAIL/ACIACR, none of which IRQH's RX path (INHEAD/
+            ; INTAIL) touches, so there is no correctness reason to
+            ; keep the receiver blind while this runs.
+
+================================================================
+GETCHAR.1  [bugfix]  (stage-2 source lines 2406-2419)
+----------------------------------------------------------------
+            ; BUG FIX: CHKLO reads-then-writes RTSSTATE/OUTACTIVITY and
+            ; can write ACIACR (via UPDATE_RTS) - state IRQH's own
+            ; INCHAR path also reads and writes, by calling CHKHI too
+            ; (safely, from ISR context, where interrupts are already
+            ; hardware-masked). GETCHAR is only ever called from
+            ; mainline code (KEY), unmasked, so without masking here an
+            ; interrupt landing mid-call could race this call against
+            ; IRQH's own concurrent one, leaving RTSSTATE corrupted or
+            ; ACIACR written twice with conflicting values. Masked here
+            ; (IRQ only, matching RTSCHECKLO's own existing discipline
+            ; below) rather than inside CHKLO itself, since CHKHI's
+            ; ISR-context caller must NOT unmask IRQ before its own RTI.
+            ; The fill-level read is inside the same masked span, for
+            ; the same reason: INHEAD could be mid-update by the ISR.
+
+================================================================
+RTSCHECKLO.0  [explanatory]  (stage-2 source lines 2435-2445)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; RTSCHECKLO - called from mainline code (KEY), NOT from the
+; ISR, so it must mask IRQ around its critical section: IRQH's
+; own TXOFF path also writes ACIACR, and an interrupt landing
+; mid-decision here could otherwise race it. If the ring has
+; drained to INLOWATER or below and RTS is currently high,
+; reassert RTS low - restoring TX-interrupt-enable too if
+; output happens to be queued, since the ACIA has no control
+; byte combination offering RTS-high with TX-interrupt-enabled
+; simultaneously (see CR_RTSHI's comment).
+; ------------------------------------------------------------
+
+================================================================
+IRQH.0  [explanatory]  (stage-2 source lines 2474-2505)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; IRQH - interrupt-driven ACIA (6850) servicing (SERIALPOLL=0).
+; Rewritten by the user for two things at once: (1) the RX and TX
+; halves are now laid out symmetrically (each is: check the
+; relevant status bit, dispatch, single self-contained handler
+; block), and (2) single point of exit - every path, success or
+; not, falls through to IRQDONE/RTI rather than RTI-ing from
+; several different places. Deliberately less byte/cycle-
+; efficient than the previous version in exchange for being
+; easier to review by eye; the user accepted that trade knowingly.
+;
+; Interrupts are automatically masked during an interrupt handler
+; (6809 hardware behavior on IRQ entry), so the composite
+; operations here (ring-buffer head/tail updates, RTSSTATE,
+; ACIACR, the new error counters below) are all safe without any
+; explicit ORCC/ANDCC masking of their own - unlike RTSCHECKLO,
+; which runs from mainline code and does mask explicitly.
+;
+; Receiver-error counting: SR_FE/SR_OVRN/SR_PE (bits 4/5/6 of
+; ACIASR - framing error, overrun, parity error) are only
+; meaningful together with RDRF, and are tested from the SAME
+; ACIASR byte already read into A above, BEFORE ACIADR is read -
+; reading ACIADR clears RDRF and, per the 6850 datasheet, the
+; latched error bits along with it, so they must be inspected
+; first or the information is gone. More than one bit can be set
+; at once, so each is tested and tallied independently into its
+; own counter (FECOUNT/OVRNCOUNT/PECOUNT - see the memory-map
+; comment where they're declared). ACIADR is still read when an
+; error is flagged, to clear the condition and let the next
+; character arrive, but that byte is assumed corrupted and is
+; discarded rather than stored into INBUF.
+; ------------------------------------------------------------
+
+================================================================
+INCHAR.2  [commented-out code]  (stage-2 source lines 2544-2544)
+----------------------------------------------------------------
+            ;JSR   RTSCHECKHI     ; Protect the in buffer from overflow.
+
+================================================================
+INCHAR.1  [explanatory]  (stage-2 source lines 2545-2552)
+----------------------------------------------------------------
+                                    ; OPTIMIZATION: RegB still holds the new head
+                                    ; value STB just stored (STB doesn't clobber
+                                    ; it) - reuse it directly to get the fill
+                                    ; level, rather than have CHKHI reload INHEAD
+                                    ; from memory. This is the single hottest
+                                    ; per-character path in the system (it runs
+                                    ; on every byte received), so a redundant
+                                    ; 4-cycle load here is worth avoiding.
+
+================================================================
+OUTCHAR.1  [commented-out code]  (stage-2 source lines 2558-2560)
+----------------------------------------------------------------
+            ; LDA   ACIASR          ; Recheck if the transmitter is ready.
+            ; BITA  #SR_TDRE        ; after handling the received character.
+            ; BEQ IRQDONE2          ; Yes! Process the char.
+
+================================================================
+TXOFF.1  [commented-out code]  (stage-2 source lines 2575-2579)
+----------------------------------------------------------------
+TXOFF:                              ; TST   RTSSTATE        ; The buffer is empty.
+            ; BNE   IRQDONE3         ; RTS is asserted high - leave ACIACR alone,
+                                    ; or this would incorrectly drop it back low
+            ; LDA   #CR_RXON
+            ; STA   ACIACR
+
+================================================================
+COLD.1  [history]  (lines 2590-2590 of the stage-3a file)
+----------------------------------------------------------------
+; (was a fall-through; ABORTW now sits between)
+
+================================================================
+QUITW.1  [bugfix]  (lines 2600-2630 of the stage-3a file)
+----------------------------------------------------------------
+            LDD   #0                ; BUG FIX: this reset used to live at QLOOP
+            STD   STATE             ; below, running on EVERY line - including
+                                    ; lines in the middle of a colon definition
+                                    ; that spans more than one line of input.
+                                    ; COLON (sets STATE=-1) and SEMI (sets
+                                    ; STATE=0, after checking CSP) are the
+                                    ; correct, sole places STATE should change
+                                    ; during normal operation - the old QLOOP
+                                    ; reset was a third, redundant one that
+                                    ; silently dropped back to interpret mode
+                                    ; every time QUERY read a new line,
+                                    ; regardless of whether ";" had actually
+                                    ; been reached. A colon definition split
+                                    ; across multiple lines would have every
+                                    ; word on every line after the first
+                                    ; interpreted (and, for anything with a
+                                    ; stack effect, executed) instead of
+                                    ; compiled - "TRUE" pushing TRUEV onto the
+                                    ; data stack instead of being compiled,
+                                    ; leaving a stray cell CSP would correctly
+                                    ; catch as a mismatch at ";" (-22). Moved
+                                    ; here rather than removed outright: QUIT is
+                                    ; only re-entered on cold boot or an
+                                    ; uncaught error routing back through ABORT
+                                    ; (confirmed - ordinary successful lines
+                                    ; loop back to QLOOP directly, never QUIT),
+                                    ; so this still correctly forces interpret
+                                    ; state exactly when ANS's own QUIT
+                                    ; semantics call for it - just not on every
+                                    ; single line of an otherwise-uninterrupted
+                                    ; session. Confirmed via MAME debugger.
+
+================================================================
+QLOOP.1  [bugfix]  (lines 2661-2680 of the stage-3a file)
+----------------------------------------------------------------
+            ; BUG FIX: an error caught here can happen mid-colon-definition
+            ; (STATE=-1) - e.g. a bad REPEAT/control-flow mismatch thrown
+            ; while compiling GI5 in 12_control_flow's Annex F tests. The
+            ; dictionary/HERE pointers above get rolled back (the half-
+            ; built word is erased) but STATE itself was NOT among them,
+            ; so it stayed at -1 even though there was no longer any
+            ; in-progress definition to be compiling. Every word on every
+            ; line sent afterward was then fed to INTERPRET while
+            ; STATE=-1, which compiles (and for immediate words, executes)
+            ; instead of interpreting - explaining the observed cascade
+            ; where one failed definition (GI5) turned every subsequent,
+            ; otherwise-correct test on later lines into further -13/-22
+            ; errors. QUIT/ABORT already reset STATE correctly (see the
+            ; BUG FIX comment above at this routine's entry) for a cold
+            ; boot or a fully-unwound ABORT; this is the matching reset
+            ; for QLOOP's own, lighter-weight per-line catch, which is
+            ; the path every ordinary typed/sent-line error actually
+            ; takes and previously left STATE untouched. ANS QUIT's own
+            ; semantics call for returning to interpretation state after
+            ; any uncaught exception, which is exactly this case.
+
+================================================================
+QOK.1  [bugfix]  (lines 2699-2714 of the stage-3a file)
+----------------------------------------------------------------
+QOK:        JSR   CRW               ; BUG FIX: was JSR CRW AFTER the STATE check
+                                    ; below, so "BNE QLOOP" (still compiling)
+                                    ; skipped both the CR echo and the ok
+                                    ; message together. The CR reflects a real
+                                    ; keystroke - the user genuinely pressed
+                                    ; Enter for that line - and should echo
+                                    ; regardless of interpret/compile state;
+                                    ; only the "ok" message itself should stay
+                                    ; conditional (correctly not shown mid-
+                                    ; definition). Previously, every line of a
+                                    ; multi-line colon definition after the
+                                    ; first had its line ending silently
+                                    ; dropped, so the echoed source ran
+                                    ; together onto one line with no
+                                    ; resemblance to what was actually typed.
+                                    ; Confirmed via MAME debugger.
+
+================================================================
+VUNUSEDW.1  [bugfix]  (lines 2948-2951 of the stage-3c file)
+----------------------------------------------------------------
+VUNUSEDW:   LDD   #APPVARSEND       ; was #APPCODE - a real bug, not just a
+            SUBD  VARHERE           ; missing check: computed a meaningless
+            PSHU  D                 ; distance to an unrelated region instead
+            RTS                     ; of remaining APPVARS space
+
+================================================================
+COLONW.1  [bugfix]  (lines 3086-3092 of the stage-3d file)
+----------------------------------------------------------------
+            LDD   CODEHERE          ; BUG FIX: record this word's own xt in CURXT
+            STD   CURXT             ; (safe to reuse NEWHDR's cell here - HEADER
+                                    ; is done with it) so RECURSE has a reliable
+                                    ; place to find it. RECURSE used to walk
+                                    ; LATEST's header instead, which broke inside
+                                    ; a :NONAME body (LATEST deliberately isn't
+                                    ; touched there) - see RECURSE and NONAME.
+
+================================================================
+NONAMEW.0  [explanatory]  (lines 3114-3134 of the stage-3d file)
+----------------------------------------------------------------
+; NONAME (":NONAME", CORE EXT): like COLON, but deliberately skips
+; HEADER entirely - no WORD call (consumes no name from the input),
+; no new header written at DPHERE, and LATEST is left completely
+; untouched. That's the ANS-required "no-name" definition: never
+; findable by FIND, never linked into the dictionary chain at all.
+; In this subroutine-threaded system the execution token IS the code
+; address (no separate CFA indirection, unlike CREATE's DODOES
+; trampoline), so the xt ANS requires :NONAME to leave on the stack
+; is simply CODEHERE at this instant - identical to what HEREW
+; returns - pushed BEFORE compilation of the body begins, matching
+; where ANS says :NONAME produces it. CSP is snapshotted AFTER that
+; push (mirroring COLON's own CSP snapshot, taken after HEADER's
+; transient pushes/pops have already netted back to baseline) so
+; SEMI's control-flow consistency check at ";" only catches a
+; genuinely unbalanced IF/DO etc. left over from the body, not the
+; xt itself, which is meant to still be there when ";" returns.
+; SEMI itself needs no changes: its unsmudge-the-word-at-LATEST step
+; still targets whatever LATEST already was (the previous NAMED
+; word, untouched by this routine) - a harmless no-op there, since a
+; normal definition is already unsmudged by the time any later
+; definition's SEMI runs.
+
+================================================================
+NONAMEW.1  [bugfix]  (lines 3137-3157 of the stage-3d file)
+----------------------------------------------------------------
+            STD   CURXT             ; BUG FIX: RECURSE needs this word's own xt
+                                    ; (see RECURSE and COLON's matching fix) -
+                                    ; :NONAME deliberately never touches LATEST
+                                    ; (correctly, per ANS - a :NONAME word is
+                                    ; never findable/linked), but RECURSE used to
+                                    ; unconditionally walk LATEST's header to find
+                                    ; the xt to recurse into. Inside a :NONAME
+                                    ; body that meant RECURSE compiled a call to
+                                    ; whatever NAMED word happened to be defined
+                                    ; most recently - a completely unrelated word
+                                    ; - rather than this one. Confirmed against
+                                    ; Annex F's RECURSE test (":NONAME ... CASE
+                                    ; ... RECURSE ... ENDCASE ; CONSTANT rn2"):
+                                    ; every case that actually took the RECURSE
+                                    ; path failed ttester's "WRONG NUMBER OF
+                                    ; RESULTS" (recursing into a different word
+                                    ; with a different stack effect), while
+                                    ; ordinary named RECURSE tests (rn1, 12's own
+                                    ; earlier definitions) were unaffected, since
+                                    ; LATEST is correct for those. STD here costs
+                                    ; nothing extra (D already holds CODEHERE).
+
+================================================================
+CONSTANTW.1  [bugfix (CREATEW occurrence)]  (lines 3173-3187 of the stage-3d file)
+----------------------------------------------------------------
+            LDD   CODEHERE          ; BUG FIX: same self-referential PFA bug as
+            ADDD  #2                ; CONSTANT/DEFER/2CONSTANT/MARKER (CONSTANT's
+            PSHU  D                 ; instance confirmed via MAME debugger) -
+            JSR   CODECOMMA         ; without +2 this pointed at itself instead
+                                    ; of the value cell that "," appends next.
+                                    ; Never on the previously-flagged list (only
+                                    ; DEFER/2CONSTANT/MARKER were), so it went
+                                    ; unfixed until confirmed by inspection here.
+                                    ; Confirmed via MAME: ": ENUM CREATE , DOES>
+                                    ; @ ;" returned the PFA-pointer field's own
+                                    ; address instead of the value COMMA stored
+                                    ; one cell further on - exactly "the address
+                                    ; before the 16-bit constant" instead of the
+                                    ; address 1 cell further on, matching a
+                                    ; user-reported MAME trace precisely.
+
+================================================================
+CONSTANTW.1  [bugfix]  (lines 3233-3243 of the stage-3d file)
+----------------------------------------------------------------
+            LDD   CODEHERE          ; BUG FIX: was storing CODEHERE's value as-is,
+            ADDD  #2                ; but at this point CODEHERE points at THIS
+            PSHU  D                 ; very cell, about to be written by the next
+            JSR   CODECOMMA         ; CODECOMMA - self-referential, not pointing
+                                    ; at the value cell 2 bytes further on where
+                                    ; the JSR COMMA below actually appends 1234.
+                                    ; +2 accounts for this FDB field's own width,
+                                    ; landing correctly on the value that follows.
+                                    ; Confirmed via MAME debugger: executing the
+                                    ; constant returned its own compile-time
+                                    ; CODEHERE address instead of the real value.
+
+================================================================
+CONSTANTW.1  [bugfix (TWOCONSTANTW occurrence)]  (lines 3322-3326 of the stage-3d file)
+----------------------------------------------------------------
+            LDD   CODEHERE          ; BUG FIX: same self-referential PFA bug as
+            ADDD  #2                ; CONSTANT (confirmed via MAME debugger) -
+            PSHU  D                 ; without +2 this pointed at itself instead
+            JSR   CODECOMMA         ; of the two-cell value that COMMA appends
+                                    ; below.
+
+================================================================
+CONSTANTW.1  [bugfix (DEFERW occurrence)]  (lines 3364-3371 of the stage-3d file)
+----------------------------------------------------------------
+            LDD   CODEHERE          ; BUG FIX: same self-referential PFA bug as
+            ADDD  #2                ; CONSTANT (confirmed via MAME debugger) -
+            PSHU  D                 ; without +2 this pointed at itself instead
+            JSR   CODECOMMA         ; of the value cell DOABORTUNDEF lands in
+                                    ; below. Confirmed by inspection: DODEFER's
+                                    ; own "LDD ,X" would have read the PFA's own
+                                    ; address and jumped there, crashing on
+                                    ; execution of any newly-DEFER'd word.
+
+================================================================
+CONSTANTW.1  [bugfix (MARKERW occurrence)]  (lines 3456-3466 of the stage-3d file)
+----------------------------------------------------------------
+            LDD   CODEHERE          ; BUG FIX: same self-referential PFA bug as
+            ADDD  #2                ; CONSTANT (confirmed via MAME debugger) -
+            PSHU  D                 ; without +2 this pointed at itself instead
+            JSR   CODECOMMA         ; of the four snapshot cells COMMA appends
+                                    ; below. Confirmed by inspection: DOMARKER's
+                                    ; own fixed-offset reads (,X / 2,X / 4,X /
+                                    ; 6,X) would have read garbage relative to
+                                    ; the intended MKDP/MKCODE/MKVAR/MKLATEST -
+                                    ; the most severe of the three, since using
+                                    ; a MARKER-created word would restore
+                                    ; corrupted dictionary-state pointers.
+
+================================================================
+DOESGTW.0  [explanatory]  (lines 3190-3195 of the stage-3d file)
+----------------------------------------------------------------
+; ----------------------------------------------------------
+; DOES> ( -- )  IMMEDIATE, compile-only. Compiles a call to
+; SETDOES. Code label DOESGT, not "DOES>" - a literal ">" is
+; not valid in a 6809 assembler label, same reason ?DUP/2DUP/
+; etc. all use mnemonic labels rather than their literal names.
+; ----------------------------------------------------------
+
+================================================================
+VALUEW.1  [bugfix]  (lines 3260-3265 of the stage-3d file)
+----------------------------------------------------------------
+            JSR   CODECOMMA         ; trampoline itself is still code
+            LDD   VARHERE           ; PFA = VARHERE, mutable space - was
+            PSHU  D                 ; CODEHERE; TO writes through this PFA,
+            JSR   CODECOMMA         ; so it must live in mutable space
+            JSR   VCOMMAW           ; store x into VARHERE via VCOMMA,
+                                    ; not COMMA (which targets CODEHERE)
+
+================================================================
+TWOCONSTANTW.1  [bugfix]  (lines 3327-3332 of the stage-3d file)
+----------------------------------------------------------------
+            PULU  D                 ; x2, off the top
+            STD   MSCR
+            LDD   MSCR              ; BUG FIX: standard layout is x2 at
+            PSHU  D                 ; the lower address, x1 above it
+            JSR   COMMAW            ; (matches 2@/2! below) - x2 -> low
+            JSR   COMMAW            ; x1 -> higher address
+
+================================================================
+INTERPRET.2  [history]  (lines 3544-3545 of the stage-3e file)
+----------------------------------------------------------------
+            CMPD  #0                ; was TSTD (6309-only) - PULU doesn't set CC on
+                                    ; genuine 6809, so compare D against 0 directly
+
+================================================================
+INTERPRET.1  [bugfix]  (lines 3512-3521 of the stage-3e file)
+----------------------------------------------------------------
+ILOOP:      LDD   #32               ; BUG FIX: WORD expects a delimiter char
+            PSHU  D                 ; pushed by its caller (PULU D/STB DELIM)
+                                    ; - nothing pushed one here before, so
+                                    ; WORD pulled from an empty U stack,
+                                    ; landing on live RSTACK content (SP0 is
+                                    ; RSTACK's own first byte) instead of a
+                                    ; real delimiter. Confirmed present in
+                                    ; both SERIALPOLL branches - IRQH never
+                                    ; touches U, so interrupt-driven mode
+                                    ; had no incidental workaround either.
+
+================================================================
+INTERPRET.3  [explanatory]  (lines 3548-3553 of the stage-3e file)
+----------------------------------------------------------------
+            CMPD  #1                ; NEW: distinguishes NUMBERQ's double-number
+            BEQ   TNDOUBLE          ; success code (1) from single (-1), added
+                                    ; to support ANS's double-number input
+                                    ; convention (forth-standard.org/standard/
+                                    ; usage#usage:numbers) - "123." parses as
+                                    ; a double-cell number, "123" as single.
+
+================================================================
+INTERPRET.4  [bugfix]  (lines 3593-3602 of the stage-3e file)
+----------------------------------------------------------------
+IDONE:      PULU  X                 ; BUG FIX: WORD always pushes a c-addr (WORDBUF),
+                                    ; even via its EMPTY branch - this path used to
+                                    ; branch straight here via a bare peek (LDX ,U,
+                                    ; never popped), stranding that address on U.
+                                    ; JSR FIND (the other path) consumes it via its
+                                    ; own PULU X; this does the same here, matching
+                                    ; that same convention rather than inventing a
+                                    ; different one. Confirmed via MAME debugger:
+                                    ; a spurious WORDBUF address was found sitting
+                                    ; on top of otherwise-correct stack contents.
+
+================================================================
+WORDW.5  [history]  (lines 3709-3710 of the stage-3e file)
+----------------------------------------------------------------
+COPYDONE:   LDX   CODEHERE          ; REDESIGN: was "LDX #WORDBUF", matching
+                                    ; the copy destination above.
+
+================================================================
+WORDW.6  [history]  (lines 3714-3714 of the stage-3e file)
+----------------------------------------------------------------
+; REDESIGN: was "LDX #WORDBUF" - same reason.
+
+================================================================
+WORDW.1  [bugfix]  (lines 3612-3621 of the stage-3e file)
+----------------------------------------------------------------
+            LBLO  EMPTY             ; BUG FIX: >IN beyond the end of the input
+                                    ; (SRCLEN < TOIN, unsigned borrow). The
+                                    ; remaining-length count below is unsigned,
+                                    ; and SKIPLP/SCANLP only stop at EXACTLY
+                                    ; zero, so an overshoot wrapped to ~65000
+                                    ; and WORD parsed stale memory far past the
+                                    ; TIB. ANS Annex F's own >IN tests overshoot
+                                    ; on purpose (e.g. ">IN +!" skipping text).
+                                    ; Treat any overshoot as an exhausted
+                                    ; parse area, same as exactly-at-end.
+
+================================================================
+WORDW.2  [explanatory]  (lines 3641-3668 of the stage-3e file)
+----------------------------------------------------------------
+            CMPB  #WORDMAXCHARS     ; REDESIGN: was "CMPB #31", capping WORD
+                                    ; at 31 characters regardless of what it was
+                                    ; parsing - a plain word, a defined name, or
+                                    ; the text of a compiled/interpreted S"
+                                    ; string, all fed through the same scan.
+                                    ; That cap came from WORDBUF's own fixed
+                                    ; 33-byte allocation (1 count byte + 32 data
+                                    ; bytes, with 1 byte of that never actually
+                                    ; used by this check), entirely unrelated to
+                                    ; CODEHERE or PAD. Traced via MAME: a longer
+                                    ; S" string was truncated during WORD's own
+                                    ; scan, before either S"'s interpreted-mode
+                                    ; (PAD) or compiled-mode (CODEHERE) storage
+                                    ; path ever got a chance to matter - the
+                                    ; PAD-based S" redesign a few turns ago
+                                    ; didn't help here because this is an
+                                    ; earlier stage entirely. Now uses the
+                                    ; CODEHERE-to-PAD gap directly, matching the
+                                    ; traditional fig-Forth layout (WORD's own
+                                    ; buffer at HERE, growing toward PAD, with
+                                    ; the pictured numeric output buffer at the
+                                    ; opposite end growing back toward HERE) -
+                                    ; WORDMAXCHARS reserves HOLDMINSIZE bytes at
+                                    ; the PAD end for that buffer, so the two
+                                    ; don't collide even though ANS itself would
+                                    ; permit them to (3.3.3.6: "the regions
+                                    ; returned by WORD and #> may overlap in
+                                    ; memory"). Confirmed via MAME debugger.
+
+================================================================
+WORDW.3  [bugfix]  (lines 3677-3688 of the stage-3e file)
+----------------------------------------------------------------
+ENDW:       PSHS  B                 ; BUG FIX: B holds the true character count from
+                                    ; SCANLP's own INCB loop, but B is D's low byte -
+                                    ; TFR X,D below would silently destroy it before
+                                    ; it's stored as the length byte. Save it here,
+                                    ; restore it right before STB ,X+. Affects every
+                                    ; token followed by more input on the same line
+                                    ; (terminated via CONSUME, not by running out of
+                                    ; buffer) - the stored length was TOIN's delta
+                                    ; instead of the true count, one too many (the
+                                    ; consumed delimiter), so the copy loop below
+                                    ; would also copy one byte past the token's real
+                                    ; end. Confirmed via MAME debugger.
+
+================================================================
+WORDW.4  [explanatory]  (lines 3694-3700 of the stage-3e file)
+----------------------------------------------------------------
+            LDX   CODEHERE          ; REDESIGN: was "LDX #WORDBUF" - now writes
+                                    ; at CODEHERE directly (see SCANLP above for
+                                    ; the full reasoning). CODEHERE itself is
+                                    ; NOT advanced by this - matches the ANS
+                                    ; transient-region contract, where WORD's
+                                    ; region is expected to be overwritten by
+                                    ; whatever gets compiled/allocated next.
+
+================================================================
+NUMBERQ.1  [explanatory]  (lines 3875-3887 of the stage-3e file)
+----------------------------------------------------------------
+            ; NEW: ANS double-number input convention (forth-standard.org/
+            ; standard/usage#usage:numbers, 3.4.1.3) - a number immediately
+            ; followed by a decimal point converts to a double-cell number
+            ; instead of single-cell ("1234" -> 1234; "1234." -> 1234 0).
+            ; Detected here to exclude the trailing '.' from CNTREM before
+            ; NUMLOOP runs, so it isn't mistaken for a digit. The decision
+            ; itself is re-derived independently at the end of this routine
+            ; (from CADDR and the original count, both still unchanged at
+            ; that point - confirmed nothing else in this routine, including
+            ; NUMLOOP/UDMULADD, ever touches CADDR) rather than remembered
+            ; in a new persistent flag here - GLOBALS is fully packed at
+            ; 256/256 bytes, and this avoids needing to carve out a byte
+            ; for it.
+
+================================================================
+NUMBERQ.2  [bugfix]  (lines 3918-3925 of the stage-3e file)
+----------------------------------------------------------------
+            ; BUG FIX (as part of this same change): was "LDD UDLO / TST
+            ; NUMNEG / BEQ NQPOS / COMA / COMB / ADDD #1" - negated only
+            ; the low 16 bits. Harmless for single-cell numbers (the high
+            ; cell was never returned before), but wrong once returning a
+            ; genuine 32-bit value for the double case - a negative double
+            ; needs the full 32-bit two's-complement negation, with any
+            ; carry out of the low-cell increment propagated into the
+            ; high cell.
+
+================================================================
+NUMBERQ.3  [bugfix]  (lines 3933-3947 of the stage-3e file)
+----------------------------------------------------------------
+            PSHS  CC                ; BUG FIX: save the TRUE carry from the
+                                    ; addition above, before it gets destroyed.
+                                    ; COM (used on UDHI just below) unconditionally
+                                    ; SETS carry=1 on the 6809, regardless of its
+                                    ; operand - a documented quirk, but one that
+                                    ; silently overwrote the real carry here
+                                    ; before the BCC check could ever read it,
+                                    ; making the high-cell increment run
+                                    ; UNCONDITIONALLY instead of only when the
+                                    ; low-cell addition actually overflowed.
+                                    ; Confirmed via MAME: "-123." returned high
+                                    ; cell 0 instead of -1, and "-123456."
+                                    ; returned -1 instead of -2 - both exactly
+                                    ; matching "always increment" rather than
+                                    ; "increment only on genuine carry".
+
+================================================================
+NUMBERQ.4  [bugfix]  (lines 3952-3967 of the stage-3e file)
+----------------------------------------------------------------
+            BCC   NQSTOREHI         ; BUG FIX: this used to be "BCC NQPOS32",
+                                    ; branching all the way PAST "STD UDHI"
+                                    ; when there's no carry - the complemented
+                                    ; value was computed in D but never
+                                    ; actually stored back to UDHI in that
+                                    ; case, leaving it at its stale, pre-
+                                    ; negation value. Masked by the carry bug
+                                    ; above in practice (that bug meant carry
+                                    ; was always seen as set, so this branch
+                                    ; was never actually taken, and STD UDHI
+                                    ; always ran) - fixing the carry check
+                                    ; alone would have made this second,
+                                    ; previously-latent bug live. Now branches
+                                    ; only past the "+1", never past the
+                                    ; store itself - the store always runs,
+                                    ; either way.
+
+================================================================
+X_KEY.1  [unused routine removed]  (lines 3438-3467 of the stage-3r file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; Unused alternative to KEY (nothing refers to it): take the next
+; character from the input ring if one is waiting, otherwise go to
+; KEYW. Re-checks the RTS flow control after removing the character.
+; X_KEY   ( -- char )
+;    Inputs:
+;        none
+;    Outputs:
+;        char pushed on the data stack
+;    Registers: RegA, RegB, RegX and CC changed.
+; ------------------------------------------------------------
+X_KEY:      LDA   INHEAD
+            CMPA  INTAIL
+            BEQ   KEYW
+            LDX   #INBUF
+            LDB   INTAIL
+            LDA   B,X
+            INCB
+            ANDB  #INBUFSZ-1
+            STB   INTAIL
+            PSHS  A                 ; stash the char on the return stack across
+                                    ; the call - JSR/RTS is self-balancing, so
+                                    ; this needs no dedicated scratch global
+            JSR   RTSCHECKLO
+            PULS  A
+            TFR   A,B
+            CLRA
+            PSHU  D                 ; char
+            RTS
+
+================================================================
+KEYW.1  [bugfix]  (lines 3979-3988 of the stage-3f file)
+----------------------------------------------------------------
+            ; BUG FIX: this used to mask IRQ (ORCC #$10) around the
+            ; FLUSHOUTBUFFER call. FLUSHOUTBUFFER can spin until the
+            ; whole OUTBUF drains (up to ~5.5ms at 115200 baud), and
+            ; masking IRQ for that whole span blocks IRQH's own INCHAR
+            ; path from servicing the receiver - precisely while RTS
+            ; is high because the receiver is already under pressure,
+            ; which is what was causing the returned overrun errors.
+            ; FLUSHOUTBUFFER only touches OUTHEAD/OUTTAIL/ACIACR, not
+            ; INHEAD/INTAIL, so there's no correctness reason to mask
+            ; the receiver interrupt here at all.
+
+================================================================
+KEYQW.1  [commented-out code]  (lines 4007-4007 of the stage-3f file)
+----------------------------------------------------------------
+            ; ORCC  #$10              ; Yes! Enter critical section
+
+================================================================
+KEYQW.2  [commented-out code]  (lines 4012-4012 of the stage-3f file)
+----------------------------------------------------------------
+            ; ANDCC #$EF              ; Exit critical section
+
+================================================================
+X_EMIT.1  [unused routine removed]  (lines 3516-3551 of the stage-3r file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; Unused alternative to EMIT (nothing refers to it): wait for a free
+; slot in the output ring, queue the character, and enable the Tx
+; interrupt unless RTS is high.
+; X_EMIT   ( char -- )
+;    Inputs:
+;        char on the data stack
+;    Outputs:
+;        char queued in the output ring
+;    Registers: RegA, RegB, RegX and CC changed; EMITCH used as
+;        scratch.
+; ------------------------------------------------------------
+
+X_EMIT:     PULU  D                 ; char
+            STB   EMITCH
+EMITWT:     LDB   OUTHEAD
+            INCB
+            ANDB  #OUTBUFSZ-1
+            CMPB  OUTTAIL
+            BEQ   EMITWT
+            LDX   #OUTBUF
+            LDB   OUTHEAD
+            LDA   EMITCH
+            STA   B,X
+            INCB
+            ANDB  #OUTBUFSZ-1
+            STB   OUTHEAD
+            TST   RTSSTATE
+            BNE   EMITNORTS         ; RTS is asserted high - leave ACIACR alone;
+                                    ; output stays queued until RTS drops low,
+                                    ; at which point RTSCHECKLO re-enables TX
+                                    ; interrupt itself if OUTBUF still has data
+            LDA   #CR_RXTX
+            STA   ACIACR
+EMITNORTS:  RTS
+
+================================================================
+KEYW.2  [explanatory]  (lines 4059-4073 of the stage-3f file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; Polling versions of KEY/KEYQ/EMIT (SERIALPOLL=1) - no ring
+; buffers, no interrupts, no hardware RTS/CTS handshaking (see
+; PUTXON/PUTXOFF below and ACCEPT for this build's software
+; substitute). Each blocks (KEY, EMIT) or checks once (KEYQ)
+; directly against ACIASR.
+;
+; KEY additionally: (1) counts framing/overrun/parity errors into
+; FECOUNT/OVRNCOUNT/PECOUNT - previously only the interrupt-driven
+; IRQH path checked these bits at all, so a real UART-level error
+; in a polling build went completely uncounted; (2) counts into
+; POLLREADYCNT every time RDRF is already set on the very first
+; check, before any spinning - a backlog signal distinct from a
+; genuine OVRN, see POLLREADYCNT's own comment at its RMB.
+; ------------------------------------------------------------
+
+================================================================
+PUTXON.0  [explanatory]  (lines 4106-4121 of the stage-3f file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; PUTXON / PUTXOFF - polling-mode software flow control. Sends
+; XON/XOFF as raw bytes straight to the ACIA, busy-waiting on
+; TDRE exactly like EMIT's own EMITWT, but bypassing the data
+; stack (U) and EMIT/EMITCH entirely - only A/B/S are touched, so
+; either is safe to call from ACCEPT at any point without
+; disturbing whatever's on U. See ACCEPT for where these are
+; called: XON at the start of every line (the host may stream
+; characters continuously while ACCEPT's own tight loop is
+; polling), XOFF the instant a line is complete (CR seen), before
+; handing off to INTERPRET/compilation - which does arbitrary,
+; variable-length work with KEY never polled at all, exactly the
+; window where a host that kept sending would build up a backlog
+; this polling build (with no ring buffer to hold it) has no way
+; to recover from correctly.
+; ------------------------------------------------------------
+
+================================================================
+CATCHW.2  [explanatory]  (lines 4313-4313 of the stage-3g file)
+----------------------------------------------------------------
+                                    ; may have legitimately changed it)
+
+================================================================
+CATCHW.1  [bugfix]  (lines 4294-4298 of the stage-3g file)
+----------------------------------------------------------------
+            ; BUG FIX: ANS CATCH must save the input-source specification
+            ; and THROW must restore it. A THROW out of a nested EVALUATE
+            ; (11_catch_throw's t9/t8/t7) left SRCADDR/SRCLEN/TOIN pointing
+            ; into the abandoned EVALUATE string, so the rest of the outer
+            ; line was lost and stray cells (6 7 -13 3) stayed on the stack.
+
+================================================================
+ELSEW.1  [bugfix]  (lines 4394-4399 of the stage-3g file)
+----------------------------------------------------------------
+ELOK:       PULU  D                 ; BUG FIX: same class as LOOP/EOFOK - was PULU X
+            STD   MSCR              ; then used via PSHU X after CCALL/CODECOMMA
+                                    ; below, both of which clobber X internally.
+                                    ; Saved to scratch (not parked on U, since
+                                    ; CODEHERE gets pushed onto U further down,
+                                    ; between the save and the retrieve).
+
+================================================================
+UNTILW.1  [bugfix]  (lines 4430-4432 of the stage-3g file)
+----------------------------------------------------------------
+UNOK:       PULU  D                 ; BUG FIX: same class as LOOP - was PULU X then
+            PSHU  D                 ; TFR X,D after CCALL/CODECOMMA, both of which
+                                    ; clobber X internally. Parked on U instead.
+
+================================================================
+AGAINW.1  [bugfix]  (lines 4453-4455 of the stage-3g file)
+----------------------------------------------------------------
+AGOK:       PULU  D                 ; BUG FIX: same class as LOOP - was PULU X then
+            PSHU  D                 ; TFR X,D after CCALL/CODECOMMA, both of which
+                                    ; clobber X internally. Parked on U instead.
+
+================================================================
+REPEATW.2  [explanatory]  (lines 4539-4545 of the stage-3g file)
+----------------------------------------------------------------
+RPFOUND:    LDX   MSCR4             ; MSCR4 already holds the found TAGBACK
+                                    ; frame's own address - no separate
+                                    ; "found at" variable needed
+            LDD   2,X               ; BEGIN's own branch-target address
+            STD   PFIELD            ; (reused exactly as the old code did -
+                                    ; PATCH's own first PULU overwrites
+                                    ; this immediately on entry anyway)
+
+================================================================
+REPEATW.1  [bugfix]  (lines 4492-4522 of the stage-3g file)
+----------------------------------------------------------------
+            ; BUG FIX: this used to assume the matching BEGIN frame sits
+            ; immediately below this WHILE's frame on U (just pop 2 more
+            ; cells and expect TAGBACK) - true for a plain BEGIN...
+            ; WHILE...REPEAT, but false for the standard ANS idiom that
+            ; nests a SECOND WHILE between the same BEGIN and REPEAT
+            ; (Annex F's GI5: "BEGIN DUP 2 > WHILE DUP 5 < WHILE DUP 1+
+            ; REPEAT 123 ELSE 345 THEN" - the OUTER WHILE is deliberately
+            ; left open here, to be closed later by ELSE/THEN, not by
+            ; this REPEAT, since WHILE and IF push an identical TAGFWD
+            ; frame). Blindly popping the next 4 bytes landed on the
+            ; outer WHILE's TAGFWD where TAGBACK was expected, throwing
+            ; -22 via CFERR every time (confirmed on real hardware/MAME:
+            ; GI5 itself failed to compile, and left U corrupted enough
+            ; to cascade failures into every word compiled afterward in
+            ; the same session). Fixed by scanning past any intervening
+            ; still-open TAGFWD frames to find the real TAGBACK, then
+            ; closing the 4-byte gap left behind so those intervening
+            ; frames end up shallower by exactly one frame but otherwise
+            ; undisturbed - right where ELSE/THEN will later expect them.
+            LEAX  0,U
+            STX   MSCR2             ; MSCR2 = base: start of scan region,
+                                    ; fixed for the whole routine
+            STX   MSCR4             ; MSCR4 = current scan pointer, moves
+                                    ; forward each pass (borrowed scratch -
+                                    ; direct page is only 1 byte short of
+                                    ; full, see GLOBALS_USED, so reusing
+                                    ; the generic MSCR2/3/4 cells rather
+                                    ; than adding new globals; safe since
+                                    ; nothing else compile-time-only runs
+                                    ; concurrently) - matches EXIT's own
+                                    ; CSP-bounded scan loop style above
+
+================================================================
+RECURSEW.1  [bugfix]  (lines 4594-4612 of the stage-3g file)
+----------------------------------------------------------------
+RECURSEW:   LDD   CURXT             ; BUG FIX: used to walk LATEST's header (skip
+            PSHU  D                 ; the length/flags byte, then the name, then
+            JSR   CCALL             ; the link cell, to read the xt cell HEADER
+            RTS                     ; stores right after it) to find the xt to
+                                    ; recurse into. That only works when LATEST
+                                    ; actually points at the word being compiled
+                                    ; - true for an ordinary COLON definition,
+                                    ; but :NONAME deliberately never updates
+                                    ; LATEST (see its own comment), so RECURSE
+                                    ; inside a :NONAME body found whatever NAMED
+                                    ; word was defined most recently instead -
+                                    ; confirmed against Annex F's RECURSE/CASE
+                                    ; test (":NONAME ... RECURSE ... ENDCASE ;
+                                    ; CONSTANT rn2"). Both COLON and NONAME now
+                                    ; record their own xt in CURXT directly, so
+                                    ; RECURSE just reads that back - correct for
+                                    ; both named and anonymous definitions, and
+                                    ; no more header-field-offset arithmetic to
+                                    ; get wrong.
+
+================================================================
+IWORDW.1  [bugfix]  (lines 4637-4645 of the stage-3g file)
+----------------------------------------------------------------
+IWORDW:     LDD   2,S               ; BUG FIX: PULS X/PSHS X used to bracket this
+            PSHU  D                 ; read, shifting S by 2 first - so "2,S" landed
+            RTS                     ; on the limit (what's really at 4,S unshifted)
+                                    ; instead of the index. The pair served no
+                                    ; purpose (nothing needed offset 0 for anything
+                                    ; here) - removed, so 2,S directly and
+                                    ; correctly targets the index DOSETUP pushed
+                                    ; there. Confirmed via MAME debugger: "I"
+                                    ; returned the loop limit on every iteration.
+
+================================================================
+JWORDW.1  [bugfix]  (lines 4647-4665 of the stage-3g file)
+----------------------------------------------------------------
+JWORDW:     LDD   8,S               ; CORRECTION: an earlier turn changed this to
+            PSHU  D                 ; 10,S, which was itself wrong - it assumed
+            RTS                     ; DOSETUP's own JSR-pushed return address
+                                    ; persists on S once each DOSETUP finishes.
+                                    ; It doesn't: DOSETUP's own RTS pops and
+                                    ; consumes it to jump into the loop body, so
+                                    ; it never actually sits on S for J to count
+                                    ; past. Re-traced by counting every real
+                                    ; push/pop across a nested DO: after the
+                                    ; inner DOSETUP finishes, S is [inner-index@0]
+                                    ; [inner-limit@2][inner-leave@4][outer-
+                                    ; index@6][outer-limit@8][outer-leave@10] -
+                                    ; J's own JSR pushes one more cell on top,
+                                    ; landing outer-index at 8, not 10. Offset 10
+                                    ; read the outer loop's limit instead - a
+                                    ; fixed value every iteration, exactly
+                                    ; matching the observed bug (J stuck at the
+                                    ; limit, never progressing). Confirmed via a
+                                    ; real MULT-TABLE test on MAME.
+
+================================================================
+LEAVEW.1  [bugfix]  (lines 4667-4678 of the stage-3g file)
+----------------------------------------------------------------
+LEAVEW:     LDD   #TRUEV            ; BUG FIX (earlier): was PULS X first, shifting
+            STD   6,S               ; S by 2 before this write, landing 2 bytes
+            RTS                     ; past the LEAVE flag DOSETUP actually pushed.
+                                    ; Fixed by deferring PULS X to after the
+                                    ; write - but that left a PULS X/PSHS X pair
+                                    ; that had become a genuine no-op (nothing
+                                    ; between them touches S or X, and this
+                                    ; routine never uses X's value for anything,
+                                    ; unlike DOTEST's own deferred PULS X, which
+                                    ; feeds LDD ,X/LEAX D,X afterward). Removed,
+                                    ; per the parallel 68000 port's observation,
+                                    ; confirmed by inspection.
+
+================================================================
+LOOPW.1  [bugfix]  (lines 4684-4698 of the stage-3g file)
+----------------------------------------------------------------
+LOOPOK:     PULU  D                 ; BUG FIX: was PULU X, then TFR X,D to retrieve
+            PSHU  D                 ; it after CCALL/CODECOMMA below - but both of
+                                    ; those clobber X internally (CCALL's own LDX
+                                    ; CODEHERE, CODECOMMA's LDX #CODEHERE via
+                                    ; APPENDCELL), so X no longer held the target
+                                    ; by the time TFR X,D ran - it held the address
+                                    ; of the CODEHERE variable itself, corrupting
+                                    ; the branch displacement PATCH computed.
+                                    ; Parking the target on U instead (untouched by
+                                    ; CCALL/CODECOMMA, which only use D/X/A) keeps
+                                    ; it safe across both calls; retrieved below via
+                                    ; PULU D in place of the old TFR X,D. Confirmed
+                                    ; via MAME debugger: the compiled displacement
+                                    ; came out as +8, executing DOTEST's return to
+                                    ; a near-zero, invalid address.
+
+================================================================
+LOOPW.2  [bugfix]  (lines 4715-4718 of the stage-3g file)
+----------------------------------------------------------------
+            CMPD  #TAGQDO           ; BUG FIX: was TAGFWD - collided with an
+                                    ; enclosing, still-open IF/WHILE's own
+                                    ; TAGFWD frame (see TAGQDO's definition
+                                    ; above). Only ?DO leaves TAGQDO here.
+
+================================================================
+DOTEST.1  [bugfix]  (lines 4728-4742 of the stage-3g file)
+----------------------------------------------------------------
+DOTEST:     LDD   6,S               ; BUG FIX: PULS X used to run FIRST, shifting S
+            BNE   DTEXIT            ; by 2 before these offset reads - "6,S" ended
+            LDD   2,S               ; up reading past the 3 cells DOSETUP pushed,
+            ADDD  #1                ; into whatever return address was already on
+            STD   2,S               ; S below them (e.g. EXECUTE's own), which is
+            CMPD  4,S               ; almost always nonzero - so BNE DTEXIT fired
+            BEQ   DTEXIT            ; on the very first pass, exiting immediately.
+            PULS  X                 ; X (the return address to the FDB <offset>
+            LDD   ,X                ; field, needed for the back-branch) is only
+            LEAX  D,X               ; actually needed here and in DTEXIT below -
+            PSHS  X                 ; deferred to each path separately instead of
+            RTS                     ; popped once up front. Confirmed via MAME
+                                    ; debugger: DOTEST was tested at $E184, a
+                                    ; leftover EXECUTE return address, instead of
+                                    ; the intended $0000 LEAVE flag.
+
+================================================================
+PLUSLOOPW.1  [bugfix]  (lines 4753-4756 of the stage-3g file)
+----------------------------------------------------------------
+PLOOPOK:    PULU  D                 ; BUG FIX: same class as LOOP above - was PULU X
+            PSHU  D                 ; then TFR X,D after CCALL/CODECOMMA, both of
+                                    ; which clobber X internally. Parked on U
+                                    ; instead, retrieved below via PULU D.
+
+================================================================
+PLUSLOOPW.2  [bugfix]  (lines 4773-4775 of the stage-3g file)
+----------------------------------------------------------------
+            CMPD  #TAGQDO           ; BUG FIX: was TAGFWD - same collision as
+                                    ; LOOP's identical peek; see TAGQDO's
+                                    ; definition above.
+
+================================================================
+DOPLUSTEST.1  [bugfix]  (lines 4785-4804 of the stage-3g file)
+----------------------------------------------------------------
+DOPLUSTEST: PULU  D                 ; BUG FIX: this PULU D used to run AFTER the
+            STD   MSCR              ; LEAVE-flag check below (LDD 6,S/BNE DPTEXIT),
+                                    ; so when LEAVE had set the flag, DPTEXIT was
+                                    ; reached without ever popping the step value
+                                    ; that "n +LOOP" always pushes onto U before
+                                    ; calling here. That left the step value
+                                    ; stranded on the data stack every time LEAVE
+                                    ; fired before the natural boundary crossing -
+                                    ; confirmed against Annex F's GD7 (a DO ... I
+                                    ; ... LEAVE ... +LOOP word): every case where
+                                    ; the internal counter hit LEAVE before +LOOP's
+                                    ; own limit test would otherwise fire reported
+                                    ; ttester's "WRONG NUMBER OF RESULTS" (one extra
+                                    ; item), and the leftover item then threw off
+                                    ; later tests' own stack baselines too. Moved
+                                    ; PULU D/STD MSCR to the top, unconditionally,
+                                    ; before the LEAVE check - it's needed on every
+                                    ; path (LEAVE-exit, boundary-exit, and the
+                                    ; continue-looping path alike), not just the
+                                    ; two paths that used to reach it.
+
+================================================================
+DOPLUSTEST.2  [bugfix]  (lines 4805-4809 of the stage-3g file)
+----------------------------------------------------------------
+            LDD   6,S               ; BUG FIX (earlier): PULS X used to run first,
+            BNE   DPTEXIT           ; shifting S by 2 before every one of these
+                                    ; offset reads (6,S/2,S/4,S), landing past the
+                                    ; 3 cells DOSETUP pushed. Deferred PULS X to
+                                    ; each path separately below, same fix as DOTEST.
+
+================================================================
+DOPLUSTEST.3  [bugfix]  (lines 4818-4851 of the stage-3g file)
+----------------------------------------------------------------
+            ; BUG FIX: the previous test here compared the SIGNS of
+            ; old_u/new_u as plain 16-bit two's complement values (EORA
+            ; of their high bytes, BMI on a sign flip). That's wrong in
+            ; general: a signed 16-bit difference's sign bit flips at
+            ; TWO points on the 65536-value ring, not one - at the true
+            ; limit (correct) AND at the antipodal point exactly halfway
+            ; around (spurious, nothing to do with limit at all). Any
+            ; small/ordinary loop range never reaches that second point,
+            ; so GD2 and friends still passed - but Annex F's GD8 (its
+            ; "ustep"/"step" constants are deliberately sized to march
+            ; the index across nearly the whole MAX-UINT/MAX-INT range)
+            ; hits the spurious antipodal flip first every time, exiting
+            ; at exactly half the correct iteration count (128 instead
+            ; of 256) - confirmed by simulating both the old algorithm
+            ; and the fix below against GD8's own 4 cases, and checking
+            ; the fix still agrees with the old algorithm (and with
+            ; hardware-confirmed behavior) on GD2, a limit=0 decreasing
+            ; loop, and an exact-landing case, where the two never
+            ; differed. Correct, general test: compare old_u and new_u
+            ; as UNSIGNED values and ask which direction they moved -
+            ; crossing limit means this unsigned "distance from limit"
+            ; measure wrapped around 0/65536, and it can only wrap in
+            ; the direction the step is actually heading. Which
+            ; comparison applies depends on the step's own sign, so
+            ; branch on that first.
+            LDD   MSCR              ; reload the step to test its sign
+            BMI   DPNEG
+DPPOS:      LDD   MSCR3             ; step positive: crossed iff new_u < old_u
+            CMPD  MSCR2             ; (unsigned) - the "distance from limit"
+            BLO   DPTEXIT           ; measure wrapped back down through zero.
+            BRA   DPCONT
+DPNEG:      LDD   MSCR3             ; step negative: crossed iff new_u > old_u
+            CMPD  MSCR2             ; (unsigned) - the measure wrapped up past
+            BHI   DPTEXIT           ; 65535 back toward zero from the other side.
+
+================================================================
+QDOW.1  [bugfix]  (lines 4872-4875 of the stage-3g file)
+----------------------------------------------------------------
+            LDD   #TAGQDO           ; BUG FIX: was TAGFWD - indistinguishable
+                                    ; from an enclosing IF/WHILE's own pending
+                                    ; TAGFWD frame from LOOP/PLUSLOOP's later
+                                    ; peek. See TAGQDO's definition above.
+
+================================================================
+EXITUNLOOP.1  [bugfix]  (lines 4937-4941 of the stage-3g file)
+----------------------------------------------------------------
+EXITUNLOOP: PULS  X                 ; BUG FIX (GD6 3: expected 4 1 2, got 4 1 1): standard
+            PULS  Y                 ; EXIT does NOT discard loop frames - the program
+            JMP   ,Y                ; must UNLOOP first (UNLOOP is a real discard again, above).
+                                    ; The inline count (X) is now ignored, so the
+                                    ; EXSCAN compile-time count above is harmless.
+
+================================================================
+CASEW.1  [bugfix]  (lines 4943-4967 of the stage-3g file)
+----------------------------------------------------------------
+CASEW:      LDD   #0                ; BUG FIX HISTORY: this filler cell was removed
+            PSHU  D                 ; once already (see below) because nothing in
+            LDD   #TAGCASE          ; OF/ENDOF read it and ENDCASE's ECDONE path
+            PSHU  D                 ; didn't pop it either, stranding it below CSP
+            RTS                     ; and throwing -22 on ";" for a plain CASE...
+                                    ; ENDCASE with no OF clauses. That fix (just
+                                    ; pushing TAGCASE alone, 2 bytes) solved that,
+                                    ; but EXIT's compile-time control-flow-stack
+                                    ; scan (see EXIT/EXSCAN below) steps from U to
+                                    ; CSP in fixed 4-byte strides, same as every
+                                    ; other structure's frame (DO leaves [CODEHERE]
+                                    ; [TAGDO], OF leaves [patch-addr][TAGOF], both
+                                    ; 4 bytes) - a lone 2-byte CASEW frame throws
+                                    ; that stride off by 2 bytes, so an EXIT
+                                    ; compiled inside a CASE's OF clause scans past
+                                    ; CSP forever (confirmed: MAME hangs inside
+                                    ; EXITUNLOOP's caller, looping until 16-bit
+                                    ; rollover, on ": X 1- DUP CASE 0 OF EXIT
+                                    ; ENDOF ... ENDCASE ;"). Restored the 2-cell/
+                                    ; 4-byte frame here to match DO/OF, and fixed
+                                    ; ENDCASE's ECDONE path (below) to pop the
+                                    ; paired filler cell there instead of leaving
+                                    ; it stranded - keeping both the CSP balance
+                                    ; for the no-OF-clause case AND the 4-byte
+                                    ; alignment EXIT's scan depends on.
+
+================================================================
+ENDOFW.1  [bugfix]  (lines 4995-5001 of the stage-3g file)
+----------------------------------------------------------------
+EOFOK:      PULU  D                 ; BUG FIX: same class as LOOP - was PULU X then
+            STD   MSCR              ; used via PSHU X after CCALL/CODECOMMA below,
+                                    ; both of which clobber X internally. Saved to
+                                    ; scratch instead (not parked on U, since
+                                    ; CODEHERE gets pushed onto U further down,
+                                    ; between the save and the retrieve below -
+                                    ; parking on U would retrieve that instead).
+
+================================================================
+ENDCASEW.1  [bugfix]  (lines 5037-5044 of the stage-3g file)
+----------------------------------------------------------------
+ECDONE:     PULU  D                 ; discard CASEW's paired filler cell - see the
+                                    ; comment at CASEW above. Without this, that
+                                    ; cell is left stranded below CSP the moment
+                                    ; we hit TAGCASE and return, which is exactly
+                                    ; the bug CASEW's frame was once shrunk to
+                                    ; avoid; popping it here instead keeps CSP
+                                    ; balanced without reintroducing the EXIT
+                                    ; scan-alignment bug that shrinking it caused.
+
+================================================================
+CCALL.1  [bugfix]  (lines 5094-5103 of the stage-3h file)
+----------------------------------------------------------------
+CCALL:      LDX   CODEHERE          ; BUG FIX: was PULU D first, then LDA #OPJSR -
+            LDA   #OPJSR            ; but A is D's high byte, so that LDA silently
+            STA   ,X+               ; destroyed the top byte of the address PULU D
+            PULU  D                 ; had just pulled, and the STD below wrote out
+            STD   ,X++              ; the corrupted result - a JSR to a garbage
+                                    ; target address. Deferring PULU D until after
+                                    ; STA ,X+ means D is never live at the same time
+                                    ; A gets reused for the opcode, so nothing
+                                    ; clobbers it. Confirmed via MAME debugger:
+                                    ; execution jumped to random memory.
+
+================================================================
+XCOMPILEW.0  [explanatory]  (lines 5158-5177 of the stage-3h file)
+----------------------------------------------------------------
+; [COMPILE] ( "name" -- )  IMMEDIATE, compile-only. OBSOLESCENT per
+; the ANS standard - POSTPONE (above) is its modern, more general
+; replacement (see POSTPONEW's own header/comment and the GLOSSARY
+; doc). Unlike POSTPONE, [COMPILE] does NOT distinguish immediate
+; from non-immediate words: it always compiles a direct call to the
+; found word's xt, right now, at the point [COMPILE] itself runs -
+; identical to POSTPONE's own PPIMM branch, reused directly here.
+; That's exactly why [COMPILE] was superseded: for a "default-
+; compilation" word (one whose own compiling behavior is itself
+; CREATEd/DOES>-built rather than a fixed JSR, e.g. many words built
+; via : NAME CREATE , DOES> ... ; IMMEDIATE patterns), compiling a
+; direct call to it here is not always equivalent to appending its
+; real compilation semantics - POSTPONE's two-level LIT+COMPILE,
+; mechanism (see PPFOUND above) is needed for full generality.
+; [COMPILE] remains correct for the ordinary case (works on any
+; word whose compilation semantics really is "compile a call to me"
+; - true of every immediate word in this implementation, and of
+; every plain/non-immediate word by definition) - ANS Annex F's own
+; F.6.2.2530 test (13_compiling_words.tests.fs) exercises exactly
+; that ordinary case (DUP, a user-defined immediate word, and IF).
+
+================================================================
+ABORTQUOTEW.1  [bugfix]  (lines 5262-5265 of the stage-3h file)
+----------------------------------------------------------------
+            LDD   CODEHERE          ; BUG FIX: same class as SQUOTE/DOTQUOTE -
+            ADDD  #3                ; reserve 3 bytes ahead of WORD's write so
+            STD   CODEHERE          ; the trampoline compiled below doesn't
+                                    ; overwrite the text it's about to stage.
+
+================================================================
+MINUSW.1  [explanatory]  (lines 5689-5690 of the stage-3j file)
+----------------------------------------------------------------
+; MSCR is declared once in the GLOBALS layout above - no local
+; redeclaration needed here.
+
+================================================================
+STARW.1  [explanatory]  (lines 5770-5770 of the stage-3j file)
+----------------------------------------------------------------
+; was "ADDA B" - not valid 6809 syntax
+
+================================================================
+STARW.2  [explanatory]  (lines 5777-5777 of the stage-3j file)
+----------------------------------------------------------------
+; was "ADDA B" - not valid 6809 syntax
+
+================================================================
+UDIV32.1  [bugfix]  (lines 5912-5949 of the stage-3j file)
+----------------------------------------------------------------
+; BUG FIX (found from a hardware report on UM/MOD's own ANS Annex F
+; boundary test, F.6.1.2370: "MAX-UINT MAX-UINT UM* MAX-UINT UM/MOD
+; -> 0 MAX-UINT" - got 0 65535 for (remainder, quotient) wrong-way-
+; round, actually got (1, 0) - and traced back here, since SM/REM,
+; UM/MOD, FM/MOD, and plain /, MOD, /MOD (via DIVCOMMON) all share
+; this one routine). This is the classic off-by-one-bit boundary bug
+; in a 32-bit-dividend/16-bit-divisor restoring-division shift loop:
+; DIVREM is only a 16-bit register, but the value it needs to compare
+; against DIVDEN (the divisor) each iteration, just after the whole
+; DIVREM:PRODHI:PRODLO chain shifts left by one bit, can transiently
+; need a 17th bit - the true "remainder so far, doubled, plus the new
+; incoming dividend bit" can reach up to 2*(DIVDEN-1)+1, which for a
+; divisor near MAX-UINT (as in the failing test, DIVDEN=$FFFF) can
+; exceed $FFFF and overflow the 16-bit DIVREM register. The old code
+; (ROL DIVREM as the last link in the shift chain, then straight into
+; LDD DIVREM/SUBD DIVDEN/BLO) simply discarded that overflow bit - it
+; falls out of ROL DIVREM's own carry flag and was never tested -  so
+; whenever it was set, DIVREM's 16 bits alone read as SMALLER than
+; DIVDEN even though the true (17-bit) value was actually larger,
+; wrongly skipping a subtraction (and its quotient bit) that should
+; have happened. Confirmed by simulating this exact instruction
+; sequence in Python against a known-correct reference division and a
+; 200,000-case random fuzz run: the original code was the only one
+; that failed, and only on inputs that hit this exact overflow
+; condition (the MAX-UINT/MAX-UINT case being the smallest/simplest
+; one in this test corpus, not a coincidence - DIVDEN=$FFFF is the
+; case where the overflow condition is easiest to trigger). Fixed by
+; testing the carry out of ROL DIVREM (the chain's final link, so
+; this carry IS that discarded 17th bit) before ever touching DIVREM
+; via LDD: if set, the true 17-bit value is DIVREM+$10000, which is
+; always >= any 16-bit DIVDEN, so the subtraction is known to succeed
+; without needing the CMPD/BLO test at all - and the plain 16-bit
+; "DIVREM - DIVDEN" (letting it wrap how it wraps) IS the correct new
+; remainder, since adding $10000 then subtracting DIVDEN and dropping
+; the now-impossible 17th bit again is exactly equivalent mod $10000.
+; LDD does not itself affect the carry flag on the 6809 (only N/Z,
+; clears V), but BCS is placed immediately after ROL DIVREM anyway,
+; before anything else, so this isn't relied upon.
+
+================================================================
+MSTARW.1  [bugfix]  (lines 6109-6124 of the stage-3j file)
+----------------------------------------------------------------
+            TSTA                    ; BUG FIX: CLR MSIGN unconditionally sets N=0
+                                    ; (CLR always clears to 0), overwriting D's
+                                    ; own flags from the PULU above - and PULU
+                                    ; doesn't set flags on genuine 6809 anyway
+                                    ; (same class as TRYNUM/STOD/SIGN's own fixes
+                                    ; elsewhere in this file), so BPL was always
+                                    ; testing CLR's result, not n1's actual sign.
+                                    ; BPL always branched, meaning n1 was NEVER
+                                    ; negated even when genuinely negative - found
+                                    ; via MAME: TSTMSTAR's two returned values
+                                    ; came back wrong, which turned out to be
+                                    ; this, not a push-order swap in the test
+                                    ; itself. FMSLASHMOD/SMSLASHREM already do
+                                    ; this correctly (explicit TST PRODHI between
+                                    ; their own CLR calls and the branch) - MSTAR
+                                    ; was simply missing the equivalent re-test.
+
+================================================================
+STODW.1  [bugfix]  (lines 6348-6360 of the stage-3j file)
+----------------------------------------------------------------
+            TSTA                    ; BUG FIX: was a bare "BPL SDPOS" right after
+                                    ; PULU - PULU doesn't affect condition codes
+                                    ; on genuine 6809 (same class as TRYNUM's own
+                                    ; PULU-then-compare fix elsewhere in this
+                                    ; file), so BPL was testing whatever flags an
+                                    ; unrelated, earlier instruction happened to
+                                    ; leave set, not the sign of the value just
+                                    ; popped. TSTA explicitly tests D's high byte
+                                    ; (bit 7 of A reflects the full 16-bit value's
+                                    ; sign) immediately before the branch that
+                                    ; depends on it. Confirmed via MAME debugger:
+                                    ; "-123 S>D" returned high cell 0 instead of
+                                    ; -1 - no sign extension was happening at all.
+
+================================================================
+DFETCHW.1  [bugfix]  (lines 6838-6843 of the stage-3k file)
+----------------------------------------------------------------
+DFETCHW:    PULU  X                 ; BUG FIX (runner, section 18): standard
+            LDD   2,X               ; 2@ ( a -- x1 x2 ) has x2 at a and x1 at
+            PSHU  D                 ; a+cell. Was the other way round (it
+            LDD   ,X                ; round-tripped with 2! but a memory
+            PSHU  D                 ; image 5,6 gave 5 6 not 6 5). Now x1
+            RTS                     ; (high addr) deep, x2 (low addr) on top.
+
+================================================================
+CMOVEW.1  [bugfix]  (lines 6862-6873 of the stage-3k file)
+----------------------------------------------------------------
+            SUBD  #1                ; BUG FIX: was after the byte copy below -
+            STD   MVCNT             ; LDA ,X+ (needed for the byte itself)
+                                    ; clobbers A, D's high byte, corrupting the
+                                    ; count before SUBD used it. Unlike FILL,
+                                    ; there's no spare 16-bit register to keep
+                                    ; the count in instead - X and Y are both
+                                    ; already committed to the source and
+                                    ; destination addresses - so the fix here is
+                                    ; reordering: decrement and store while D
+                                    ; still holds the true count, before the
+                                    ; copy is free to clobber A. Confirmed via
+                                    ; MAME debugger: the loop never terminated.
+
+================================================================
+FILLW.1  [bugfix]  (lines 6930-6949 of the stage-3k file)
+----------------------------------------------------------------
+            TFR   D,Y               ; BUG FIX: was STD FILLCNT/LDD FILLCNT each
+                                    ; iteration - and inside the loop, LDA
+                                    ; FILLCHR (needed for the fill byte) clobbers
+                                    ; A, which is D's high byte, corrupting the
+                                    ; count that SUBD #1 then decremented from.
+                                    ; The high byte took on the fill character's
+                                    ; value instead of the count's real high
+                                    ; byte, so the count almost never reached
+                                    ; zero at the intended point - FILL ran far
+                                    ; past the requested length. Keeping the
+                                    ; count in Y instead removes the conflict
+                                    ; entirely (Y is untouched by loading the
+                                    ; fill character into A) and removes the
+                                    ; per-iteration memory round-trip - also
+                                    ; addresses the redundant scratch usage
+                                    ; flagged alongside this bug. Confirmed via
+                                    ; MAME debugger.
+            PULU  D
+            TFR   D,X               ; address, kept directly in X rather than
+                                    ; round-tripping through FILLADDR too
+
+================================================================
+SQUOTEW.1  [bugfix]  (lines 7105-7117 of the stage-3l file)
+----------------------------------------------------------------
+            LDD   CODEHERE          ; BUG FIX (caught while verifying the WORD
+            ADDD  #3                ; redesign above): reserve 3 bytes ahead of
+            STD   CODEHERE          ; where WORD is about to write its parsed
+                                    ; text. Without this, the compiled path
+                                    ; below would compile "JSR DOSTR" (3 bytes)
+                                    ; directly at CODEHERE - the same address
+                                    ; WORD just used - overwriting the first 2
+                                    ; characters of the very text being staged,
+                                    ; before the copy loop even runs. Reserving
+                                    ; the gap first means the text lands exactly
+                                    ; where it needs to end up, and the trampoline
+                                    ; safely goes in front of it instead of on
+                                    ; top of it.
+
+================================================================
+SQUOTEW.2  [explanatory]  (lines 7146-7171 of the stage-3l file)
+----------------------------------------------------------------
+SQINTERP:                           ; REDESIGN: was a fixed "LDX #SIBUF" here and at SQIEND -
+                                    ; SIBUF was a dedicated, fixed 32-byte buffer,
+                                    ; capping every interpreted S" string at 32
+                                    ; characters and (worse) shared identically
+                                    ; by every S" call, so a second S" call before
+                                    ; the first string was actually used (e.g.
+                                    ; registering two REPLACES strings, or a
+                                    ; SUBSTITUTE template argument) silently
+                                    ; overwrote the first - confirmed via MAME
+                                    ; testing and traced precisely earlier this
+                                    ; session. Retired per user's own follow-up
+                                    ; testing/design decision: rather than give
+                                    ; REPLACES its own dedicated copy-on-register
+                                    ; storage, wrap each string in its own colon
+                                    ; definition for stable storage instead - but
+                                    ; that still leaves interpreted S" itself
+                                    ; capped at SIBUF's 32 characters for any
+                                    ; single string. Now computes PAD's current
+                                    ; address fresh via PADW (dynamic - depends
+                                    ; on CODEHERE, per ANS's own transient-region
+                                    ; semantics) and writes there instead, giving
+                                    ; interpreted S" access to PAD's full
+                                    ; PADMINSIZE-character region (128, comfortably
+                                    ; above the old 32-character SIBUF limit) -
+                                    ; SIBUF itself is now unused and retired (see
+                                    ; the GLOBALS layout notes above).
+
+================================================================
+DOTQUOTEW.1  [bugfix]  (lines 7208-7211 of the stage-3l file)
+----------------------------------------------------------------
+            LDD   CODEHERE          ; BUG FIX: same class as SQUOTE above -
+            ADDD  #3                ; reserve 3 bytes ahead of WORD's write so
+            STD   CODEHERE          ; the trampoline compiled below doesn't
+                                    ; overwrite the text it's about to stage.
+
+================================================================
+PARSEW.1  [bugfix]  (lines 7298-7300 of the stage-3l file)
+----------------------------------------------------------------
+            LBLO  PNEMPTY           ; BUG FIX: same >IN-overshoot guard as WORD
+                                    ; - shares PNEMPTY (sets >IN to SRCLEN,
+                                    ; returns end-of-input addr and length 0).
+
+================================================================
+PARSENAMEW.1  [bugfix]  (lines 7331-7331 of the stage-3l file)
+----------------------------------------------------------------
+; BUG FIX: same >IN-overshoot guard as WORD
+
+================================================================
+UNESCAPEW.3  [explanatory]  (lines 7591-7598 of the stage-3l file)
+----------------------------------------------------------------
+            LDB   #'%'              ; write the extra '%' first - the character
+            STB   ,Y+               ; itself still gets written once more below,
+                                    ; giving two '%' total for each one in the
+                                    ; source. Handles multiple '%' characters in
+                                    ; the same string correctly, since this runs
+                                    ; independently for each one the loop visits.
+UENOTPCT:   STA   ,Y+               ; write the actual character - always, for
+                                    ; every character, '%' or not
+
+================================================================
+UNESCAPEW.1  [bugfix]  (lines 7548-7557 of the stage-3l file)
+----------------------------------------------------------------
+UNESCAPEW:  PULU  D                 ; BUG FIX: was PULU D/STD UESRCLEN (storing
+            STD   UEDST             ; the popped dest-addr into the SOURCE-
+                                    ; length variable), then LDD ,U (a PEEK, not
+                                    ; a pop) into BOTH UEADDR and UEDST - so the
+                                    ; real source length was misread as an
+                                    ; address, the real source address was never
+                                    ; popped at all, and the true destination
+                                    ; address never reached UEDST. Correct
+                                    ; ANS order is ( c-addr1 u1 c-addr2 -- ):
+                                    ; c-addr2 (dest) is on top, popped first.
+
+================================================================
+UNESCAPEW.2  [bugfix]  (lines 7567-7585 of the stage-3l file)
+----------------------------------------------------------------
+            ; ALGORITHM REPLACED (caught by MAME testing after the
+            ; argument-order fix above): the entire body below used
+            ; to decode backslash escape sequences (\n, \t, \\, \") -
+            ; a plausible-looking but entirely wrong reading of what
+            ; ANS UNESCAPE does. Confirmed against the actual spec and
+            ; its canonical reference implementation (forth-standard.
+            ; org/standard/string/UNESCAPE and complang.tuwien.ac.at's
+            ; ANS Forth reference text): UNESCAPE has nothing to do
+            ; with backslash sequences at all - it replaces every '%'
+            ; character with two '%' characters, and nothing else, so
+            ; that a literal '%' in text survives an eventual
+            ; SUBSTITUTE pass unchanged ("If you pass a string through
+            ; UNESCAPE and then SUBSTITUTE, you get the original
+            ; string"). Every character that ISN'T '%' passes straight
+            ; through, one-for-one. Confirmed via MAME: doubling a
+            ; single '%' wasn't happening at all, and the returned
+            ; count didn't grow to reflect the added characters -
+            ; both are direct, expected consequences of this being the
+            ; wrong algorithm entirely, not a smaller bug within it.
+
+================================================================
+UNESCAPEW.4  [bugfix]  (lines 7603-7617 of the stage-3l file)
+----------------------------------------------------------------
+UEDONE:     TFR   Y,D               ; BUG FIX: was "LDD UEOUTLEN / STD ,U" -
+            SUBD  UEDST             ; overwriting whatever was left on top of
+            STD   UEOUTLEN          ; the stack rather than pushing both
+                                    ; required return values, and separately,
+                                    ; UEOUTLEN itself was never correctly
+                                    ; tracked by the old backslash-decoding
+                                    ; loop's own per-character bookkeeping in a
+                                    ; way that accounted for doubled '%'
+                                    ; characters. Now computed directly as the
+                                    ; final write pointer (Y) minus the
+                                    ; original destination address (UEDST) -
+                                    ; correct regardless of how many characters
+                                    ; were doubled, since it's derived from
+                                    ; where writing actually stopped rather than
+                                    ; incremented alongside it.
+
+================================================================
+REPLACESW.0  [explanatory]  (lines 7624-7625 of the stage-3l file)
+----------------------------------------------------------------
+; REPLACES/SUBSTITUTE - single-slot simplified version, per
+; the explicit scoping-down discussed in the source conversation
+
+================================================================
+SUBCOPY.1  [explanatory]  (lines 7642-7642 of the stage-3l file)
+----------------------------------------------------------------
+; was BHS - out of short-branch range
+
+================================================================
+SUBSTITUTEW.1  [explanatory]  (lines 7658-7680 of the stage-3l file)
+----------------------------------------------------------------
+SUBSTITUTEW:                        ; REWRITE: was a plain substring search-and-replace on
+            ; the bare registered name (via SEARCHW), which found
+            ; "girl" and replaced only that span, leaving surrounding
+            ; "%...%" delimiters untouched in the output - and never
+            ; returned the substitution count ANS requires as a
+            ; third stack item. Per the ANS spec (forth-standard.org/
+            ; standard/string/SUBSTITUTE), SUBSTITUTE must scan for
+            ; text between '%' (ASCII $25) delimiter pairs
+            ; specifically: "%%" collapses to a single '%' (count
+            ; unchanged); a name matching the REPLACES registration
+            ; has the ENTIRE "%name%" span - delimiters included -
+            ; replaced by the substitution text (count incremented);
+            ; a non-matching name is passed through unchanged,
+            ; delimiters and all (count unchanged); an unpaired
+            ; trailing '%' with no closing delimiter passes the
+            ; residue through unchanged. Confirmed via MAME testing
+            ; against a real template. GLOBALS is fully packed
+            ; (256/256), so this reuses MSCR/MSCR2/MSCR3/MSCR4
+            ; (confirmed untouched by SUBCOPY) rather than adding
+            ; dedicated cells: MSCR = current read position, MSCR2 =
+            ; running substitution count, MSCR3/MSCR4 = local scratch
+            ; per %-pair found. Reuses the existing COMPAREW for name
+            ; matching rather than a new comparison loop.
+
+================================================================
+SIGNW.1  [bugfix]  (lines 7910-7930 of the stage-3m file)
+----------------------------------------------------------------
+            TSTA                    ; BUG FIX: was a bare "BPL SIGNDONE" right
+                                    ; after PULU - PULU doesn't affect condition
+                                    ; codes on genuine 6809 (same class as STOD's
+                                    ; own fix elsewhere in this file), so BPL was
+                                    ; testing whatever flags an unrelated, earlier
+                                    ; instruction happened to leave set, not the
+                                    ; sign of the value just popped. TSTA
+                                    ; explicitly tests D's high byte immediately
+                                    ; before the branch that depends on it. The
+                                    ; four existing internal callers (DOT/DOTR/
+                                    ; DDOT/DDOTR, i.e. . / .R / D. / D.R) were
+                                    ; accidentally unaffected - each happens to
+                                    ; run "LDD SAVEN" (a flag-setting load of the
+                                    ; true signed value) immediately before PSHU
+                                    ; D/JSR SIGN, and PSHU doesn't disturb flags -
+                                    ; but this was fragile, caller-side luck, not
+                                    ; SIGN being correct on its own. Confirmed via
+                                    ; MAME: a direct, standalone use of SIGN (not
+                                    ; preceded by an unrelated flag-setting
+                                    ; instruction) never added the minus sign for
+                                    ; either sign of input.
+
+================================================================
+UDOTW.1  [history]  (lines 7968-7976 of the stage-3m file)
+----------------------------------------------------------------
+UDOTW:      LDD   #0                ; SIMPLIFICATION: was PULU D/PSHU D here first -
+                                    ; a literal no-op (pop the value, immediately
+                                    ; push it back, nothing in between), leftover
+                                    ; rather than functional. The value being
+                                    ; formatted was never actually consumed here;
+                                    ; this line already pushes 0 on top of it
+                                    ; unchanged either way. Removed per the
+                                    ; parallel 68000 port's observation, confirmed
+                                    ; by inspection.
+
+================================================================
+UDOTRW.1  [history]  (lines 8029-8033 of the stage-3m file)
+----------------------------------------------------------------
+            LDD   #0                ; SIMPLIFICATION: was PULU D/PSHU D here first -
+                                    ; a literal no-op on the value being formatted
+                                    ; (the width above is a real, separate pop -
+                                    ; unaffected). Removed per the parallel 68000
+                                    ; port's observation, confirmed by inspection.
+
+================================================================
+LPARENW.1  [bugfix]  (lines 8188-8200 of the stage-3m file)
+----------------------------------------------------------------
+            PULU  D                 ; BUG FIX: WORD always pushes a c-addr at the
+                                    ; end (the parsed text's address), which this
+                                    ; word never consumed - "(" only needs WORD's
+                                    ; side effect of advancing >IN past the closing
+                                    ; delimiter, not the address itself, but that
+                                    ; address was left stranded on the stack every
+                                    ; time. Explains both reported symptoms: a
+                                    ; stray value visible after a comment in
+                                    ; interpret mode, and a CSP mismatch (-22) for
+                                    ; any colon definition containing one, since
+                                    ; the leftover throws off the compile-time
+                                    ; stack-depth check between ":" and ";".
+                                    ; Confirmed via MAME debugger.
+
+================================================================
+EVALUATEW.1  [bugfix]  (lines 8294-8299 of the stage-3n file)
+----------------------------------------------------------------
+EVALUATEW:  LDD   SRCADDR           ; BUG FIX: the outer source was saved in
+            PSHS  D                 ; global EVSAVE* cells, so a nested EVALUATE
+            LDD   SRCLEN            ; (t9 -> t8 -> t7) overwrote the outer save and
+            PSHS  D                 ; every level restored the wrong source. Save
+            LDD   SRCID             ; on the return stack instead (EVSAVE* now
+            PSHS  D                 ; unused).
+
+================================================================
+ENVQUERYW.0  [explanatory]  (lines 8321-8353 of the stage-3n file)
+----------------------------------------------------------------
+; ENVIRONMENT? - dispatcher complete; table has entries derived
+; without fabricating unfixed capacities. /HOLD and /PAD were both
+; added this session, answering HOLDMINSIZE and PADMINSIZE
+; respectively (see each entry itself, below, for why each uses its
+; own, conceptually correct constant rather than the numerically-
+; equal PADOFFSET).
+;
+; WORDLISTS (16.3.2, Search-Order word set) is deliberately absent
+; from ENVTABLE, not an oversight - this system doesn't implement
+; the Search-Order word set, so WORDLISTS is genuinely an unknown
+; attribute here. Per ENVIRONMENT?'s own spec (6.1.1345): "If the
+; system treats the attribute as unknown, the returned flag is
+; false" - falling through to ENVNOTFOUND already produces exactly
+; that, correctly and completely, with no dispatcher work needed.
+; Confirmed via MAME testing.
+;
+; MAX-D/MAX-UD were resolved this session via a genuine dispatcher
+; extension, not just a table entry - both are double-cell values
+; per their own ANS data type, which the original single-cell
+; ENVFOUND (pushing exactly one value before TRUE) couldn't
+; represent. Added a second table (ENVTABLE2) and matching loop
+; (ENV2START/ENV2LOOP/ENV2FOUND, below) specifically for double-cell
+; entries, rather than reworking the single-cell path to handle both
+; shapes - see those labels for the full design.
+;
+; FLOORED was the third, separate open item flagged previously -
+; investigated this session by tracing DIVCOMMON (shared by /, MOD,
+; /MOD) against this system's own SM/REM and FM/MOD. Confirmed
+; DIVCOMMON matches SM/REM's convention exactly (remainder sign
+; restored from the dividend's own original sign, not the quotient's)
+; - this system's primary division words use symmetric division, not
+; floored. FLOORED now answers 0 (false) - see the entry itself,
+; below, for the full trace.
+
+================================================================
+ENVQUERYW.1  [explanatory]  (lines 8361-8369 of the stage-3n file)
+----------------------------------------------------------------
+            BEQ   ENV2START         ; CHANGED: was BEQ ENVNOTFOUND - now tries
+                                    ; the double-cell table (below) before
+                                    ; giving up entirely. See ENV2START/
+                                    ; ENV2LOOP for MAX-D/MAX-UD, added this
+                                    ; turn - both are double-cell values per
+                                    ; their own ANS data type, which this
+                                    ; single-cell table's ENVFOUND (pushing
+                                    ; exactly one value before TRUE) can't
+                                    ; represent correctly.
+
+================================================================
+ENVQUERYW.2  [bugfix]  (lines 8370-8390 of the stage-3n file)
+----------------------------------------------------------------
+            PSHS  X                 ; BUG FIX: COMPAREW uses X as its own
+                                    ; internal scratch (LDX CMPA1, then LDA
+                                    ; ,X+ advancing through the comparison),
+                                    ; clobbering whatever the caller had there.
+                                    ; ENVQUERY needs X to still point at the
+                                    ; current table entry after COMPAREW
+                                    ; returns, both for ENVFOUND's own LDD 4,X
+                                    ; and for advancing to the next entry -
+                                    ; without saving it first, a successful
+                                    ; match left X sitting just past the
+                                    ; matched string's own text (for
+                                    ; "/COUNTED-STRING", 15 characters, that
+                                    ; lands exactly at the start of the next
+                                    ; entry's string, "MAX-N") - so ENVFOUND
+                                    ; read the "value" field from inside the
+                                    ; NEXT entry's own string text instead of
+                                    ; the real value. Confirmed via MAME: this
+                                    ; exact mechanism produces $4E4D precisely
+                                    ; - the bytes 'N' ($4E) and 'M' ($4D, the
+                                    ; start of "MAX-U") sitting 4 bytes into
+                                    ; "MAX-N", read as one cell.
+
+================================================================
+ENV2START.1  [explanatory]  (lines 8411-8420 of the stage-3n file)
+----------------------------------------------------------------
+ENV2START:  LDX   #ENVTABLE2        ; NEW: double-cell query table - kept
+                                    ; entirely separate from ENVTABLE above
+                                    ; rather than trying to unify both cases
+                                    ; into one mechanism, since the two
+                                    ; genuinely differ in entry size (8 bytes
+                                    ; here, vs 6 for single-cell) and in how
+                                    ; many cells a match pushes (two, not
+                                    ; one) - lower risk than reworking the
+                                    ; already-tested single-cell path to
+                                    ; handle both shapes at once.
+
+================================================================
+ENV2START.2  [explanatory]  (lines 8437-8438 of the stage-3n file)
+----------------------------------------------------------------
+            LEAX  8,X               ; entries are 8 bytes here (ADDR,LEN,LOW,
+                                    ; HIGH), not 6 (ADDR,LEN,VALUE)
+
+================================================================
+ENV2FOUND.1  [explanatory]  (lines 8440-8444 of the stage-3n file)
+----------------------------------------------------------------
+ENV2FOUND:  LDD   4,X               ; low cell - pushed first/deep, matching
+            PSHU  D                 ; standard double-cell stack order (3.1.4.1:
+                                    ; the cell containing the most significant
+                                    ; part shall be above the cell containing
+                                    ; the least significant part)
+
+================================================================
+ENVTABLE2.1  [explanatory]  (lines 8458-8465 of the stage-3n file)
+----------------------------------------------------------------
+                                    ; MAX-D: maximum signed
+                                    ; double-cell value, $7FFFFFFF - low
+                                    ; cell $FFFF, high cell $7FFF (the
+                                    ; maximum positive 16-bit signed value in
+                                    ; the high cell, matching how a 32-bit
+                                    ; two's-complement maximum is laid out:
+                                    ; all bits set except the sign bit of the
+                                    ; most significant cell).
+
+================================================================
+ENVTABLE2.2  [explanatory]  (lines 8467-8469 of the stage-3n file)
+----------------------------------------------------------------
+                                    ; MAX-UD: maximum unsigned
+                                    ; double-cell value, $FFFFFFFF - both
+                                    ; cells all bits set.
+
+================================================================
+ENVTABLE.2  [explanatory]  (lines 8490-8508 of the stage-3n file)
+----------------------------------------------------------------
+            FDB   EN7,EN7L,HOLDMINSIZE
+                                    ; NEW: /HOLD was previously absent
+                                    ; entirely (the top-of-file note calling
+                                    ; out "/HOLD and /PAD... remain explicitly
+                                    ; incomplete/absent" was accurate at the
+                                    ; time). Answers HOLDMINSIZE (34), not the
+                                    ; larger PADOFFSET (128) - HOLDMINSIZE is
+                                    ; specifically the portion of the
+                                    ; CODEHERE-to-PAD gap reserved for the
+                                    ; pictured numeric output buffer, the same
+                                    ; amount WORDMAXCHARS deliberately holds
+                                    ; back from WORD's own use at the other
+                                    ; end of that same shared gap. PADOFFSET
+                                    ; is the total gap width, most of which is
+                                    ; actually earmarked for WORD's own
+                                    ; parsing - reporting it here would
+                                    ; overstate what HOLD can safely use
+                                    ; without risking collision with whatever
+                                    ; WORD is doing in the same space.
+
+================================================================
+ENVTABLE.3  [explanatory]  (lines 8509-8526 of the stage-3n file)
+----------------------------------------------------------------
+            FDB   EN8,EN8L,PADMINSIZE
+                                    ; NEW: /PAD, the last of the two
+                                    ; entries the top-of-file note originally
+                                    ; flagged as absent - now both present.
+                                    ; Answers PADMINSIZE (128) directly, per
+                                    ; ANS's own /PAD meaning (3.3.3.6, "the
+                                    ; size of the scratch area whose address
+                                    ; is returned by PAD") - PAD's own region,
+                                    ; growing upward from PAD itself, distinct
+                                    ; from HOLDMINSIZE above (which answers
+                                    ; for a different region entirely, the
+                                    ; downward-growing pictured-numeric buffer
+                                    ; in the CODEHERE-to-PAD gap). PADOFFSET
+                                    ; happens to equal PADMINSIZE numerically
+                                    ; in this implementation (PADOFFSET EQU
+                                    ; PADMINSIZE), but /PAD is answered with
+                                    ; the conceptually correct constant, not
+                                    ; the coincidentally-equal one.
+
+================================================================
+ENVTABLE.4  [explanatory]  (lines 8527-8553 of the stage-3n file)
+----------------------------------------------------------------
+            FDB   EN9,EN9L,0        ; NEW: FLOORED - previously the one item
+                                    ; in this area explicitly left open
+                                    ; pending its own investigation (unlike
+                                    ; WORDLISTS, this is a CORE query, not
+                                    ; tied to an unimplemented optional word
+                                    ; set, so "false by omission" wasn't the
+                                    ; right default). Investigated by tracing
+                                    ; DIVCOMMON (shared by /, MOD, /MOD)
+                                    ; against this system's own SM/REM and
+                                    ; FM/MOD: DIVCOMMON restores the
+                                    ; remainder's sign from DNSIGN (the
+                                    ; dividend's own original sign) after
+                                    ; dividing absolute values - exactly
+                                    ; SM/REM's own logic, confirmed identical
+                                    ; by direct comparison. FM/MOD, by
+                                    ; contrast, has an explicit flooring
+                                    ; adjustment step (correcting the
+                                    ; quotient and remainder when the
+                                    ; quotient would be negative with a
+                                    ; nonzero remainder) that DIVCOMMON does
+                                    ; not have. This system's primary
+                                    ; division words (/, MOD, /MOD) use
+                                    ; symmetric division, not floored -
+                                    ; FLOORED is 0 (false), a real, meaningful
+                                    ; answer (recognized query, value false),
+                                    ; not the "unrecognized" fallthrough
+                                    ; WORDLISTS correctly uses.
+
+================================================================
+ENVTABLE.5  [explanatory]  (lines 8554-8560 of the stage-3n file)
+----------------------------------------------------------------
+            FDB   EN10,EN10L,255    ; NEW: MAX-CHAR - maximum value of any
+                                    ; character in this implementation's
+                                    ; character set (3.2.6). This system uses
+                                    ; 8-bit characters throughout (matching
+                                    ; ADDRESS-UNIT-BITS=8, already in this
+                                    ; table) - a single byte's maximum value
+                                    ; is 255.
+
+================================================================
+ENVTABLE.6  [explanatory]  (lines 8561-8576 of the stage-3n file)
+----------------------------------------------------------------
+            FDB   EN13,EN13L,(RSTACK-DSTACK)/2
+                                    ; NEW: RETURN-STACK-
+                                    ; CELLS - computed from this system's own
+                                    ; stack region boundaries rather than
+                                    ; hardcoded, so this stays correct if the
+                                    ; memory map shifts again (it has
+                                    ; repeatedly this session). RSTACK's own
+                                    ; comment confirms the occupied range is
+                                    ; $BD00-RSTACK (768 bytes currently) -
+                                    ; DSTACK+1 is $BD00 exactly (the two
+                                    ; regions are contiguous, per RSTACK's
+                                    ; and DSTACK's own comments). Since
+                                    ; RSTACK-(DSTACK+1)+1 simplifies to
+                                    ; RSTACK-DSTACK (the +1/-1 cancel), the
+                                    ; simpler form is used directly: 384
+                                    ; currently.
+
+================================================================
+ENVTABLE.7  [explanatory]  (lines 8577-8583 of the stage-3n file)
+----------------------------------------------------------------
+            FDB   EN14,EN14L,(DSTACK-CODETOP+1)/2
+                                    ; NEW: STACK-CELLS -
+                                    ; same reasoning, for the data stack's own
+                                    ; region (CODETOP to DSTACK, 1024 bytes
+                                    ; currently, matching CODETOP's own
+                                    ; comment "code space ceiling (data stack
+                                    ; begins here)"): 512 currently.
+
+================================================================
+ENVTABLE.1  [bugfix]  (lines 8477-8486 of the stage-3n file)
+----------------------------------------------------------------
+            FDB   EN1,EN1L,255      ; BUG FIX: was 31 - the maximum size of a
+                                    ; counted string is bounded by its 1-byte
+                                    ; count field (0-255), not 31, which
+                                    ; looks like it was mistakenly copied from
+                                    ; an unrelated constraint (WORD's own,
+                                    ; separate scan cap in an earlier version
+                                    ; of this file). /COUNTED-STRING's own
+                                    ; meaning (forth-standard.org/standard/
+                                    ; usage#usage:env) is specifically the
+                                    ; count byte's own maximum value.
+
+================================================================
+HEXBYTE.1  [bugfix]  (lines 8524-8536 of the stage-3o file)
+----------------------------------------------------------------
+            STB   MSCR              ; BUG FIX: STB writes ONE byte, at MSCR
+            LDB   MSCR              ; itself - both reads below used to read
+            LSRB                    ; MSCR+1 instead, a byte this routine never
+            LSRB                    ; writes at all, so both the high and low
+            LSRB                    ; nibble extraction ran on whatever stale
+            LSRB                    ; value happened to be sitting there, not
+            CLRA                    ; the byte actually passed in. Now reads
+            PSHU  D                 ; from MSCR, where STB actually put it.
+            JSR   HEXDIGIT          ; Confirmed via MAME debugger: DUMP showed
+            LDB   MSCR              ; $03 instead of $7B for a memory fill
+            ANDB  #$0F              ; character, with the ASCII column (a
+            CLRA                    ; separate code path) correctly showing
+            PSHU  D                 ; "}".
+
+================================================================
+DUMPW.1  [explanatory]  (lines 8545-8551 of the stage-3o file)
+----------------------------------------------------------------
+            JSR   CRW               ; FORMATTING: leading CR, so the first line
+                                    ; starts on its own fresh line - matches
+                                    ; DULEND's existing trailing CR after every
+                                    ; line (including the last), giving
+                                    ; consistent vertical alignment from the
+                                    ; first line to the last regardless of
+                                    ; where the cursor was when DUMP was called.
+
+================================================================
+DUMPW.2  [history]  (lines 8553-8553 of the stage-3o file)
+----------------------------------------------------------------
+; was BEQ - out of short-branch range
+
+================================================================
+DUMPW.3  [history]  (lines 8628-8628 of the stage-3o file)
+----------------------------------------------------------------
+; was BNE - out of short-branch range
+
+================================================================
+SECTION26.0  [history]  (lines 8632-8637 of the stage-3o file)
+----------------------------------------------------------------
+; SECTION 26: TRUE / FALSE. This section used to also hold
+; ABORT/QUIT's hand-built dictionary headers (ABORTHDR/QUITHDR) -
+; moved into BASEDICT and renamed to H_ABORT/H_QUIT (see the end
+; of SECTION 27) so every header in this ROM lives in one
+; contiguous block, rather than header data sitting apart from
+; the rest of the dictionary inside BASECODE.
+
+================================================================
+TRUEW.0  [history]  (lines 8639-8656 of the stage-3o file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TRUE / FALSE - simple subroutines, not the CONSTANT/DODOES
+; pattern these used before (JSR DODOES + FDB ATSIGN + a value
+; cell, matching what interactive CONSTANT compiles). Each is now
+; a direct LDD/PSHU/RTS, like every other ordinary ROM word's CFA
+; - no indirection, no value cell.
+;
+; RESOLVED: the previous version of this code deliberately inverted
+; TRUE/FALSE's values from the system's own convention, per an
+; earlier explicit request - FALSE pushed $FFFF and TRUE pushed
+; $0000, disagreeing with TRUEV/FALSEV ($FFFF/$0000) and every
+; comparison operator (=, <, >, and the rest), which all still
+; returned TRUEV for a true result and FALSEV for false. Restored
+; to the standard convention now: TRUE pushes $FFFF, FALSE pushes
+; $0000, matching TRUEV/FALSEV and every comparison operator again.
+; Each is a direct LDD/PSHU/RTS, like every other ordinary ROM
+; word's CFA - no indirection, no value cell, no DODOES trampoline.
+; ------------------------------------------------------------
+
+================================================================
+POSONEW.0  [history]  (lines 8665-8670 of the stage-3o file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; 1 / -1 / 2 / -2 - simple immediate-value words, same pattern as
+; TRUE/FALSE above: direct LDD/PSHU/RTS, no indirection, no value
+; cell. Headers are H_1/H_M1/H_2/H_M2 (SECTION 27, chained after
+; H_FIND) - "1"/"-1"/"2"/"-2" aren't valid 6809 assembler labels.
+; ------------------------------------------------------------
+
+================================================================
+INITCODE.1  [history]  (lines 8701-8701 of the stage-3o file)
+----------------------------------------------------------------
+; INITCODE is $FFA9 (was $FFA2, before that $FFA0, before that literal $FFC0)
+
+================================================================
+COLDSTRT.1  [bugfix]  (lines 8719-8754 of the stage-3o file)
+----------------------------------------------------------------
+                                    ; BUG FIX: confirmed via MAME - COLDSTRT's own
+                                    ; ORCC #$50 above (masking IRQ+FIRQ during the
+                                    ; critical early setup: stack pointers, DP,
+                                    ; GLOBALS, SERBUF) was never paired with a
+                                    ; matching unmask anywhere on this path - only
+                                    ; WARM (below) had one, on its own, separate
+                                    ; entry point. Under SERIALPOLL=1 (the
+                                    ; longstanding default) this never mattered,
+                                    ; since IRQH is just an RTI stub and nothing
+                                    ; on that path ever depends on interrupts
+                                    ; actually firing. It surfaced only once
+                                    ; SERIALPOLL=0 (interrupt-driven ACIA I/O) was
+                                    ; actually selected and tested: with IRQ left
+                                    ; permanently masked, the ACIA's own interrupt
+                                    ; (now correctly wired to the CPU - see the
+                                    ; MAME driver's own irq_handler fix) could
+                                    ; never actually be serviced, regardless of
+                                    ; how correctly it reached the CPU pin -
+                                    ; keystrokes were silently dropped and the
+                                    ; warm-boot message never got typed out.
+                                    ; Confirmed directly: manually clearing the I
+                                    ; bit via the MAME debugger (cc=EF) mid-
+                                    ; session immediately unblocked both. Placed
+                                    ; here, right after INITSERIAL returns (the
+                                    ; ACIA is configured and every piece of ring-
+                                    ; buffer state IRQH depends on is already
+                                    ; zeroed by CLRGLOB above), and before
+                                    ; TSTRUNNER runs, so the unit test framework's
+                                    ; own interrupt-driven output works correctly
+                                    ; too, not just the eventual interactive
+                                    ; session. Matches WARM's own, already-correct
+                                    ; ANDCC #$AF exactly, for consistency - FIRQ
+                                    ; is harmless to unmask alongside IRQ, since
+                                    ; nothing on this system ever drives it
+                                    ; (FIRQH is an RTI stub, same as the other
+                                    ; unused vectors).
+
+================================================================
+COLDSTRT.2  [bugfix]  (lines 8759-8773 of the stage-3o file)
+----------------------------------------------------------------
+            NOP                     ; BUG FIX (see the historical note above this
+            NOP                     ; call site's own comment, describing the
+            NOP                     ; original bug): this call site used to emit
+                                    ; 0 bytes when UNITTESTS' flag meaning
+                                    ; excluded the test framework, meaning
+                                    ; COLDSTRT's own size varied by 3 bytes
+                                    ; depending on UNITTESTS - with INITCODE's
+                                    ; own position fixed regardless, that risked
+                                    ; the code overflowing into VECTORS whenever
+                                    ; UNITTESTS was toggled on. Three NOPs here
+                                    ; are byte-for-byte the same size as the
+                                    ; JSR TSTRUNNER they replace, so this block
+                                    ; now always contributes exactly 3 bytes to
+                                    ; COLDSTRT either way - COLDSTRT's total size
+                                    ; no longer depends on UNITTESTS at all.
+
+================================================================
+WARM.1  [bugfix]  (lines 8784-8800 of the stage-3o file)
+----------------------------------------------------------------
+            JSR   INITSERIAL        ; BUG FIX: previously WARM never re-ran
+                                    ; this at all, meaning a warm reboot never
+                                    ; reset the ring buffer pointers (only
+                                    ; COLDSTRT's own, separate path did, and
+                                    ; only partially - see SERBUFCLR's own
+                                    ; comment) nor re-issued the ACIA's own
+                                    ; master-reset sequence. If a lockup or
+                                    ; stuck-overrun condition (observed and
+                                    ; reported separately) left either side
+                                    ; in a corrupted state, a warm reboot
+                                    ; would previously have inherited it
+                                    ; unchanged rather than genuinely
+                                    ; recovering. Placed here, matching
+                                    ; COLDSTRT's own established ordering
+                                    ; exactly: while IRQ is still masked,
+                                    ; with the later ANDCC #$AF unmasking
+                                    ; only once setup is complete.
+
+================================================================
+VECTORS.1  [history]  (lines 8824-8824 of the stage-3o file)
+----------------------------------------------------------------
+; VECTORS is $FFF0
+
+================================================================
+VECTOREND.1  [history]  (lines 8834-8834 of the stage-3o file)
+----------------------------------------------------------------
+; Verify vectors size, value should match $10.
+

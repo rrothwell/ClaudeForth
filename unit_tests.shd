@@ -1,0 +1,2476 @@
+================================================================
+UNITTEST.0  [explanatory]  (lines 1-43 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+; ============================================================
+; UNIT TEST FRAMEWORK
+;
+; Self-checking assembly-level tests for this ROM's own
+; primitives, gated by UNITTESTS below and run once at cold
+; boot, right after INITSERIAL and before COLD (so U/S are
+; already valid - COLDSTRT sets them at its very start - but
+; nothing else has been initialized yet: APPVARS/DPHERE/
+; CODEHERE/LATEST/BASE all still hold whatever COLD is about to
+; set them to). Lives here, in previously-unused ROM space right
+; after INOUT's shadow, since this was pure FILL padding before
+; this existed - the default build (UNITTESTS undefined, or
+; defined as 0) removes it entirely and this block reverts to
+; exactly that padding, computed automatically below via the ROM
+; label rather than a fixed byte count, so it's correct either
+; way without needing to be hand-adjusted. Pass
+; --define=UNITTESTS on the lwasm command line (see the example
+; at the end of this comment) to include it.
+;
+; Each test is independent by construction: it saves the data
+; stack pointer (U) before touching anything, and unconditionally
+; restores it at the end regardless of pass or fail - so one
+; test's assertions failing can never leave stack residue for the
+; next test to inherit. Test scratch variables live in the very
+; start of APPVARS - safe only because tests run strictly before
+; COLD initializes VARHERE to that same address; COLD immediately
+; and correctly re-purposes that space afterward.
+;
+; Reporting: each test's name (a counted string, matching how
+; BADWORD itself prints a failing word) is printed via COUNT+TYPE,
+; followed by " OK" or " FAIL", followed by a CR - all via
+; TSTREPORT, shared by every test rather than duplicated in each.
+;
+; Test groups are further gated by TSTSELECTOR (see below), one
+; group at a time, since assembling every group together exhausts
+; the available unused ROM space. Example command line, testing
+; group 2 with tests included:
+;
+;   lwasm --6809 --format=raw \
+;   --output=forth6809.bin --list=forth6809.lst \
+;   --define=UNITTESTS --define=TSTSELECTOR=2 \
+;   forth6809.asm
+; ============================================================
+
+================================================================
+TSTGUARD.1  [explanatory]  (lines 50-52 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTGUARD    EQU   $3C7A             ; sentinel value, pushed below the value
+                                    ; under test, to prove an operation
+                                    ; doesn't disturb what's beneath it
+
+================================================================
+TSTVAL1.1  [explanatory]  (lines 53-57 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTVAL1     EQU   $59E1             ; the value under test itself - neither
+                                    ; constant is 0, 1, or -1, so a test
+                                    ; that only appears to pass due to a
+                                    ; trivial/special-cased value would be
+                                    ; caught rather than masked
+
+================================================================
+TSTSCR.1  [explanatory]  (lines 64-66 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTSCR      EQU   APPVARS+8         ; extra scratch cell - for tests (DEPTH)
+                                    ; that need to compute an expected value
+                                    ; independently before comparing
+
+================================================================
+TSTCBUF.1  [explanatory]  (lines 68-78 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTCBUF     EQU   APPVARS+10        ; compile-time test harness (section 3.8,
+                                    ; control flow): scratch buffer real
+                                    ; compile-time words (IF/THEN/DO/LOOP/
+                                    ; etc) actually compile into - CODEHERE
+                                    ; is redirected here for the duration of
+                                    ; each compile, then restored, so the
+                                    ; real ROM/dictionary is never touched.
+                                    ; 80 bytes - generous headroom for the
+                                    ; small test snippets planned (the
+                                    ; largest, CASE with two OF clauses,
+                                    ; comes nowhere close)
+
+================================================================
+TSTCSAV.1  [explanatory]  (lines 79-80 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTCSAV     EQU   APPVARS+90        ; saved CODEHERE, across a redirected
+                                    ; compile
+
+================================================================
+TSTCSPS.1  [explanatory]  (lines 81-83 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTCSPS     EQU   APPVARS+92        ; saved CSP, across a redirected compile -
+                                    ; EXIT's own frame-counting scan depends
+                                    ; on CSP marking the right baseline
+
+================================================================
+TSTLSAV.1  [explanatory]  (lines 84-85 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTLSAV     EQU   APPVARS+94        ; saved LATEST, across a RECURSE test
+                                    ; (which reads LATEST directly)
+
+================================================================
+TSTFHDR.1  [explanatory]  (lines 86-89 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTFHDR     EQU   APPVARS+96        ; fake dictionary header, for RECURSE to
+                                    ; read via a redirected LATEST - 16
+                                    ; bytes (LEN/FL + name + LINK + CFA,
+                                    ; comfortably fits any short test name)
+
+================================================================
+TSTDBUF.1  [explanatory]  (lines 91-96 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTDBUF     EQU   APPVARS+112       ; defining-words test harness (section
+                                    ; 3.9): scratch dictionary buffer -
+                                    ; DPHERE is redirected here for the
+                                    ; duration of each defining-word call,
+                                    ; so a real header never lands in the
+                                    ; real dictionary. 40 bytes.
+
+================================================================
+TSTVBUF.1  [explanatory]  (lines 98-101 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTVBUF     EQU   APPVARS+154       ; scratch VARHERE buffer, for VARIABLE/
+                                    ; VALUE/2VARIABLE/BUFFER: to reserve
+                                    ; their own mutable space into. 20
+                                    ; bytes.
+
+================================================================
+TSTNAMEB.1  [explanatory]  (lines 103-107 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTNAMEB    EQU   APPVARS+176       ; scratch fake source text, for HEADER's
+                                    ; own WORD-based name parsing (every
+                                    ; defining word reads a name from the
+                                    ; input source - unlike anything in
+                                    ; section 3.8) - 16 bytes
+
+================================================================
+TSTWCFA.1  [explanatory]  (lines 111-116 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTWCFA     EQU   APPVARS+198       ; the newly-defined test word's own CFA -
+                                    ; equal to CODEHERE (redirected) at the
+                                    ; moment the defining word is called,
+                                    ; saved so the compiled trampoline can
+                                    ; be executed afterward to verify its
+                                    ; runtime behavior
+
+================================================================
+TSTDOESA.1  [explanatory]  (lines 119-122 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTDOESA    EQU   APPVARS+204       ; address of a compiled "JSR SETDOES" -
+                                    ; JSR'd directly to simulate an outer
+                                    ; defining word reaching that point,
+                                    ; without needing to actually build one
+
+================================================================
+TSTCSAV2.1  [explanatory]  (lines 123-125 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTCSAV2    EQU   APPVARS+212       ; MARKER test: CODEHERE right after
+                                    ; executing the marker word (before it's
+                                    ; overwritten by this test's own restore)
+
+================================================================
+TSTCBUF2.1  [bugfix]  (lines 129-146 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTCBUF2    EQU   APPVARS+220       ; a SECOND, separate CODEHERE-redirect
+                                    ; target - real bug found via MAME: WORD
+                                    ; writes its parsed-token output directly
+                                    ; at CODEHERE (by its own documented
+                                    ; design, matching the ANS transient-
+                                    ; region contract - confirmed by reading
+                                    ; WORD's own code, not assumed). Any test
+                                    ; that parses a SECOND name later (TO,
+                                    ; IS, ACTION-OF) must NOT redirect
+                                    ; CODEHERE back to TSTCBUF for that
+                                    ; second parse, since TSTCBUF still holds
+                                    ; the FIRST word's already-compiled
+                                    ; trampoline at that point - WORD would
+                                    ; silently overwrite it, corrupting the
+                                    ; CFA that TSTWCFA still points to before
+                                    ; it gets a second chance to execute. 20
+                                    ; bytes - comfortably fits any short
+                                    ; parsed name plus its length byte.
+
+================================================================
+TSTUMID.1  [explanatory]  (lines 147-155 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTUMID     EQU   APPVARS+240       ; intermediate U capture (section 3.3,
+                                    ; return stack): >R/2>R tests capture U
+                                    ; right after moving a value to the
+                                    ; return stack, before moving it back -
+                                    ; a round-trip-only check could pass even
+                                    ; if both the move-out and move-back were
+                                    ; broken no-ops, since the value would
+                                    ; never have actually left; this catches
+                                    ; that specifically.
+
+================================================================
+TSTOHSAV.1  [explanatory]  (lines 157-163 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTOHSAV    EQU   APPVARS+242       ; section 3.1 (System/Console I/O):
+                                    ; saves OUTHEAD (the output ring buffer's
+                                    ; write index) before an EMIT-family call,
+                                    ; so the test can confirm the character(s)
+                                    ; were genuinely queued into OUTBUF - not
+                                    ; just that the call returned without
+                                    ; crashing.
+
+================================================================
+TSTBASAV.1  [bugfix]  (lines 165-194 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTBASAV    EQU   APPVARS+243       ; section 3.13 (Numeric Output): saves the
+                                    ; real BASE across tests that do digit
+                                    ; conversion. Real bug found via MAME:
+                                    ; this whole test framework runs before
+                                    ; COLD (confirmed by tracing the boot
+                                    ; sequence directly - COLDSTRT clears all
+                                    ; of GLOBALS, including BASE, to zero,
+                                    ; then calls TSTRUNNER, with COLD's own
+                                    ; "BASE=10" initialization not running
+                                    ; until later) - so BASE reads as zero at
+                                    ; test time, not 10. With BASE=0,
+                                    ; UDDIGIT's own restoring-division
+                                    ; algorithm degrades into an unconditional
+                                    ; shift (the "subtract and check" step
+                                    ; never actually subtracts, since nothing
+                                    ; can compare below zero), so the value
+                                    ; being converted never genuinely
+                                    ; decreases - NUMSIGNS' own loop-until-
+                                    ; zero condition then never becomes true.
+                                    ; Every test in this section doing digit
+                                    ; conversion now explicitly saves BASE,
+                                    ; sets it to 10, and restores it
+                                    ; afterward - the same save/set/restore
+                                    ; pattern already established for
+                                    ; CODEHERE/STATE/SRCADDR etc throughout
+                                    ; this whole session, just not initially
+                                    ; applied to BASE since it was assumed
+                                    ; (incorrectly, for this specific,
+                                    ; pre-COLD execution context) to already
+                                    ; hold a valid value.
+
+================================================================
+TSTHANDSAV.1  [explanatory]  (lines 196-204 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTHANDSAV  EQU   APPVARS+245       ; section 3.15 (Exception Handling): saves
+                                    ; the real HANDLER across a test verifying
+                                    ; CATCH correctly restores it afterward,
+                                    ; on both the success and throw paths -
+                                    ; confirmed via CATCH's own code that it
+                                    ; saves/restores HANDLER around every
+                                    ; call regardless of outcome, matching its
+                                    ; own documented "restores... HANDLER on
+                                    ; either path".
+
+================================================================
+TSTSISAV.1  [explanatory]  (lines 206-209 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTSISAV    EQU   APPVARS+247       ; section 3.17 (Environmental & System
+                                    ; Queries): saves the real SRCID across
+                                    ; TSTSOURCEID's and TSTREFILL's own tests,
+                                    ; both of which redirect SRCID directly.
+
+================================================================
+TSTNEG1.1  [explanatory]  (lines 211-217 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+TSTNEG1     EQU   $CFC7             ; -12345 - distinct, non-trivial negative
+                                    ; test values, needed for arithmetic
+                                    ; tests (ABS, NEGATE, MIN/MAX, signed
+                                    ; division, 2/) whose logic genuinely
+                                    ; branches on sign - TSTVAL1-6 above are
+                                    ; all positive, which wouldn't exercise
+                                    ; those branches
+
+================================================================
+TSTREPORT.0  [explanatory]  (lines 230-235 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTREPORT - ( testname-caddr passflag -- ) shared by every
+; test. Prints the test's name (via COUNT+TYPE), then " OK" or
+; " FAIL" depending on passflag (TRUEV = pass, FALSEV = fail),
+; then a CR, readying the terminal for the next test's line.
+; ------------------------------------------------------------
+
+================================================================
+TSTRUNNER.0  [explanatory]  (lines 260-263 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTRUNNER - calls each test group in turn. Add new groups
+; here as they're written.
+; ------------------------------------------------------------
+
+================================================================
+TSTSYSIO.0  [explanatory]  (lines 284-305 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTSYSIO - System/Console I/O tests (glossary section 3.1, 12
+; words, 7 tests). Six words are deliberately NOT tested here -
+; KEY, ACCEPT, EXPECT, and QUERY all genuinely block on real
+; input during automated, headless boot-time testing (confirmed
+; by reading their own implementations: KEY spins on itself,
+; ACCEPT calls KEY directly, EXPECT/QUERY both call ACCEPT); and
+; ABORT/QUIT are both designed to never return (ABORT falls
+; through into QUIT, which resets the return stack, discarding
+; this entire call chain and hijacking the boot sequence into
+; the interpreter's own top-level loop). See this group's own
+; leading comment block, right before TSTKEYQ, for the full
+; reasoning.
+;
+; EMIT/TYPE/CR/SPACE/SPACES are safe and already proven so - this
+; whole test framework has used TYPE and CR (via TSTREPORT)
+; thousands of times already across every prior test group.
+; Each test here verifies the real queuing mechanism (OUTHEAD/
+; OUTBUF), reading the actual character(s) back out of the
+; output ring buffer to confirm they were genuinely queued, not
+; just that the call returned without crashing.
+; ------------------------------------------------------------
+
+================================================================
+TSTSYSIO.1  [explanatory]  (lines 334-362 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; System/Console I/O test harness (glossary section 3.1). Half
+; of this section's 12 words are deliberately NOT tested here,
+; for reasons confirmed by reading their own implementations
+; directly, not assumed from the glossary alone:
+;
+; KEY genuinely spins forever without real input (both its
+; interrupt-driven and polled variants branch back to
+; themselves - "BEQ KEY" - until a character arrives); ACCEPT
+; calls KEY directly in its own main loop, and EXPECT/QUERY both
+; call ACCEPT - all four inherit the same block. None of these
+; can complete during automated, headless boot-time testing,
+; where no real input will ever arrive.
+;
+; ABORT falls straight through into QUIT, which resets S to
+; RP0 - discarding this entire call chain, including the path
+; back to TSTRUNNER - and enters the interpreter's own top-level
+; loop. Calling either directly would hijack the boot sequence
+; entirely, not just fail one test.
+;
+; EMIT/TYPE/CR/SPACE/SPACES are safe and already proven so - this
+; whole test framework has used TYPE and CR (via TSTREPORT)
+; thousands of times already across every prior test group
+; without incident. Each test here verifies the actual queuing
+; mechanism (OUTHEAD/OUTBUF), not just "didn't crash" - reading
+; the real character(s) back out of the output ring buffer to
+; confirm they were genuinely queued, not just that the call
+; returned.
+; ------------------------------------------------------------
+
+================================================================
+TSTEMIT.1  [bugfix]  (lines 438-454 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            LDA   EMITCH            ; BUG FIX: was checking OUTHEAD/OUTBUF, assuming
+                                    ; the interrupt-driven EMIT (SERIALPOLL=0). Real
+                                    ; bug found via MAME: EMIT has two entirely
+                                    ; different implementations, gated the same way
+                                    ; as KEY's own two variants - the polling one
+                                    ; (SERIALPOLL=1, confirmed the currently active
+                                    ; build) writes directly to ACIADR and never
+                                    ; touches OUTHEAD/OUTBUF at all, so that check
+                                    ; always failed despite the character genuinely
+                                    ; being transmitted (confirmed in the terminal
+                                    ; output itself). EMITCH, by contrast, is set
+                                    ; unconditionally by both variants as their very
+                                    ; first step, before either mode-specific branch
+                                    ; - checking it verifies the argument was
+                                    ; correctly extracted from the stack regardless
+                                    ; of which EMIT variant is active, with no
+                                    ; conditional needed.
+
+================================================================
+TSTCR.1  [explanatory]  (lines 495-495 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            IFEQ  SERIALPOLL        ; >>>>
+
+================================================================
+TSTCR.2  [explanatory]  (lines 509-511 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            IFEQ  SERIALPOLL        ; >>>> full check: interrupt-driven EMIT
+                                    ; queues both bytes into OUTBUF, verifiable
+                                    ; in order
+
+================================================================
+TSTCR.3  [bugfix]  (lines 528-546 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            ELSE                    ; <<<<>>>> BUG FIX: was unconditionally checking OUTHEAD/
+                                    ; OUTBUF, assuming the interrupt-driven EMIT.
+                                    ; Real bug found via MAME: EMIT has two
+                                    ; entirely different implementations, gated
+                                    ; the same way as KEY's own two variants - the
+                                    ; polling one (SERIALPOLL=1, confirmed the
+                                    ; currently active build) writes directly to
+                                    ; ACIADR and never touches OUTHEAD/OUTBUF at
+                                    ; all, so this check always failed despite
+                                    ; both characters genuinely being transmitted
+                                    ; (confirmed in the terminal output itself).
+                                    ; EMITCH only reflects the LAST of the two
+                                    ; characters CRW emits (10, the LF) by the
+                                    ; time this runs, since each EMIT call
+                                    ; overwrites it - checking that plus the
+                                    ; depth check below is the most this variant
+                                    ; genuinely allows verifying; a direct
+                                    ; hardware write has no other inspectable,
+                                    ; persistent state.
+
+================================================================
+TSTSPACE.1  [bugfix]  (lines 595-600 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            LDA   EMITCH            ; BUG FIX: was checking OUTHEAD/OUTBUF - same
+                                    ; fix and same reasoning as TSTEMIT's own fix
+                                    ; (see its comment). SPACEW calls EMIT
+                                    ; internally with a single character (32), so
+                                    ; EMITCH correctly reflects it regardless of
+                                    ; which EMIT variant is active.
+
+================================================================
+TSTSPACES.1  [explanatory]  (lines 641-641 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            IFEQ  SERIALPOLL        ; >>>>
+
+================================================================
+TSTSPACES.2  [bugfix]  (lines 680-691 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            ELSE                    ; <<<<>>>> BUG FIX: was unconditionally checking
+                                    ; OUTHEAD/OUTBUF - same fix and reasoning as
+                                    ; TSTCR's own fix. In polling mode, EMITCH
+                                    ; only reflects the LAST of the three
+                                    ; identical spaces emitted, and there is no
+                                    ; persistent per-call count to verify
+                                    ; exactly three calls happened, not just
+                                    ; one or two - a genuine limitation of a
+                                    ; direct hardware write with no buffering,
+                                    ; not something this test can work around.
+                                    ; The depth check below still confirms n=3
+                                    ; was correctly consumed as an argument.
+
+================================================================
+TSTTYPE.1  [bugfix]  (lines 831-837 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            ELSE                    ; <<<<>>>> BUG FIX: was unconditionally checking OUTHEAD/
+                                    ; OUTBUF - same fix and reasoning as TSTCR's
+                                    ; own fix. EMITCH only reflects the LAST of
+                                    ; the two characters TYPE emits ('B') by the
+                                    ; time this runs; the depth check below still
+                                    ; confirms the addr/len arguments were
+                                    ; correctly consumed.
+
+================================================================
+TSTSTACK.0  [explanatory]  (lines 826-829 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTSTACK - data stack operation tests. Add new tests here as
+; they're written.
+; ------------------------------------------------------------
+
+================================================================
+TSTDEPTH.0  [explanatory]  (lines 1207-1215 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTDEPTH - unit test for DEPTH ( -- n ). Independently
+; computes the expected depth via the same (SP0-U)/2 formula
+; DEPTH itself uses, rather than assuming a fixed starting
+; depth - robust regardless of whatever is already on the stack
+; when this test runs. Also verifies DEPTH's own net effect
+; (exactly one cell pushed) and that the three items pushed to
+; set up the test are left undisturbed.
+; ------------------------------------------------------------
+
+================================================================
+TSTPICK.0  [explanatory]  (lines 1590-1598 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTPICK - unit test for PICK ( xu ... x0 u -- xu ... x0 xu ),
+; using u=2 as a concrete representative case (0 PICK is DUP,
+; 1 PICK is OVER; 2 PICK is the first case distinct from both).
+; Verifies the correct item (the one 2 cells deep after u itself
+; is popped) is copied to the top, everything beneath is
+; undisturbed, and the net stack depth is unchanged (u popped,
+; one copy pushed).
+; ------------------------------------------------------------
+
+================================================================
+TSTROLL.0  [explanatory]  (lines 1653-1662 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTROLL - unit test for ROLL
+; ( xu ... x0 u -- xu-1 ... x0 xu ), using u=2 as a concrete
+; representative case (matches TSTPICK's own choice of u, so
+; the two tests are directly comparable). Verifies the item 2
+; cells deep is removed and moved to the top, the items above it
+; shift down by one slot each, the guard beneath is undisturbed,
+; and exactly one cell was freed (u popped, nothing replaces it
+; numerically - the rolled item moves within the existing space).
+; ------------------------------------------------------------
+
+================================================================
+TSTRETSTACK.0  [explanatory]  (lines 1786-1802 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTRETSTACK - return-stack tests (glossary section 3.3, 6
+; words, 4 tests since >R/R> and 2>R/2R> are each combined into
+; one round-trip test, matching how they can only be meaningfully
+; tested together - the "must be balanced within the same
+; definition" constraint each word's own glossary entry
+; documents). Every >R/2>R in these tests is balanced by a
+; matching R>/2R> before this group's own RTS - these words
+; operate directly on the return stack, the same stack holding
+; real subroutine return addresses, so leaving one unbalanced
+; would corrupt the path back to whatever called this test.
+;
+; R@/2R@ tests specifically verify "non-destructive" for real:
+; peek, then retrieve the original afterward and confirm it's
+; still correct - not just that the peek itself returned the
+; right value once.
+; ------------------------------------------------------------
+
+================================================================
+TSTRETSTACK.1  [explanatory]  (lines 1966-1982 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; Return-stack test harness (glossary section 3.3). Unlike
+; every other test group in this file, these words operate
+; directly on the return stack (S) - the same stack holding
+; real subroutine return addresses, including this very test
+; subroutine's own. Every >R/2>R is balanced by a matching
+; R>/2R> within the same test body, before this test's own
+; RTS - leaving one unbalanced would corrupt the return address
+; needed to get back to TSTRUNNER (or whatever called it).
+; Traced each word's own PULS/PSHS juggling by hand first to
+; confirm this: >R/R>/2>R/2R> all temporarily lift the caller's
+; own return address off S, do the actual move, then restore it
+; on top - so the moved value ends up correctly nested one level
+; inside the current subroutine's own return-stack frame,
+; retrievable by a later R>/2R> in the same body, and cleanly
+; gone by the time this test's own RTS runs.
+; ------------------------------------------------------------
+
+================================================================
+TSTSARITH.0  [explanatory]  (lines 2072-2081 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTSARITH - single-cell arithmetic tests (glossary section 3.4).
+; Covers every word in that section, with representative
+; positive/negative/zero cases per word - not an exhaustive sign
+; combination sweep, but enough to exercise each word's actual
+; branches (sign handling, division's throw-on-zero, multiply's
+; defined-truncation-not-error overflow behavior). See the
+; open-items checklist for the full reasoning behind the specific
+; cases chosen.
+; ------------------------------------------------------------
+
+================================================================
+TSTSLASHZ.0  [explanatory]  (lines 2394-2404 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTSLASHZ - unit test for SLASH, divide-by-zero case. n2 = 0.
+; Verifies THROW -10 fires (per this system's documented ANS
+; behavior for a zero divisor) and that CATCH's own depth-
+; restoration contract holds (net 0 change across the JSR CATCH,
+; xt's slot effectively replaced by the throw code). Per CATCH's
+; own spec, the i*x arguments' VALUES are explicitly unspecified
+; after a catch, not just untested here - the final, unconditional
+; stack restore discards them without needing to know how many
+; there are.
+; ------------------------------------------------------------
+
+================================================================
+TSTMODZ.0  [explanatory]  (lines 2487-2497 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTMODZ - unit test for MODW, divide-by-zero case. n2 = 0.
+; Verifies THROW -10 fires (per this system's documented ANS
+; behavior for a zero divisor) and that CATCH's own depth-
+; restoration contract holds (net 0 change across the JSR CATCH,
+; xt's slot effectively replaced by the throw code). Per CATCH's
+; own spec, the i*x arguments' VALUES are explicitly unspecified
+; after a catch, not just untested here - the final, unconditional
+; stack restore discards them without needing to know how many
+; there are.
+; ------------------------------------------------------------
+
+================================================================
+TSTSLMODZ.0  [explanatory]  (lines 2583-2593 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTSLMODZ - unit test for SLASHMOD, divide-by-zero case. n2 = 0.
+; Verifies THROW -10 fires (per this system's documented ANS
+; behavior for a zero divisor) and that CATCH's own depth-
+; restoration contract holds (net 0 change across the JSR CATCH,
+; xt's slot effectively replaced by the throw code). Per CATCH's
+; own spec, the i*x arguments' VALUES are explicitly unspecified
+; after a catch, not just untested here - the final, unconditional
+; stack restore discards them without needing to know how many
+; there are.
+; ------------------------------------------------------------
+
+================================================================
+TSTSTSLZ.0  [explanatory]  (lines 3232-3242 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTSTSLZ - unit test for STARSLASH, divide-by-zero case. n3 = 0.
+; Verifies THROW -10 fires (per this system's documented ANS
+; behavior for a zero divisor) and that CATCH's own depth-
+; restoration contract holds (net 0 change across the JSR CATCH,
+; xt's slot effectively replaced by the throw code). Per CATCH's
+; own spec, the i*x arguments' VALUES are explicitly unspecified
+; after a catch, not just untested here - the final, unconditional
+; stack restore discards them without needing to know how many
+; there are.
+; ------------------------------------------------------------
+
+================================================================
+TSTSTSMZ.0  [explanatory]  (lines 3332-3342 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTSTSMZ - unit test for STARSLASHMOD, divide-by-zero case. n3 = 0.
+; Verifies THROW -10 fires (per this system's documented ANS
+; behavior for a zero divisor) and that CATCH's own depth-
+; restoration contract holds (net 0 change across the JSR CATCH,
+; xt's slot effectively replaced by the throw code). Per CATCH's
+; own spec, the i*x arguments' VALUES are explicitly unspecified
+; after a catch, not just untested here - the final, unconditional
+; stack restore discards them without needing to know how many
+; there are.
+; ------------------------------------------------------------
+
+================================================================
+TSTDARITH.0  [explanatory]  (lines 3385-3405 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTDARITH - mixed & double-precision arithmetic tests (glossary
+; section 3.5). Covers every word in that section. All 14 words
+; traced by hand against their real implementations before any
+; test was written - push/pop order for double-cell values (low
+; cell pushed first, high cell last/on top - confirmed identical
+; across every word here), and which of two operands is which
+; (d1 vs d2, dividend vs divisor) - not assumed from the glossary
+; stack-effect notation alone. FM/MOD (floored) and SM/REM
+; (symmetric) tested against the same negative-dividend case
+; specifically because that's where the two conventions actually
+; diverge - confirmed distinct expected results for each.
+;
+; TSTUMSM2 (added later) is a dedicated boundary-case regression
+; test for UM/MOD's own ANS Annex F MAX-UINT/MAX-UINT case
+; (F.6.1.2370), on top of TSTUMSM's ordinary mid-range case - see
+; TSTUMSM2's own header/comment for why only UM/MOD, of every word
+; in this section, can actually reach the UDIV32 bug it regression-
+; tests (the other division words here all derive UDIV32's divisor
+; from a signed single cell, too narrow a range to trigger it).
+; ------------------------------------------------------------
+
+================================================================
+TSTUMSM2.0  [explanatory]  (lines 3545-3577 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTUMSM2 - unit test for UMSLASHMOD, MAX-UINT/MAX-UINT boundary
+; case (ANS Annex F F.6.1.2370: "MAX-UINT MAX-UINT UM* MAX-UINT
+; UM/MOD -> 0 MAX-UINT"). Direct regression test for the UDIV32 bug
+; found from a hardware report on exactly this case - see UDIV32's
+; own header/comment (forth6809.asm) for the full root-cause
+; analysis: a restoring-division boundary bug where the 16-bit
+; DIVREM register silently lost a 17th overflow bit whenever the
+; divisor was large enough (DIVDEN >= $8001) for the doubled-
+; remainder-plus-next-bit candidate to exceed $FFFF before the
+; compare-and-subtract step - wrongly skipping a subtraction (and
+; its quotient bit) it should have taken. Only UM/MOD can actually
+; reach that condition: it alone passes an arbitrary UNSIGNED
+; 16-bit divisor (up to $FFFF) straight through to UDIV32, where
+; SM/REM, FM/MOD, and plain /, MOD, /MOD all derive UDIV32's
+; divisor from a SIGNED single-cell value (magnitude capped at
+; $8000, from MIN-INT) - just low enough that 2*($8000-1)+1 =
+; $FFFF still fits in 16 bits, so none of those words can ever
+; trigger this particular bug regardless of input. That's why this
+; one boundary case, through UM/MOD specifically, is the test that
+; actually exercises the fixed code path - a plain mid-range
+; UMSLASHMOD case (TSTUMSM, above) does not.
+;
+; Dividend: MAX-UINT*MAX-UINT = $FFFE0001 (confirmed via UMSTAR's
+; own ANS Annex F case, F.6.1.2360: "MAX-UINT MAX-UINT UM* -> 1
+; 1 INVERT", i.e. low cell 1, high cell MAX-UINT/$FFFF - same
+; double value, split differently in that test's own terms).
+; Divisor: MAX-UINT ($FFFF). Expected: remainder 0, quotient
+; MAX-UINT ($FFFF) - verified against the buggy/fixed UDIV32
+; algorithm directly in a Python simulation and a 200,000-case
+; random fuzz run before applying the fix (see the project's own
+; learnings notes), not just by hand-tracing.
+; ------------------------------------------------------------
+
+================================================================
+TSTLOGIC.0  [explanatory]  (lines 4418-4434 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTLOGIC - logic, shift, and address-arithmetic tests (glossary
+; section 3.6). Covers every word in that section. Several of
+; these (INVERT, CELLS, CELL+, CHARS, CHAR+, ALIGNED) modify the
+; top of stack in place (LDD/op/STD) rather than PULU/PSHU - the
+; tests verify what's observable via the stack either way, not
+; how each implementation gets there. Three words (CHARS, ALIGN,
+; ALIGNED) are documented no-ops on this system; CHARS/ALIGNED
+; still get a normal single-value test (verifying identity),
+; while ALIGN - which takes no stack arguments at all - gets a
+; dedicated test pushing decoy values to confirm the whole stack,
+; not just one value, is genuinely undisturbed. RSHIFT tested
+; against a negative input specifically, since it's documented
+; logical (zero-fill), not arithmetic (sign-preserving) - the
+; case that actually distinguishes the two conventions, same
+; reasoning already applied to 2/ and FM/MOD vs SM/REM earlier.
+; ------------------------------------------------------------
+
+================================================================
+TSTCOMPARE.0  [explanatory]  (lines 5006-5022 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTCOMPARE - comparison tests (glossary section 3.7). Covers
+; every word in that section. Like several words in the previous
+; group, most of these modify the top of stack in place rather
+; than PULU/PSHU - the tests verify what's observable via the
+; stack either way. Signed vs unsigned comparisons (</U<, >/U>)
+; each tested with a case that would give the opposite answer
+; under the other convention, confirming genuine sign-awareness
+; rather than an accidentally-shared implementation. WITHIN
+; tested against a wraparound range specifically (n2 near $FFFF,
+; n3 wrapped past $0000), both inside and outside cases - the
+; documented special case its own unsigned-offset implementation
+; exists to handle, not just an ordinary non-wrapping range. D</
+; DU< both tested with equal high cells and different low cells -
+; the documented tie-break case a naive high-cell-only comparison
+; would get wrong.
+; ------------------------------------------------------------
+
+================================================================
+TSTCTRLFLOW.0  [explanatory]  (lines 5743-5772 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTCTRLFLOW - control-flow tests (glossary section 3.8, 22
+; words - all except UNLOOP, which is a genuine runtime no-op
+; and tested directly like ALIGN's own test, needing none of
+; this section's compile-time harness). Every other test
+; redirects CODEHERE to a scratch buffer (TSTCBUF), calls the
+; real compile-time words directly (JSR IF, JSR THEN, JSR DO,
+; etc - the actual routines the compiler itself calls, not a
+; hand-simulated imitation), restores CODEHERE, then executes
+; the compiled snippet directly. Tests the real interaction
+; between compile-time correctness (right bytes, right patched
+; offsets) and runtime correctness (right control flow) in one
+; coherent check, without needing the outer interpreter, FIND,
+; or a real dictionary entry.
+;
+; Given the planned future application of the ANS test suite for
+; broader standards-compliance coverage, these tests focus on
+; this system's own compile/patch mechanism working correctly -
+; not full end-to-end parsing, which the ANS suite will cover.
+;
+; One case is deliberately NOT tested: DO with limit=index.
+; Traced precisely (simulated the real DOTEST increment-and-
+; compare-equal logic) and confirmed it takes a full 65536-
+; iteration wraparound to naturally reconverge on equality, not
+; one - true to the letter of "runs at least once" but
+; impractical for a boot-time self-check. ?DO's own equivalent
+; case IS tested (TSTQDOLPEQ) - its own skip check happens
+; before the loop is entered at all, confirmed fast and safe by
+; the same kind of trace.
+; ------------------------------------------------------------
+
+================================================================
+TSTCTRLFLOW.1  [explanatory]  (lines 6301-6316 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; Control-flow test harness (glossary section 3.8). Each test
+; redirects CODEHERE to a scratch buffer (TSTCBUF), calls the
+; real compile-time control-flow words directly (JSR IF, JSR
+; THEN, etc - the same routines the compiler itself calls when
+; parsing IF/THEN/DO/LOOP/etc, not a hand-simulated imitation),
+; then restores CODEHERE and executes the compiled snippet
+; directly. This tests the actual interaction between compile-
+; time correctness (right bytes, right patched offsets) and
+; runtime correctness (right control flow) in one coherent
+; test, without needing the outer interpreter, FIND, or a
+; dictionary entry - matching the ANS test suite's own planned
+; role for broader standards-compliance coverage; these tests
+; specifically verify this system's own compile/patch mechanism
+; works correctly, not full end-to-end parsing.
+; ------------------------------------------------------------
+
+================================================================
+TSTIFT1.0  [explanatory]  (lines 5830-5838 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTIFT1 - unit test for IF/THEN, true case. Compiles
+; "IF <lit 111> THEN" into scratch, then runs it with a true
+; flag - the branch is NOT taken, so 111 should be pushed.
+; Verified by hand-trace before writing: ZBRANCH's patched
+; offset comes out to 7 (from the placeholder field to just
+; past the compiled LIT+111), correctly skipping nothing when
+; the flag is true and falling through into the literal.
+; ------------------------------------------------------------
+
+================================================================
+TSTBGU.0  [explanatory]  (lines 6103-6113 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTBGU - unit test for BEGIN/UNTIL. Compiles
+; "BEGIN 1+ DUP <lit 5> = UNTIL" into scratch - increments,
+; duplicates, compares to 5, loops back while not equal. Run
+; starting from 0; verified by hand-trace across all 5
+; iterations (0->1->2->3->4->5, exiting exactly on reaching 5,
+; not one iteration early or late) before writing. The patched
+; back-edge offset is negative (-17), the same PATCH routine
+; used for forward references handling both directions
+; correctly based on relative position.
+; ------------------------------------------------------------
+
+================================================================
+TSTBWR.0  [explanatory]  (lines 6184-6194 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTBWR - unit test for BEGIN/WHILE/REPEAT. Compiles
+; "BEGIN DUP <lit 5> < WHILE 1+ REPEAT" - opposite polarity
+; from TSTBGU's UNTIL (continues on true, exits on false,
+; rather than the reverse) - starting from 0, increments while
+; less than 5. Naturally exercises both of WHILE's outcomes in
+; one test: the continue path 5 times, the exit path once.
+; Verified by hand-trace: WHILE's patched forward offset (10)
+; lands exactly at the final RTS; REPEAT's patched back-edge
+; (-22) lands exactly at BEGIN.
+; ------------------------------------------------------------
+
+================================================================
+TSTRECUR.0  [explanatory]  (lines 6267-6278 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTRECUR - unit test for RECURSE. RECURSE now compiles a call
+; to CURXT, the execution token recorded by ":" / ":NONAME" for
+; the definition in progress (it no longer walks LATEST's header,
+; which was wrong inside :NONAME). This test saves CURXT, sets it
+; to DUP's real address, calls RECURSE directly, and verifies a
+; correct call to DUP was compiled - tests the actual mechanism
+; (CURXT read, CCALL), not genuine self-recursion, which would
+; need a real in-progress compilation to set up meaningfully.
+; (Rewritten: the old version faked a dictionary header via
+; LATEST, which RECURSE no longer reads.)
+; ------------------------------------------------------------
+
+================================================================
+TSTDOLP.0  [explanatory]  (lines 6343-6359 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTDOLP - unit test for DO/LOOP. Compiles "DO I + LOOP",
+; run with limit=5, start-index=0, and a seed accumulator of 0
+; already on the stack. Verifies the full I sequence (0,1,2,3,4)
+; by summing it via + each iteration - a wrong index sequence
+; (off-by-one, wrong direction, wrong starting value) would
+; produce a different sum than the correct 0+1+2+3+4=10, not
+; just "some number of iterations happened."
+;
+; The documented limit=index edge case (runs at least once) is
+; deliberately NOT tested here: traced precisely (simulated the
+; real DOTEST increment-and-compare-equal logic) and confirmed
+; it takes a full 65536 iterations to naturally reconverge on
+; equality, not one - true to the letter of "at least once" but
+; impractical for a boot-time self-check. Left untested, not
+; guessed at; noted in the open-items checklist.
+; ------------------------------------------------------------
+
+================================================================
+TSTQDOLPEQ.0  [explanatory]  (lines 6499-6510 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTQDOLPEQ - unit test for ?DO/LOOP, limit=index case - the
+; documented case that DISTINGUISHES ?DO from plain DO: skips
+; the loop entirely, unlike DO's own limit=index behavior
+; (confirmed separately to take a full 65536-iteration
+; wraparound, not tested here - see TSTDOLP's own notes). This
+; case IS fast and safe to test directly: QDOSETUP's own skip
+; check happens before the loop is entered at all, confirmed by
+; hand-trace of its code. Same "?DO I + LOOP" body, but since
+; the body never runs, the seed should come back completely
+; unchanged (0, not 10).
+; ------------------------------------------------------------
+
+================================================================
+TSTPLOOP.0  [explanatory]  (lines 6578-6587 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTPLOOP - unit test for DO/+LOOP. Compiles
+; "DO I + 3 LITERAL +LOOP", run with limit=10, start=0 - a step
+; (3) that doesn't land exactly on the limit, deliberately
+; exercising the crossing-boundary exit condition rather than
+; landing-exactly-on-it, since those are handled by genuinely
+; different checks in DOPLUSTEST (confirmed by reading its own
+; code - crosses-sign OR lands-exactly, checked separately).
+; Visits I=0,3,6,9, exits when 9+3=12 crosses past 10. Sum=18.
+; ------------------------------------------------------------
+
+================================================================
+TSTJIDX.0  [explanatory]  (lines 6659-6671 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTJIDX - unit test for J. Compiles a doubly-nested DO loop:
+; "DO 2 0 DO J 10 * I + + LOOP LOOP" - outer index 0..2, inner
+; 0..1, accumulating (outer*10+inner) each pass. Verifies BOTH
+; I and J are read correctly, and specifically at the right
+; return-stack offset once genuinely nested (J's own "8,S" -
+; not the "10,S" an earlier, already-documented bug used, per
+; this word's own extensive bug-fix history in the source
+; itself, retraced by hand here rather than assumed still
+; correct). Six (outer,inner) pairs, expected sum 63 - a wrong
+; nesting depth or wrong index read would produce a different
+; sum, not just "some accumulation happened."
+; ------------------------------------------------------------
+
+================================================================
+TSTLEAVE.0  [explanatory]  (lines 6766-6779 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTLEAVE - unit test for LEAVE. Compiles
+; "DO I DUP 3 LITERAL = IF LEAVE THEN + LOOP", limit=10,
+; start=0 - would normally visit I=0..9, but LEAVE forces exit
+; once I=3 is reached. LEAVE only sets a flag; the actual exit
+; happens at the NEXT LOOP check (per its own documented
+; behavior, "exit at its next LOOP") - confirmed by hand-trace
+; of DOTEST's own logic (checks the flag first, before its
+; normal increment/compare). Since + runs before LOOP's check,
+; I=3 IS accumulated before the loop exits - sum=0+1+2+3=6, not
+; 0+1+2=3 (which would indicate LEAVE incorrectly took effect
+; immediately) and not the full 0..9 (which would indicate
+; LEAVE didn't work at all).
+; ------------------------------------------------------------
+
+================================================================
+TSTEXIT.0  [explanatory]  (lines 6867-6884 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTEXIT - unit test for EXIT. Compiles
+; "DO I 3 = IF UNLOOP EXIT THEN I + LOOP", limit=10, start=0,
+; seed sum=0 - EXIT fires when I=3. EXIT no longer discards
+; loop frames (standard: UNLOOP first), so the test calls UNLOOP
+; itself right before EXIT, then EXIT returns immediately.
+; (Rewritten: it used to rely on EXIT discarding the open DO
+; frame, which made EXIT return through the stale loop cells.)
+; Sets the real CSP to U's value right before the first control-flow marker is pushed
+; (matching what ":" does at the start of a real definition),
+; since EXIT's own compile-time frame count depends on it -
+; confirmed by hand-trace: at the point EXIT is compiled, U
+; holds IF's own pending (addr,TAGFWD) on top of DO's
+; (addr,TAGDO), and EXIT's scan correctly counts exactly one
+; TAGDO between U and CSP. Unlike TSTLEAVE, EXIT fires
+; immediately when reached - the following + never runs for
+; I=3, so sum=0+1+2=3, not 6.
+; ------------------------------------------------------------
+
+================================================================
+TSTUNLOOP.0  [explanatory]  (lines 6981-6992 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTUNLOOP - unit test for UNLOOP. UNLOOP discards the 3-cell
+; DO frame (index, limit, LEAVE flag = 6 bytes) that sits on the
+; return stack directly beneath its own return address, and
+; leaves the data stack alone. The test pushes a fake 6-byte
+; frame on S, calls UNLOOP, and checks S rose by exactly 6 and U
+; did not move. (Rewritten: UNLOOP used to be a bare RTS, and the
+; old test called it with no frame on S - with the real UNLOOP
+; that would discard six bytes of the test's own return
+; addresses and crash the run.) Scratch: TSTUB4/TSTUAF hold the
+; S values here, TSTSCR holds U.
+; ------------------------------------------------------------
+
+================================================================
+TSTCASE1.0  [explanatory]  (lines 7030-7042 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTCASE1 - unit test for CASE/OF/ENDOF/ENDCASE, matching
+; clause. Compiles
+; "CASE 1 LITERAL OF 111 LITERAL ENDOF
+;       2 LITERAL OF 222 LITERAL ENDOF ENDCASE"
+; with selector=2, matching the second clause. Traced by hand:
+; OF compiles OVER/=/ZBRANCH<placeholder>/DROP - the DROP only
+; runs on a match, consuming the selector; ENDOF compiles an
+; unconditional branch past the remaining clauses AND patches
+; its own OF's placeholder to the next clause's OF; ENDCASE
+; patches every pending ENDOF branch to the true end and
+; compiles a final fallback DROP for the no-match case.
+; ------------------------------------------------------------
+
+================================================================
+TSTCASE2.0  [explanatory]  (lines 7116-7124 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTCASE2 - unit test for CASE/OF/ENDOF/ENDCASE, no-match
+; case. Same compiled snippet as TSTCASE1, run with a selector
+; (99) matching neither clause - should fall through both OF
+; checks (selector preserved across each non-match, per the
+; documented "( x n -- | x )" effect) and reach ENDCASE's own
+; fallback DROP, consuming the selector with nothing pushed in
+; its place.
+; ------------------------------------------------------------
+
+================================================================
+TSTTHENZ.0  [explanatory]  (lines 7195-7206 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTTHENZ - unit test for THEN, tag-mismatch case. Pushes a
+; wrong value (0, matching none of TAGFWD/TAGBACK/TAGDO/TAGOF)
+; in place of the expected TAGFWD, then calls THEN via CATCH.
+; CFERR (confirmed by reading it directly) throws -22
+; immediately without ever touching CODEHERE - the error path
+; never reaches any compiling code - so this needs no CODEHERE
+; redirect, unlike every other test in this section. Same
+; CATCH-based pattern as the divide-by-zero tests in earlier
+; sections: verify the thrown code and CATCH's own depth-
+; restoration contract, not the unspecified i*x values.
+; ------------------------------------------------------------
+
+================================================================
+TSTDEFWORDS.0  [explanatory]  (lines 7331-7371 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTDEFWORDS - defining-words tests (glossary section 3.9, 17
+; words, 12 tests since VALUE/TO and IS/ACTION-OF are each
+; combined into one test). Every defining word parses a name
+; from the input source via WORD (HEADER's own mechanism,
+; shared by :/CREATE) - a complexity nothing in section 3.8 had.
+; Each test redirects CODEHERE, DPHERE, VARHERE, and
+; SRCADDR/SRCLEN/TOIN together (a fake name, "TESTWD", reused
+; safely across every test here since each redirect/restore
+; cycle is fully isolated), calls the real defining word
+; directly, saves the newly-defined word's own CFA (= CODEHERE
+; at the moment the defining word was called), restores
+; everything, then executes that CFA directly to verify runtime
+; behavior.
+;
+; A real, structurally important finding from this section:
+; HEADER writes to the real LATEST variable unconditionally, not
+; a redirectable copy like CODEHERE/DPHERE/VARHERE - every test
+; here explicitly saves and restores it, confirmed necessary by
+; reading HEADER's own code directly, not assumed safe by analogy
+; with the other three pointers.
+;
+; MARKER's own test is the one exception to the general
+; redirect-then-restore-then-execute order: DOMARKER (confirmed
+; by reading it directly) writes to the real DPHERE/CODEHERE/
+; VARHERE/LATEST unconditionally too, so that test executes the
+; marker word while still redirected, only restoring the real
+; environment afterward - getting this order backwards would
+; have corrupted the real dictionary pointers with scratch
+; addresses.
+;
+; Bare CREATE (never followed by DOES>) is deliberately not
+; tested on its own - traced its placeholder "behavior field"
+; (a genuine compiled JSR DOESRT0 instruction) and confirmed
+; DODOES reads that field as raw data, not as code to execute -
+; which only produces a valid jump target for the raw-address
+; form every other defining word uses (VARIABLE, CONSTANT, etc,
+; via CODECOMMA), not CREATE's own placeholder JSR instruction.
+; Bare CREATE's own direct-execution behavior isn't meant to be
+; relied upon before a DOES> patches it.
+; ------------------------------------------------------------
+
+================================================================
+TSTDEFWORDS.1  [explanatory]  (lines 7871-7895 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; Defining-words test harness (glossary section 3.9). Every
+; defining word parses a name from the input source via WORD -
+; unlike anything in section 3.8's control-flow tests - so each
+; test redirects CODEHERE, DPHERE, VARHERE, and SRCADDR/SRCLEN/
+; TOIN together (a fake name text, "TESTWD", reused safely
+; across every test here since each redirect/restore cycle is
+; fully isolated), calls the real defining word directly, saves
+; the newly-defined word's own CFA (= CODEHERE at the moment the
+; defining word was called), restores everything, then executes
+; that CFA directly to verify runtime behavior. Traced by hand:
+; CREATE/VARIABLE/CONSTANT/etc all use HEADER (shared header-
+; building) then compile a fixed 5-byte trampoline (3-byte
+; "JSR DODOES" + a 2-byte "behavior field") before their own
+; PFA - confirmed the behavior field holds a genuine compiled
+; JSR instruction only for CREATE's own bare placeholder
+; (DOESRT0, later patched by DOES>); every other defining word
+; (VARIABLE, CONSTANT, DEFER, MARKER, VALUE) instead compiles a
+; raw 2-byte address there directly (via CODECOMMA, not CCALL) -
+; DODOES reads this field as data either way, which only works
+; correctly for the raw-address form. This is why bare CREATE,
+; executed before any DOES>, isn't tested here - its own
+; placeholder behavior field isn't meant to be read as data,
+; only ever overwritten by DOES> before first use.
+; ------------------------------------------------------------
+
+================================================================
+TSTCONST.0  [explanatory]  (lines 7541-7549 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTCONST - unit test for CONSTANT. Compiles "5 CONSTANT
+; TESTWD" (5 already pushed before CONSTANT runs, matching its
+; own "x name --" signature) into scratch, then executes the
+; result. Verifies it pushes the stored value (5), not its own
+; address - confirmed by tracing CONSTANT's own behavior field:
+; it compiles a raw address to ATSIGN (@) there directly via
+; CODECOMMA, not CREATE's own placeholder mechanism.
+; ------------------------------------------------------------
+
+================================================================
+TSTCOLON.0  [explanatory]  (lines 7651-7661 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTCOLON - unit test for : and ; together. Compiles
+; ": TESTWD 111 ;" into scratch (COLON parses the name, builds
+; a smudged header, sets CSP to the current U as the control-
+; flow balance baseline, sets STATE compiling; a literal 111 is
+; compiled; SEMI compiles the closing RTS, checks the CSP
+; balance, un-smudges the header, restores STATE) - then
+; executes the result and verifies it pushes 111. Also verifies
+; the header's own SMUDGE bit is correctly clear after SEMI -
+; not just that execution happened to work.
+; ------------------------------------------------------------
+
+================================================================
+TSTCRDOES.0  [explanatory]  (lines 7782-7803 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTCRDOES - unit test for CREATE/DOES> together. Compiles the
+; equivalent of "CREATE TESTWD 5 , DOES> @ 1+" directly (CREATE,
+; store 5 at the PFA, DOES>'s own compile action, then @ and 1+
+; compiled as the new behavior, terminated with RTS) - executing
+; TESTWD should push 6 (5 fetched, then incremented).
+;
+; DOES>'s own runtime action (SETDOES) does a documented "double
+; return": it patches LATEST's behavior field using the return
+; address ITS OWN "JSR SETDOES" call provides, then pops a
+; SECOND return address and jumps there - designed for the
+; normal case where DOES> is reached from inside an enclosing
+; defining word (like a real ": MAKETEST CREATE ... DOES> ... ;"
+; would compile), which itself has its own caller. Traced by
+; hand: calling directly into the compiled "JSR SETDOES"
+; instruction itself (not through an intermediate wrapper)
+; naturally supplies exactly the two stack levels SETDOES
+; expects - its own JSR provides the first (becoming the new
+; behavior field value), and this test's own call provides the
+; second (correctly resuming here afterward) - no extra
+; scaffolding needed, confirmed correct rather than assumed.
+; ------------------------------------------------------------
+
+================================================================
+TSTCRDOES.1  [bugfix]  (lines 8345-8354 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            LDX   TSTDOESA          ; BUG FIX: was preceded by restoring LATEST
+                                    ; to its real value here - but SETDOES
+                                    ; (confirmed by reading its own code) reads
+                                    ; LATEST directly to find which header to
+                                    ; patch, so restoring it first meant SETDOES
+                                    ; patched the real, wrong word instead of
+                                    ; TESTWD, leaving TESTWD stuck on its
+                                    ; original DOESRT0 placeholder. LATEST now
+                                    ; stays pointed at TESTWD (this test's own
+                                    ; fake header) until right after this call.
+
+================================================================
+TSTBUFC.0  [explanatory]  (lines 8165-8175 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTBUFC - unit test for BUFFER:. Compiles "10 BUFFER: TESTWD"
+; into scratch (u=10, the requested size, popped before the name
+; is even parsed - confirmed by reading BUFFERCOLON's own code,
+; which pops u as its very first action, before calling HEADER),
+; then executes the result. Verifies it pushes its own PFA
+; address (matching VARIABLE's own DOESRT0 behavior - BUFFER:
+; shares it) and that VARHERE genuinely advanced by exactly the
+; requested 10 bytes - not just that some space was reserved.
+; Contents are documented uninitialized, so not checked.
+; ------------------------------------------------------------
+
+================================================================
+TSTVALTO.0  [explanatory]  (lines 8286-8297 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTVALTO - unit test for VALUE and TO together. Compiles
+; "42 VALUE TESTWD", executes it (expect 42), then interprets
+; "99 TO TESTWD" directly (TO parses "TESTWD" via WORD+FIND,
+; needing LATEST still pointed at it - not restored until this
+; whole test finishes, unlike every earlier test in this
+; section), executes TESTWD again (expect 99). Explicitly forces
+; STATE=0 (interpreting) before calling TO, since its own
+; behavior genuinely differs by STATE (confirmed by reading its
+; code: TOIMMED's direct store path only runs when STATE=0) -
+; not left to chance.
+; ------------------------------------------------------------
+
+================================================================
+TSTVALTO.1  [explanatory]  (lines 8835-8837 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            LBNE  VTFAIL            ; was BNE - out of short-branch range, since
+                                    ; VTFAIL sits past this test's entire second
+                                    ; round (the TO reassignment and re-check)
+
+================================================================
+TSTVALTO.2  [bugfix]  (lines 8847-8857 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            LDD   #TSTCBUF2         ; BUG FIX: was TSTCBUF - WORD writes its
+                                    ; parsed-token output directly at CODEHERE
+                                    ; (see TSTCBUF2's own comment), which would
+                                    ; silently overwrite TESTWD's own already-
+                                    ; compiled trampoline still sitting at
+                                    ; TSTCBUF, corrupting the CFA TSTWCFA points
+                                    ; to before this test's second execution.
+                                    ; Confirmed via MAME: a crash jumping into
+                                    ; invalid memory at TSTCBUF's own address,
+                                    ; landing on WORD's own leftover length byte
+                                    ; instead of the trampoline's real opcode.
+
+================================================================
+TSTISOF.0  [explanatory]  (lines 8695-8705 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTISOF - unit test for IS and ACTION-OF together. Compiles
+; "DEFER TESTWD", interprets "DUP IS TESTWD" directly (IS parses
+; "TESTWD" via WORD+FIND, needing LATEST still pointed at it -
+; not restored until this whole test finishes), executes TESTWD
+; (should now behave like DUP), then interprets "ACTION-OF
+; TESTWD" to fetch the current target by name and confirms it
+; matches DUP's own xt. Explicitly forces STATE=0 before both IS
+; and ACTION-OF, since both are documented to behave differently
+; by STATE, same reasoning as TSTVALTO's own TO test.
+; ------------------------------------------------------------
+
+================================================================
+TSTISOF.2  [explanatory]  (lines 9296-9298 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            LBNE  ISFAIL            ; was BNE - out of short-branch range, since
+                                    ; ISFAIL sits past this test's entire second
+                                    ; phase (the ACTION-OF lookup and re-check)
+
+================================================================
+TSTISOF.1  [bugfix]  (lines 9261-9274 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            LDD   #TSTCBUF2         ; BUG FIX: this redirect was missing entirely
+                                    ; - WORD writes its parsed-token output
+                                    ; directly at CODEHERE regardless of STATE
+                                    ; (see TSTCBUF2's own comment), so without
+                                    ; this, ISW's own internal name-parse would
+                                    ; write into the real, unredirected CODEHERE -
+                                    ; unsafe during boot-time testing, before
+                                    ; COLD has set it to anything meaningful. Not
+                                    ; TSTCBUF specifically here (unlike TSTVALTO's
+                                    ; TO-phase fix), since nothing in this phase
+                                    ; needs TSTCBUF's own contents preserved yet -
+                                    ; but using the same dedicated buffer
+                                    ; throughout keeps every phase's redirect
+                                    ; consistent and safe regardless of order.
+
+================================================================
+TSTISOF.3  [bugfix]  (lines 9330-9333 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            LDD   #TSTCBUF2         ; BUG FIX: same missing redirect as before
+                                    ; ISW above - ACTIONOF's own internal WORD
+                                    ; call needs somewhere safe to write its
+                                    ; parsed-token output too.
+
+================================================================
+TSTMARKER.0  [explanatory]  (lines 8891-8914 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTMARKER - unit test for MARKER. Compiles "MARKER TESTWD"
+; (CODEHERE/DPHERE/VARHERE redirected to scratch, as with every
+; other test in this section), then simulates "something was
+; defined after the marker" by manually advancing the redirected
+; pointers further and pointing the real LATEST elsewhere,
+; executes the marker word, and verifies everything was restored
+; to TSTCBUF/TSTDBUF/TSTVBUF directly - the state BEFORE the
+; marker word itself was created, not the state right after.
+; MARKER's own documented behavior is "forgets itself too" -
+; traced MARKERW's own code and confirmed its internal snapshot
+; is taken at its very start, before HEADER or any compiling
+; runs at all, so that's genuinely the correct restore target,
+; not assumed.
+;
+; DOMARKER (confirmed by reading it directly) writes to the
+; real DPHERE/CODEHERE/VARHERE/LATEST unconditionally, not to
+; any redirected copy - so this test must execute the marker
+; word while CODEHERE/DPHERE/VARHERE are still redirected (their
+; real values are restored only afterward), unlike every other
+; test in this section, which restores first and executes
+; second. Getting this order backwards would have corrupted the
+; real dictionary pointers with scratch addresses.
+; ------------------------------------------------------------
+
+================================================================
+TSTMARKER.1  [bugfix]  (lines 9490-9503 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            CMPD  #TSTCBUF          ; captured snapshot of CODEHERE right AFTER
+                                    ; MARKERW finished building its own header -
+                                    ; wrong target. MARKER's own documented
+                                    ; behavior is "forgets itself too" - traced
+                                    ; MARKERW's own code and confirmed its
+                                    ; snapshot (MKDP/MKCODE/MKVAR/MKLATEST) is
+                                    ; taken at its very start, before HEADER or
+                                    ; any compiling runs at all - so DOMARKER
+                                    ; correctly restores to the state BEFORE the
+                                    ; marker word itself was created (TSTCBUF
+                                    ; directly), not the state right after. The
+                                    ; real dictionary/compile mechanism was
+                                    ; already working correctly; only this
+                                    ; test's own comparison target was wrong.
+
+================================================================
+TSTCOMPWORDS.0  [explanatory]  (lines 9068-9102 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTCOMPWORDS - compiling-words tests (glossary section 3.10,
+; 14 words, 19 tests since several get separate cases: TICK
+; found/not-found, ['] compiling/interpreting state, POSTPONE
+; normal/immediate word, [COMPILE] normal/immediate word,
+; SLITERAL compiling/interpreting state, ABORT" false/true flag).
+; Reuses the scratch infrastructure established for sections
+; 3.8/3.9 throughout.
+;
+; POSTPONE is this section's hardest case: a genuine two-level
+; compile-time mechanism. Traced its own code first - for a
+; normal word, it compiles code that ITSELF compiles a call to
+; that word later, when the current definition eventually runs,
+; not immediately (standard ANS semantics: POSTPONE appends a
+; word's own compilation semantics to the current definition,
+; and for an ordinary word that semantics IS "compile a call to
+; it", so appending it only makes sense if the current
+; definition later performs that compiling action itself,
+; against whatever's being compiled at that later point).
+; Verified via the compiled byte sequence directly rather than
+; fully executing a triple-nested compile chain.
+;
+; [COMPILE] is POSTPONE's obsolescent predecessor (added for ANS
+; Annex F test coverage, F.6.2.2530) - simpler to verify since it
+; makes no normal/immediate distinction at all: both its test
+; cases (TSTXCOMPILE1/2) check for the exact same direct-call
+; byte sequence POSTPONE only produces for the immediate case
+; (TSTPOSTPONE2) - see XCOMPILE's own header/comment for why.
+;
+; ABORT" is safely testable for both its flag cases - confirmed
+; by reading its own runtime code that it uses THROW -2
+; internally, not the raw, never-returns ABORT mechanism plain
+; ABORT itself uses (still deliberately untested, per section
+; 3.1's own reasoning).
+; ------------------------------------------------------------
+
+================================================================
+TSTCOMPWORDS.1  [explanatory]  (lines 9591-9606 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; Compiling-words test harness (glossary section 3.10). Reuses
+; the scratch infrastructure established for sections 3.8/3.9
+; (TSTCBUF/TSTCBUF2 for CODEHERE redirects, TSTFHDR for a fake
+; dictionary header, TSTNAMEB for a fake source name). POSTPONE
+; is this section's own hardest case: a genuine two-level
+; compile-time mechanism (compiling code that, for a normal
+; word, itself compiles a call to that word later, when the
+; current definition eventually runs - not immediately, unlike
+; every other compile-time word tested so far). ABORT" is safely
+; testable for both its true and false flag cases - traced its
+; own runtime behavior directly and confirmed it uses THROW -2
+; internally, not the raw, never-returns ABORT mechanism plain
+; ABORT itself uses (which remains untested, per section 3.1's
+; own reasoning).
+; ------------------------------------------------------------
+
+================================================================
+TSTTICK1.0  [explanatory]  (lines 9325-9334 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTTICK1 - unit test for ' (tick), found case. Builds a fake
+; header pointing at DUP's own CFA, redirects LATEST to it and
+; SRCADDR to a matching fake name, and verifies TICK returns the
+; correct xt. Redirects CODEHERE too, even though TICK doesn't
+; itself compile anything - WORD's own internal parse still
+; writes through it regardless (the same real bug found via MAME
+; earlier applies to any word that calls WORD, not just the
+; defining words that originally surfaced it).
+; ------------------------------------------------------------
+
+================================================================
+TSTPOSTPONE1.0  [explanatory]  (lines 9827-9843 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTPOSTPONE1 - unit test for POSTPONE, normal (non-immediate)
+; word case. Traced its own code first: for a normal word,
+; POSTPONE compiles "[LIT xt][JSR COMPILE,]" into the current
+; definition - NOT a direct call to the word itself. This is
+; standard ANS semantics (POSTPONE appends a word's own
+; compilation semantics to the current definition; for an
+; ordinary word, that semantics IS "compile a call to it", so
+; the current definition, when it later runs, must itself
+; perform that compiling action against whatever definition is
+; being compiled at that later point - not immediately). Given
+; the genuine complexity of fully executing that second level
+; (which would need a further redirected CODEHERE and a further
+; round of execute-and-verify), this test instead verifies the
+; compiled byte sequence directly - still a meaningful,
+; unambiguous check of POSTPONE's own documented mechanism.
+; ------------------------------------------------------------
+
+================================================================
+TSTPOSTPONE2.0  [explanatory]  (lines 9955-9963 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTPOSTPONE2 - unit test for POSTPONE, immediate word case.
+; Confirmed via FIND's own code that it pushes 1 for immediate
+; words, -1 otherwise - POSTPONEW branches on exactly that. For
+; an immediate word, its own "compilation semantics" IS
+; "execute it now" (that's what immediate means), so POSTPONE
+; compiles a direct call to it - simpler to verify than the
+; normal-word case, no second level involved.
+; ------------------------------------------------------------
+
+================================================================
+TSTXCOMPILE1.0  [explanatory]  (lines 10066-10083 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTXCOMPILE1 - unit test for [COMPILE], normal (non-immediate)
+; word case. Unlike POSTPONE (TSTPOSTPONE1, above), [COMPILE]
+; makes no LIT/COMPILE, distinction by flag at all - traced
+; XCOMPILE's own code: it always compiles a direct call
+; ("[JSR xt]") to the found word, right now, regardless of
+; whether FIND reported it immediate or not. So this case (a
+; plain, non-immediate word, DUP) verifies the exact same simple
+; byte sequence as TSTPOSTPONE2's immediate-word case below -
+; that agreement, for an ordinary word, is itself the point:
+; [COMPILE] and POSTPONE only diverge on a default-compilation
+; word, which neither this nor TSTXCOMPILE2 constructs (seeing
+; that divergence would need a CREATE/DOES>-built compiling word,
+; not attempted here - the ANS Annex F test in
+; 13_compiling_words.tests.fs exercises [COMPILE] against DUP, a
+; user-defined IMMEDIATE word, and IF, which is the ordinary case
+; this implementation handles correctly either way).
+; ------------------------------------------------------------
+
+================================================================
+TSTTOBODY.0  [explanatory]  (lines 10296-10318 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTTOBODY - unit test for >BODY. Already used extensively as
+; an internal helper throughout section 3.9's DEFER@/DEFER!/TO/
+; IS tests, but gets its own dedicated test here too.
+;
+; BUG FIX: this test originally assumed TOBODY returns xt+5
+; itself (a pure address computation) - wrong, confirmed via
+; MAME: TOBODY computes xt+5, then DEREFERENCES it ("LDD ,X"),
+; returning the VALUE stored there, not the address itself. This
+; is genuinely correct behavior for this system's own trampoline
+; design, not a bug in TOBODY - reconciled directly against why
+; section 3.9's DEFER@/DEFER!/TO/IS tests, which relied on this
+; same TOBODY and passed on real hardware, never surfaced this:
+; those tests set up real trampolines (via VALUEW/DEFERW) whose
+; own compile-time code stores a genuinely meaningful value at
+; xt+5 (for DEFER, the current target xt; for VALUE, the stored
+; value) - "the body" for this system's own design IS the value
+; at xt+5, not xt+5's own address. This test never initialized
+; TSTCBUF+5 to anything at all, so it was comparing against
+; whatever garbage happened to already be there - now sets a
+; known value there first and verifies TOBODY returns exactly
+; that.
+; ------------------------------------------------------------
+
+================================================================
+TSTSLITERAL1.0  [explanatory]  (lines 10409-10417 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTSLITERAL1 - unit test for SLITERAL, compiling-state case.
+; Compile-only (throws -14 otherwise, per its own code). Pushes
+; a known 2-character string, compiles it as a runtime literal,
+; then executes the result to confirm it genuinely pushes the
+; correct (addr len) pair - checking the actual content at the
+; returned address, not just that some address and a length of
+; 2 came back.
+; ------------------------------------------------------------
+
+================================================================
+TSTABORTQ1.0  [explanatory]  (lines 10553-10562 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTABORTQ1 - unit test for ABORT", false-flag case. Compile-
+; only (throws -14 otherwise). Compiles ABORT" with a known
+; message ("HI"), executes with a false flag, and verifies
+; execution genuinely resumes right after the embedded message
+; text - confirmed by hand-tracing DOABORTQUOTE's own code: on
+; false, it skips past the inline message and returns normally,
+; matching its own documented "on false flag: does nothing
+; further".
+; ------------------------------------------------------------
+
+================================================================
+TSTABORTQ2.0  [explanatory]  (lines 10645-10654 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTABORTQ2 - unit test for ABORT", true-flag case. Same
+; compiled snippet as TSTABORTQ1, executed via CATCH with a true
+; flag instead. Confirmed by reading DOABORTQUOTE's own code
+; that it uses THROW -2 internally, not the raw, never-returns
+; ABORT mechanism plain ABORT itself uses (which remains
+; deliberately untested, per section 3.1's own reasoning) - so
+; this case is safe to test directly, unlike plain ABORT would
+; be.
+; ------------------------------------------------------------
+
+================================================================
+TSTMEMORY.0  [explanatory]  (lines 10738-10753 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTMEMORY - memory tests (glossary section 3.11, 22 words, 16
+; tests since several are combined into round-trip tests that
+; can only be meaningfully verified together: @/!, C@/C!, 2@/2!,
+; and the CODEHERE-region words (,/C,/ALLOT/HERE) and VARHERE-
+; region words (V,/VC,/VALLOT/VHERE) each combined into one
+; sequential walk-through per region.
+;
+; MOVE is traced from its own code to genuinely choose its copy
+; direction by comparing src and dst addresses, delegating to
+; CMOVE or CMOVE> to stay overlap-safe - so its own tests
+; specifically include both overlap directions (TSTMOVE2/
+; TSTMOVE3), each with its expected result hand-derived and
+; independently simulated in Python before writing the test, not
+; a trivial non-overlapping case alone (TSTMOVE1).
+; ------------------------------------------------------------
+
+================================================================
+TSTMEMORY.1  [explanatory]  (lines 11278-11293 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; Memory test harness (glossary section 3.11). Mostly simpler,
+; direct memory-access words (no compile-time behavior, no
+; name-parsing) - but , C, ALLOT HERE PAD touch CODEHERE, and
+; V, VC, VALLOT VHERE touch VARHERE, so those still need the
+; same redirect-based safety established for sections 3.8/3.9.
+; TSTCBUF is reused here as general scratch memory for the
+; simpler fetch/store tests, safe since each TSTSELECTOR group
+; runs exclusively of every other.
+;
+; MOVE is traced to genuinely choose its copy direction based on
+; comparing src and dst addresses (delegating to CMOVE or
+; CMOVE> as appropriate) - so its own tests specifically include
+; overlapping regions in both directions, not just a trivial
+; non-overlapping case, to verify that claim for real.
+; ------------------------------------------------------------
+
+================================================================
+TSTCFETCHSTORE.0  [explanatory]  (lines 10857-10877 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTCFETCHSTORE - unit test for C@ and C! together. Pre-fills
+; the cell with a distinctive nonzero pattern ($FFFF) via a
+; direct write (not through C!/C@ themselves), then confirms C!
+; genuinely only touches the single byte at the exact address
+; given - not the "other half" of a 2-byte cell in some assumed
+; sense - and that C@ genuinely zero-extends (not just returns
+; whatever was there).
+;
+; BUG FIX: this test's own expected value after C! was wrong,
+; not CSTOREW - confirmed via MAME: expected $FF34 (assuming
+; the untouched byte, from the $FFFF pre-fill, would end up as
+; the high byte of the word), but CSTOREW writes directly at
+; the given address (TSTCBUF itself, the LOWER address), leaving
+; TSTCBUF+1 (the higher address) untouched at $FF - and since
+; LDD on this big-endian 6809 reads the high byte of the word
+; from the lower address first, that's $34FF, not $FF34. The
+; single-byte write and the zero-extending fetch were both
+; already correct; only this test's own arithmetic about which
+; byte ends up where was wrong.
+; ------------------------------------------------------------
+
+================================================================
+TST2FETCHSTORE.0  [explanatory]  (lines 10981-10988 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TST2FETCHSTORE - unit test for 2@ and 2! together. Stores a
+; known pair, fetches it back, and verifies the standard
+; ordering: ( x1 x2 a-addr -- ) stores x2 at a-addr (the lower
+; address) and x1 at a-addr+cell, and 2@ restores x1 x2.
+; (Corrected: this test used to expect x1 at the lower address,
+; the reverse of the standard - ANS Annex F section 18 caught it.)
+; ------------------------------------------------------------
+
+================================================================
+TSTCODEHERE.0  [explanatory]  (lines 11047-11057 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTCODEHERE - combined unit test for , C, ALLOT, and HERE
+; together (glossary section 3.11's own CODEHERE-region words).
+; Redirects CODEHERE to scratch and walks through a sequence:
+; HERE reports the redirected value, COMMA appends a cell (and
+; the written cell is verified directly, not just the advance),
+; C, appends a byte (verified the same way), ALLOT reserves then
+; releases bytes (confirming both directions work, matching
+; "reserve (or release, if negative)"), and a final HERE
+; confirms the cumulative result.
+; ------------------------------------------------------------
+
+================================================================
+TSTVUNUSED.0  [explanatory]  (lines 11332-11339 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTVUNUSED - unit test for VUNUSED. Redirects VARHERE, verifies
+; VUNUSED reports APPVARSEND-VARHERE, using the same symbolic
+; constant VUNUSEDW's own code uses (per its own bug-fix comment,
+; confirmed already correct - this was the real bug found and
+; fixed earlier in a prior session, not something to re-litigate
+; here, just confirm holds).
+; ------------------------------------------------------------
+
+================================================================
+TSTMOVE2.0  [explanatory]  (lines 11707-11717 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTMOVE2 - unit test for MOVE, overlapping case with dst >
+; src (dst = TSTCBUF+2, src = TSTCBUF, 5 bytes - a 2-byte
+; forward shift). MOVE's own code compares addresses and
+; delegates to CMOVE> (high-to-low) whenever dst > src,
+; specifically to avoid the corruption a naive low-to-high copy
+; would cause here (byte 2 would get overwritten by the copy
+; before ever being read as a source byte). Expected result
+; hand-derived and independently simulated in Python before
+; writing this test, not guessed: "ABABCDE" across bytes 0-6.
+; ------------------------------------------------------------
+
+================================================================
+TSTMOVE3.0  [explanatory]  (lines 11794-11803 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTMOVE3 - unit test for MOVE, overlapping case with dst <
+; src (dst = TSTCBUF, src = TSTCBUF+2, 5 bytes - a 2-byte
+; backward shift). MOVE delegates to plain CMOVE (low-to-high)
+; whenever dst < src, avoiding the mirror-image corruption a
+; naive high-to-low copy would cause here. Expected result
+; hand-derived and independently simulated before writing:
+; "ABCDEDE" across bytes 0-6 (bytes 5-6 untouched, outside the
+; destination range).
+; ------------------------------------------------------------
+
+================================================================
+TSTSTRPARSE.0  [explanatory]  (lines 11882-11911 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTSTRPARSE - strings & parsing tests (glossary section 3.12,
+; 16 words, 19 tests since several get separate cases: [CHAR]
+; compiling/interpreting state, S" compiling/interpreting state
+; (this word genuinely has both), SEARCH found/not-found,
+; REPLACES/SUBSTITUTE combined across two tests (covering all 4
+; of SUBSTITUTE's own documented %-delimiter cases), SNAME
+; found/not-found.
+;
+; . has no STATE check at all in its own code (confirmed by
+; reading it directly - matches "no interpretation semantics,
+; per ANS" without a specific -14 throw, unlike [CHAR]/S"), so
+; only its compiling case is tested. Its own runtime calls TYPE
+; internally, so its own test applies the SERIALPOLL-conditional
+; lesson from section 3.1 from the start, rather than
+; re-discovering it via a failed MAME run.
+;
+; SUBSTITUTE/REPLACES/UNESCAPE all carry extensive prior-session
+; bug-fix history in their own comments - confirmed fresh against
+; the actual current code (not re-derived from scratch), and
+; SUBSTITUTE's own expected outputs independently simulated in
+; Python against the traced algorithm before writing the tests,
+; not hand-derived and assumed correct.
+;
+; Note: this section's own COMPARE (string comparison) word's
+; test is named TSTSCOMPARE, not TSTCOMPARE - the latter was
+; already taken by section 3.7's own comparison-operators group
+; wrapper, caught by the standard collision check before
+; insertion.
+; ------------------------------------------------------------
+
+================================================================
+TSTSTRPARSE.1  [explanatory]  (lines 12484-12501 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; Strings & Parsing test harness (glossary section 3.12). Reuses
+; the redirect infrastructure from sections 3.8-3.10 for the
+; name-parsing words (WORD/CHAR/[CHAR]/S"/."). DOTQUOTE's own
+; runtime (DOTSTR) calls TYPE internally, which - per section
+; 3.1's own already-debugged finding - has two entirely
+; different implementations gated by SERIALPOLL; its own test
+; below applies that same lesson from the start rather than
+; re-discovering it.
+;
+; SUBSTITUTE/REPLACES/UNESCAPE all have extensive prior-session
+; bug-fix history baked into their own comments (SUBSTITUTE's
+; %-delimiter algorithm, UNESCAPE's doubling-not-escaping
+; behavior) - trusted as ground truth here (each confirmed via a
+; prior MAME-tested session), verified fresh against the actual
+; code rather than re-derived from scratch, and tested against
+; that confirmed, current behavior.
+; ------------------------------------------------------------
+
+================================================================
+TSTSQUOTE2.0  [explanatory]  (lines 12537-12545 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTSQUOTE2 - unit test for S", interpreting-state case.
+; Redirects CODEHERE first so PAD's own computed address (which
+; SQUOTE's own interpreting branch writes to) is predictable,
+; then calls S" directly (no compile/execute step needed, since
+; interpreting S" stages the string and returns immediately) and
+; verifies the returned (addr len) content, plus that addr
+; genuinely landed at PAD's current, redirected address.
+; ------------------------------------------------------------
+
+================================================================
+TSTDOTQUOTE.0  [explanatory]  (lines 12635-12650 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTDOTQUOTE - unit test for .". No STATE check at all in its
+; own code (confirmed by reading it directly - matches "no
+; interpretation semantics, per ANS" without a specific -14
+; throw, unlike [CHAR]/S"), so only the compiling case is
+; tested, matching how it's actually meant to be used. Its own
+; runtime (DOTSTR) calls TYPE internally, which has two entirely
+; different implementations gated by SERIALPOLL (the same real
+; finding from section 3.1) - applying that lesson from the
+; start here rather than re-discovering it: EMITCH works
+; universally for a single-character check, but this outputs
+; multiple characters, so - matching TSTCR's own established
+; fix - the full OUTHEAD/OUTBUF check only applies under
+; SERIALPOLL=0, with a narrower EMITCH-based check (last
+; character only, plus the stack-depth check) for SERIALPOLL=1.
+; ------------------------------------------------------------
+
+================================================================
+TSTSCOMPARE.0  [explanatory]  (lines 12754-12763 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTSCOMPARE - unit test for COMPARE. Four sequential sub-cases
+; within one test body, each popping and verifying its own
+; result immediately: less-than, equal, greater-than, and the
+; prefix tie-break case specifically (a shorter string that's a
+; true prefix of a longer one compares less, per the standard
+; three-way convention) - not just LT/EQ/GT on same-length
+; strings, which alone wouldn't exercise the tie-break path at
+; all.
+; ------------------------------------------------------------
+
+================================================================
+TSTREPLSUBS1.0  [explanatory]  (lines 13135-13149 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTREPLSUBS1 - unit test for REPLACES and SUBSTITUTE together
+; (can only be meaningfully tested together - SUBSTITUTE depends
+; on a prior REPLACES registration). Registers "X"->"Z", then
+; runs the template "%%A%X%B%Y%" through SUBSTITUTE - covering
+; three of the four documented cases in one pass: "%%" collapses
+; to a single '%', "%X%" (a registered name) gets replaced
+; (count incremented), and "%Y%" (not registered) passes through
+; unchanged, delimiters included. Expected result ("%AZB%Y%",
+; count=1) independently simulated in Python against the actual
+; traced algorithm before writing this test, not hand-derived
+; and hoped correct - see TSTREPLSUBS2 for the fourth case
+; (unpaired trailing '%'), tested separately for clearer failure
+; diagnosis.
+; ------------------------------------------------------------
+
+================================================================
+TSTREPLSUBS2.0  [explanatory]  (lines 13262-13272 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTREPLSUBS2 - unit test for SUBSTITUTE's fourth documented
+; case: an unpaired trailing '%' with no closing delimiter
+; anywhere in the remainder passes the residue through
+; unchanged. Template "AB%CD" (the '%' never finds a partner)
+; -> "AB%CD", count=0. Same REPLACES registration reused from
+; TSTREPLSUBS1's own reasoning - a second REPLACES call
+; overwrites the first (documented as single-slot only), so this
+; test registers its own pair fresh rather than relying on any
+; prior test's own registration still being active.
+; ------------------------------------------------------------
+
+================================================================
+TSTSNAME1.1  [bugfix]  (lines 13980-13992 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            STD   LATEST            ; SNAMEW starts its walk from LATEST
+                                    ; (LDD LATEST/STD SNXT), the same real,
+                                    ; pre-COLD dependency found and fixed in
+                                    ; section 3.17's own TSTEVALUATE. With
+                                    ; LATEST=0 (only set by COLD, which
+                                    ; hasn't run yet at this whole test
+                                    ; framework's own pre-COLD execution
+                                    ; point), SNLOOP's own "BEQ SNNOTFOUND"
+                                    ; fires immediately, before ever
+                                    ; comparing against DUP's own CFA - this
+                                    ; test was written in section 3.12,
+                                    ; before the LATEST=0 finding existed at
+                                    ; all, so it never got the fix applied.
+
+================================================================
+TSTSNAME2.1  [bugfix]  (lines 14065-14073 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            STD   LATEST            ; as TSTSNAME1 above - without this,
+                                    ; SNAMEW's own chain walk starts and
+                                    ; ends at LATEST=0 immediately, so this
+                                    ; test was only ever exercising the
+                                    ; degenerate "empty chain" case, not
+                                    ; genuinely walking a real, populated
+                                    ; chain and finding no match for
+                                    ; TSTCBUF's own address - which is what
+                                    ; this test actually claims to verify.
+
+================================================================
+TSTUNESCAPE.0  [explanatory]  (lines 13514-13522 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTUNESCAPE - unit test for UNESCAPE. Source "A%B" (3 chars,
+; one '%' in the middle) doubles the '%' to produce "A%%B" (4
+; chars) - confirmed via its own code and a prior session's
+; already-corrected design comment that this is genuinely a
+; doubling operation, not backslash-sequence decoding. Verifies
+; every output character individually and the grown length,
+; not just that some output was produced.
+; ------------------------------------------------------------
+
+================================================================
+TSTNUMOUT.0  [explanatory]  (lines 13593-13627 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTNUMOUT - numeric output tests (glossary section 3.13, 14
+; words, 13 tests since #S and #> are combined into one test,
+; matching how they're naturally used together as the tail of
+; the standard pictured-output idiom "<# ... #S #>").
+;
+; The pictured-numeric-output core (<# # #S #> HOLD HOLDS) is
+; pure string-building with no I/O, tested directly. SIGN
+; carries real bug-fix history - a prior bare BPL right after
+; PULU didn't affect condition codes on real 6809 hardware, and
+; the bug was masked for every internal caller by caller-side
+; luck (each ran a flag-setting LDD right before calling SIGN).
+; This section's own SIGN test deliberately poisons the flags
+; with an unrelated CMPX immediately before each direct call,
+; so it exercises the exact previously-broken scenario rather
+; than repeating the same kind of luck that hid the bug.
+;
+; The high-level printing words (./U./.R/U.R/?/D./D.R) all
+; produce real output via TYPE/EMIT internally, so each applies
+; the SERIALPOLL-conditional split established in section 3.1 -
+; full OUTHEAD/OUTBUF verification under SERIALPOLL=0, an
+; EMITCH-based last-character check under SERIALPOLL=1. .R/U.R/
+; D.R specifically test the padding path (a width wider than the
+; actual digits), not just a no-padding sanity case. D./D.R use
+; a genuine double-cell value (-100000, computed and verified
+; independently in Python before writing the tests) to exercise
+; the 32-bit negation path, not a value that happens to fit in
+; one cell.
+;
+; Note: this section's own COMPARE-adjacent naming risk doesn't
+; apply here, but every group wrapper name (TSTNUMOUT) and every
+; internal FAIL/DONE prefix was still checked against the whole
+; file before insertion, per the standard practice that caught
+; the TSTCOMPARE collision in the prior section.
+; ------------------------------------------------------------
+
+================================================================
+TSTNUMOUT.1  [explanatory]  (lines 14245-14273 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; Numeric Output test harness (glossary section 3.13). The
+; pictured-numeric-output core (<# # #S #> HOLD HOLDS SIGN) is
+; pure string-building with no I/O, tested directly. The
+; high-level printing words (./U./.R/U.R/?/D./D.R) all produce
+; real output via TYPE and/or EMIT internally, so per section
+; 3.1's own already-debugged finding, each applies the
+; SERIALPOLL-conditional split established there: full OUTHEAD/
+; OUTBUF verification under SERIALPOLL=0, an EMITCH-based check
+; of the last character under SERIALPOLL=1 - accepted as a
+; known, honest limitation for words ending in a trailing space
+; (./U./D. all print a fixed final space character, so the
+; polling-mode check there confirms less than for the
+; no-trailing-space words, but is still correct and consistent
+; with the same trade-off already established for TSTCR/
+; TSTSPACES/TSTTYPE/TSTDOTQUOTE in earlier sections).
+;
+; SIGN itself carries real bug-fix history: a prior version used
+; a bare BPL immediately after PULU, which doesn't affect
+; condition codes on real 6809 hardware - the bug was masked for
+; every internal caller by "caller-side luck" (each happened to
+; run a flag-setting LDD right before calling SIGN). This
+; section's own SIGN test deliberately poisons the flags with an
+; unrelated, known-positive value immediately before the actual
+; PSHU/JSR SIGN sequence specifically so a standalone call - the
+; exact scenario the bug-fix comment says was previously broken
+; - is what gets tested, not a scenario that happens to work via
+; the same kind of caller-side luck that hid the original bug.
+; ------------------------------------------------------------
+
+================================================================
+TSTSIGN.0  [explanatory]  (lines 13875-13890 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTSIGN - unit test for SIGN. Deliberately poisons the CPU
+; flags with an unrelated CMPX (setting them to reflect a
+; positive comparison result, without touching D or the value
+; about to be pushed) immediately before each PSHU/JSR SIGN
+; call - specifically so this test exercises the exact scenario
+; the word's own bug-fix comment says was previously broken (a
+; direct, standalone call not preceded by a flag-setting LDD of
+; the true value), rather than relying on the same kind of
+; caller-side luck that hid the original bug. Two sub-cases:
+; negative (with flags poisoned toward positive, confirming the
+; minus sign still gets added - would fail if SIGN reverted to
+; testing stale flags instead of the value it just popped) and
+; positive (with flags poisoned toward negative, confirming no
+; minus sign gets added incorrectly).
+; ------------------------------------------------------------
+
+================================================================
+TSTNUMSIGN.1  [bugfix]  (lines 14612-14624 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            CMPD  #4                ; BUG FIX: was 0 - mistakenly copied the net-
+                                    ; zero reasoning from TSTNUMSIGNSGT (which calls
+                                    ; #> to consume ud2 before capturing TSTUAF).
+                                    ; This test captures TSTUAF right after NUMSIGN
+                                    ; returns, with ud2 (the quotient) still sitting
+                                    ; on the stack - confirmed via MAME: the user's
+                                    ; own register dump showed D=$0004 at this exact
+                                    ; comparison, precisely matching the 2 extra
+                                    ; cells (quotient low+high) genuinely present at
+                                    ; TSTUAF's own capture point that aren't present
+                                    ; at TSTUB4's (captured before NUMSIGN even ran).
+                                    ; NUMSIGN itself was never broken; only this
+                                    ; test's own expected depth value was wrong.
+
+================================================================
+TSTDOT.0  [explanatory]  (lines 14128-14137 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTDOT - unit test for . (DOT). Prints -42, expecting "-42 "
+; (4 chars: minus, two digits, trailing space). Under SERIALPOLL=0
+; verifies all 4 queued bytes directly; under SERIALPOLL=1 (the
+; polling variant, confirmed the active build), verifies only the
+; last-emitted character via EMITCH - a fixed trailing space in
+; this word's case, a known, accepted, less-discriminating check
+; consistent with the same trade-off already established for
+; TSTCR/TSTSPACES/TSTTYPE/TSTDOTQUOTE.
+; ------------------------------------------------------------
+
+================================================================
+TSTBASERADIX.0  [explanatory]  (lines 14852-14858 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTBASERADIX - base/radix control tests (glossary section
+; 3.14, 4 words, 1 combined test - each word's own effect is a
+; single BASE read/write, trivially covered together rather than
+; separately). No I/O involved, so no SERIALPOLL-conditional
+; complexity needed here, unlike the printing-heavy sections.
+; ------------------------------------------------------------
+
+================================================================
+TSTBASERADIX.1  [explanatory]  (lines 15530-15542 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; Base/Radix Control test harness (glossary section 3.14). All
+; four words are pure state-setting/reading with no I/O
+; involved, so none of this section's tests need the
+; SERIALPOLL-conditional complexity used throughout the printing
+; sections. Combined into one test, given each word's own
+; effect is trivially verified by reading BASE directly - four
+; separate tests would just repeat the same save/set/verify/
+; restore shape four times over. TSTBASAV (added in section
+; 3.13, when the real, pre-COLD BASE=0 bug was found and fixed)
+; is reused here to save/restore the real BASE across this test
+; too, per the same established reasoning.
+; ------------------------------------------------------------
+
+================================================================
+TSTBASE.0  [explanatory]  (lines 14894-14902 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTBASE - combined unit test for BASE, DECIMAL, HEX, and
+; BINARY. Sets BASE via each of HEX/BINARY/DECIMAL in turn,
+; verifying the correct value lands each time, then calls BASE
+; itself and verifies both that it returns the variable's own
+; address (not its value, per "( -- addr )") and that reading
+; through that address reflects DECIMAL's own, most recent
+; setting (10).
+; ------------------------------------------------------------
+
+================================================================
+TSTEXCEPTION.0  [explanatory]  (lines 14968-14998 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTEXCEPTION - exception handling tests (glossary section
+; 3.15, 2 words, 4 tests since CATCH/THROW can only be
+; meaningfully tested together - THROW's own effect is only
+; observable through a CATCH that traps it). Already used
+; extensively as this whole session's own error-testing
+; mechanism throughout sections 3.8-3.14, so their correctness
+; has substantial indirect evidence already; this section still
+; gets its own, direct, dedicated tests.
+;
+; Critical safety constraint, confirmed by reading THROW's own
+; code directly: with no active CATCH, THROW jumps straight to
+; ABORT (unsafe to trigger directly - it resets the return
+; stack, destroying this whole test framework's own call chain,
+; per section 3.1's own established reasoning). Every THROW in
+; this section's own tests is either wrapped in a genuine,
+; active CATCH (via a dedicated internal helper, TSTTHROWHLP,
+; that only ever gets invoked that way), or is a THROW(0) call -
+; confirmed via THROW's own code to be a pure, unconditional
+; no-op that never touches HANDLER or ABORT at all, so that one
+; specific case is safe to call directly.
+;
+; TSTCATCHTHROW specifically verifies the two dummy values
+; TSTTHROWHLP pushes before throwing are genuinely gone
+; afterward, confirming CATCH's own documented "restores data
+; stack depth... on either path" for real. TSTHANDLERSAVE
+; verifies the HANDLER half of that same documented guarantee
+; directly, by reading HANDLER itself before and after CATCH
+; calls on both the success and throw paths, rather than only
+; inferring it from stack-level behavior.
+; ------------------------------------------------------------
+
+================================================================
+TSTEXCEPTION.1  [explanatory]  (lines 15656-15675 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; Exception Handling test harness (glossary section 3.15).
+; CATCH/THROW have already been used extensively as this whole
+; session's own error-testing mechanism throughout sections
+; 3.8-3.14, so their correctness has substantial indirect
+; evidence already - this section still gets its own, direct
+; tests, matching the established practice of every section
+; getting dedicated coverage rather than relying on incidental
+; use elsewhere.
+;
+; Critical safety constraint, confirmed by reading THROW's own
+; code directly: with no active CATCH, THROW jumps straight to
+; ABORT (already established elsewhere in this session as unsafe
+; to trigger directly - it resets the return stack, destroying
+; this whole test framework's own call chain). Every THROW in
+; this section's own tests is either wrapped in a genuine,
+; active CATCH, or is a THROW(0) call - confirmed via CATCH's own
+; code to be a pure no-op that never touches HANDLER or ABORT at
+; all, so that specific case is safe to call directly.
+; ------------------------------------------------------------
+
+================================================================
+TSTTHROWHLP.0  [explanatory]  (lines 15096-15105 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTTHROWHLP - internal helper, not a dictionary word or a
+; test of its own. Pushes two dummy values (to verify CATCH's
+; own stack-depth restoration genuinely discards them, not just
+; that a thrown code arrives correctly) then throws a known,
+; distinctive, non-trivial code. Only ever invoked via CATCH
+; (below), never called directly - calling it any other way
+; would hit THROW's own uncaught path (JMP ABORT), which this
+; whole test framework cannot survive.
+; ------------------------------------------------------------
+
+================================================================
+TSTCATCHTHROW.0  [explanatory]  (lines 15116-15126 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTCATCHTHROW - unit test for CATCH, exception path, and for
+; THROW's own non-local exit together (the two can only be
+; meaningfully tested as a pair - THROW's own effect is only
+; observable through a CATCH that traps it). Verifies CATCH
+; returns the exact thrown code, and specifically verifies the
+; two dummy values TSTTHROWHLP pushes before throwing are
+; genuinely gone afterward - confirming the documented "restores
+; data stack depth... on either path" for real, not just that
+; the final result happens to look right.
+; ------------------------------------------------------------
+
+================================================================
+TSTTHROWZERO.0  [explanatory]  (lines 15166-15174 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTTHROWZERO - unit test for THROW(0). Confirmed via its own
+; code that N=0 is a genuine, unconditional no-op (BEQ THDONE
+; skips everything, never touching HANDLER or ABORT), so this
+; is the one THROW call in this section safe to make directly,
+; without any CATCH wrapping it. Verifies it consumes its
+; argument and does nothing else - no non-local exit, no stack
+; disturbance beyond popping the 0 itself.
+; ------------------------------------------------------------
+
+================================================================
+TSTHANDLERSAVE.0  [explanatory]  (lines 15211-15219 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTHANDLERSAVE - unit test verifying CATCH correctly restores
+; HANDLER afterward, on both paths - the success path (wrapping
+; DUP) and the throw path (wrapping TSTTHROWHLP again). Confirms
+; the documented "restores... HANDLER on either path" directly,
+; by reading HANDLER itself before and after each call, rather
+; than only inferring it from the stack-level behavior CATCH's
+; other tests already cover.
+; ------------------------------------------------------------
+
+================================================================
+TSTCOMMENTS.0  [explanatory]  (lines 15291-15300 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTCOMMENTS - comments tests (glossary section 3.16, 2 words).
+; Both immediate and parse from source, so both redirect
+; SRCADDR/SRCLEN/TOIN, matching the established pattern from
+; sections 3.8-3.12. ( specifically carries real bug-fix history
+; (a stray value left on the data stack, confirmed and fixed via
+; MAME in a prior session) that this section's own test verifies
+; directly - the data stack is genuinely unchanged after a
+; comment, not just that parsing advanced correctly.
+; ------------------------------------------------------------
+
+================================================================
+TSTCOMMENTS.1  [explanatory]  (lines 15970-15984 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; Comments test harness (glossary section 3.16). Both words
+; parse from source, so both redirect SRCADDR/SRCLEN/TOIN,
+; matching the established pattern from sections 3.8-3.12.
+;
+; ( specifically carries real bug-fix history worth verifying
+; directly, not just noting: a prior version omitted consuming
+; WORD's own returned c-addr, leaving a stray value on the data
+; stack after every "(...)" comment - confirmed via MAME at the
+; time, symptomatic both as a visible stray value in interpret
+; mode and as a -22 CSP mismatch for any colon definition
+; containing one. This section's own test specifically confirms
+; the data stack is genuinely unchanged (net 0), not just that
+; parsing advanced correctly.
+; ------------------------------------------------------------
+
+================================================================
+TSTLPAREN.0  [explanatory]  (lines 15339-15349 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTLPAREN - unit test for (. Fake source "hi)m" with TOIN
+; starting at 0 - verifies TOIN lands exactly past the closing
+; paren (at 3, immediately before "m", not consuming it), and
+; that the data stack is genuinely unchanged - the specific
+; behavior the bug-fix comment describes as previously broken.
+; Since ( only ever advances TOIN, never SRCADDR itself, the
+; fake source's own known address (TSTNAMEB) is used directly to
+; verify the character just past the paren, with no need to
+; re-read SRCADDR after the call.
+; ------------------------------------------------------------
+
+================================================================
+TSTBACKSLASH.0  [explanatory]  (lines 15421-15431 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTBACKSLASH - unit test for \. Fake source with SRCLEN=10,
+; TOIN starting partway through at 3 (simulating being midway
+; through a line) - verifies TOIN lands exactly at SRCLEN,
+; consuming the rest of the line. Confirmed via its own code
+; that it reads SRCLEN directly (not a fixed buffer length),
+; matching its own documented "follows SOURCE... operates
+; correctly inside EVALUATE" - this test's own redirect of
+; SRCLEN specifically, rather than relying on the real terminal
+; input buffer's own length, is what actually exercises that.
+; ------------------------------------------------------------
+
+================================================================
+TSTENVSYS.0  [explanatory]  (lines 15487-15515 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTENVSYS - environmental & system queries tests (glossary
+; section 3.17, 10 words, 8 tests since TIB/#TIB/>IN/SPAN/BL are
+; combined into one test, and ENVIRONMENT? gets three separate
+; tests of its own - single-cell, double-cell, and unsupported-
+; string cases).
+;
+; REFILL genuinely blocks on real input when the source is the
+; terminal (confirmed by reading its own code: the terminal
+; branch calls QUERY, which per section 3.1's own already-
+; established finding calls ACCEPT, which calls KEY, which spins
+; forever without real input) - only its safely-testable path
+; (source is a string) is tested here, matching the same
+; reasoning already applied to KEY/ACCEPT/EXPECT/QUERY
+; themselves. EVALUATE genuinely executes its given string as
+; real Forth source via JSR INTERPRET - confirmed safe via
+; INTERPRET's own code (it simply stops when input is exhausted,
+; no automatic REFILL, so no blocking risk), making a short,
+; deliberately harmless string ("1 2 +") safe to evaluate
+; directly.
+;
+; ENVIRONMENT? carries substantial, already-documented bug-fix
+; history (a COMPAREW-clobbers-X bug, confirmed via MAME with the
+; exact $4E4D symptom). This section's own tests specifically
+; query "/COUNTED-STRING" immediately followed by "MAX-N" - the
+; exact adjacent pair the bug-fix comment describes - so a
+; regression of that specific mechanism would be caught again,
+; not just assumed fixed from the comment alone.
+; ------------------------------------------------------------
+
+================================================================
+TSTENVSYS.1  [explanatory]  (lines 16174-16206 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; Environmental & System Queries test harness (glossary section
+; 3.17). Five words (TIB/#TIB/>IN/SPAN/BL) are simple constant/
+; variable readers, combined into one test rather than five
+; separate ones, matching the established approach from section
+; 3.14's own TSTBASE.
+;
+; REFILL genuinely blocks on real input when the source is the
+; terminal (confirmed by reading its own code directly: the
+; terminal branch calls QUERY, which - per section 3.1's own
+; already-established finding - calls ACCEPT, which calls KEY,
+; which spins forever without real input). Only its safely-
+; testable path (source is a string, SRCID<>0) is tested here,
+; matching the same reasoning already applied to KEY/ACCEPT/
+; EXPECT/QUERY themselves in section 3.1.
+;
+; EVALUATE genuinely executes its given string as real Forth
+; source via JSR INTERPRET - confirmed via INTERPRET's own code
+; that it simply stops and returns when input is exhausted (no
+; automatic REFILL, so no blocking risk), making a short,
+; deliberately harmless string ("1 2 +") safe to evaluate
+; directly.
+;
+; ENVIRONMENT? carries substantial, already-documented bug-fix
+; history (a COMPAREW-clobbers-X bug, confirmed via MAME with the
+; exact $4E4D symptom - reading two bytes of the NEXT table
+; entry's own name text as if they were the current entry's
+; value). This section's own tests specifically query
+; "/COUNTED-STRING" immediately followed by "MAX-N" - the exact
+; adjacent pair the bug-fix comment describes - so a regression
+; of that specific mechanism would be caught again, not just
+; assumed fixed from the comment alone.
+; ------------------------------------------------------------
+
+================================================================
+TSTREFILL.0  [explanatory]  (lines 15749-15761 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTREFILL - unit test for REFILL, string-source path only.
+; Confirmed via its own code that the terminal-source path
+; (SRCID=0) genuinely blocks on real input (calls QUERY, which
+; per section 3.1's own established finding calls ACCEPT, which
+; calls KEY, which spins forever without it) - deliberately not
+; tested, matching the same reasoning already applied to KEY/
+; ACCEPT/EXPECT/QUERY themselves. Only the safely-testable path
+; (source is a string, SRCID<>0) is exercised: redirects SRCID
+; to a nonzero value and verifies REFILL correctly reports
+; false, matching its own documented "fails (false) if the
+; current source is a string, per ANS".
+; ------------------------------------------------------------
+
+================================================================
+TSTEVALUATE.0  [explanatory]  (lines 15807-15818 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTEVALUATE - unit test for EVALUATE. Evaluates the string
+; "1 2 +" (confirmed safe via INTERPRET's own code: it simply
+; stops and returns when input is exhausted, no automatic
+; REFILL, so no blocking risk) - verifies the result (3) lands
+; on the data stack, and that the whole input-source state
+; (SRCADDR/SRCLEN/SRCID/TOIN) is genuinely restored to what it
+; was before the call, not left pointing at the evaluated
+; string. BASE is explicitly saved/set/restored too, per section
+; 3.13's own established lesson, so "1"/"2" parse as decimal
+; regardless of what BASE happened to hold at test time.
+; ------------------------------------------------------------
+
+================================================================
+TSTEVALUATE.1  [bugfix]  (lines 16480-16500 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            STD   LATEST            ; like BASE, is only set by COLD (right
+                                    ; alongside "BASE=10", in the very same
+                                    ; init block), which hasn't run yet at
+                                    ; this whole test framework's own,
+                                    ; pre-COLD execution point. With
+                                    ; LATEST=0, FIND reports every word,
+                                    ; including the real "+" this test
+                                    ; evaluates, as not found - INTERPRET
+                                    ; then falls through trying to parse
+                                    ; "+" as a number, fails that too, and
+                                    ; throws an error this test never
+                                    ; catches, landing at THUNCAU's own
+                                    ; JMP ABORT - which resets the return
+                                    ; stack, explaining exactly why the
+                                    ; user's own test run terminated
+                                    ; without ever reaching TSTENVQUERY1/2/
+                                    ; 3. The same class of gap as section
+                                    ; 3.13's own BASE=0 finding, just for a
+                                    ; different variable this section's
+                                    ; own EVALUATE test was the first to
+                                    ; genuinely depend on.
+
+================================================================
+TSTEVALUATE.2  [bugfix]  (lines 16502-16540 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            LDD   #TSTCBUF2         ; SECOND BUG FIX: the LATEST fix above
+            STD   CODEHERE          ; alone didn't resolve this - confirmed
+                                    ; via a second MAME run (the failure
+                                    ; persisted, with the terminal output
+                                    ; varying between runs, a strong sign
+                                    ; of memory corruption rather than a
+                                    ; single deterministic missing-value
+                                    ; problem). Root cause: CODEHERE, like
+                                    ; BASE and LATEST, is only set by COLD
+                                    ; and was never redirected by this
+                                    ; test at all - unlike every other
+                                    ; test in this whole session involving
+                                    ; WORD (which EVALUATE's own internal
+                                    ; JSR INTERPRET calls repeatedly, once
+                                    ; per token). With CODEHERE=0
+                                    ; (unredirected), WORD's own write of
+                                    ; each parsed token's [len][text]
+                                    ; landed straight at address $0000 -
+                                    ; which is STATE's own address (offset
+                                    ; $00, the very first bytes of
+                                    ; GLOBALS, confirmed by re-reading its
+                                    ; own RMB declaration directly). Even
+                                    ; a single-character token like "1"
+                                    ; overwrites STATE with a nonzero
+                                    ; value, flipping INTERPRET into
+                                    ; thinking it's compiling rather than
+                                    ; interpreting mid-parse - explaining
+                                    ; both the sequence's own termination
+                                    ; and why the visible output varied
+                                    ; between runs (the exact corruption
+                                    ; pattern depends on residual memory
+                                    ; state from whatever ran immediately
+                                    ; before). Redirected to TSTCBUF2, not
+                                    ; TSTCBUF, specifically because TSTCBUF
+                                    ; already holds this test's own source
+                                    ; string ("1 2 +") - redirecting to the
+                                    ; same buffer would let WORD overwrite
+                                    ; the very source text still being
+                                    ; parsed.
+
+================================================================
+TSTENVQUERY1.0  [explanatory]  (lines 15971-15981 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTENVQUERY1 - unit test for ENVIRONMENT?, verifying the exact
+; adjacent-entry pair its own bug-fix comment describes:
+; "/COUNTED-STRING" (255) immediately followed by "MAX-N"
+; (32767) - the specific mechanism that once let COMPAREW's own
+; X-clobbering read bytes from the wrong table entry, confirmed
+; via MAME with the exact $4E4D symptom (per the code's own
+; comment). Querying this exact pair again here means a
+; regression of that specific mechanism would be caught, not
+; just assumed still fixed from the comment alone.
+; ------------------------------------------------------------
+
+================================================================
+TSTTOOLS.0  [explanatory]  (lines 16204-16218 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTTOOLS - tools word set tests (glossary section 3.18, 3
+; words). WORDS depends directly on LATEST (confirmed via its
+; own code) - redirected for this test, applying the same
+; lesson section 3.17's own TSTEVALUATE surfaced. DUMP dumps a
+; deliberately non-multiple-of-16 byte count (5), the exact
+; scenario its own already-documented DUVALID bug fix addresses,
+; and this section's own test specifically verifies the ASCII
+; column's blanking for the unused portion, not just the real
+; data. .S prints the entire real data stack, including whatever
+; the calling chain already left there - unlike every other test
+; in this session, the full output can't be predicted in
+; advance, so this section's own test verifies the core,
+; documented "non-destructive" guarantee directly instead.
+; ------------------------------------------------------------
+
+================================================================
+TSTTOOLS.1  [explanatory]  (lines 16896-16926 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; Tools test harness (glossary section 3.18). WORDS depends
+; directly on LATEST (confirmed via its own code: it walks from
+; LATEST until the chain terminates at 0) - the same real, pre-
+; COLD dependency section 3.17's own TSTEVALUATE was found to
+; need, so this section's own WORDS test redirects LATEST too,
+; applying that lesson from the start rather than rediscovering
+; it. All three words produce visible output, so all apply the
+; SERIALPOLL-conditional split established in section 3.1.
+;
+; .S prints the ENTIRE real data stack, including whatever this
+; whole calling chain (TSTRUNNER and everything above it) already
+; left there before this test even started - unlike every other
+; test in this session, there's no way to know the full, exact
+; output in advance. This test's own verification is deliberately
+; narrower as a result: confirms the core, documented guarantee
+; directly (the stack is genuinely unchanged afterward, non-
+; destructive for real) plus, in interrupt mode only (where the
+; first characters queued are unambiguously this test's own top
+; value, since .S starts from the current top of stack), that the
+; very first characters match - rather than attempting to predict
+; or verify the complete printed output.
+;
+; DUMP carries real, already-documented bug-fix history: a prior
+; version's ASCII column read past the actual byte count on a
+; partial final line, showing garbage characters for the unused
+; portion - fixed via DUVALID tracking. This section's own test
+; specifically dumps a non-multiple-of-16 byte count (5), the
+; exact scenario that bug affected, verifying the ASCII column's
+; own blanking for the remaining, invalid columns.
+; ------------------------------------------------------------
+
+================================================================
+TSTDOTS.0  [explanatory]  (lines 16274-16286 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTDOTS - unit test for .S. Pushes two known values (no guard
+; sentinel below them, since .S would print that too), calls .S,
+; and verifies the stack is genuinely unchanged afterward - the
+; core, documented "non-destructive" guarantee, confirmed
+; directly rather than inferred. In interrupt mode specifically,
+; also confirms the very first characters queued match the top
+; value's own printed form (unambiguous, since .S starts from
+; the current top of stack); polling mode only confirms some
+; output occurred, given EMITCH alone can't distinguish this
+; test's own output from whatever the rest of the real stack
+; contributes afterward.
+; ------------------------------------------------------------
+
+================================================================
+TSTDOTS.1  [bugfix]  (lines 16942-16963 of the stage-3a unit_tests file)
+----------------------------------------------------------------
+            STD   BASE              ; BUG FIX: confirmed via MAME - the same
+                                    ; BASE=0 infinite loop already found and
+                                    ; fixed in section 3.13. .S internally calls
+                                    ; DOT for each stack item, which calls
+                                    ; NUMSIGN/UDDIGIT - the same restoring-
+                                    ; division mechanism that degrades into an
+                                    ; unconditional shift when BASE=0 (only set
+                                    ; by COLD, which hasn't run yet at this
+                                    ; whole test framework's own pre-COLD
+                                    ; execution point), so the value being
+                                    ; converted never genuinely decreases.
+                                    ; Forgot to apply this section 3.13 lesson
+                                    ; to this specific test when first writing
+                                    ; it. WORDS and DUMP were checked and
+                                    ; confirmed NOT to need this same fix: WORDS
+                                    ; does no numeric conversion at all (just
+                                    ; TYPEs name text), and DUMP's own hex
+                                    ; conversion (HEXDIGIT/HEXBYTE) is a fixed,
+                                    ; hardcoded base-16 converter, confirmed via
+                                    ; its own code to never reference BASE at
+                                    ; all - genuinely independent of it, not
+                                    ; just assumed safe.
+
+================================================================
+TSTWORDS.0  [explanatory]  (lines 16383-16393 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTWORDS - unit test for WORDS. Builds two small, linked fake
+; headers ("CD" pointing back to "AB", terminated with 0) and
+; redirects LATEST to the more recent one - confirmed via its
+; own code that WORDS walks directly from LATEST until the chain
+; terminates, so this is the one dependency it genuinely has.
+; Verifies the full expected output ("CD AB " followed by CR/LF,
+; 8 bytes total) under SERIALPOLL=0; under SERIALPOLL=1, only the
+; last character (LF, from the trailing CR) is checkable via
+; EMITCH.
+; ------------------------------------------------------------
+
+================================================================
+TSTDUMP.0  [explanatory]  (lines 16509-16525 of the stage-2 unit_tests file)
+----------------------------------------------------------------
+; ------------------------------------------------------------
+; TSTDUMP - unit test for DUMP. Dumps 5 bytes ("ABCDE") -
+; deliberately less than 16, the exact scenario the word's own
+; already-documented bug fix (DUVALID tracking) addresses:
+; without it, the ASCII column read past the actual byte count
+; on a partial final line, showing garbage for the unused
+; portion instead of blanks. Under SERIALPOLL=0, verifies the
+; total byte count (69: leading CR/LF, 5 real hex byte pairs, 11
+; padded hex slots, 1 separator, the 16-character ASCII column,
+; trailing CR/LF), the 5 real hex digit pairs at their known
+; offsets, and - the specific, bug-relevant check - the full
+; 16-character ASCII column itself: the first 5 characters match
+; "ABCDE" and the remaining 11 are genuinely blank (32), verified
+; via a loop rather than 11 unrolled checks. Under SERIALPOLL=1,
+; only the last character (LF, from the trailing CR) is
+; checkable via EMITCH.
+; ------------------------------------------------------------
+

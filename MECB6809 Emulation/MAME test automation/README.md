@@ -94,3 +94,12 @@ N    SECTION          STATUS
 16   3.17_EnvSys      PASS
 17   3.18_Tools       PASS
 ```
+
+## Utility
+
+To generate a collection of bin files, one per test, run the following
+script in the same fashion as the test runner. 
+
+```bash
+bash "$HOME/git/ClaudeForth/MECB6809 Emulation/MAME test automation/build all tests.sh"
+```
