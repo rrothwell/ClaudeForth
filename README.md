@@ -123,9 +123,9 @@ brew install binutils
 
 Foot notes:
 [^1]: A shadow file is a text file with sections corresponding 
-   to those of the same named assembler files.
-   This lists expanded block comments, operating principles,
-   bug fixes explanations and obsolete asembler code.
+      to those of the same named assembler files.
+      This lists expanded block comments, operating principles,
+      bug fixes explanations and obsolete asembler code.
 
 
 ### Documentation
