@@ -121,7 +121,7 @@ brew install binutils
 |.log| A logfile. Likely for accepting test results |
 |.shd| A shadow file with content corresponding to the same named assembler file[^1].|
 
-Foot notes:
+
 [^1]: A shadow file is a text file with sections corresponding 
       to those of the same named assembler files.
       This lists expanded block comments, operating principles,
