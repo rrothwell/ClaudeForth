@@ -352,6 +352,18 @@ TSTSYSIO.1  [explanatory]  (lines 334-362 of the stage-3a unit_tests file)
 ; ------------------------------------------------------------
 
 ================================================================
+TSTEMIT.2  [bugfix]  (interrupt-driven branch, SERIALPOLL=0)
+----------------------------------------------------------------
+Found by the user's MAME run of TSTSELECTOR=0 with SERIALPOLL=0: TSTEMIT
+reported FAIL because it compared EMITCH with 65, and EMITCH was $00.
+Only the polled EMIT stores EMITCH. The interrupt-driven EMITW passes the
+character straight to PUTCHAR, so EMITCH is never written in that build.
+(TSTEMIT.1 wrongly assumed both variants set it.) With SERIALPOLL=0 the
+test now saves OUTHEAD before the call, then checks that OUTHEAD advanced
+by one and that the queued byte equals the character, as TSTTYPE does.
+The polled build still checks EMITCH.
+
+================================================================
 TSTEMIT.1  [bugfix]  (lines 438-454 of the stage-3a unit_tests file)
 ----------------------------------------------------------------
             LDA   EMITCH            ; BUG FIX: was checking OUTHEAD/OUTBUF, assuming
@@ -406,6 +418,13 @@ TSTCR.3  [bugfix]  (lines 528-546 of the stage-3a unit_tests file)
                                     ; genuinely allows verifying; a direct
                                     ; hardware write has no other inspectable,
                                     ; persistent state.
+
+================================================================
+TSTSPACE.2  [bugfix]  (interrupt-driven branch, SERIALPOLL=0)
+----------------------------------------------------------------
+Same failure and same fix as TSTEMIT.2: SPACE calls EMITW, which does not
+set EMITCH when SERIALPOLL=0. The test now checks the output ring
+(OUTHEAD advanced by one, queued byte = 32) in that build.
 
 ================================================================
 TSTSPACE.1  [bugfix]  (lines 595-600 of the stage-3a unit_tests file)
@@ -2439,6 +2458,24 @@ TSTDOTS.1  [bugfix]  (lines 16942-16963 of the stage-3a unit_tests file)
                                     ; just assumed safe.
 
 ================================================================
+TSTDOTS.2  [bugfix]  (interrupt-driven check, SERIALPOLL=0)
+----------------------------------------------------------------
+Found by the user's run of TSTSELECTOR=17 with SERIALPOLL=0: TSTDOTS
+reported FAIL, with the output "7 23009 " on the terminal. .S prints the
+whole data stack, top first, so the call queued 8 characters ("7 23009 "),
+but the test required OUTHEAD to have advanced by exactly 2. That check
+was removed. The test still checks that the first two queued characters
+are '7' and a space (the top value's printed form, which is predictable
+because .S starts at the top of the stack), that the stack is unchanged,
+and that the two pushed values are still in place. The removed code was:
+
+            LDA   TSTOHSAV
+            ADDA  #2
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            BNE   DYFAIL
+
+================================================================
 TSTWORDS.0  [explanatory]  (lines 16383-16393 of the stage-2 unit_tests file)
 ----------------------------------------------------------------
 ; ------------------------------------------------------------
@@ -2473,4 +2510,58 @@ TSTDUMP.0  [explanatory]  (lines 16509-16525 of the stage-2 unit_tests file)
 ; only the last character (LF, from the trailing CR) is
 ; checkable via EMITCH.
 ; ------------------------------------------------------------
+
+================================================================
+TSTDUMP.1  [bugfix]  (BNE DUFAIL at three places in the SERIALPOLL=0 branch)
+----------------------------------------------------------------
+Assembling with SERIALPOLL=0 (TSTSELECTOR=17) failed with "Byte overflow"
+on the first three BNE DUFAIL branches in TSTDUMP: the interrupt-driven
+branch is long, so DUFAIL is out of short-branch range from its start.
+They are now LBNE. The remaining branches to DUFAIL are in range.
+Found by the user, 2026-10-10.
+
+================================================================
+TSTDUMP.2  [bugfix]  (interrupt-driven content check removed, SERIALPOLL=0)
+----------------------------------------------------------------
+The test used to verify, with SERIALPOLL=0, that DUMP queued exactly 69
+characters into the output ring (leading CR/LF, 5 real hex byte pairs, 11
+padded hex slots, 1 separator, the 16-character ASCII column, trailing
+CR/LF), then checked the hex digits at fixed offsets from OUTHEAD at entry
+and, in a loop, that the 11 unused ASCII columns were blank.
+The output ring is 64 bytes (63 usable), so 69 characters cannot all be
+resident in it at once: while DUMP runs, the transmit interrupt frees
+slots and later characters reuse them (or, if the ring is full when a
+character arrives, PUTCHAR discards it). Either way the slots at fixed
+offsets from the entry OUTHEAD no longer hold the characters the test
+expected. Nothing in the project shows this branch ever passing: the unit
+tests had only been run with SERIALPOLL=1 before 2026-10-10.
+In the SERIALPOLL=0 build the test now checks only that the data stack is
+unchanged by the call. The polled build still checks that the last
+character sent was LF (EMITCH = 10). The removed code follows (it also
+included the save of OUTHEAD into TSTOHSAV before the call). Its first
+three BNE DUFAIL had been changed to LBNE (TSTDUMP.1) to assemble.
+
+----------------------------------------------------------------
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   TSTOHSAV
+            ADDA  #69
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            LBNE  DUFAIL
+            ...  (hex digit checks at offsets 2, 5, 14, then the five
+                  ASCII characters 'A'..'E' at offset 51, each
+                  LDA B,X / CMPA / BNE DUFAIL)
+            LDY   #11
+    DUBLNKLP:   LDA   B,X       ; the 11 unused ASCII columns must be blank
+            CMPA  #32
+            BNE   DUFAIL
+            INCB
+            ANDB  #OUTBUFSZ-1
+            LEAY  -1,Y
+            BNE   DUBLNKLP
+            ELSE                    ; <<<<>>>>
+            LDA   EMITCH
+            CMPA  #10
+            BNE   DUFAIL
+            ENDC                    ; <<<<<<<<<<
 

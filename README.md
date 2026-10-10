@@ -161,5 +161,7 @@ brew install binutils
 1. Mass storage support - SD Card or Flash.
 1. Application compilation to the ROM area via ROM emulation.
 1. Hardware/software floating point support.
+1. Buffered serial communications with software XON/XOFF handshaking.
+1. Change formatting of ok line output to match GForth.
 
 

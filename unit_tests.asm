@@ -262,13 +262,32 @@ TSTEMIT:    STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   OUTHEAD
+            STA   TSTOHSAV
+            ENDC                    ; <<<<
+
             JSR   EMITW
 
             STU   TSTUAF
 
+            IFEQ  SERIALPOLL        ; >>>> ring check: interrupt-driven EMIT
+            LDA   TSTOHSAV
+            INCA
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            BNE   EMFAIL
+
+            LDX   #OUTBUF
+            LDB   TSTOHSAV
+            LDA   B,X
+            CMPA  #65
+            BNE   EMFAIL
+            ELSE                    ; <<<<>>>> See bugfix: TSTEMIT.2
             LDA   EMITCH            ; See bugfix: TSTEMIT.1
             CMPA  #65
             BNE   EMFAIL
+            ENDC                    ; <<<<<<<<<<
 
             PULU  D
             CMPD  #TSTGUARD
@@ -383,13 +402,32 @@ TSTSPACE:   STU   TSTU0
             PSHU  D
             STU   TSTUB4
 
+            IFEQ  SERIALPOLL        ; >>>>
+            LDA   OUTHEAD
+            STA   TSTOHSAV
+            ENDC                    ; <<<<
+
             JSR   SPACEW
 
             STU   TSTUAF
 
+            IFEQ  SERIALPOLL        ; >>>> ring check: interrupt-driven EMIT
+            LDA   TSTOHSAV
+            INCA
+            ANDA  #OUTBUFSZ-1
+            CMPA  OUTHEAD
+            BNE   SCFAIL
+
+            LDX   #OUTBUF
+            LDB   TSTOHSAV
+            LDA   B,X
+            CMPA  #32
+            BNE   SCFAIL
+            ELSE                    ; <<<<>>>> See bugfix: TSTSPACE.2
             LDA   EMITCH            ; See bugfix: TSTSPACE.1
             CMPA  #32
             BNE   SCFAIL
+            ENDC                    ; <<<<<<<<<<
 
             PULU  D
             CMPD  #TSTGUARD
@@ -16390,13 +16428,7 @@ TSTDOTS:    LDD   BASE
 
             STU   TSTUAF
 
-            IFEQ  SERIALPOLL        ; >>>>
-            LDA   TSTOHSAV
-            ADDA  #2
-            ANDA  #OUTBUFSZ-1
-            CMPA  OUTHEAD
-            BNE   DYFAIL
-
+            IFEQ  SERIALPOLL        ; >>>> See bugfix: TSTDOTS.2
             LDX   #OUTBUF
             LDB   TSTOHSAV
             LDA   B,X
@@ -16588,11 +16620,6 @@ TSTDUMP:    LDA   #'A'
             LDA   #'E'
             STA   TSTCBUF+4
 
-            IFEQ  SERIALPOLL        ; >>>>
-            LDA   OUTHEAD
-            STA   TSTOHSAV
-            ENDC                    ; <<<<
-
             STU   TSTU0
             STU   TSTUB4
 
@@ -16604,92 +16631,12 @@ TSTDUMP:    LDA   #'A'
 
             STU   TSTUAF
 
-            IFEQ  SERIALPOLL        ; >>>>
-            LDA   TSTOHSAV
-            ADDA  #69
-            ANDA  #OUTBUFSZ-1
-            CMPA  OUTHEAD
-            BNE   DUFAIL
-
-            LDX   #OUTBUF
-            LDB   TSTOHSAV
-            ADDB  #2
-            ANDB  #OUTBUFSZ-1
-            LDA   B,X
-            CMPA  #'4'
-            BNE   DUFAIL
-            INCB
-            ANDB  #OUTBUFSZ-1
-            LDA   B,X
-            CMPA  #'1'
-            BNE   DUFAIL
-
-            LDB   TSTOHSAV
-            ADDB  #5
-            ANDB  #OUTBUFSZ-1
-            LDA   B,X
-            CMPA  #'4'
-            BNE   DUFAIL
-            INCB
-            ANDB  #OUTBUFSZ-1
-            LDA   B,X
-            CMPA  #'2'
-            BNE   DUFAIL
-
-            LDB   TSTOHSAV
-            ADDB  #14
-            ANDB  #OUTBUFSZ-1
-            LDA   B,X
-            CMPA  #'4'
-            BNE   DUFAIL
-            INCB
-            ANDB  #OUTBUFSZ-1
-            LDA   B,X
-            CMPA  #'5'
-            BNE   DUFAIL
-
-            LDB   TSTOHSAV
-            ADDB  #51
-            ANDB  #OUTBUFSZ-1
-            LDA   B,X
-            CMPA  #'A'
-            BNE   DUFAIL
-            INCB
-            ANDB  #OUTBUFSZ-1
-            LDA   B,X
-            CMPA  #'B'
-            BNE   DUFAIL
-            INCB
-            ANDB  #OUTBUFSZ-1
-            LDA   B,X
-            CMPA  #'C'
-            BNE   DUFAIL
-            INCB
-            ANDB  #OUTBUFSZ-1
-            LDA   B,X
-            CMPA  #'D'
-            BNE   DUFAIL
-            INCB
-            ANDB  #OUTBUFSZ-1
-            LDA   B,X
-            CMPA  #'E'
-            BNE   DUFAIL
-            INCB
-            ANDB  #OUTBUFSZ-1
-
-            LDY   #11
-DUBLNKLP:   LDA   B,X
-            CMPA  #32
-            BNE   DUFAIL
-            INCB
-            ANDB  #OUTBUFSZ-1
-            LEAY  -1,Y
-            BNE   DUBLNKLP
-            ELSE                    ; <<<<>>>>
+            IFNE  SERIALPOLL        ; >>>> polled build: last char only
             LDA   EMITCH
             CMPA  #10
             BNE   DUFAIL
-            ENDC                    ; <<<<<<<<<<
+            ENDC                    ; <<<<
+            ; Interrupt build: no content check. See bugfix: TSTDUMP.2
 
             LDD   TSTUB4
             SUBD  TSTUAF

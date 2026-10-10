@@ -22,9 +22,9 @@ USROMEND    EQU   VECTORS-1         ; usable ROM end (VECTORS-1)
 VECTORS     EQU   $FFF0
 INITCODE    EQU   $FFA4             ; start of the init code (COLDSTRT)
             ; Commented-out code moved to shadow: MEMMAP.5
-BASECODE    EQU   $DD54             ; base code. See shadow MEMMAP.6
+BASECODE    EQU   $DCC4             ; base code. See shadow MEMMAP.6
             ; Commented-out code moved to shadow: MEMMAP.7
-BASEDICT    EQU   $D543             ; base dictionary. See shadow MEMMAP.8
+BASEDICT    EQU   $D4B3             ; base dictionary. See shadow MEMMAP.8
 INOUT       EQU   $C000             ; I/O block (ACIA), 256 bytes
 INOUTEND    EQU   INOUT+$FF
 RSTACK      EQU   $BFFF             ; return stack top
