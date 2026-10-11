@@ -163,5 +163,8 @@ brew install binutils
 1. Hardware/software floating point support.
 1. Buffered serial communications with software XON/XOFF handshaking.
 1. Change formatting of ok line output to match GForth.
+1. Vectored I/O. 
+   In particular the ability to programatically change the behavior of EMIT, etc..
+1. Improve the number parser to recognise binary and hexadecimal numbers.
 
 
