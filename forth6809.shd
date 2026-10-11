@@ -844,6 +844,14 @@ INITSERIAL.1  [bugfix]  (stage-2 source lines 2179-2179)
 ; was "STA ACIA" - same fix
 
 ================================================================
+INITSERIAL.2  [bugfix]  (stage 4c)
+----------------------------------------------------------------
+; Was "LDA CR_RESET" (no #): that loaded the byte at direct-page
+; address CR_RESET ($03) instead of the value $03, so the ACIA
+; master reset depended on what happened to be at address 3.
+; Now "LDA #CR_RESET".
+
+================================================================
 UPDATE_RTS.1  [open question]  (stage-2 source lines 2226-2226)
 ----------------------------------------------------------------
 ; Why is OUTACTIVITY not updated here?

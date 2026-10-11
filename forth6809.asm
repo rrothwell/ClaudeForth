@@ -1641,7 +1641,7 @@ SERBUFCLR:  CLR   INHEAD
 ; See bugfix: INITSERIAL.1.
 ; ------------------------------------------------------------
 INITSERIAL: JSR   SERBUFCLR
-            LDA   CR_RESET          ; Master Software Reset command to 6850
+            LDA   #CR_RESET         ; Master Software Reset. See bugfix: INITSERIAL.2
             STA   ACIACR
             NOP                     ; Settling Delay
             NOP

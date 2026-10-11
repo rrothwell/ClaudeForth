@@ -2281,7 +2281,7 @@ DCE2 39               (    forth6809.asm):01629                     RTS
                       (    forth6809.asm):01641         ; See bugfix: INITSERIAL.1.
                       (    forth6809.asm):01642         ; ------------------------------------------------------------
 DCE3 BDDCC4           (    forth6809.asm):01643         INITSERIAL: JSR   SERBUFCLR
-DCE6 9603             (    forth6809.asm):01644                     LDA   CR_RESET          ; Master Software Reset command to 6850
+DCE6 8603             (    forth6809.asm):01644                     LDA   #CR_RESET         ; Master Software Reset. See bugfix: INITSERIAL.2
 DCE8 B7C008           (    forth6809.asm):01645                     STA   ACIACR
 DCEB 12               (    forth6809.asm):01646                     NOP                     ; Settling Delay
 DCEC 12               (    forth6809.asm):01647                     NOP
