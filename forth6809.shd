@@ -852,6 +852,37 @@ INITSERIAL.2  [bugfix]  (stage 4c)
 ; Now "LDA #CR_RESET".
 
 ================================================================
+BLDSELF.1  [history]  (stage 4d)
+----------------------------------------------------------------
+; The self-referential PFA fix (see CONSTANTW.1) had been repeated in
+; CREATE, CONSTANT, 2CONSTANT, DEFER and MARKER, each repeating the
+; HEADER / DODOES trampoline / behaviour / PFA sequence by hand. Stage 4d
+; moves the whole sequence into BLDDOES (header, trampoline, behaviour
+; cell) and BLDSELF (BLDDOES plus the PFA cell). VALUE uses BLDDOES and
+; supplies its own PFA (VARHERE).
+
+================================================================
+NUMBERQ.5  [history]  (stage 4d)
+----------------------------------------------------------------
+; NUMBERQ's 32-bit negation was a hand-written copy of MNEG32 that
+; needed NUMBERQ.3 and NUMBERQ.4 to work around the 6809 quirk that COM
+; always sets carry. Stage 4d negates through the shared MNEG32 instead
+; (copying UDHI/UDLO to PRODHI/PRODLO and back). The inline version was:
+;            LDD   UDLO
+;            COMA
+;            COMB
+;            ADDD  #1
+;            STD   UDLO
+;            PSHS  CC                ; Save the carry. See bugfix: NUMBERQ.3
+;            LDD   UDHI
+;            COMA
+;            COMB
+;            PULS  CC                ; restore the TRUE carry
+;            BCC   NQSTOREHI         ; See bugfix: NUMBERQ.4
+;            ADDD  #1
+;NQSTOREHI:  STD   UDHI
+
+================================================================
 UPDATE_RTS.1  [open question]  (stage-2 source lines 2226-2226)
 ----------------------------------------------------------------
 ; Why is OUTACTIVITY not updated here?

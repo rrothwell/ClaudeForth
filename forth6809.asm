@@ -2622,24 +2622,51 @@ NONAMEW:    LDD   CODEHERE
             RTS
 
 ; ------------------------------------------------------------
-; CREATE  ( "name" -- )
-; Build a header whose code is a DODOES trampoline. The default
-; behaviour (DOESRT0) leaves the data-field address, the next free
-; address in the code area, on the stack.
+; Common start of every DODOES-style defining word: build a header
+; and compile the DODOES trampoline followed by the behaviour address.
+; BLDDOES
+;    Inputs:
+;        RegD = address of the behaviour routine
+;    Outputs:
+;        header built, trampoline and behaviour cell compiled
+;    Registers: all changed.
+; BLDSELF
+;    Inputs:
+;        RegD = address of the behaviour routine
+;    Outputs:
+;        as BLDDOES, then the PFA cell compiled pointing at the
+;        cell that follows it (the word's own data field)
+;    Registers: all changed.
+; Used by CREATE, CONSTANT, 2CONSTANT, DEFER and MARKER (BLDSELF)
+; and by VALUE (BLDDOES, which supplies its own PFA).
 ; ------------------------------------------------------------
-CREATEW:    LDD   #0
+BLDDOES:    PSHS  D                 ; behaviour address
+            LDD   #0
             PSHU  D
             JSR   HEADER
             LDD   #DODOES
             PSHU  D
             JSR   CCALL
-            LDD   #DOESRT0
-            PSHU  D
+            PULS  D
+            PSHU  D                 ; behaviour address
             JSR   CODECOMMA
+            RTS
+
+BLDSELF:    JSR   BLDDOES
             LDD   CODEHERE          ; PFA = the cell after this one
             ADDD  #2                ; See bugfix: CONSTANTW.1
             PSHU  D
             JSR   CODECOMMA
+            RTS
+
+; ------------------------------------------------------------
+; CREATE  ( "name" -- )
+; Build a header whose code is a DODOES trampoline. The default
+; behaviour (DOESRT0) leaves the data-field address, the next free
+; address in the code area, on the stack.
+; ------------------------------------------------------------
+CREATEW:    LDD   #DOESRT0
+            JSR   BLDSELF           ; See bugfix: BLDSELF.1
             RTS
 
 ; ------------------------------------------------------------
@@ -2690,19 +2717,8 @@ FETCHW:     PULU  X                 ; a-addr
 ; Build a word that returns x. The value is stored in the code area
 ; after the trampoline and fetched with @.
 ; ------------------------------------------------------------
-CONSTANTW:  LDD   #0
-            PSHU  D
-            JSR   HEADER
-            LDD   #DODOES
-            PSHU  D
-            JSR   CCALL
-            LDD   #FETCHW
-            PSHU  D
-            JSR   CODECOMMA
-            LDD   CODEHERE          ; PFA = the cell after this one
-            ADDD  #2                ; See bugfix: CONSTANTW.1
-            PSHU  D
-            JSR   CODECOMMA
+CONSTANTW:  LDD   #FETCHW
+            JSR   BLDSELF           ; See bugfix: BLDSELF.1
             JSR   COMMAW
             RTS
 
@@ -2725,15 +2741,8 @@ DOVALUE:    PULU  X                 ; pfa
 ; Build a word that returns x, which can be changed with TO. The value
 ; cell is kept in the variable area so that it is writable.
 ; ------------------------------------------------------------
-VALUEW:     LDD   #0
-            PSHU  D
-            JSR   HEADER            ; not smudged - immediately findable
-            LDD   #DODOES
-            PSHU  D
-            JSR   CCALL
-            LDD   #DOVALUE
-            PSHU  D
-            JSR   CODECOMMA
+VALUEW:     LDD   #DOVALUE
+            JSR   BLDDOES
             LDD   VARHERE           ; PFA = VARHERE (writable space)
             PSHU  D                 ; See bugfix: VALUEW.1
             JSR   CODECOMMA
@@ -2800,19 +2809,8 @@ TWOVARIABLEW:
 ; with x2 at the lower address, as 2@ and 2! expect.
 ; ------------------------------------------------------------
 TWOCONSTANTW:
-            LDD   #0
-            PSHU  D
-            JSR   HEADER
-            LDD   #DODOES
-            PSHU  D
-            JSR   CCALL
             LDD   #TWOFETCHW
-            PSHU  D
-            JSR   CODECOMMA
-            LDD   CODEHERE          ; PFA = the cell after this one
-            ADDD  #2                ; See bugfix: CONSTANTW.1
-            PSHU  D
-            JSR   CODECOMMA
+            JSR   BLDSELF           ; See bugfix: BLDSELF.1
             PULU  D                 ; x2
             STD   MSCR
             LDD   MSCR
@@ -2851,19 +2849,8 @@ BUFFERCOLONW:
 ; Build a deferred word. Until IS stores an xt in it, executing it
 ; throws -21.
 ; ------------------------------------------------------------
-DEFERW:     LDD   #0
-            PSHU  D
-            JSR   HEADER
-            LDD   #DODOES
-            PSHU  D
-            JSR   CCALL
-            LDD   #DODEFER
-            PSHU  D
-            JSR   CODECOMMA
-            LDD   CODEHERE          ; PFA = the cell after this one
-            ADDD  #2                ; See bugfix: CONSTANTW.1
-            PSHU  D
-            JSR   CODECOMMA
+DEFERW:     LDD   #DODEFER
+            JSR   BLDSELF           ; See bugfix: BLDSELF.1
             LDD   #DOABORTUNDEF
             PSHU  D
             JSR   COMMAW
@@ -2964,19 +2951,8 @@ MARKERW:    LDD   DPHERE
             STD   MKVAR
             LDD   LATEST
             STD   MKLATEST
-            LDD   #0
-            PSHU  D
-            JSR   HEADER
-            LDD   #DODOES
-            PSHU  D
-            JSR   CCALL
             LDD   #DOMARKER
-            PSHU  D
-            JSR   CODECOMMA
-            LDD   CODEHERE          ; PFA = the cell after this one
-            ADDD  #2                ; See bugfix: CONSTANTW.1
-            PSHU  D
-            JSR   CODECOMMA
+            JSR   BLDSELF           ; See bugfix: BLDSELF.1
             LDD   MKDP
             PSHU  D
             JSR   COMMAW
@@ -3384,18 +3360,14 @@ NQNOSIGN2:  STX   NADDR
             TST   NUMNEG
             BEQ   NQPOS32
             LDD   UDLO
-            COMA
-            COMB
-            ADDD  #1
-            STD   UDLO
-            PSHS  CC                ; Save the carry. See bugfix: NUMBERQ.3
+            STD   PRODLO
             LDD   UDHI
-            COMA
-            COMB
-            PULS  CC                ; restore the TRUE carry
-            BCC   NQSTOREHI         ; See bugfix: NUMBERQ.4
-            ADDD  #1
-NQSTOREHI:  STD   UDHI
+            STD   PRODHI
+            JSR   MNEG32            ; shared negate. See bugfix: NUMBERQ.5
+            LDD   PRODLO
+            STD   UDLO
+            LDD   PRODHI
+            STD   UDHI
 
 NQPOS32:                            ; re-derive from CADDR whether the ORIGINAL last character
             ; was '.' - determines which return convention to use
