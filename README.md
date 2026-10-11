@@ -76,7 +76,7 @@ brew install binutils
 |Tests against ANS test suite, identifying, diagnosing and correcting bugs.  |:white_check_mark:|
 |Update documentation for ANS test suite|:white_check_mark:|
 |Retest with assembler test suite and adjust expectations.|:white_check_mark:|
-|Update general documentation, including applying style rules to assembler code and introducing shadow files.||
+|Update general documentation, including applying style rules to assembler code and introducing shadow files.|:white_check_mark:|
 |Optimisation for space, compiler performance & application performance| |
 |Update documentation| |
 |Burn ROM and install onto real MECB 6809 hardware. | |
@@ -148,11 +148,11 @@ brew install binutils
 
 ## Plans
 1. Assemble and test a bare bones ANS Forth [DONE].
-1. Scan for refactoring opportunities, removing code duplication.
+1. Scan for refactoring opportunities, removing code duplication [DONE].
 1. Development support words such as [IF], [ELSE], [THEN], FORGET, .(), etc..
 1. Format the output of WORDS to 10 forth words per line.
    Possibly pad each word to 8 character width and if longer to 16 character width.
-1. Format the output of DUMP to to show an address per line.
+1. Format the output of DUMP to show an address per line.
 1. Debugging support.
 1. Reorganise dictionary ordering to improved compilation support.
 1. Optimised words for common constants. [DONE]
