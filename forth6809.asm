@@ -951,20 +951,20 @@ H_PLUSLOOP:
             FCC   "+LOOP"
             FDB   H_LOOP
             FDB   PLUSLOOPW
-H_IWORD:
+H_I:
             FCB   $01
             FCC   "I"
             FDB   H_PLUSLOOP
-            FDB   IWORDW
-H_JWORD:
+            FDB   IW
+H_J:
             FCB   $01
             FCC   "J"
-            FDB   H_IWORD
-            FDB   JWORDW
+            FDB   H_I
+            FDB   JW
 H_LEAVE:
             FCB   $05
             FCC   "LEAVE"
-            FDB   H_JWORD
+            FDB   H_J
             FDB   LEAVEW
 H_UNLOOP:
             FCB   $06
@@ -1131,15 +1131,15 @@ H_POSTPONE:
             FCC   "POSTPONE"
             FDB   H_BRACKTICK
             FDB   POSTPONEW
-H_XCOMPILE:
+H_BRACKCOMPILE:
             FCB   $89               ; $80 IMMEDIATE | 9 (length of "[COMPILE]")
             FCC   "[COMPILE]"
             FDB   H_POSTPONE
-            FDB   XCOMPILEW
+            FDB   BRACKCOMPILEW
 H_TOBODY:
             FCB   $05
             FCC   ">BODY"
-            FDB   H_XCOMPILE
+            FDB   H_BRACKCOMPILE
             FDB   TOBODYW
 H_EXECUTE:
             FCB   $07
@@ -1157,15 +1157,15 @@ H_ABORTQUOTE:
             FCB   $22               ; '"' split out of the FCC string
             FDB   H_SLITERAL
             FDB   ABORTQUOTEW
-H_ATSIGN:
+H_FETCH:
             FCB   $01
             FCC   "@"
             FDB   H_ABORTQUOTE
-            FDB   ATSIGNW
+            FDB   FETCHW
 H_STORE:
             FCB   $01
             FCC   "!"
-            FDB   H_ATSIGN
+            FDB   H_FETCH
             FDB   STOREW
 H_CFETCH:
             FCB   $02
@@ -1182,20 +1182,20 @@ H_PLUSSTORE:
             FCC   "+!"
             FDB   H_CSTORE
             FDB   PLUSSTOREW
-H_DFETCH:
+H_TWOFETCH:
             FCB   $02
             FCC   "2@"
             FDB   H_PLUSSTORE
-            FDB   DFETCHW
-H_DSTORE:
+            FDB   TWOFETCHW
+H_TWOSTORE:
             FCB   $02
             FCC   "2!"
-            FDB   H_DFETCH
-            FDB   DSTOREW
+            FDB   H_TWOFETCH
+            FDB   TWOSTOREW
 H_COMMA:
             FCB   $01
             FCC   ","
-            FDB   H_DSTORE
+            FDB   H_TWOSTORE
             FDB   COMMAW
 H_CCOMMA:
             FCB   $02
@@ -1359,20 +1359,20 @@ H_LTNUM:
             FCC   "<#"
             FDB   H_UNESCAPE
             FDB   LTNUMW
-H_NUMSIGN:
+H_NUM:
             FCB   $01
             FCC   "#"
             FDB   H_LTNUM
-            FDB   NUMSIGNW
-H_NUMSIGNS:
+            FDB   NUMW
+H_NUMS:
             FCB   $02
             FCC   "#S"
-            FDB   H_NUMSIGN
-            FDB   NUMSIGNSW
+            FDB   H_NUM
+            FDB   NUMSW
 H_NUMGT:
             FCB   $02
             FCC   "#>"
-            FDB   H_NUMSIGNS
+            FDB   H_NUMS
             FDB   NUMGTW
 H_HOLD:
             FCB   $04
@@ -1454,30 +1454,30 @@ H_CATCH:
             FCC   "CATCH"
             FDB   H_BINARY
             FDB   CATCHW
-H_THRO:
+H_THROW:
             FCB   $05
             FCC   "THROW"
             FDB   H_CATCH
-            FDB   THROW
+            FDB   THROWW
 H_LPAREN:
             FCB   $81
             FCC   "("
-            FDB   H_THRO
+            FDB   H_THROW
             FDB   LPARENW
 H_BACKSLASH:
             FCB   $81
             FCC   "\"
             FDB   H_LPAREN
             FDB   BACKSLASHW
-H_ENVQUERY:
+H_ENVQ:
             FCB   $0C
             FCC   "ENVIRONMENT?"
             FDB   H_BACKSLASH
-            FDB   ENVQUERYW
+            FDB   ENVQW
 H_SOURCE:
             FCB   $06
             FCC   "SOURCE"
-            FDB   H_ENVQUERY
+            FDB   H_ENVQ
             FDB   SOURCEW
 H_SOURCEID:
             FCB   $09
@@ -1499,15 +1499,15 @@ H_TIB:
             FCC   "TIB"
             FDB   H_EVALUATE
             FDB   TIBW
-H_NTIB:
+H_NUMTIB:
             FCB   $04
             FCC   "#TIB"
             FDB   H_TIB
-            FDB   NTIBW
+            FDB   NUMTIBW
 H_TOIN:
             FCB   $03
             FCC   ">IN"
-            FDB   H_NTIB
+            FDB   H_NUMTIB
             FDB   TOINW
 H_SPAN:
             FCB   $04
@@ -2044,7 +2044,7 @@ FIRQH:      RTI
 NMIH:       RTI                     ; unused now that NMI -> WARM
 SWIH:       LDD   #-99              ; placeholder hardware-trap code; push and
             PSHU  D                 ; JMP THROW, per the CATCH/THROW turn
-            JMP   THROW
+            JMP   THROWW
 
 ; ============================================================
 ; SECTION 4: COLD / ABORT / QUIT  (with CATCH-wrapped INTERPRET)
@@ -2092,7 +2092,7 @@ COLD:       LDD   #APPVARS
 ; ------------------------------------------------------------
 ABORTW:     LDD   #-1
             PSHU  D                 ; throw code (-1)
-            JMP   THROW
+            JMP   THROWW
 
 ; ------------------------------------------------------------
 ; Reset the data stack to its base, then fall through into QUITW.
@@ -2337,7 +2337,7 @@ DODEFER:    PULU  X                 ; pfa
 DOABORTUNDEF:
             LDD   #-21
             PSHU  D                 ; throw code (-21)
-            JMP   THROW
+            JMP   THROWW
 
 ; ------------------------------------------------------------
 ; BEHAVIOR of a MARKER word: restore the dictionary, code and variable
@@ -2680,7 +2680,7 @@ VARIABLEW:  LDD   #0
 ; @  ( a-addr -- x )
 ; Fetch the cell at a-addr. Also the behaviour of CONSTANT words.
 ; ------------------------------------------------------------
-ATSIGNW:    PULU  X                 ; a-addr
+FETCHW:     PULU  X                 ; a-addr
             LDD   ,X
             PSHU  D                 ; x
             RTS
@@ -2696,7 +2696,7 @@ CONSTANTW:  LDD   #0
             LDD   #DODOES
             PSHU  D
             JSR   CCALL
-            LDD   #ATSIGNW
+            LDD   #FETCHW
             PSHU  D
             JSR   CODECOMMA
             LDD   CODEHERE          ; PFA = the cell after this one
@@ -2755,7 +2755,7 @@ TOW:        LDD   #32
             PULU  D
             LDD   #-13
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 TOFOUND:    JSR   TOBODYW
             LDD   STATE
             BEQ   TOIMMED
@@ -2806,7 +2806,7 @@ TWOCONSTANTW:
             LDD   #DODOES
             PSHU  D
             JSR   CCALL
-            LDD   #DFETCHW
+            LDD   #TWOFETCHW
             PSHU  D
             JSR   CODECOMMA
             LDD   CODEHERE          ; PFA = the cell after this one
@@ -2907,7 +2907,7 @@ ISW:        LDD   #32
             PULU  D
             LDD   #-13
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 ISFOUND:    PULU  X
             LDD   STATE
             BEQ   ISIMMED
@@ -2937,7 +2937,7 @@ ACTIONOFW:  LDD   #32
             PULU  D
             LDD   #-13
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 AOFOUND:    PULU  X
             LDD   STATE
             BEQ   AOIMMED
@@ -3069,7 +3069,7 @@ BADWORD:    JSR   COUNTW
             JSR   TYPEW
             LDD   #-13
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 
 IDONE:      PULU  X                 ; c-addr from WORD (empty). See bugfix: INTERPRET.4
             RTS
@@ -3719,7 +3719,7 @@ QUERYW:     LDX   #TIBBUF
 ; ------------------------------------------------------------
 CFERR:      LDD   #-22
             PSHU  D                 ; -22
-            JSR   THROW
+            JSR   THROWW
             RTS
 
 ; ------------------------------------------------------------
@@ -3763,7 +3763,7 @@ CATCHW:     PULU  X                 ; xt
 ; most recent CATCH (S, U, input source, >IN, HANDLER) and make that
 ; CATCH return n. With no CATCH active, push n and ABORT.
 ; ------------------------------------------------------------
-THROW:      PULU  D                 ; n
+THROWW:     PULU  D                 ; n
             CMPD  #0
             BEQ   THDONE
 
@@ -4098,7 +4098,7 @@ DOSETUP:    PULU  D                 ; index
 ; Push the index of the innermost loop (2,S, beyond the return
 ; address).
 ; ------------------------------------------------------------
-IWORDW:     LDD   2,S               ; n. See bugfix: IWORDW.1
+IW:         LDD   2,S               ; n. See bugfix: IW.1
             PSHU  D
             RTS
 
@@ -4107,7 +4107,7 @@ IWORDW:     LDD   2,S               ; n. See bugfix: IWORDW.1
 ; Push the index of the next outer loop (8,S, beyond the return
 ; address and the inner loop frame).
 ; ------------------------------------------------------------
-JWORDW:     LDD   8,S               ; n. See bugfix: JWORDW.1
+JW:         LDD   8,S               ; n. See bugfix: JW.1
             PSHU  D
             RTS
 
@@ -4532,7 +4532,7 @@ TICKW:      LDD   #32
             PULU  D                 ; drop the name
             LDD   #-13              ; -13
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 TICKOK:     RTS
 
 ; ------------------------------------------------------------
@@ -4579,7 +4579,7 @@ BRACKTICKW: LDD   STATE
             BNE   BTSTOK
             LDD   #-14              ; -14
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 BTSTOK:     LDD   #32
             PSHU  D
             JSR   WORDW
@@ -4590,7 +4590,7 @@ BTSTOK:     LDD   #32
             PULU  D
             LDD   #-13              ; -13
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 BTOK:       JSR   LITERALW
             RTS
 
@@ -4605,7 +4605,7 @@ POSTPONEW:  LDD   STATE
             BNE   PPSTOK
             LDD   #-14              ; -14
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 PPSTOK:     LDD   #32
             PSHU  D
             JSR   WORDW
@@ -4616,7 +4616,7 @@ PPSTOK:     LDD   #32
             PULU  D
             LDD   #-13              ; -13
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 PPFOUND:    CMPD  #1                ; 1 = immediate
             BEQ   PPIMM
             JSR   LITERALW
@@ -4632,13 +4632,14 @@ PPIMM:      JSR   COMPILECOMMAW
 ; Compile a call to the next name, whether or not it is immediate.
 ; Obsolescent: POSTPONE is the general replacement. THROW -14 if not
 ; compiling, -13 if the name is not found.
-; Original comment: shadow XCOMPILEW.0.
+; Original comment: shadow BRACKCOMPILEW.0.
 ; ------------------------------------------------------------
-XCOMPILEW:  LDD   STATE
+BRACKCOMPILEW:
+            LDD   STATE
             BNE   XCSTOK
             LDD   #-14
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 XCSTOK:     LDD   #32
             PSHU  D
             JSR   WORDW
@@ -4649,7 +4650,7 @@ XCSTOK:     LDD   #32
             PULU  D
             LDD   #-13
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 XCFOUND:    JSR   COMPILECOMMAW
             RTS
 
@@ -4674,7 +4675,7 @@ SLITERALW:  LDD   STATE
             BNE   SLSTOK
             LDD   #-14
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 SLSTOK:     PULU  D                 ; u
             STD   SCNT
             PULU  D                 ; c-addr
@@ -4731,7 +4732,7 @@ AQTHROW:    LDD   SPTR
             PSHS  X
             LDD   #-2               ; -2
             PSHU  D
-            JMP   THROW
+            JMP   THROWW
 
 ; ------------------------------------------------------------
 ; ABORT"  ( "ccc<quote>" -- )
@@ -4743,7 +4744,7 @@ ABORTQUOTEW:
             BNE   AQSTOK
             LDD   #-14
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 AQSTOK:     LDD   #34
             PSHU  D
             LDD   CODEHERE          ; reserve 3 bytes
@@ -4810,7 +4811,7 @@ TIBW:       LDD   #TIBBUF
 ; #TIB  ( -- a-addr )
 ; Push the address of the NTIB variable.
 ; ------------------------------------------------------------
-NTIBW:      LDD   #NTIB
+NUMTIBW:    LDD   #NTIB
             PSHU  D
             RTS
 
@@ -5304,7 +5305,7 @@ DIVCOMMON:  PULU  D                 ; n2
             BNE   DCOK
             LDD   #-10              ; -10
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 DCOK:       PULU  D                 ; n1
             STD   DIVNUM
             CLR   DVSIGN
@@ -5510,7 +5511,7 @@ STARSLASHCOMMON:
             BNE   SSOK
             LDD   #-10              ; -10
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 SSOK:       CLR   PSIGN
             TST   DIVDEN
             BPL   SSN3POS
@@ -5624,7 +5625,7 @@ UMSLASHMODW:
             BNE   UMOK
             LDD   #-10              ; -10
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 UMOK:       PULU  D                 ; ud
             STD   PRODHI
             PULU  D
@@ -5683,7 +5684,7 @@ SMSLASHREMW:
             BNE   SMOK
             LDD   #-10              ; -10
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 SMOK:       PULU  D                 ; d
             STD   PRODHI
             PULU  D
@@ -5733,7 +5734,7 @@ FMSLASHMODW:
             BNE   FMOK
             LDD   #-10              ; -10
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 FMOK:       PULU  D                 ; d
             STD   PRODHI
             PULU  D
@@ -6389,7 +6390,7 @@ PLUSSTOREW: PULU  X                 ; a-addr
 ; Fetch the cell pair at a-addr: x2 from a-addr (on top) and x1 from
 ; a-addr+2.
 ; ------------------------------------------------------------
-DFETCHW:    PULU  X                 ; a-addr. See bugfix: DFETCHW.1
+TWOFETCHW:  PULU  X                 ; a-addr. See bugfix: TWOFETCHW.1
             LDD   2,X
             PSHU  D
             LDD   ,X
@@ -6400,7 +6401,7 @@ DFETCHW:    PULU  X                 ; a-addr. See bugfix: DFETCHW.1
 ; 2!  ( x1 x2 a-addr -- )
 ; Store the cell pair: x2 at a-addr and x1 at a-addr+2.
 ; ------------------------------------------------------------
-DSTOREW:    PULU  X                 ; a-addr
+TWOSTOREW:  PULU  X                 ; a-addr
             PULU  D                 ; x2
             STD   ,X
             PULU  D                 ; x1
@@ -6717,7 +6718,7 @@ BRACKCHARW: LDD   STATE
             BNE   BCSTOK
             LDD   #-14              ; -14
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 BCSTOK:     LDD   #32
             PSHU  D
             JSR   WORDW
@@ -7249,7 +7250,7 @@ SUBSDONE:   LDX   SUBDESTADR
 SUBOVERFLOW:
             LDD   #-1
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
 
 ; ============================================================
 ; SECTION 20: NUMERIC OUTPUT (pictured + direct)
@@ -7304,7 +7305,7 @@ HSDONE:     RTS
 ; Divide ud1 by BASE, add the remainder as a digit to the pictured
 ; numeric output string, and leave the quotient ud2.
 ; ------------------------------------------------------------
-NUMSIGNW:   PULU  D                 ; ud1 high
+NUMW:       PULU  D                 ; ud1 high
             STD   UDHI
             PULU  D                 ; ud1 low
             STD   UDLO
@@ -7358,11 +7359,11 @@ UDNEXT:     DEC   DCNT
 ; Convert digits with # until the quotient is zero (at least one digit
 ; is produced).
 ; ------------------------------------------------------------
-NUMSIGNSW:  JSR   NUMSIGNW
+NUMSW:      JSR   NUMW
             LDD   UDHI
-            BNE   NUMSIGNSW
+            BNE   NUMSW
             LDD   UDLO
-            BNE   NUMSIGNSW
+            BNE   NUMSW
             RTS
 
 ; ------------------------------------------------------------
@@ -7406,7 +7407,7 @@ DABSOK:     PSHU  D
             LDD   #0
             PSHU  D
             JSR   LTNUMW
-            JSR   NUMSIGNSW
+            JSR   NUMSW
             LDD   SAVEN
             PSHU  D
             JSR   SIGNW
@@ -7424,7 +7425,7 @@ DABSOK:     PSHU  D
 UDOTW:      LDD   #0                ; ud high cell = 0
             PSHU  D
             JSR   LTNUMW
-            JSR   NUMSIGNSW
+            JSR   NUMSW
             JSR   NUMGTW
             JSR   TYPEW
             LDD   #32
@@ -7448,7 +7449,7 @@ DRABSOK:    PSHU  D
             LDD   #0
             PSHU  D
             JSR   LTNUMW
-            JSR   NUMSIGNSW
+            JSR   NUMSW
             LDD   SAVEN
             PSHU  D
             JSR   SIGNW
@@ -7485,7 +7486,7 @@ UDOTRW:     PULU  D                 ; n (width)
             LDD   #0                ; ud high cell = 0
             PSHU  D
             JSR   LTNUMW
-            JSR   NUMSIGNSW
+            JSR   NUMSW
             JSR   NUMGTW
             PULU  D
             STD   DRLEN
@@ -7537,7 +7538,7 @@ DDPOS:      LDD   PRODLO
             LDD   PRODHI
             PSHU  D
             JSR   LTNUMW
-            JSR   NUMSIGNSW
+            JSR   NUMSW
             LDD   SAVEN
             PSHU  D
             JSR   SIGNW
@@ -7567,7 +7568,7 @@ DDRPOS:     LDD   PRODLO
             LDD   PRODHI
             PSHU  D
             JSR   LTNUMW
-            JSR   NUMSIGNSW
+            JSR   NUMSW
             LDD   SAVEN
             PSHU  D
             JSR   SIGNW
@@ -7769,9 +7770,9 @@ EVALUATEW:  LDD   SRCADDR           ; save the input source on S
 ; deliberately absent because the Search-Order word set is not
 ; implemented. FLOORED is false because /, MOD and /MOD use symmetric
 ; division.
-; Original comment: shadow ENVQUERYW.0.
+; Original comment: shadow ENVQW.0.
 ; ------------------------------------------------------------
-ENVQUERYW:  PULU  D                 ; u
+ENVQW:      PULU  D                 ; u
             STD   ENVLEN
             PULU  D                 ; c-addr
             STD   ENVADDR
@@ -7779,7 +7780,7 @@ ENVQUERYW:  PULU  D                 ; u
 ENVLOOP:    LDD   ,X
             CMPD  #0
             BEQ   ENV2START         ; end of table: try ENVTABLE2
-            PSHS  X                 ; See bugfix: ENVQUERYW.2
+            PSHS  X                 ; See bugfix: ENVQW.2
             PSHU  D
             LDD   2,X
             PSHU  D
@@ -7804,7 +7805,7 @@ ENV2START:  LDX   #ENVTABLE2        ; double-cell table
 ENV2LOOP:   LDD   ,X
             CMPD  #0
             BEQ   ENVNOTFOUND
-            PSHS  X                 ; See bugfix: ENVQUERYW.2
+            PSHS  X                 ; See bugfix: ENVQW.2
             PSHU  D
             LDD   2,X
             PSHU  D

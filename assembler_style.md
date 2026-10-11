@@ -55,7 +55,8 @@ the following style rules are applied to forth6809.asm and unit_tests.asm.
    labels (`H_TOR`, `H_KEYQ`, `H_ONEPLUS`, `H_DDUP`, and so on). Known
    inconsistencies in these spellings are left as they are for now;
    standardising them is a possible later change. Only the trailing-W
-   rules above are applied to them (`H_TOR` / `TORW`).
+   rules above are applied to them (`H_TOR` / `TORW`). The second set of
+   renames below fixes the worst of these.
 1. The following XT labels are renamed to follow the `<NAME>W` rule.
    None of the new names is used anywhere in either source file.
 
@@ -69,6 +70,26 @@ the following style rules are applied to forth6809.asm and unit_tests.asm.
    | `-2`    | `MTWOBODY`  | `NEGTWOW`  | `H_M2` -> `H_NEGTWO` |
 
    `H_ABORT` / `ABORTW` already follow the rules and are unchanged.
+1. A second set of renames makes the labels follow Forth terminology
+   (digits and symbols spelled out in the usual Forth way). The word is
+   shown first; the XT always follows the `<NAME>W` rule.
+
+   | Word | Old header label | New header label | Old XT | New XT |
+   |------|------------------|------------------|--------|--------|
+   | `I`            | `H_IWORD`    | `H_I`            | `IWORDW`    | `IW`            |
+   | `J`            | `H_JWORD`    | `H_J`            | `JWORDW`    | `JW`            |
+   | `[COMPILE]`    | `H_XCOMPILE` | `H_BRACKCOMPILE` | `XCOMPILEW` | `BRACKCOMPILEW` |
+   | `@`            | `H_ATSIGN`   | `H_FETCH`        | `ATSIGNW`   | `FETCHW`        |
+   | `2@`           | `H_DFETCH`   | `H_TWOFETCH`     | `DFETCHW`   | `TWOFETCHW`     |
+   | `2!`           | `H_DSTORE`   | `H_TWOSTORE`     | `DSTOREW`   | `TWOSTOREW`     |
+   | `#`            | `H_NUMSIGN`  | `H_NUM`          | `NUMSIGNW`  | `NUMW`          |
+   | `#S`           | `H_NUMSIGNS` | `H_NUMS`         | `NUMSIGNSW` | `NUMSW`         |
+   | `THROW`        | `H_THRO`     | `H_THROW`        | `THROW`     | `THROWW`        |
+   | `ENVIRONMENT?` | `H_ENVQUERY` | `H_ENVQ`         | `ENVQUERYW` | `ENVQW`         |
+   | `#TIB`         | `H_NTIB`     | `H_NUMTIB`       | `NTIBW`     | `NUMTIBW`       |
+
+   Reference codes in the shadow files that embed an XT label were renamed
+   with it (for example `IWORDW.1` is now `IW.1`).
 
 ## Verification
 

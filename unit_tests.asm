@@ -6647,7 +6647,7 @@ TSTDOLP:    LDD   CODEHERE
 
             JSR   DOW
 
-            LDD   #IWORDW
+            LDD   #IW
             PSHU  D
             JSR   CCALL
 
@@ -6725,7 +6725,7 @@ TSTQDOLP:   LDD   CODEHERE
 
             JSR   QDOW
 
-            LDD   #IWORDW
+            LDD   #IW
             PSHU  D
             JSR   CCALL
 
@@ -6806,7 +6806,7 @@ TSTQDOLPEQ: LDD   CODEHERE
 
             JSR   QDOW
 
-            LDD   #IWORDW
+            LDD   #IW
             PSHU  D
             JSR   CCALL
 
@@ -6883,7 +6883,7 @@ TSTPLOOP:   LDD   CODEHERE
 
             JSR   DOW
 
-            LDD   #IWORDW
+            LDD   #IW
             PSHU  D
             JSR   CCALL
 
@@ -6973,7 +6973,7 @@ TSTJIDX:    LDD   CODEHERE
 
             JSR   DOW
 
-            LDD   #JWORDW
+            LDD   #JW
             PSHU  D
             JSR   CCALL
 
@@ -6985,7 +6985,7 @@ TSTJIDX:    LDD   CODEHERE
             PSHU  D
             JSR   CCALL
 
-            LDD   #IWORDW
+            LDD   #IW
             PSHU  D
             JSR   CCALL
 
@@ -7068,7 +7068,7 @@ TSTLEAVE:   LDD   CODEHERE
 
             JSR   DOW
 
-            LDD   #IWORDW
+            LDD   #IW
             PSHU  D
             JSR   CCALL
 
@@ -7170,7 +7170,7 @@ TSTEXIT:    LDD   CSP
 
             JSR   DOW
 
-            LDD   #IWORDW
+            LDD   #IW
             PSHU  D
             JSR   CCALL
 
@@ -7192,7 +7192,7 @@ TSTEXIT:    LDD   CSP
 
             JSR   THENW
 
-            LDD   #IWORDW
+            LDD   #IW
             PSHU  D
             JSR   CCALL
 
@@ -8082,7 +8082,7 @@ TSTCRDOES:  LDD   CODEHERE
 
             JSR   DOESGTW
 
-            LDD   #ATSIGNW
+            LDD   #FETCHW
             PSHU  D
             JSR   CCALL
 
@@ -10319,7 +10319,7 @@ TSTXCOMPILE1:
             PSHU  D
             STU   TSTUB4
 
-            JSR   XCOMPILEW
+            JSR   BRACKCOMPILEW
 
             STU   TSTUAF
 
@@ -10435,7 +10435,7 @@ TSTXCOMPILE2:
             PSHU  D
             STU   TSTUB4
 
-            JSR   XCOMPILEW
+            JSR   BRACKCOMPILEW
 
             STU   TSTUAF
 
@@ -11008,7 +11008,7 @@ TSTFETCHSTORE:
             LDD   #TSTCBUF
             PSHU  D
 
-            JSR   ATSIGNW
+            JSR   FETCHW
 
             STU   TSTUAF
 
@@ -11180,12 +11180,12 @@ TST2FETCHSTORE:
             PSHU  D
             STU   TSTUB4
 
-            JSR   DSTOREW
+            JSR   TWOSTOREW
 
             LDD   #TSTCBUF
             PSHU  D
 
-            JSR   DFETCHW
+            JSR   TWOFETCHW
 
             STU   TSTUAF
 
@@ -14214,7 +14214,7 @@ TSTNUMSIGN: LDD   CODEHERE
             PSHU  D
             LDD   #0
             PSHU  D
-            JSR   NUMSIGNW
+            JSR   NUMW
 
             STU   TSTUAF
 
@@ -14295,7 +14295,7 @@ TSTNUMSIGNSGT:
             PSHU  D
             LDD   #0
             PSHU  D
-            JSR   NUMSIGNSW
+            JSR   NUMSW
             JSR   NUMGTW
 
             STU   TSTUAF
@@ -15344,7 +15344,7 @@ TSTTHROWHLP:
             PSHU  D
             LDD   #TSTNEG1
             PSHU  D
-            JSR   THROW
+            JSR   THROWW
             RTS
 
 ; ------------------------------------------------------------
@@ -15418,7 +15418,7 @@ TSTTHROWZERO:
             PSHU  D
             STU   TSTUB4
 
-            JSR   THROW
+            JSR   THROWW
 
             STU   TSTUAF
 
@@ -15781,7 +15781,7 @@ TSTENVVARS: STU   TSTU0
             CMPD  #TIBBUF
             BNE   EVFAIL
 
-            JSR   NTIBW
+            JSR   NUMTIBW
             PULU  D
             CMPD  #NTIB
             BNE   EVFAIL
@@ -16176,7 +16176,7 @@ TSTENVQUERY1:
             PSHU  D
             LDD   #15
             PSHU  D
-            JSR   ENVQUERYW
+            JSR   ENVQW
 
             PULU  D
             CMPD  #TRUEV
@@ -16189,7 +16189,7 @@ TSTENVQUERY1:
             PSHU  D
             LDD   #5
             PSHU  D
-            JSR   ENVQUERYW
+            JSR   ENVQW
 
             STU   TSTUAF
 
@@ -16258,7 +16258,7 @@ TSTENVQUERY2:
             PSHU  D
             LDD   #5
             PSHU  D
-            JSR   ENVQUERYW
+            JSR   ENVQW
 
             STU   TSTUAF
 
@@ -16325,7 +16325,7 @@ TSTENVQUERY3:
             PSHU  D
             LDD   #5
             PSHU  D
-            JSR   ENVQUERYW
+            JSR   ENVQW
 
             STU   TSTUAF
 

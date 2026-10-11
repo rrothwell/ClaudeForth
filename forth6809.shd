@@ -194,7 +194,7 @@ MEMMAP.5  [commented-out code]  (lines 163-173 of the stage-3p file)
 MEMMAP.6  [history]  (lines 174-250 of the stage-3p file)
 ----------------------------------------------------------------
 BASECODE    EQU   $DD54             ; shifted up another $0E (14 bytes) from $DD46:
-                                    ; BASEDICT grew again by H_XCOMPILE's header
+                                    ; BASEDICT grew again by H_BRACKCOMPILE's header
                                     ; entry (FCB + the 9-char name "[COMPILE]" +
                                     ; two FDBs = 14 bytes), added to give the new
                                     ; [COMPILE] word (see XCOMPILE, section 13) a
@@ -1705,9 +1705,9 @@ RECURSEW:   LDD   CURXT             ; BUG FIX: used to walk LATEST's header (ski
                                     ; get wrong.
 
 ================================================================
-IWORDW.1  [bugfix]  (lines 4637-4645 of the stage-3g file)
+IW.1  [bugfix]  (lines 4637-4645 of the stage-3g file)
 ----------------------------------------------------------------
-IWORDW:     LDD   2,S               ; BUG FIX: PULS X/PSHS X used to bracket this
+IW:     LDD   2,S               ; BUG FIX: PULS X/PSHS X used to bracket this
             PSHU  D                 ; read, shifting S by 2 first - so "2,S" landed
             RTS                     ; on the limit (what's really at 4,S unshifted)
                                     ; instead of the index. The pair served no
@@ -1718,9 +1718,9 @@ IWORDW:     LDD   2,S               ; BUG FIX: PULS X/PSHS X used to bracket thi
                                     ; returned the loop limit on every iteration.
 
 ================================================================
-JWORDW.1  [bugfix]  (lines 4647-4665 of the stage-3g file)
+JW.1  [bugfix]  (lines 4647-4665 of the stage-3g file)
 ----------------------------------------------------------------
-JWORDW:     LDD   8,S               ; CORRECTION: an earlier turn changed this to
+JW:     LDD   8,S               ; CORRECTION: an earlier turn changed this to
             PSHU  D                 ; 10,S, which was itself wrong - it assumed
             RTS                     ; DOSETUP's own JSR-pushed return address
                                     ; persists on S once each DOSETUP finishes.
@@ -1972,7 +1972,7 @@ CCALL:      LDX   CODEHERE          ; BUG FIX: was PULU D first, then LDA #OPJSR
                                     ; execution jumped to random memory.
 
 ================================================================
-XCOMPILEW.0  [explanatory]  (lines 5158-5177 of the stage-3h file)
+BRACKCOMPILEW.0  [explanatory]  (lines 5158-5177 of the stage-3h file)
 ----------------------------------------------------------------
 ; [COMPILE] ( "name" -- )  IMMEDIATE, compile-only. OBSOLESCENT per
 ; the ANS standard - POSTPONE (above) is its modern, more general
@@ -2099,9 +2099,9 @@ STODW.1  [bugfix]  (lines 6348-6360 of the stage-3j file)
                                     ; -1 - no sign extension was happening at all.
 
 ================================================================
-DFETCHW.1  [bugfix]  (lines 6838-6843 of the stage-3k file)
+TWOFETCHW.1  [bugfix]  (lines 6838-6843 of the stage-3k file)
 ----------------------------------------------------------------
-DFETCHW:    PULU  X                 ; BUG FIX (runner, section 18): standard
+TWOFETCHW:    PULU  X                 ; BUG FIX (runner, section 18): standard
             LDD   2,X               ; 2@ ( a -- x1 x2 ) has x2 at a and x1 at
             PSHU  D                 ; a+cell. Was the other way round (it
             LDD   ,X                ; round-tripped with 2! but a memory
@@ -2396,7 +2396,7 @@ EVALUATEW:  LDD   SRCADDR           ; BUG FIX: the outer source was saved in
             PSHS  D                 ; unused).
 
 ================================================================
-ENVQUERYW.0  [explanatory]  (lines 8321-8353 of the stage-3n file)
+ENVQW.0  [explanatory]  (lines 8321-8353 of the stage-3n file)
 ----------------------------------------------------------------
 ; ENVIRONMENT? - dispatcher complete; table has entries derived
 ; without fabricating unfixed capacities. /HOLD and /PAD were both
@@ -2433,7 +2433,7 @@ ENVQUERYW.0  [explanatory]  (lines 8321-8353 of the stage-3n file)
 ; below, for the full trace.
 
 ================================================================
-ENVQUERYW.1  [explanatory]  (lines 8361-8369 of the stage-3n file)
+ENVQW.1  [explanatory]  (lines 8361-8369 of the stage-3n file)
 ----------------------------------------------------------------
             BEQ   ENV2START         ; CHANGED: was BEQ ENVNOTFOUND - now tries
                                     ; the double-cell table (below) before
@@ -2446,7 +2446,7 @@ ENVQUERYW.1  [explanatory]  (lines 8361-8369 of the stage-3n file)
                                     ; represent correctly.
 
 ================================================================
-ENVQUERYW.2  [bugfix]  (lines 8370-8390 of the stage-3n file)
+ENVQW.2  [bugfix]  (lines 8370-8390 of the stage-3n file)
 ----------------------------------------------------------------
             PSHS  X                 ; BUG FIX: COMPAREW uses X as its own
                                     ; internal scratch (LDX CMPA1, then LDA
