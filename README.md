@@ -150,9 +150,12 @@ brew install binutils
 1. Assemble and test a bare bones ANS Forth [DONE].
 1. Scan for refactoring opportunities, removing code duplication.
 1. Development support words such as [IF], [ELSE], [THEN], FORGET, .(), etc..
+1. Format the output of WORDS to 10 forth words per line.
+   Possibly pad each word to 8 character width and if longer to 16 character width.
+1. Format the output of DUMP to to show an address per line.
 1. Debugging support.
 1. Reorganise dictionary ordering to improved compilation support.
-1. Optimised words for common constants.
+1. Optimised words for common constants. [DONE]
 1. Dictionary vocabulary support.
 1. Inbuilt assembler.
 1. Forth decompiler.
@@ -166,5 +169,6 @@ brew install binutils
 1. Vectored I/O. 
    In particular the ability to programatically change the behavior of EMIT, etc..
 1. Improve the number parser to recognise binary and hexadecimal numbers.
+1. Move the serial communications code to an include file.
 
 
