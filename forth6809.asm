@@ -6384,22 +6384,19 @@ TWOSTOREW:  PULU  X                 ; a-addr
 ; CMOVE  ( c-addr1 c-addr2 u -- )
 ; Copy u bytes from c-addr1 to c-addr2, starting at the low addresses.
 ; ------------------------------------------------------------
-CMOVEW:     PULU  D                 ; u
-            STD   MVCNT
-            PULU  D                 ; c-addr2
-            STD   MVDST
-            PULU  D                 ; c-addr1
-            STD   MVSRC
-            LDX   MVSRC
-            LDY   MVDST
-CMVLOOP:    LDD   MVCNT
-            BEQ   CMDONE
-            SUBD  #1                ; count - 1. See bugfix: CMOVEW.1
-            STD   MVCNT
-            LDA   ,X+
+CMOVEW:     LDD   ,U                ; u. Parameters stay on the data stack,
+            BEQ   CMDONE            ; addressed relative to U: u at 0, c-addr2
+            LDX   4,U               ; at 2, c-addr1 at 4. See shadow CMOVEW.2
+            LEAX  D,X               ; end address = c-addr1 + u
+            STX   ,U                ; keep it in u's old slot as the loop limit
+            LDX   4,U               ; X = source
+            LDY   2,U               ; Y = destination
+CMVLOOP:    LDA   ,X+
             STA   ,Y+
-            BRA   CMVLOOP
-CMDONE:     RTS
+            CMPX  ,U                ; reached the end address?
+            BNE   CMVLOOP
+CMDONE:     LEAU  6,U               ; drop the three parameters
+            RTS
 
 ; ------------------------------------------------------------
 ; CMOVE>  ( c-addr1 c-addr2 u -- )

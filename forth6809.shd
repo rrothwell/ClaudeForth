@@ -2164,6 +2164,17 @@ CMOVEW.1  [bugfix]  (lines 6862-6873 of the stage-3k file)
                                     ; MAME debugger: the loop never terminated.
 
 ================================================================
+CMOVEW.2  [stage 5a: stack-frame rewrite]
+----------------------------------------------------------------
+Replaces the CMOVEW.1 loop. The old code popped u, c-addr2 and c-addr1
+into MVCNT/MVDST/MVSRC, reloaded X and Y from them, and loaded, decremented
+and stored MVCNT through absolute addresses on every byte (34 cycles per
+byte). The new loop works from an end address instead of a count, kept in
+the u slot on the data stack, so the per-byte cost is 22 cycles and no
+scratch cells are used. The CMOVEW.1 problem (A clobbering the count) cannot
+occur because the count no longer lives in D.
+
+================================================================
 FILLW.1  [bugfix]  (lines 6930-6949 of the stage-3k file)
 ----------------------------------------------------------------
             TFR   D,Y               ; BUG FIX: was STD FILLCNT/LDD FILLCNT each
