@@ -65,7 +65,7 @@ brew install binutils
 |Resolve assembler bugs, missing labels and dictionary entries, fix memory map overlaps & gaps. Assembles without errors. | 0.00|:white_check_mark:|
 |Install MAME. Add configuration file for an existing emulated 6809 computer. | 0.00|:white_check_mark:|
 |Customise MAME with the missing mecb6809 and mecb6502 drivers and providing monitor ROM files. | 0.00|:white_check_mark:|
-|Set up serial communications to MAME mecb6809 to allow upload of testing code. 0.00|:white_check_mark:|
+|Set up serial communications to MAME mecb6809 to allow upload of testing code. | 0.00|:white_check_mark:|
 |Load forth6809.bin ROM file and verify memory layout and operation. | 0.00|:white_check_mark:|
 |Manual tests and identified/fixed numerous bugs. |1.00|:white_check_mark:|
 |Update documentation|1.00|:white_check_mark:|
