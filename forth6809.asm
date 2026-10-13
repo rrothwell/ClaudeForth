@@ -333,33 +333,7 @@ DOESBEH     RMB   2                 ; offset $FD - SETDOES scratch
 
 GLOBALS_USED EQU   255              ; bytes used, of 256 available
 
-; ------------------------------------------------------------
-; MVSCRATCH - three cells shared, one at a time, by routine
-; families that never call each other or run concurrently in
-; this single-threaded interpreter: MOVE/CMOVE/CMOVE>, FILL, and
-; HOLDS (plus the single-cell multiply routine). Sharing avoids
-; needing 3x the physical storage for what is provably the same
-; scratch need at different times; the tradeoff is that these
-; three cells use ordinary extended addressing (3-byte LDD/STD),
-; not direct-page (2-byte), since page zero has no room left.
-;
-;   MVCNT    - MOVE/CMOVE's remaining-byte count
-;     HSLEN    EQU MVCNT   - HOLDS's remaining-char count
-;   MVDST    - MOVE/CMOVE's destination address
-;     HSADDR   EQU MVDST   - HOLDS's source address
-;   MVSRC    - MOVE/CMOVE's source address
-;     MRESULT  EQU MVSRC   - single-cell multiply's 16-bit result
-;     FILLCHR  EQU MVSRC   - FILL's fill character (1 byte, uses
-;                            MVSRC's first byte only)
-; ------------------------------------------------------------
-            ORG   $0100
-MVCNT       RMB   2
-MVDST       RMB   2
-MVSRC       RMB   2
-HSLEN       EQU   MVCNT
-HSADDR      EQU   MVDST
-MRESULT     EQU   MVSRC
-FILLCHR     EQU   MVSRC
+; $0100-$0105 is unclaimed (was MVSCRATCH). See shadow MVSCRATCH.1
 
 ; ------------------------------------------------------------
 ; Ring buffers for serial communications.
@@ -5199,22 +5173,18 @@ SNOFLIP2:   STA   MBHI
             LDA   MALO
             LDB   MBLO
             MUL
-            STD   MRESULT
+            PSHS  D                 ; partial product on the return stack
             LDA   MAHI
             LDB   MBLO
             MUL
-            LDA   MRESULT
-            PSHS  B
-            ADDA  ,S+               ; A = A + B
-            STA   MRESULT
+            ADDB  ,S                ; cross term into the high byte
+            STB   ,S
             LDA   MALO
             LDB   MBHI
             MUL
-            LDA   MRESULT
-            PSHS  B
-            ADDA  ,S+               ; A = A + B
-            STA   MRESULT
-            LDD   MRESULT
+            ADDB  ,S
+            STB   ,S
+            PULS  D                 ; 16-bit result. See shadow MVSCRATCH.1
             TST   MSIGN
             BEQ   SDONE
             COMA
@@ -6403,76 +6373,44 @@ CMDONE:     LEAU  6,U               ; drop the three parameters
 ; Copy u bytes from c-addr1 to c-addr2, starting at the high
 ; addresses.
 ; ------------------------------------------------------------
-CMOVEGTW:   PULU  D                 ; u
-            STD   MVCNT
-            PULU  D                 ; c-addr2
-            STD   MVDST
-            PULU  D                 ; c-addr1
-            STD   MVSRC
-            LDD   MVCNT
-            BEQ   CGDONE
-            LDX   MVSRC
-            LEAX  D,X
-            LEAX  -1,X
-            LDY   MVDST
-            LEAY  D,Y
-            LEAY  -1,Y
-CGLOOP:     LDA   ,X
-            STA   ,Y
-            LEAX  -1,X
-            LEAY  -1,Y
-            LDD   MVCNT
-            SUBD  #1
-            STD   MVCNT
+CMOVEGTW:   LDD   ,U                ; u. Parameters stay on the data stack:
+            BEQ   CGDONE            ; u at 0, c-addr2 at 2, c-addr1 at 4
+            LDX   4,U
+            LEAX  D,X               ; X = one past the end of the source
+            LDY   2,U
+            LEAY  D,Y               ; Y = one past the end of the destination
+CGLOOP:     LDA   ,-X
+            STA   ,-Y
+            CMPX  4,U               ; back at the start of the source?
             BNE   CGLOOP
-CGDONE:     RTS
+CGDONE:     LEAU  6,U               ; drop the three parameters
+            RTS
 
 ; ------------------------------------------------------------
 ; MOVE  ( addr1 addr2 u -- )
 ; Copy u bytes from addr1 to addr2, choosing CMOVE or CMOVE> so that
 ; overlapping regions are handled correctly.
 ; ------------------------------------------------------------
-MOVEW:      PULU  D                 ; u
-            STD   MVCNT
-            PULU  D                 ; addr2
-            STD   MVDST
-            PULU  D                 ; addr1
-            STD   MVSRC
-            LDD   MVDST
-            CMPD  MVSRC
-            BLS   MVLOW
-            LDD   MVSRC
-            PSHU  D
-            LDD   MVDST
-            PSHU  D
-            LDD   MVCNT
-            PSHU  D
-            JMP   CMOVEGTW
-MVLOW:      LDD   MVSRC
-            PSHU  D
-            LDD   MVDST
-            PSHU  D
-            LDD   MVCNT
-            PSHU  D
+MOVEW:      LDD   2,U               ; addr2
+            CMPD  4,U               ; addr1
+            BHI   CMOVEGTW          ; addr2 above addr1: copy from the top
             JMP   CMOVEW
 
 ; ------------------------------------------------------------
 ; FILL  ( c-addr u char -- )
 ; Store char in each of u bytes starting at c-addr.
 ; ------------------------------------------------------------
-FILLW:      PULU  D                 ; char
-            STB   FILLCHR
-            PULU  D                 ; u
-            TFR   D,Y               ; Y = count. See bugfix: FILLW.1
-            PULU  D                 ; c-addr
-            TFR   D,X               ; X = address
-FILLOOP:    CMPY  #0
+FILLW:      LDD   2,U               ; u. char is at 0, c-addr at 4
             BEQ   FDONE
-            LDA   FILLCHR
-            STA   ,X+
-            LEAY  -1,Y
-            BRA   FILLOOP
-FDONE:      RTS
+            LDX   4,U
+            LEAY  D,X               ; end address
+            STY   2,U               ; keep it in u's slot as the loop limit
+            LDA   1,U               ; fill byte. See bugfix: FILLW.1
+FILLOOP:    STA   ,X+
+            CMPX  2,U
+            BNE   FILLOOP
+FDONE:      LEAU  6,U               ; drop the three parameters
+            RTS
 
 ; ------------------------------------------------------------
 ; ERASE  ( c-addr u -- )
@@ -7250,24 +7188,19 @@ HOLDW:      PULU  D                 ; char
 ; Add the string c-addr u to the front of the pictured numeric output
 ; string.
 ; ------------------------------------------------------------
-HOLDSW:     PULU  D                 ; u
-            STD   HSLEN
-            PULU  D                 ; c-addr
-            STD   HSADDR
-HSLOOP:     LDD   HSLEN
+HOLDSW:     LDD   ,U                ; u at 0, c-addr at 2
             BEQ   HSDONE
             SUBD  #1
-            STD   HSLEN
-            LDX   HSADDR
-            LDD   HSLEN
-            LEAX  D,X
-            LDA   ,X
+            STD   ,U                ; remaining count
+            LDX   2,U
+            LDA   D,X               ; the last remaining character
             TFR   A,B
             CLRA
             PSHU  D
-            JSR   HOLDW
-            BRA   HSLOOP
-HSDONE:     RTS
+            JSR   HOLDW             ; consumes the character
+            BRA   HOLDSW
+HSDONE:     LEAU  4,U               ; drop the two parameters
+            RTS
 
 ; ------------------------------------------------------------
 ; #  ( ud1 -- ud2 )

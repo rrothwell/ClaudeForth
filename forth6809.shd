@@ -2175,6 +2175,15 @@ scratch cells are used. The CMOVEW.1 problem (A clobbering the count) cannot
 occur because the count no longer lives in D.
 
 ================================================================
+MVSCRATCH.1  [stage 5b: scratch cells removed]
+----------------------------------------------------------------
+MVCNT, MVDST and MVSRC (with the aliases HSLEN, HSADDR, MRESULT and
+FILLCHR) at $0100-$0105 were shared by CMOVE, CMOVE>, MOVE, FILL, HOLDS and
+the single-cell multiply. All of them now work from the data stack with
+U-relative addressing, or (the multiply) keep the partial product on the
+return stack with PSHS D / ADDB ,S / PULS D. The six bytes are unclaimed.
+
+================================================================
 FILLW.1  [bugfix]  (lines 6930-6949 of the stage-3k file)
 ----------------------------------------------------------------
             TFR   D,Y               ; BUG FIX: was STD FILLCNT/LDD FILLCNT each
