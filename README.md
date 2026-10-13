@@ -58,30 +58,30 @@ brew install binutils
 * ~~Warning: all words tested as functional, with extensive automated tests. Tagged as version 1.10.~~*
 * Warning: all words tested as functional, complying with ANS Forth Test Suite. Tagged as version 1.20. *
 
-| Item             | Completed   |
-|:-----------------|------------:|
-|Initial specification and code generation|:white_check_mark:|
-|Initial documentation|:white_check_mark:|
-|Resolve assembler bugs, missing labels and dictionary entries, fix memory map overlaps & gaps. Assembles without errors. |:white_check_mark:|
-|Install MAME. Add configuration file for an existing emulated 6809 computer. |:white_check_mark:|
-|Customise MAME with the missing mecb6809 and mecb6502 drivers and providing monitor ROM files . |:white_check_mark:|
-|Set up serial communications to MAME mecb6809 to allow upload of testing code. |:white_check_mark:|
-|Load forth6809.bin ROM file and verify memory layout and operation. |:white_check_mark:|
-|Manual tests and identified/fixed numerous bugs. |:white_check_mark:|
-|Update documentation|:white_check_mark:|
-|Automated assembler unit tests and identified bug fixes.  |:white_check_mark:|
-|Adapted the MAME mecb6809 driver for interrupt driven hardware handshaking.  |:white_check_mark:|
-|Optimised MAME emulated 6850 ACIA serial communications, with interrupt driven hardware handshaking |:white_check_mark:|
-|Solved reliability issues with MAME emulated 6850 ACIA serial communications, by using XON/XOFF software handshaking |:white_check_mark:|
-|Tests against ANS test suite, identifying, diagnosing and correcting bugs.  |:white_check_mark:|
-|Update documentation for ANS test suite|:white_check_mark:|
-|Retest with assembler test suite and adjust expectations.|:white_check_mark:|
-|Update general documentation, including applying style rules to assembler code and introducing shadow files.|:white_check_mark:|
-|Optimisation for space, compiler performance & application performance| |
-|Update documentation| |
-|Burn ROM and install onto real MECB 6809 hardware. | |
-|Develop a simple forth application| |
-|Refine the documentation| |
+| Item             | Version   | Completed   |
+|:-----------------|----------:|------------:|
+|Initial specification and code generation| 0.00|:white_check_mark:|
+|Initial documentation| 0.00|:white_check_mark:|
+|Resolve assembler bugs, missing labels and dictionary entries, fix memory map overlaps & gaps. Assembles without errors. | 0.00|:white_check_mark:|
+|Install MAME. Add configuration file for an existing emulated 6809 computer. | 0.00|:white_check_mark:|
+|Customise MAME with the missing mecb6809 and mecb6502 drivers and providing monitor ROM files. | 0.00|:white_check_mark:|
+|Set up serial communications to MAME mecb6809 to allow upload of testing code. 0.00|:white_check_mark:|
+|Load forth6809.bin ROM file and verify memory layout and operation. | 0.00|:white_check_mark:|
+|Manual tests and identified/fixed numerous bugs. |1.00|:white_check_mark:|
+|Update documentation|1.00|:white_check_mark:|
+|Automated assembler unit tests and identified bug fixes.  | 1.10|:white_check_mark:|
+|Adapted the MAME mecb6809 driver for interrupt driven hardware handshaking.  | 1.10|:white_check_mark:|
+|Optimised MAME emulated 6850 ACIA serial communications, with interrupt driven hardware handshaking | 1.10|:white_check_mark:|
+|Solved reliability issues with MAME emulated 6850 ACIA serial communications, by using XON/XOFF software handshaking | 1.10|:white_check_mark:|
+|Tests against ANS test suite, identifying, diagnosing and correcting bugs.  | 1.20|:white_check_mark:|
+|Update documentation for ANS test suite| 1.20|:white_check_mark:|
+|Retest with assembler test suite and adjust expectations.| 1.20|:white_check_mark:|
+|Update general documentation, including applying style rules to assembler code and introducing shadow files.| 1.20|:white_check_mark:|
+|Optimisation for space, compiler performance & application performance| 1.30| |
+|Update documentation| 1.30| |
+|Burn ROM and install onto real MECB 6809 hardware. | 1.30| |
+|Develop a simple forth application| 1.30| |
+|Refine the documentation| 1.30| |
 
 ## Assets
 ### Manifest
