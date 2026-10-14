@@ -2476,6 +2476,20 @@ and that the two pushed values are still in place. The removed code was:
             BNE   DYFAIL
 
 ================================================================
+TSTRUNNER.1  [bugfix]  (stage 5c)
+----------------------------------------------------------------
+Found by the user, tracing TSTDOTS with SERIALPOLL=0 in MAME. The unit tests
+are called from COLDSTRT before COLD runs, so CODEHERE is still 0 from the
+GLOBALS clear. PAD (CODEHERE + PADOFFSET = $80) was therefore a page-zero
+address, and the pictured-numeric-output string that .  builds with <# # #>
+was written over whatever global lived at $80. When stage 5c removed 40 bytes
+of globals the cell at $80 became TYPEADDR, so TYPE was handed a corrupt
+address and printed part of the number. Before that the cell at $80 happened to be
+harmless, so the fault was latent. The SERIALPOLL=1 TSTDOTS only checks
+EMITCH, so it passed either way. TSTRUNNER now sets CODEHERE to APPCODE, as
+COLD does. The words themselves were not at fault.
+
+================================================================
 TSTWORDS.0  [explanatory]  (lines 16383-16393 of the stage-2 unit_tests file)
 ----------------------------------------------------------------
 ; ------------------------------------------------------------

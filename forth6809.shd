@@ -2184,6 +2184,22 @@ U-relative addressing, or (the multiply) keep the partial product on the
 return stack with PSHS D / ADDB ,S / PULS D. The six bytes are unclaimed.
 
 ================================================================
+QLOOP.2  [stage 5c: static temporaries moved to the stacks]
+----------------------------------------------------------------
+Removed from page zero (40 bytes): EVSAVEA/L/I/T (never referenced),
+DEPTHTMP, DOESBEH (now Y), HDRSMUDGE (now a byte on S), MKDP/MKCODE/MKVAR/
+MKLATEST (frame on S in MARKER), PTARGET (PATCH works from X and the
+stack), TR1/TR2 (2ROT uses X and Y), UEADDR (UNESCAPE loads X directly),
+ACH (ACCEPT keeps the key in Y) and QSAVEDP/QSAVECODE/QSAVEVAR/
+QSAVELATEST/QTHROWCODE. QUIT's checkpoint is now a five-cell frame on the
+return stack: 0,S throw code, 2,S LATEST, 4,S VARHERE, 6,S CODEHERE, 8,S
+DPHERE. This is safe because THROW restores S to the CATCH frame, so the
+frame is intact on both the normal and the error path; every exit from QLOOP
+drops it with LEAS 10,S. PATCH no longer leaves its location in PFIELD (no
+caller reads it afterwards). GLOBALS offsets were renumbered; nothing
+refers to them numerically.
+
+================================================================
 FILLW.1  [bugfix]  (lines 6930-6949 of the stage-3k file)
 ----------------------------------------------------------------
             TFR   D,Y               ; BUG FIX: was STD FILLCNT/LDD FILLCNT each

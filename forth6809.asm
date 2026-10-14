@@ -182,7 +182,7 @@ TAGQDO      EQU   7                 ; ?DO marker. See bugfix: TAGQDO.1
 
 ; ============================================================
 ; GLOBALS - scratch and state cells in page zero (DP = $00, set in
-; COLDSTRT), laid out in RMB order. 255 of 256 bytes are used
+; COLDSTRT), laid out in RMB order. 215 of 256 bytes are used
 ; (GLOBALS_USED). Original comment: shadow GLOBALS.0.
 ; ============================================================
             ORG   $0000             ; GLOBALS page (DP = $00)
@@ -215,123 +215,102 @@ MSCR2       RMB   2                 ; offset $2B
 MSCR3       RMB   2                 ; offset $2D
 MSCR4       RMB   2                 ; offset $2F
 HLD         RMB   2                 ; offset $31
-DEPTHTMP    RMB   2                 ; offset $33
-AMAX        RMB   2                 ; offset $35
-ABUFP       RMB   2                 ; offset $37
-ACNT        RMB   2                 ; offset $39
-ACH         RMB   1                 ; offset $3B
-EMITCH      RMB   1                 ; offset $3C
-NEWHDR      RMB   2                 ; offset $3D
+AMAX        RMB   2                 ; offset $33
+ABUFP       RMB   2                 ; offset $35
+ACNT        RMB   2                 ; offset $37
+EMITCH      RMB   1                 ; offset $39
+NEWHDR      RMB   2                 ; offset $3A
 ; CURXT is an alias of NEWHDR (page zero is full): it holds the xt of
 ; the word being compiled, for RECURSE. Original comment: shadow CURXT.1.
 CURXT       EQU   NEWHDR
-NAMEP       RMB   2                 ; offset $3F
-NAMELEN     RMB   1                 ; offset $41
-PTARGET     RMB   2                 ; offset $42
-PFIELD      RMB   2                 ; offset $44
-NEWFLD      RMB   2                 ; offset $46
-CSP         RMB   2                 ; offset $48
-EXITCNT     RMB   2                 ; offset $4A
-EXITPTR     RMB   2                 ; offset $4C
-HDRSMUDGE   RMB   1                 ; offset $4E
-SCNT        RMB   2                 ; offset $4F
-SPTR        RMB   2                 ; offset $51
-SAVEN       RMB   2                 ; offset $53
-DRWIDTH     RMB   2                 ; offset $55
-DRLEN       RMB   2                 ; offset $57
-DRADDR      RMB   2                 ; offset $59
-DRPAD       RMB   2                 ; offset $5B
-PRODHI      RMB   2                 ; offset $5D
-PRODLO      RMB   2                 ; offset $5F
-PSIGN       RMB   1                 ; offset $61
-DIVNUM      RMB   2                 ; offset $62
-DIVDEN      RMB   2                 ; offset $64
-DIVREM      RMB   2                 ; offset $66
-DIVCNT      RMB   1                 ; offset $68
-DNSIGN      RMB   1                 ; offset $69
-DVSIGN      RMB   1                 ; offset $6A
-DVOWNSIGN   RMB   1                 ; offset $6B
-MAHI        RMB   1                 ; offset $6C
-MALO        RMB   1                 ; offset $6D
-MBHI        RMB   1                 ; offset $6E
-MBLO        RMB   1                 ; offset $6F
-MSIGN       RMB   1                 ; offset $70
-REM         RMB   2                 ; offset $71
-DCNT        RMB   1                 ; offset $73
-UDHI        RMB   2                 ; offset $74
-UDLO        RMB   2                 ; offset $76
-PRSIGN      RMB   1                 ; offset $78
-R2A         RMB   2                 ; offset $79
-R2B         RMB   2                 ; offset $7B
-RDST        RMB   2                 ; offset $7D
-RVAL        RMB   2                 ; offset $7F
-TR1         RMB   2                 ; offset $81
-TR2         RMB   2                 ; offset $83
-SHCNT       RMB   1                 ; offset $85
-SHCNT2      RMB   2                 ; offset $86
-TYPECNT     RMB   2                 ; offset $88
-TYPEADDR    RMB   2                 ; offset $8A
-PDELIM      RMB   1                 ; offset $8C
-PSTART      RMB   2                 ; offset $8D
-PLEN        RMB   2                 ; offset $8F
-CMPA1       RMB   2                 ; offset $91
-CMPL1       RMB   2                 ; offset $93
-CMPA2       RMB   2                 ; offset $95
-CMPL2       RMB   2                 ; offset $97
-CMPMIN      RMB   2                 ; offset $99
-SRCH1       RMB   2                 ; offset $9B
-SRCH1L      RMB   2                 ; offset $9D
-SRCH2       RMB   2                 ; offset $9F
-SRCH2L      RMB   2                 ; offset $A1
-SRCHPOS     RMB   2                 ; offset $A3
-SRCHI       RMB   2                 ; offset $A5
-UEADDR      RMB   2                 ; offset $A7
-UESRCLEN    RMB   2                 ; offset $A9
-UEDST       RMB   2                 ; offset $AB
-UEOUTLEN    RMB   2                 ; offset $AD
-SNXT        RMB   2                 ; offset $AF
-SNTARGET    RMB   2                 ; offset $B1
-REPLNAME    RMB   2                 ; offset $B3
-REPLNLEN    RMB   2                 ; offset $B5
-REPLVAL     RMB   2                 ; offset $B7
-REPLVLEN    RMB   2                 ; offset $B9
-SUBDESTCAP  RMB   2                 ; offset $BB
-SUBDESTADR  RMB   2                 ; offset $BD
-SUBSRCADR   RMB   2                 ; offset $BF
-SUBSRCLEN   RMB   2                 ; offset $C1
-SUBOUTLEN   RMB   2                 ; offset $C3
-SUBWPTR     RMB   2                 ; offset $C5
-SUBCOPYCNT  RMB   2                 ; offset $C7
-SUBCOPYSRC  RMB   2                 ; offset $C9
-MKDP        RMB   2                 ; offset $CB
-MKCODE      RMB   2                 ; offset $CD
-MKVAR       RMB   2                 ; offset $CF
-MKLATEST    RMB   2                 ; offset $D1
-EVSAVEA     RMB   2                 ; offset $D3
-EVSAVEL     RMB   2                 ; offset $D5
-EVSAVEI     RMB   2                 ; offset $D7
-EVSAVET     RMB   2                 ; offset $D9
-SRCADDR     RMB   2                 ; offset $DB
-SRCLEN      RMB   2                 ; offset $DD
-SRCID       RMB   2                 ; offset $DF
-SPAN        RMB   2                 ; offset $E1
-DSPTMP      RMB   2                 ; offset $E3
-WWALK       RMB   2                 ; offset $E5
-DUMPADDR    RMB   2                 ; offset $E7
-DUMPCNT     RMB   2                 ; offset $E9
-DUMPCOL     RMB   1                 ; offset $EB
-HEXBUF      RMB   2                 ; offset $EC
-DUVALID     RMB   1                 ; offset $EE
-ENVLEN      RMB   2                 ; offset $EF
-ENVADDR     RMB   2                 ; offset $F1
-QSAVEDP     RMB   2                 ; offset $F3
-QSAVECODE   RMB   2                 ; offset $F5
-QSAVEVAR    RMB   2                 ; offset $F7
-QSAVELATEST RMB   2                 ; offset $F9
-QTHROWCODE  RMB   2                 ; offset $FB
-DOESBEH     RMB   2                 ; offset $FD - SETDOES scratch
+NAMEP       RMB   2                 ; offset $3C
+NAMELEN     RMB   1                 ; offset $3E
+PFIELD      RMB   2                 ; offset $3F
+NEWFLD      RMB   2                 ; offset $41
+CSP         RMB   2                 ; offset $43
+EXITCNT     RMB   2                 ; offset $45
+EXITPTR     RMB   2                 ; offset $47
+SCNT        RMB   2                 ; offset $49
+SPTR        RMB   2                 ; offset $4B
+SAVEN       RMB   2                 ; offset $4D
+DRWIDTH     RMB   2                 ; offset $4F
+DRLEN       RMB   2                 ; offset $51
+DRADDR      RMB   2                 ; offset $53
+DRPAD       RMB   2                 ; offset $55
+PRODHI      RMB   2                 ; offset $57
+PRODLO      RMB   2                 ; offset $59
+PSIGN       RMB   1                 ; offset $5B
+DIVNUM      RMB   2                 ; offset $5C
+DIVDEN      RMB   2                 ; offset $5E
+DIVREM      RMB   2                 ; offset $60
+DIVCNT      RMB   1                 ; offset $62
+DNSIGN      RMB   1                 ; offset $63
+DVSIGN      RMB   1                 ; offset $64
+DVOWNSIGN   RMB   1                 ; offset $65
+MAHI        RMB   1                 ; offset $66
+MALO        RMB   1                 ; offset $67
+MBHI        RMB   1                 ; offset $68
+MBLO        RMB   1                 ; offset $69
+MSIGN       RMB   1                 ; offset $6A
+REM         RMB   2                 ; offset $6B
+DCNT        RMB   1                 ; offset $6D
+UDHI        RMB   2                 ; offset $6E
+UDLO        RMB   2                 ; offset $70
+PRSIGN      RMB   1                 ; offset $72
+R2A         RMB   2                 ; offset $73
+R2B         RMB   2                 ; offset $75
+RDST        RMB   2                 ; offset $77
+RVAL        RMB   2                 ; offset $79
+SHCNT       RMB   1                 ; offset $7B
+SHCNT2      RMB   2                 ; offset $7C
+TYPECNT     RMB   2                 ; offset $7E
+TYPEADDR    RMB   2                 ; offset $80
+PDELIM      RMB   1                 ; offset $82
+PSTART      RMB   2                 ; offset $83
+PLEN        RMB   2                 ; offset $85
+CMPA1       RMB   2                 ; offset $87
+CMPL1       RMB   2                 ; offset $89
+CMPA2       RMB   2                 ; offset $8B
+CMPL2       RMB   2                 ; offset $8D
+CMPMIN      RMB   2                 ; offset $8F
+SRCH1       RMB   2                 ; offset $91
+SRCH1L      RMB   2                 ; offset $93
+SRCH2       RMB   2                 ; offset $95
+SRCH2L      RMB   2                 ; offset $97
+SRCHPOS     RMB   2                 ; offset $99
+SRCHI       RMB   2                 ; offset $9B
+UESRCLEN    RMB   2                 ; offset $9D
+UEDST       RMB   2                 ; offset $9F
+UEOUTLEN    RMB   2                 ; offset $A1
+SNXT        RMB   2                 ; offset $A3
+SNTARGET    RMB   2                 ; offset $A5
+REPLNAME    RMB   2                 ; offset $A7
+REPLNLEN    RMB   2                 ; offset $A9
+REPLVAL     RMB   2                 ; offset $AB
+REPLVLEN    RMB   2                 ; offset $AD
+SUBDESTCAP  RMB   2                 ; offset $AF
+SUBDESTADR  RMB   2                 ; offset $B1
+SUBSRCADR   RMB   2                 ; offset $B3
+SUBSRCLEN   RMB   2                 ; offset $B5
+SUBOUTLEN   RMB   2                 ; offset $B7
+SUBWPTR     RMB   2                 ; offset $B9
+SUBCOPYCNT  RMB   2                 ; offset $BB
+SUBCOPYSRC  RMB   2                 ; offset $BD
+SRCADDR     RMB   2                 ; offset $BF
+SRCLEN      RMB   2                 ; offset $C1
+SRCID       RMB   2                 ; offset $C3
+SPAN        RMB   2                 ; offset $C5
+DSPTMP      RMB   2                 ; offset $C7
+WWALK       RMB   2                 ; offset $C9
+DUMPADDR    RMB   2                 ; offset $CB
+DUMPCNT     RMB   2                 ; offset $CD
+DUMPCOL     RMB   1                 ; offset $CF
+HEXBUF      RMB   2                 ; offset $D0
+DUVALID     RMB   1                 ; offset $D2
+ENVLEN      RMB   2                 ; offset $D3
+ENVADDR     RMB   2                 ; offset $D5
 
-GLOBALS_USED EQU   255              ; bytes used, of 256 available
+GLOBALS_USED EQU   215              ; bytes used, of 256 available
 
 ; $0100-$0105 is unclaimed (was MVSCRATCH). See shadow MVSCRATCH.1
 
@@ -2092,30 +2071,30 @@ QUITW:      LDS   #RP0
 
 QLOOP:      JSR   QUERYW
 
-            LDD   DPHERE
-            STD   QSAVEDP
-            LDD   CODEHERE
-            STD   QSAVECODE
+            LDD   DPHERE            ; Checkpoint on the return stack. CATCH
+            PSHS  D                 ; and THROW restore S, so the frame is
+            LDD   CODEHERE          ; intact whichever way INTERPRET ends.
+            PSHS  D                 ; See shadow QLOOP.2
             LDD   VARHERE
-            STD   QSAVEVAR
+            PSHS  D
             LDD   LATEST
-            STD   QSAVELATEST
+            PSHS  D
 
             LDD   #INTERPRET
             PSHU  D                 ; xt
             JSR   CATCHW
             PULU  D                 ; throw code (0 = no error)
-            STD   QTHROWCODE
-            CMPD  #0
+            PSHS  D                 ; frame: 0,S code  2,S LATEST  4,S VARHERE
+            CMPD  #0                ;        6,S CODEHERE  8,S DPHERE
             BEQ   QOK
 
-            LDD   QSAVEDP
+            LDD   8,S
             STD   DPHERE
-            LDD   QSAVECODE
+            LDD   6,S
             STD   CODEHERE
-            LDD   QSAVEVAR
+            LDD   4,S
             STD   VARHERE
-            LDD   QSAVELATEST
+            LDD   2,S
             STD   LATEST
             LDU   #SP0
 
@@ -2124,22 +2103,26 @@ QLOOP:      JSR   QUERYW
             LDD   #0
             STD   STATE
 
-            LDD   QTHROWCODE        ; -1 is ABORT: reset silently, no "ERROR -1"
+            LDD   ,S                ; -1 is ABORT: reset silently, no "ERROR -1"
             CMPD  #-1
-            LBEQ  QLOOP
+            BNE   QSHOWERR
+            LEAS  10,S              ; drop the frame
+            LBRA  QLOOP
 
-            JSR   CRW
+QSHOWERR:   JSR   CRW
             LDX   #ERRMSG
             PSHU  X                 ; c-addr
             LDD   #ERRMSGL
             PSHU  D                 ; u
             JSR   TYPEW
-            LDD   QTHROWCODE
+            LDD   ,S
             PSHU  D                 ; n
             JSR   DOTW
+            LEAS  10,S              ; drop the frame
             BRA   QLOOP
 
-QOK:        JSR   CRW               ; See bugfix: QOK.1
+QOK:        LEAS  10,S              ; drop the frame
+            JSR   CRW               ; See bugfix: QOK.1
             LDD   STATE
             BNE   QLOOP
             LDX   #OKMSG
@@ -2260,10 +2243,10 @@ DOESRT0:    RTS
 ;    Outputs:
 ;        BEHAVIOR cell of LATEST patched; control returns to the
 ;        defining word's caller
-;    Registers: RegD, RegX, CC, HDRFLAGS and DOESBEH changed.
+;    Registers: RegD, RegX, RegY, CC and HDRFLAGS changed.
 ; ------------------------------------------------------------
 SETDOES:    PULS  X                 ; X = addr right after "JSR SETDOES" - new BEHAVIOR
-            STX   DOESBEH
+            TFR   X,Y               ; Y = new BEHAVIOR, kept across the walk
 
             LDX   LATEST
             LDA   ,X
@@ -2278,8 +2261,7 @@ SETDOES:    PULS  X                 ; X = addr right after "JSR SETDOES" - new B
             ADDD  #3                ; +3 -> BEHAVIOR field (past JSR DODOES)
             TFR   D,X
 
-            LDD   DOESBEH
-            STD   ,X                ; patch it
+            STY   ,X                ; patch it
 
             PULS  X                 ; X = the OUTER defining word's own return addr
             JMP   ,X                ; jump there directly - "double RTS"
@@ -2511,13 +2493,13 @@ HEADER:     LDD   #32
             STX   NAMEP
 
             PULU  D                 ; smudge flag
-            STB   HDRSMUDGE
+            PSHS  B
 
             LDD   DPHERE
             STD   NEWHDR
             LDX   DPHERE
             LDA   NAMELEN
-            TST   HDRSMUDGE
+            TST   ,S+               ; smudge flag
             BEQ   HDNOSM
             ORA   #$40
 HDNOSM:     STA   ,X+
@@ -2918,27 +2900,28 @@ AOIMMED:    PSHU  X
 ; executed restores them (forgetting everything defined since).
 ; ------------------------------------------------------------
 MARKERW:    LDD   DPHERE
-            STD   MKDP
+            PSHS  D                 ; 6,S
             LDD   CODEHERE
-            STD   MKCODE
+            PSHS  D                 ; 4,S
             LDD   VARHERE
-            STD   MKVAR
+            PSHS  D                 ; 2,S
             LDD   LATEST
-            STD   MKLATEST
+            PSHS  D                 ; 0,S
             LDD   #DOMARKER
             JSR   BLDSELF           ; See bugfix: BLDSELF.1
-            LDD   MKDP
+            LDD   6,S
             PSHU  D
             JSR   COMMAW
-            LDD   MKCODE
+            LDD   4,S
             PSHU  D
             JSR   COMMAW
-            LDD   MKVAR
+            LDD   2,S
             PSHU  D
             JSR   COMMAW
-            LDD   MKLATEST
+            LDD   ,S
             PSHU  D
             JSR   COMMAW
+            LEAS  8,S
             RTS
 
 ; ============================================================
@@ -3563,7 +3546,7 @@ ACCEPTW:    PULU  D                 ; +n1
 
 ALOOP:      JSR   KEYW
             PULU  D
-            STB   ACH
+            TFR   D,Y               ; Y = the character
 
             CMPB  #13
             BEQ   ADONE
@@ -3580,14 +3563,14 @@ ALOOP:      JSR   KEYW
 
             LDX   ABUFP
             LEAX  D,X
-            LDA   ACH
-            STA   ,X
+            TFR   Y,D
+            STB   ,X
             LDD   ACNT
             ADDD  #1
             STD   ACNT
 
+            TFR   Y,D
             CLRA
-            LDB   ACH
             PSHU  D
             JSR   EMITW
             BRA   ALOOP
@@ -3753,16 +3736,12 @@ THUNCAU:    LDD   THROWN
 ;        target and location on the data stack (location on top)
 ;    Outputs:
 ;        the cell at location holds target - location
-;    Registers: RegD and RegX changed; PFIELD and PTARGET used as
-;        scratch.
+;    Registers: RegD and RegX changed.
 ; ------------------------------------------------------------
-PATCH:      PULU  D
-            STD   PFIELD            ; location
-            PULU  D
-            STD   PTARGET           ; target
-            LDD   PTARGET
-            SUBD  PFIELD
-            LDX   PFIELD
+PATCH:      PULU  X                 ; location
+            PULU  D                 ; target
+            PSHS  X
+            SUBD  ,S++              ; target - location
             STD   ,X
             RTS
 
@@ -4823,10 +4802,9 @@ QDUPDONE:   RTS
 ; DEPTH  ( -- +n )
 ; Push the number of cells on the data stack: (SP0 - U) / 2.
 ; ------------------------------------------------------------
-DEPTHW:     TFR   U,D
-            STD   DEPTHTMP
-            LDD   #SP0
-            SUBD  DEPTHTMP
+DEPTHW:     LDD   #SP0
+            PSHS  U
+            SUBD  ,S++
             LSRA
             RORB
             PSHU  D                 ; +n
@@ -4939,13 +4917,11 @@ ROLLDONE:   RTS
 
 ; ------------------------------------------------------------
 ; 2ROT  ( x1 x2 x3 x4 x5 x6 -- x3 x4 x5 x6 x1 x2 )
-; Rotate the third cell pair to the top. TR1 and TR2 hold the pair
+; Rotate the third cell pair to the top. X and Y hold the pair
 ; while the others move.
 ; ------------------------------------------------------------
-DROTW:      LDD   10,U              ; x1
-            STD   TR1
-            LDD   8,U               ; x2
-            STD   TR2
+DROTW:      LDX   10,U              ; x1
+            LDY   8,U               ; x2
             LDD   6,U
             STD   10,U
             LDD   4,U
@@ -4954,10 +4930,8 @@ DROTW:      LDD   10,U              ; x1
             STD   6,U
             LDD   0,U
             STD   4,U
-            LDD   TR2
-            STD   ,U
-            LDD   TR1
-            STD   2,U
+            STY   ,U
+            STX   2,U
             RTS
 
 ; ------------------------------------------------------------
@@ -6939,10 +6913,9 @@ UNESCAPEW:  PULU  D                 ; c-addr2 (destination)
             PULU  D                 ; u1
             STD   UESRCLEN
             PULU  D                 ; c-addr1
-            STD   UEADDR
+            TFR   D,X               ; X = source
             LDD   #0
             STD   UEOUTLEN
-            LDX   UEADDR
             LDY   UEDST
 
             ; Double every %; copy all other characters unchanged.

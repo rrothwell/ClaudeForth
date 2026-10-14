@@ -129,7 +129,10 @@ TSTFAILMSGL EQU   *-TSTFAILMSG
 ;    Registers: all changed.
 ; Original comment: shadow TSTRUNNER.0.
 ; ------------------------------------------------------------
-TSTRUNNER:  JSR   TSTSYSIO
+TSTRUNNER:  LDD   #APPCODE          ; The tests run before COLD, so CODEHERE would
+            STD   CODEHERE          ; be 0 and PAD (CODEHERE+PADOFFSET) would
+                                    ; land in page zero. See shadow TSTRUNNER.1
+            JSR   TSTSYSIO
             JSR   TSTSTACK
             JSR   TSTRETSTACK
             JSR   TSTSARITH
