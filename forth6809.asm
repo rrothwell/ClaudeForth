@@ -182,7 +182,7 @@ TAGQDO      EQU   7                 ; ?DO marker. See bugfix: TAGQDO.1
 
 ; ============================================================
 ; GLOBALS - scratch and state cells in page zero (DP = $00, set in
-; COLDSTRT), laid out in RMB order. 215 of 256 bytes are used
+; COLDSTRT), laid out in RMB order. 175 of 256 bytes are used
 ; (GLOBALS_USED). Original comment: shadow GLOBALS.0.
 ; ============================================================
             ORG   $0000             ; GLOBALS page (DP = $00)
@@ -257,60 +257,40 @@ DCNT        RMB   1                 ; offset $6D
 UDHI        RMB   2                 ; offset $6E
 UDLO        RMB   2                 ; offset $70
 PRSIGN      RMB   1                 ; offset $72
-R2A         RMB   2                 ; offset $73
-R2B         RMB   2                 ; offset $75
-RDST        RMB   2                 ; offset $77
-RVAL        RMB   2                 ; offset $79
-SHCNT       RMB   1                 ; offset $7B
-SHCNT2      RMB   2                 ; offset $7C
-TYPECNT     RMB   2                 ; offset $7E
-TYPEADDR    RMB   2                 ; offset $80
-PDELIM      RMB   1                 ; offset $82
-PSTART      RMB   2                 ; offset $83
-PLEN        RMB   2                 ; offset $85
-CMPA1       RMB   2                 ; offset $87
-CMPL1       RMB   2                 ; offset $89
-CMPA2       RMB   2                 ; offset $8B
-CMPL2       RMB   2                 ; offset $8D
-CMPMIN      RMB   2                 ; offset $8F
-SRCH1       RMB   2                 ; offset $91
-SRCH1L      RMB   2                 ; offset $93
-SRCH2       RMB   2                 ; offset $95
-SRCH2L      RMB   2                 ; offset $97
-SRCHPOS     RMB   2                 ; offset $99
-SRCHI       RMB   2                 ; offset $9B
-UESRCLEN    RMB   2                 ; offset $9D
-UEDST       RMB   2                 ; offset $9F
-UEOUTLEN    RMB   2                 ; offset $A1
-SNXT        RMB   2                 ; offset $A3
-SNTARGET    RMB   2                 ; offset $A5
-REPLNAME    RMB   2                 ; offset $A7
-REPLNLEN    RMB   2                 ; offset $A9
-REPLVAL     RMB   2                 ; offset $AB
-REPLVLEN    RMB   2                 ; offset $AD
-SUBDESTCAP  RMB   2                 ; offset $AF
-SUBDESTADR  RMB   2                 ; offset $B1
-SUBSRCADR   RMB   2                 ; offset $B3
-SUBSRCLEN   RMB   2                 ; offset $B5
-SUBOUTLEN   RMB   2                 ; offset $B7
-SUBWPTR     RMB   2                 ; offset $B9
-SUBCOPYCNT  RMB   2                 ; offset $BB
-SUBCOPYSRC  RMB   2                 ; offset $BD
-SRCADDR     RMB   2                 ; offset $BF
-SRCLEN      RMB   2                 ; offset $C1
-SRCID       RMB   2                 ; offset $C3
-SPAN        RMB   2                 ; offset $C5
-DSPTMP      RMB   2                 ; offset $C7
-WWALK       RMB   2                 ; offset $C9
-DUMPADDR    RMB   2                 ; offset $CB
-DUMPCNT     RMB   2                 ; offset $CD
-DUMPCOL     RMB   1                 ; offset $CF
-HEXBUF      RMB   2                 ; offset $D0
-DUVALID     RMB   1                 ; offset $D2
-ENVLEN      RMB   2                 ; offset $D3
-ENVADDR     RMB   2                 ; offset $D5
+SHCNT       RMB   1                 ; offset $73
+PDELIM      RMB   1                 ; offset $74
+PSTART      RMB   2                 ; offset $75
+PLEN        RMB   2                 ; offset $77
+UESRCLEN    RMB   2                 ; offset $79
+UEDST       RMB   2                 ; offset $7B
+UEOUTLEN    RMB   2                 ; offset $7D
+SNXT        RMB   2                 ; offset $7F
+SNTARGET    RMB   2                 ; offset $81
+REPLNAME    RMB   2                 ; offset $83
+REPLNLEN    RMB   2                 ; offset $85
+REPLVAL     RMB   2                 ; offset $87
+REPLVLEN    RMB   2                 ; offset $89
+SUBDESTCAP  RMB   2                 ; offset $8B
+SUBDESTADR  RMB   2                 ; offset $8D
+SUBSRCADR   RMB   2                 ; offset $8F
+SUBSRCLEN   RMB   2                 ; offset $91
+SUBOUTLEN   RMB   2                 ; offset $93
+SUBWPTR     RMB   2                 ; offset $95
+SUBCOPYCNT  RMB   2                 ; offset $97
+SUBCOPYSRC  RMB   2                 ; offset $99
+SRCADDR     RMB   2                 ; offset $9B
+SRCLEN      RMB   2                 ; offset $9D
+SRCID       RMB   2                 ; offset $9F
+SPAN        RMB   2                 ; offset $A1
+DUMPADDR    RMB   2                 ; offset $A3
+DUMPCNT     RMB   2                 ; offset $A5
+DUMPCOL     RMB   1                 ; offset $A7
+HEXBUF      RMB   2                 ; offset $A8
+DUVALID     RMB   1                 ; offset $AA
+ENVLEN      RMB   2                 ; offset $AB
+ENVADDR     RMB   2                 ; offset $AD
 
-GLOBALS_USED EQU   215              ; bytes used, of 256 available
+GLOBALS_USED EQU   175              ; bytes used, of 256 available
 
 ; $0100-$0105 is unclaimed (was MVSCRATCH). See shadow MVSCRATCH.1
 
@@ -4891,27 +4871,19 @@ PICKW:      PULU  D                 ; u
 ; the cell being moved.
 ; ------------------------------------------------------------
 ROLLW:      PULU  D                 ; u
-            CMPD  #0
             BEQ   ROLLDONE
+            TFR   D,Y               ; Y = cells to shift
             LSLB
             ROLA
-            STD   RDST
-            LEAX  D,U
+            LEAX  D,U               ; X = xu
             LDD   ,X
-            STD   RVAL
-RLOOP:      LDD   RDST
-            CMPD  #2
-            BLT   RSTORE
-            LEAY  D,U
-            SUBD  #2
-            LEAX  D,U
-            LDD   ,X
-            STD   ,Y
-            LDD   RDST
-            SUBD  #2
-            STD   RDST
-            BRA   RLOOP
-RSTORE:     LDD   RVAL
+            PSHS  D                 ; xu waits on the return stack
+RLOOP:      LDD   -2,X
+            STD   ,X
+            LEAX  -2,X
+            LEAY  -1,Y
+            BNE   RLOOP
+            PULS  D
             STD   ,U
 ROLLDONE:   RTS
 
@@ -4976,51 +4948,39 @@ RFETCHW:    PULS  X
 ; return address of this call is on top of S, so it is lifted off and
 ; put back around the transfer.
 ; ------------------------------------------------------------
-TWOTORW:    PULU  D                 ; x2
-            STD   R2A
-            PULU  D                 ; x1
-            STD   R2B
-            PULS  X
-            LDD   R2B
-            PSHS  D
-            LDD   R2A
+TWOTORW:    PULS  X                 ; return address
+            PULU  D                 ; x2
+            PULU  Y                 ; x1
+            PSHS  Y
             PSHS  D
             PSHS  X
             RTS
 
 ; ------------------------------------------------------------
 ; 2R>  ( -- x1 x2 )  ( R: x1 x2 -- )
-; Move a cell pair from the return stack. R2A and R2B are scratch. The
+; Move a cell pair from the return stack. The
 ; return address of this call is on top of S, so it is lifted off and
 ; put back around the transfer.
 ; ------------------------------------------------------------
-TWOFROMRW:  PULS  X
+TWOFROMRW:  PULS  X                 ; return address
             PULS  D                 ; x2
-            STD   R2A
-            PULS  D                 ; x1
-            STD   R2B
+            PULS  Y                 ; x1
             PSHS  X
-            LDD   R2B
-            PSHU  D
-            LDD   R2A
+            PSHU  Y
             PSHU  D
             RTS
 
 ; ------------------------------------------------------------
 ; 2R@  ( -- x1 x2 )  ( R: x1 x2 -- x1 x2 )
-; Copy the top cell pair of the return stack. R2A and R2B are scratch.
+; Copy the top cell pair of the return stack.
 ; The return address of this call is on top of S, so it is lifted off
 ; and put back around the transfer.
 ; ------------------------------------------------------------
-TWORFETCHW: PULS  X
+TWORFETCHW: PULS  X                 ; return address
             LDD   ,S                ; x2
-            STD   R2A
-            LDD   2,S               ; x1
-            STD   R2B
+            LDY   2,S               ; x1
             PSHS  X
-            LDD   R2B
-            PSHU  D
-            LDD   R2A
+            PSHU  Y
             PSHU  D
             RTS
 
@@ -6544,24 +6504,21 @@ DQEND:      STX   CODEHERE
 ; TYPE  ( c-addr u -- )
 ; Display u characters starting at c-addr, through EMIT.
 ; ------------------------------------------------------------
-TYPEW:      PULU  D                 ; u
-            STD   TYPECNT
-            PULU  D                 ; c-addr
-            STD   TYPEADDR
-TYLOOP:     LDD   TYPECNT
-            BEQ   TYDONE
-            LDX   TYPEADDR
+TYPEW:      LDD   ,U                ; u. Parameters stay on the data stack:
+            BEQ   TYDONE            ; u at 0, c-addr at 2
+TYLOOP:     LDX   2,U
             LDA   ,X+
-            STX   TYPEADDR
+            STX   2,U
             TFR   A,B
             CLRA
             PSHU  D
             JSR   EMITW
-            LDD   TYPECNT
+            LDD   ,U
             SUBD  #1
-            STD   TYPECNT
-            BRA   TYLOOP
-TYDONE:     RTS
+            STD   ,U
+            BNE   TYLOOP
+TYDONE:     LEAU  4,U               ; drop the two parameters
+            RTS
 
 ; ------------------------------------------------------------
 ; COUNT  ( c-addr1 -- c-addr2 u )
@@ -6749,46 +6706,34 @@ DTDONE:     LDD   PLEN
 ; string is less than, equal to or greater than the second; if one is
 ; a prefix of the other, the shorter is less.
 ; ------------------------------------------------------------
-COMPAREW:   PULU  D                 ; u2
-            STD   CMPL2
-            PULU  D                 ; c-addr2
-            STD   CMPA2
-            PULU  D                 ; u1
-            STD   CMPL1
-            PULU  D                 ; c-addr1
-            STD   CMPA1
-            LDD   CMPL1
-            CMPD  CMPL2
-            BLS   CMMINIS1
-            LDD   CMPL2
-            BRA   CMMINSET
-CMMINIS1:   LDD   CMPL1
-CMMINSET:   STD   CMPMIN
-            LDX   CMPA1
-            LDY   CMPA2
-CMPLOOP:    LDD   CMPMIN
+COMPAREW:   LDX   6,U                ; Parameters stay on the data stack: u2 at 0,
+            LDY   2,U               ; c-addr2 at 2, u1 at 4, c-addr1 at 6
+            LDD   4,U
+            CMPD  ,U
+            BLS   CMMINSET
+            LDD   ,U                ; D = the shorter length
+CMMINSET:   STD   2,U               ; the c-addr2 slot is free now: use it as
+CMPLOOP:    LDD   2,U               ; the remaining count
             BEQ   CMTIEBREAK
             LDA   ,X+
-            CMPA  ,Y
+            CMPA  ,Y+
             BLO   CMLT
             BHI   CMGT
-            LEAY  1,Y
-            LDD   CMPMIN
+            LDD   2,U
             SUBD  #1
-            STD   CMPMIN
+            STD   2,U
             BRA   CMPLOOP
-CMTIEBREAK: LDD   CMPL1
-            CMPD  CMPL2
+CMTIEBREAK: LDD   4,U
+            CMPD  ,U
             BLO   CMLT
             BHI   CMGT
             LDD   #0
-            PSHU  D
-            RTS
+            BRA   CMOUT
 CMLT:       LDD   #-1
-            PSHU  D
-            RTS
+            BRA   CMOUT
 CMGT:       LDD   #1
-            PSHU  D
+CMOUT:      STD   6,U               ; result replaces c-addr1
+            LEAU  6,U               ; drop the other three cells
             RTS
 
 ; ------------------------------------------------------------
@@ -6797,62 +6742,46 @@ CMGT:       LDD   #1
 ; return the address and remaining length of the match and true;
 ; otherwise return the original string and false.
 ; ------------------------------------------------------------
-SEARCHW:    PULU  D                 ; u2
-            STD   SRCH2L
-            PULU  D                 ; c-addr2
-            STD   SRCH2
-            PULU  D                 ; u1
-            STD   SRCH1L
-            PULU  D                 ; c-addr1
-            STD   SRCH1
-            LDD   SRCH2L
-            BEQ   SRCHNOTFOUND
-            LDD   SRCH1L
-            SUBD  SRCH2L
+SEARCHW:    LEAU  -6,U              ; locals: 0,U candidate address, 2,U positions
+            LDD   6,U               ; left, 4,U end of the needle.  Then u2 at 6,
+            BEQ   SRCHNOTFOUND      ; c-addr2 at 8, u1 at 10, c-addr1 at 12
+            LDD   10,U
+            SUBD  6,U
             BLT   SRCHNOTFOUND
             ADDD  #1
-            STD   SRCHPOS
-            LDD   #0
-            STD   SRCHI
-SPOSLOOP:   LDD   SRCHI
-            CMPD  SRCHPOS
+            STD   2,U
+            LDD   12,U
+            STD   ,U
+            LDD   8,U
+            ADDD  6,U
+            STD   4,U
+SPOSLOOP:   LDD   2,U
             BEQ   SRCHNOTFOUND
-            LDX   SRCH1
-            LDD   SRCHI
-            LEAX  D,X
-            LDY   SRCH2
-            LDD   SRCH2L
-            STD   MSCR3
-SMATCH:     LDD   MSCR3
-            BEQ   SFOUND
-            LDA   ,X+
+            LDX   ,U
+            LDY   8,U
+SMATCH:     LDA   ,X+
             CMPA  ,Y+
             BNE   SNOMATCH
-            LDD   MSCR3
-            SUBD  #1
-            STD   MSCR3
-            BRA   SMATCH
-SNOMATCH:   LDD   SRCHI
-            ADDD  #1
-            STD   SRCHI
-            BRA   SPOSLOOP
-SFOUND:     LDX   SRCH1
-            LDD   SRCHI
-            LEAX  D,X
-            PSHU  X
-            LDD   SRCH2L
-            PSHU  D
+            CMPY  4,U
+            BNE   SMATCH
+SFOUND:     LDD   ,U                ; See shadow SEARCHW.1: u3 is u2
+            STD   12,U              ; c-addr3
+            LDD   6,U
+            STD   10,U              ; u3
             LDD   #TRUEV
-            PSHU  D
-            RTS
+            BRA   SRCHOUT
 SRCHNOTFOUND:
-            LDD   SRCH1
-            PSHU  D
-            LDD   SRCH1L
-            PSHU  D
-            LDD   #FALSEV
-            PSHU  D
+            LDD   #FALSEV           ; c-addr1 and u1 are already in place
+SRCHOUT:    STD   8,U               ; flag
+            LEAU  8,U               ; drop the locals and u2
             RTS
+SNOMATCH:   LDX   ,U
+            LEAX  1,X
+            STX   ,U
+            LDD   2,U
+            SUBD  #1
+            STD   2,U
+            BRA   SPOSLOOP
 
 ; ------------------------------------------------------------
 ; SNAME  ( xt -- c-addr u | 0 0 )
@@ -7534,18 +7463,17 @@ SPACEW:     LDD   #32
 ; SPACES  ( n -- )
 ; Send n spaces (nothing if n is zero or negative).
 ; ------------------------------------------------------------
-SPACESW:    PULU  D                 ; n
-            STD   SHCNT2
-SPLOOP:     LDD   SHCNT2
+SPACESW:    LDD   ,U                ; n stays on the data stack
             BLE   SPDONE
-            LDD   #32
+SPLOOP:     LDD   #32
             PSHU  D
             JSR   EMITW
-            LDD   SHCNT2
+            LDD   ,U
             SUBD  #1
-            STD   SHCNT2
-            BRA   SPLOOP
-SPDONE:     RTS
+            STD   ,U
+            BNE   SPLOOP
+SPDONE:     LEAU  2,U               ; drop n
+            RTS
 
 ; ============================================================
 ; SECTION 23: COMMENT WORDS
@@ -7774,20 +7702,17 @@ EN14L       EQU   *-EN14
 ; Display every cell on the data stack, top first, each followed by a
 ; space, using ".". The stack is not changed.
 ; ------------------------------------------------------------
-DOTSW:      TFR   U,D
-            STD   DSPTMP
-DSLOOP:     LDD   DSPTMP
-            CMPD  #SP0
+DOTSW:      PSHS  U                 ; walking pointer lives on the return stack
+DSLOOP:     LDX   ,S
+            CMPX  #SP0
             BEQ   DSDONE
-            LDX   DSPTMP
-            LDD   ,X
+            LDD   ,X++
+            STX   ,S
             PSHU  D
             JSR   DOTW
-            LDD   DSPTMP
-            ADDD  #2
-            STD   DSPTMP
             BRA   DSLOOP
-DSDONE:     RTS
+DSDONE:     LEAS  2,S
+            RTS
 
 ; ------------------------------------------------------------
 ; WORDS  ( -- )
@@ -7795,30 +7720,28 @@ DSDONE:     RTS
 ; carriage return.
 ; ------------------------------------------------------------
 WORDSW:     LDD   LATEST
-            STD   WWALK
-WWLOOP:     LDD   WWALK
+            PSHS  D                 ; header being shown, on the return stack
+WWLOOP:     LDX   ,S
             BEQ   WWDONE
-            LDX   WWALK
-            LDA   ,X
-            STA   HDRFLAGS
-            LEAX  1,X
-            PSHU  X
-            LDB   HDRFLAGS
+            LDB   ,X
             ANDB  #$1F
             CLRA
+            LEAX  1,X
+            PSHU  X
             PSHU  D
             JSR   TYPEW
             JSR   SPACEW
-            LDX   WWALK
-            LEAX  1,X
-            LDB   HDRFLAGS
+            LDX   ,S
+            LDB   ,X
             ANDB  #$1F
             CLRA
+            LEAX  1,X
             LEAX  D,X
-            LDD   ,X
-            STD   WWALK
+            LDD   ,X                ; LINK to the next header
+            STD   ,S
             BRA   WWLOOP
-WWDONE:     JSR   CRW
+WWDONE:     LEAS  2,S
+            JSR   CRW
             RTS
 
 ; ------------------------------------------------------------

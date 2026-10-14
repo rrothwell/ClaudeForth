@@ -2200,6 +2200,24 @@ caller reads it afterwards). GLOBALS offsets were renumbered; nothing
 refers to them numerically.
 
 ================================================================
+SEARCHW.1  [stage 5d: static temporaries moved to the stacks]
+----------------------------------------------------------------
+Removed from page zero (40 bytes): CMPA1, CMPL1, CMPA2, CMPL2, CMPMIN
+(COMPARE), SRCH1, SRCH1L, SRCH2, SRCH2L, SRCHPOS, SRCHI (SEARCH), TYPECNT,
+TYPEADDR (TYPE), SHCNT2 (SPACES), DSPTMP (.S), WWALK (WORDS), RVAL, RDST
+(ROLL) and R2A, R2B (2>R, 2R>, 2R@). TYPE, SPACES, COMPARE and SEARCH keep their
+parameters on the data stack and use U-relative offsets; SEARCH also takes a
+six-byte LEAU frame (candidate address, positions left, end of needle).
+.S and WORDS keep their walking pointer on the return stack, ROLL keeps the
+rolled cell there, and 2>R, 2R>, 2R@ use Y as the second register.
+
+Existing behaviour preserved, to be reviewed: when SEARCH finds a match it
+returns u3 = u2 (the length of the NEEDLE), and TSTSEARCH1 expects exactly
+that. The standard says u3 is the length of the remaining HAYSTACK from the
+match (u1 minus the offset of the match). The new code returns the same as
+the old code.
+
+================================================================
 FILLW.1  [bugfix]  (lines 6930-6949 of the stage-3k file)
 ----------------------------------------------------------------
             TFR   D,Y               ; BUG FIX: was STD FILLCNT/LDD FILLCNT each
