@@ -186,7 +186,7 @@ TAGQDO      EQU   7                 ; ?DO marker. See bugfix: TAGQDO.1
 
 ; ============================================================
 ; GLOBALS - scratch and state cells in page zero (DP = $00, set in
-; COLDSTRT), laid out in RMB order. 88 of 256 bytes are used
+; COLDSTRT), laid out in RMB order. 69 of 256 bytes are used
 ; (GLOBALS_USED). Original comment: shadow GLOBALS.0.
 ; ============================================================
             ORG   $0000             ; GLOBALS page (DP = $00)
@@ -200,54 +200,42 @@ HANDLER     RMB   2                 ; offset $0C
 THROWN      RMB   2                 ; offset $0E
 TOIN        RMB   2                 ; offset $10
 NTIB        RMB   2                 ; offset $12
-CADDR       RMB   2                 ; offset $14
-CNTREM      RMB   1                 ; offset $16
-NUMNEG      RMB   1                 ; offset $17
-NADDR       RMB   2                 ; offset $18
-NCNT        RMB   2                 ; offset $1A
-MULBASE     RMB   1                 ; offset $1C
-CARRY       RMB   1                 ; offset $1D
-MSCR        RMB   2                 ; offset $1E (shared: -, *, WITHIN...)
-MSCR2       RMB   2                 ; offset $20
-MSCR3       RMB   2                 ; offset $22
-MSCR4       RMB   2                 ; offset $24
-HLD         RMB   2                 ; offset $26
-EMITCH      RMB   1                 ; offset $28
+MSCR        RMB   2                 ; offset $14 (shared: -, *, WITHIN...)
+MSCR2       RMB   2                 ; offset $16
+MSCR3       RMB   2                 ; offset $18
+MSCR4       RMB   2                 ; offset $1A
+HLD         RMB   2                 ; offset $1C
+EMITCH      RMB   1                 ; offset $1E
 ; CURXT holds the xt of the word being compiled, for RECURSE.
 ; Original comment: shadow CURXT.1.
-CURXT       RMB   2                 ; offset $29
-CSP         RMB   2                 ; offset $2B
-SAVEN       RMB   2                 ; offset $2D
-PRODHI      RMB   2                 ; offset $2F
-PRODLO      RMB   2                 ; offset $31
-PSIGN       RMB   1                 ; offset $33
-DIVNUM      RMB   2                 ; offset $34
-DIVDEN      RMB   2                 ; offset $36
-DIVREM      RMB   2                 ; offset $38
-DIVCNT      RMB   1                 ; offset $3A
-DNSIGN      RMB   1                 ; offset $3B
-DVSIGN      RMB   1                 ; offset $3C
-DVOWNSIGN   RMB   1                 ; offset $3D
-MAHI        RMB   1                 ; offset $3E
-MALO        RMB   1                 ; offset $3F
-MBHI        RMB   1                 ; offset $40
-MBLO        RMB   1                 ; offset $41
-MSIGN       RMB   1                 ; offset $42
-REM         RMB   2                 ; offset $43
-DCNT        RMB   1                 ; offset $45
-UDHI        RMB   2                 ; offset $46
-UDLO        RMB   2                 ; offset $48
-PRSIGN      RMB   1                 ; offset $4A
-SHCNT       RMB   1                 ; offset $4B
-SRCADDR     RMB   2                 ; offset $4C
-SRCLEN      RMB   2                 ; offset $4E
-SRCID       RMB   2                 ; offset $50
-SPAN        RMB   2                 ; offset $52
+CURXT       RMB   2                 ; offset $1F
+CSP         RMB   2                 ; offset $21
+PRODHI      RMB   2                 ; offset $23
+PRODLO      RMB   2                 ; offset $25
+PSIGN       RMB   1                 ; offset $27
+DIVNUM      RMB   2                 ; offset $28
+DIVDEN      RMB   2                 ; offset $2A
+DIVREM      RMB   2                 ; offset $2C
+DIVCNT      RMB   1                 ; offset $2E
+DNSIGN      RMB   1                 ; offset $2F
+DVSIGN      RMB   1                 ; offset $30
+DVOWNSIGN   RMB   1                 ; offset $31
+MAHI        RMB   1                 ; offset $32
+MALO        RMB   1                 ; offset $33
+MBHI        RMB   1                 ; offset $34
+MBLO        RMB   1                 ; offset $35
+MSIGN       RMB   1                 ; offset $36
+PRSIGN      RMB   1                 ; offset $37
+SHCNT       RMB   1                 ; offset $38
+SRCADDR     RMB   2                 ; offset $39
+SRCLEN      RMB   2                 ; offset $3B
+SRCID       RMB   2                 ; offset $3D
+SPAN        RMB   2                 ; offset $3F
 
-SUBHEAD     RMB   2                 ; offset $54: newest REPLACES entry, 0 = none
-SUBFREE     RMB   2                 ; offset $56: next free byte of SUBPOOL, 0 = empty
+SUBHEAD     RMB   2                 ; offset $41: newest REPLACES entry, 0 = none
+SUBFREE     RMB   2                 ; offset $43: next free byte of SUBPOOL, 0 = empty
 
-GLOBALS_USED EQU   88               ; bytes used, of 256 available
+GLOBALS_USED EQU   69               ; bytes used, of 256 available
 
 ; $0100-$0105 is unclaimed (was MVSCRATCH). See shadow MVSCRATCH.1
 
@@ -3072,70 +3060,75 @@ NOTFOUND:   LDD   #0
             RTS
 
 ; ------------------------------------------------------------
-; Multiply the unsigned double UDHI:UDLO by BASE and add a digit.
+; Multiply the unsigned double ud on the data stack by BASE and add a
+; digit. (5m: the accumulator lives on the data stack, in the frame of
+; >NUMBER, so no page-zero cells are needed.)
 ; UDMULADD
 ;    Inputs:
-;        UDHI:UDLO = ud
+;        ud at 4,U (high cell) and 6,U (low cell), as in the >NUMBER
+;        frame ( ud c-addr u )
 ;        RegB = digit value to add
 ;        BASE
 ;    Outputs:
-;        UDHI:UDLO = ud * BASE + digit
-;    Registers: RegA, RegB and CC changed; CARRY and MULBASE used as
-;        scratch.
+;        ud = ud * BASE + digit
+;    Registers: RegA, RegB and CC changed.
 ; ------------------------------------------------------------
-UDMULADD:   STB   CARRY
+UDMULADD:   LEAS  -2,S              ; 0,S = carry, 1,S = BASE multiplier
+            STB   ,S
             LDA   BASE+1
-            STA   MULBASE
-            LDA   UDLO+1
-            LDB   MULBASE
+            STA   1,S
+            LDA   7,U
+            LDB   1,S
             MUL
-            ADDB  CARRY
+            ADDB  ,S
             BCC   UM0
             INCA
-UM0:        STB   UDLO+1
-            STA   CARRY
-            LDA   UDLO
-            LDB   MULBASE
+UM0:        STB   7,U
+            STA   ,S
+            LDA   6,U
+            LDB   1,S
             MUL
-            ADDB  CARRY
+            ADDB  ,S
             BCC   UM1
             INCA
-UM1:        STB   UDLO
-            STA   CARRY
-            LDA   UDHI+1
-            LDB   MULBASE
+UM1:        STB   6,U
+            STA   ,S
+            LDA   5,U
+            LDB   1,S
             MUL
-            ADDB  CARRY
+            ADDB  ,S
             BCC   UM2
             INCA
-UM2:        STB   UDHI+1
-            STA   CARRY
-            LDA   UDHI
-            LDB   MULBASE
+UM2:        STB   5,U
+            STA   ,S
+            LDA   4,U
+            LDB   1,S
             MUL
-            ADDB  CARRY
+            ADDB  ,S
             BCC   UM3
             INCA
-UM3:        STB   UDHI
+UM3:        STB   4,U
+            LEAS  2,S
             RTS
 
 ; ------------------------------------------------------------
-; Convert digits at NADDR into UDHI:UDLO, in BASE, until NCNT
-; characters are used or a non-digit is reached.
+; >NUMBER  ( ud1 c-addr1 u1 -- ud2 c-addr2 u2 )
+; Convert the string into ud1, in BASE, stopping at the first
+; unconvertible character. Returns the accumulated ud2 and the
+; remaining string. The conversion works in place on the three
+; parameters (NUMLOOP), which are also the frame NUMBERQ builds.
 ; NUMLOOP
 ;    Inputs:
-;        NADDR = address of the first character
-;        NCNT = number of characters
-;        UDHI:UDLO = initial value
+;        ( ud c-addr u ) on the data stack
 ;    Outputs:
-;        UDHI:UDLO = accumulated value
-;        NADDR, NCNT = first unconverted character and the count
-;        remaining
+;        ud accumulated; c-addr u = first unconverted character and
+;        the count remaining
 ;    Registers: RegA, RegB, RegX and CC changed.
 ; ------------------------------------------------------------
-NUMLOOP:    LDD   NCNT
+TONUMBERW:
+NUMLOOP:    LDD   ,U
             BEQ   NLDONE
-            LDX   NADDR
+            LDX   2,U
             LDA   ,X
             CMPA  #'0'
             BLO   NLDONE
@@ -3153,39 +3146,14 @@ NLGOT:      CMPA  BASE+1
             BHS   NLDONE
             TFR   A,B
             JSR   UDMULADD
-            LDX   NADDR
+            LDX   2,U
             LEAX  1,X
-            STX   NADDR
-            LDD   NCNT
+            STX   2,U
+            LDD   ,U
             SUBD  #1
-            STD   NCNT
+            STD   ,U
             BRA   NUMLOOP
 NLDONE:     RTS
-
-; ------------------------------------------------------------
-; >NUMBER  ( ud1 c-addr1 u1 -- ud2 c-addr2 u2 )
-; Convert the string into ud1, in BASE, stopping at the first
-; unconvertible character. Returns the accumulated ud2 and the
-; remaining string.
-; ------------------------------------------------------------
-TONUMBERW:  PULU  D                 ; u1
-            STD   NCNT
-            PULU  D                 ; c-addr1
-            STD   NADDR
-            PULU  D                 ; ud1 high
-            STD   UDHI
-            PULU  D                 ; ud1 low
-            STD   UDLO
-            JSR   NUMLOOP
-            LDD   UDLO
-            PSHU  D                 ; ud2 low
-            LDD   UDHI
-            PSHU  D                 ; ud2 high
-            LDX   NADDR
-            PSHU  X                 ; c-addr2
-            LDD   NCNT
-            PSHU  D                 ; u2
-            RTS
 
 ; ------------------------------------------------------------
 ; Convert a counted string to a number in BASE. A leading "-" negates
@@ -3197,89 +3165,93 @@ TONUMBERW:  PULU  D                 ; u1
 ;        single number: n and -1
 ;        double number: ud (low cell below high cell) and 1
 ;        not a number: c-addr and 0
-;    Registers: RegA, RegB, RegX and CC changed.
+;    Registers: RegA, RegB, RegX, RegY and CC changed.
+; The original c-addr and the negate flag live in an S frame (0,S and
+; 2,S); the count is kept in RegB. See shadow NUMBERQ.1 and
+; NUMBERQ.6.
 ; ------------------------------------------------------------
 NUMBERQ:    PULU  X                 ; c-addr
-            STX   CADDR
-            LDA   ,X
+            LEAS  -3,S
+            STX   ,S
+            LDB   ,X
             BEQ   NQBAD
-            STA   CNTREM
             LEAX  1,X
 
             ; A trailing "." means a double number: leave it out of the
             ; digit count. See shadow: NUMBERQ.1
-            LDB   CNTREM
             DECB
             LDA   B,X
+            INCB
             CMPA  #'.'
             BNE   NQNOSIGN
-            DEC   CNTREM
+            DECB
             BEQ   NQBAD             ; lone "." with nothing before it
 
-NQNOSIGN:   CLR   NUMNEG
+NQNOSIGN:   CLR   2,S
             LDA   ,X
             CMPA  #'-'
             BNE   NQNOSIGN2
-            COM   NUMNEG
+            COM   2,S
             LEAX  1,X
-            DEC   CNTREM
+            DECB
             BEQ   NQBAD
 
-NQNOSIGN2:  STX   NADDR
+NQNOSIGN2:  LDY   #0
+            PSHU  Y                 ; ud low
+            PSHU  Y                 ; ud high
+            PSHU  X                 ; c-addr
             CLRA
-            LDB   CNTREM
-            STD   NCNT
-            LDD   #0
-            STD   UDHI
-            STD   UDLO
+            PSHU  D                 ; u
 
             JSR   NUMLOOP
 
-            LDD   NCNT
-            BNE   NQBAD
+            LDD   ,U
+            BNE   NQBADF            ; unconverted characters remain
+            LEAU  4,U               ; drop u and c-addr: ud remains
 
             ; Negate the full 32-bit value. See bugfix: NUMBERQ.2
-            TST   NUMNEG
+            TST   2,S
             BEQ   NQPOS32
-            LDD   UDLO
-            STD   PRODLO
-            LDD   UDHI
-            STD   PRODHI
-            JSR   MNEG32            ; shared negate. See bugfix: NUMBERQ.5
-            LDD   PRODLO
-            STD   UDLO
-            LDD   PRODHI
-            STD   UDHI
+            LDD   ,U
+            COMA
+            COMB
+            STD   ,U
+            LDD   2,U
+            COMA
+            COMB
+            ADDD  #1
+            STD   2,U
+            BCC   NQPOS32
+            LDD   ,U
+            ADDD  #1
+            STD   ,U
 
-NQPOS32:                            ; re-derive from CADDR whether the ORIGINAL last character
-            ; was '.' - determines which return convention to use
-            LDX   CADDR
+NQPOS32:                            ; re-derive from the original c-addr whether the
+            ; last character was '.' - determines which return convention
+            LDX   ,S
             LDB   ,X
             DECB
             LEAX  1,X
             LDA   B,X
+            LEAS  3,S
             CMPA  #'.'
             BNE   NQSINGLE
 
-            ; DOUBLE success: push low, high, then a distinct success
-            ; code (1, not -1) so TRYNUM can tell single and double
-            ; apart without needing a separate flag of its own either
-            LDD   UDLO
-            PSHU  D
-            LDD   UDHI
-            PSHU  D
+            ; DOUBLE success: ud is already low below high; add a
+            ; distinct success code (1, not -1) so TRYNUM can tell
+            ; single and double apart
             LDD   #1
             PSHU  D
             RTS
 
-NQSINGLE:                           ; SINGLE success - unchanged from the original convention
-            LDD   UDLO
-            PSHU  D
+NQSINGLE:   LEAU  2,U               ; SINGLE success: drop the high cell
             LDD   #-1
             PSHU  D
             RTS
 
-NQBAD:      LDX   CADDR
+NQBADF:     LEAU  8,U               ; drop the frame
+NQBAD:      LDX   ,S
+            LEAS  3,S
             PSHU  X
             LDD   #0
             PSHU  D
@@ -7059,12 +7031,7 @@ HSDONE:     LEAU  4,U               ; drop the two parameters
 ; Divide ud1 by BASE, add the remainder as a digit to the pictured
 ; numeric output string, and leave the quotient ud2.
 ; ------------------------------------------------------------
-NUMW:       PULU  D                 ; ud1 high
-            STD   UDHI
-            PULU  D                 ; ud1 low
-            STD   UDLO
-            JSR   UDDIGIT
-            LDA   REM
+NUMW:       JSR   UDDIGIT           ; ud1 is divided in place on the data stack
             CMPA  #10
             BLO   NDIGIT
             ADDA  #'A'-10
@@ -7073,38 +7040,31 @@ NDIGIT:     ADDA  #'0'
 NHOLD:      TFR   A,B
             CLRA
             PSHU  D
-            JSR   HOLDW
-            LDD   UDLO
-            PSHU  D
-            LDD   UDHI
-            PSHU  D
-            RTS
+            JMP   HOLDW
 
 ; ------------------------------------------------------------
-; Divide the unsigned double UDHI:UDLO by BASE (restoring division, 32
-; iterations). Only the low byte of BASE is used.
+; Divide the unsigned double on the data stack (high cell at 0,U, low
+; cell at 2,U) by BASE (restoring division, 32 iterations). Only the
+; low byte of BASE is used.
 ; UDDIGIT
 ;    Inputs:
-;        UDHI:UDLO = dividend
+;        ud on the data stack
 ;    Outputs:
-;        UDHI:UDLO = quotient, REM = remainder
-;    Registers: RegA and RegB changed; DCNT used as the loop counter.
+;        ud replaced by the quotient; RegA = remainder
+;    Registers: RegA and RegB changed (RegB is the loop counter).
 ; ------------------------------------------------------------
-UDDIGIT:    CLR   REM
+UDDIGIT:    CLRA                    ; A = remainder
             LDB   #32
-            STB   DCNT
-UDDLOOP:    ASL   UDLO+1
-            ROL   UDLO
-            ROL   UDHI+1
-            ROL   UDHI
-            ROL   REM
-            LDA   REM
+UDDLOOP:    ASL   3,U
+            ROL   2,U
+            ROL   1,U
+            ROL   ,U
+            ROLA
             CMPA  BASE+1
             BLO   UDNEXT
             SUBA  BASE+1
-            STA   REM
-            INC   UDLO+1
-UDNEXT:     DEC   DCNT
+            INC   3,U
+UDNEXT:     DECB
             BNE   UDDLOOP
             RTS
 
@@ -7114,9 +7074,9 @@ UDNEXT:     DEC   DCNT
 ; is produced).
 ; ------------------------------------------------------------
 NUMSW:      JSR   NUMW
-            LDD   UDHI
+            LDD   ,U
             BNE   NUMSW
-            LDD   UDLO
+            LDD   2,U
             BNE   NUMSW
             RTS
 
@@ -7152,7 +7112,8 @@ NUMGTW:     PULU  D                 ; xd high
 ; Display n in the current base, followed by a space.
 ; ------------------------------------------------------------
 DOTW:       PULU  D                 ; n
-            STD   SAVEN
+            PSHS  D                 ; n kept on S for SIGN (5m)
+            TSTA
             BPL   DABSOK
             COMA
             COMB
@@ -7162,7 +7123,7 @@ DABSOK:     PSHU  D
             PSHU  D
             JSR   LTNUMW
             JSR   NUMSW
-            LDD   SAVEN
+            PULS  D
             PSHU  D
             JSR   SIGNW
             JSR   NUMGTW
@@ -7194,7 +7155,8 @@ UDOTW:      LDD   #0                ; ud high cell = 0
 DOTRW:      PULU  D                 ; n2 (width)
             PSHS  D                 ; width waits on the return stack
             PULU  D                 ; n1
-            STD   SAVEN
+            PSHS  D                 ; kept on S for SIGN, above the width
+            TSTA
             BPL   DRABSOK
             COMA
             COMB
@@ -7204,7 +7166,7 @@ DRABSOK:    PSHU  D
             PSHU  D
             JSR   LTNUMW
             JSR   NUMSW
-            LDD   SAVEN
+            PULS  D
             PSHU  D
             JSR   SIGNW
             JSR   NUMGTW
@@ -7266,7 +7228,7 @@ DDOTW:      PULU  D                 ; d high
             PULU  D                 ; d low
             STD   PRODLO
             LDD   PRODHI
-            STD   SAVEN
+            PSHS  D                 ; sign cell, kept on S
             BPL   DDPOS
             JSR   MNEG32
 DDPOS:      LDD   PRODLO
@@ -7275,7 +7237,7 @@ DDPOS:      LDD   PRODLO
             PSHU  D
             JSR   LTNUMW
             JSR   NUMSW
-            LDD   SAVEN
+            PULS  D
             PSHU  D
             JSR   SIGNW
             JSR   NUMGTW
@@ -7296,7 +7258,7 @@ DDOTRW:     PULU  D                 ; n (width)
             PULU  D                 ; d low
             STD   PRODLO
             LDD   PRODHI
-            STD   SAVEN
+            PSHS  D                 ; sign cell, kept on S above the width
             BPL   DDRPOS
             JSR   MNEG32
 DDRPOS:     LDD   PRODLO
@@ -7305,7 +7267,7 @@ DDRPOS:     LDD   PRODLO
             PSHU  D
             JSR   LTNUMW
             JSR   NUMSW
-            LDD   SAVEN
+            PULS  D
             PSHU  D
             JSR   SIGNW
             JSR   NUMGTW

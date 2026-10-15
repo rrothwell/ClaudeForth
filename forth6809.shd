@@ -1562,6 +1562,24 @@ NUMBERQ.4  [bugfix]  (lines 3952-3967 of the stage-3e file)
                                     ; either way.
 
 ================================================================
+NUMBERQ.6  [history (stage 5m)]
+----------------------------------------------------------------
+Stage 5m removed UDHI, UDLO, REM, DCNT, CARRY, MULBASE, NADDR, NCNT, CADDR,
+CNTREM, NUMNEG and SAVEN from page zero (88 -> 69 bytes used) and 59 bytes of
+code. The accumulator no longer sits in page zero:
+  >NUMBER, NUMLOOP, UDMULADD   work in place on the ( ud c-addr u ) frame on the
+               data stack; >NUMBER is just NUMLOOP. UDMULADD keeps its carry and
+               the BASE multiplier in two bytes of S.
+  NUMBERQ      builds that same frame (ud = 0 0) itself. The original c-addr
+               and the negate flag are in a 3-byte S frame, and the count is
+               kept in RegB. The 32-bit negate is done in place on the stack
+               instead of through PRODHI:PRODLO and MNEG32.
+  #, #S        UDDIGIT divides the ud on the data stack in place; the
+               remainder is in RegA and the loop count in RegB.
+  . .R D. D.R  the sign cell is held on S instead of SAVEN.
+
+
+================================================================
 X_KEY.1  [unused routine removed]  (lines 3438-3467 of the stage-3r file)
 ----------------------------------------------------------------
 ; ------------------------------------------------------------
