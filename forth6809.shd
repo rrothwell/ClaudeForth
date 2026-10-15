@@ -1484,6 +1484,16 @@ holds real state (the xt being compiled, for RECURSE). S frames survive THROW
 because CATCH and THROW restore S.
 
 ================================================================
+FINDW.1  [history (stage 5l)]
+----------------------------------------------------------------
+Stage 5l removed SLEN, SNAMEP, FNDPTR, HDRPTR and HDRFLAGS from page zero (96 ->
+88 bytes used). FIND keeps the counted string at ,U for the whole search and
+reloads it into Y for each comparison, the header pointer is X, and the header
+is held on S only while its name is being compared. The result replaces the
+c-addr in place. SETDOES, the other user of HDRFLAGS, now reads the length
+byte straight into B.
+
+================================================================
 NUMBERQ.1  [explanatory]  (lines 3875-3887 of the stage-3e file)
 ----------------------------------------------------------------
             ; NEW: ANS double-number input convention (forth-standard.org/

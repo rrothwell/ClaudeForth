@@ -186,7 +186,7 @@ TAGQDO      EQU   7                 ; ?DO marker. See bugfix: TAGQDO.1
 
 ; ============================================================
 ; GLOBALS - scratch and state cells in page zero (DP = $00, set in
-; COLDSTRT), laid out in RMB order. 96 of 256 bytes are used
+; COLDSTRT), laid out in RMB order. 88 of 256 bytes are used
 ; (GLOBALS_USED). Original comment: shadow GLOBALS.0.
 ; ============================================================
             ORG   $0000             ; GLOBALS page (DP = $00)
@@ -200,59 +200,54 @@ HANDLER     RMB   2                 ; offset $0C
 THROWN      RMB   2                 ; offset $0E
 TOIN        RMB   2                 ; offset $10
 NTIB        RMB   2                 ; offset $12
-SLEN        RMB   1                 ; offset $14
-SNAMEP      RMB   2                 ; offset $15
-FNDPTR      RMB   2                 ; offset $17
-HDRPTR      RMB   2                 ; offset $19
-HDRFLAGS    RMB   1                 ; offset $1B
-CADDR       RMB   2                 ; offset $1C
-CNTREM      RMB   1                 ; offset $1E
-NUMNEG      RMB   1                 ; offset $1F
-NADDR       RMB   2                 ; offset $20
-NCNT        RMB   2                 ; offset $22
-MULBASE     RMB   1                 ; offset $24
-CARRY       RMB   1                 ; offset $25
-MSCR        RMB   2                 ; offset $26 (shared: -, *, WITHIN...)
-MSCR2       RMB   2                 ; offset $28
-MSCR3       RMB   2                 ; offset $2A
-MSCR4       RMB   2                 ; offset $2C
-HLD         RMB   2                 ; offset $2E
-EMITCH      RMB   1                 ; offset $30
+CADDR       RMB   2                 ; offset $14
+CNTREM      RMB   1                 ; offset $16
+NUMNEG      RMB   1                 ; offset $17
+NADDR       RMB   2                 ; offset $18
+NCNT        RMB   2                 ; offset $1A
+MULBASE     RMB   1                 ; offset $1C
+CARRY       RMB   1                 ; offset $1D
+MSCR        RMB   2                 ; offset $1E (shared: -, *, WITHIN...)
+MSCR2       RMB   2                 ; offset $20
+MSCR3       RMB   2                 ; offset $22
+MSCR4       RMB   2                 ; offset $24
+HLD         RMB   2                 ; offset $26
+EMITCH      RMB   1                 ; offset $28
 ; CURXT holds the xt of the word being compiled, for RECURSE.
 ; Original comment: shadow CURXT.1.
-CURXT       RMB   2                 ; offset $31
-CSP         RMB   2                 ; offset $33
-SAVEN       RMB   2                 ; offset $35
-PRODHI      RMB   2                 ; offset $37
-PRODLO      RMB   2                 ; offset $39
-PSIGN       RMB   1                 ; offset $3B
-DIVNUM      RMB   2                 ; offset $3C
-DIVDEN      RMB   2                 ; offset $3E
-DIVREM      RMB   2                 ; offset $40
-DIVCNT      RMB   1                 ; offset $42
-DNSIGN      RMB   1                 ; offset $43
-DVSIGN      RMB   1                 ; offset $44
-DVOWNSIGN   RMB   1                 ; offset $45
-MAHI        RMB   1                 ; offset $46
-MALO        RMB   1                 ; offset $47
-MBHI        RMB   1                 ; offset $48
-MBLO        RMB   1                 ; offset $49
-MSIGN       RMB   1                 ; offset $4A
-REM         RMB   2                 ; offset $4B
-DCNT        RMB   1                 ; offset $4D
-UDHI        RMB   2                 ; offset $4E
-UDLO        RMB   2                 ; offset $50
-PRSIGN      RMB   1                 ; offset $52
-SHCNT       RMB   1                 ; offset $53
-SRCADDR     RMB   2                 ; offset $54
-SRCLEN      RMB   2                 ; offset $56
-SRCID       RMB   2                 ; offset $58
-SPAN        RMB   2                 ; offset $5A
+CURXT       RMB   2                 ; offset $29
+CSP         RMB   2                 ; offset $2B
+SAVEN       RMB   2                 ; offset $2D
+PRODHI      RMB   2                 ; offset $2F
+PRODLO      RMB   2                 ; offset $31
+PSIGN       RMB   1                 ; offset $33
+DIVNUM      RMB   2                 ; offset $34
+DIVDEN      RMB   2                 ; offset $36
+DIVREM      RMB   2                 ; offset $38
+DIVCNT      RMB   1                 ; offset $3A
+DNSIGN      RMB   1                 ; offset $3B
+DVSIGN      RMB   1                 ; offset $3C
+DVOWNSIGN   RMB   1                 ; offset $3D
+MAHI        RMB   1                 ; offset $3E
+MALO        RMB   1                 ; offset $3F
+MBHI        RMB   1                 ; offset $40
+MBLO        RMB   1                 ; offset $41
+MSIGN       RMB   1                 ; offset $42
+REM         RMB   2                 ; offset $43
+DCNT        RMB   1                 ; offset $45
+UDHI        RMB   2                 ; offset $46
+UDLO        RMB   2                 ; offset $48
+PRSIGN      RMB   1                 ; offset $4A
+SHCNT       RMB   1                 ; offset $4B
+SRCADDR     RMB   2                 ; offset $4C
+SRCLEN      RMB   2                 ; offset $4E
+SRCID       RMB   2                 ; offset $50
+SPAN        RMB   2                 ; offset $52
 
-SUBHEAD     RMB   2                 ; offset $5C: newest REPLACES entry, 0 = none
-SUBFREE     RMB   2                 ; offset $5E: next free byte of SUBPOOL, 0 = empty
+SUBHEAD     RMB   2                 ; offset $54: newest REPLACES entry, 0 = none
+SUBFREE     RMB   2                 ; offset $56: next free byte of SUBPOOL, 0 = empty
 
-GLOBALS_USED EQU   96               ; bytes used, of 256 available
+GLOBALS_USED EQU   88               ; bytes used, of 256 available
 
 ; $0100-$0105 is unclaimed (was MVSCRATCH). See shadow MVSCRATCH.1
 
@@ -2195,21 +2190,17 @@ DOESRT0:    RTS
 ;    Outputs:
 ;        BEHAVIOR cell of LATEST patched; control returns to the
 ;        defining word's caller
-;    Registers: RegD, RegX, RegY, CC and HDRFLAGS changed.
+;    Registers: RegD, RegX, RegY and CC changed.
 ; ------------------------------------------------------------
 SETDOES:    PULS  X                 ; X = addr right after "JSR SETDOES" - new BEHAVIOR
             TFR   X,Y               ; Y = new BEHAVIOR, kept across the walk
 
             LDX   LATEST
-            LDA   ,X
-            STA   HDRFLAGS
-            LEAX  1,X
-            LDB   HDRFLAGS
+            LDB   ,X
             ANDB  #$1F
             CLRA
-            LEAX  D,X               ; skip name -> LINK field
-            LEAX  2,X               ; skip LINK -> CFA field
-            LDD   ,X                ; D = CFA (trampoline address)
+            LEAX  D,X               ; header + name length
+            LDD   3,X               ; D = CFA (trampoline address), past name and LINK
             ADDD  #3                ; +3 -> BEHAVIOR field (past JSR DODOES)
             TFR   D,X
 
@@ -3027,47 +3018,38 @@ EMPTY:      LEAS  3,S               ; drop the frame
 ; Look up the counted string in the dictionary, newest first, ignoring
 ; smudged entries. Returns the xt and 1 if the word is immediate, or
 ; -1 if not. If not found, returns c-addr and 0.
+; Holds no scratch cells; see shadow FINDW.1.
 ; ------------------------------------------------------------
-FINDW:      PULU  X                 ; c-addr
-            LDA   ,X
-            STA   SLEN
-            LEAX  1,X
-            STX   SNAMEP
-
-            LDD   LATEST
-            STD   FNDPTR
-
-FFLOOP:     LDD   FNDPTR
+FINDW:      LDX   LATEST            ; c-addr stays at ,U until the result
+FFLOOP:     CMPX  #0                ; (5l: no scratch cells)
             BEQ   NOTFOUND
-            STD   HDRPTR
-            TFR   D,X
             LDA   ,X
-            STA   HDRFLAGS
             BITA  #$40
-            BNE   FNEXT
+            BNE   FNEXT             ; smudged
             ANDA  #$1F
-            CMPA  SLEN
+            LDY   ,U                ; counted string
+            CMPA  ,Y+
             BNE   FNEXT
+            PSHS  X                 ; header, kept across the compare
             LEAX  1,X
-            LDY   SNAMEP
-            LDB   SLEN
+            TFR   A,B
             BEQ   FMATCH
 CMPLP:      LDA   ,X+
             CMPA  ,Y+
-            BNE   FNEXT
+            BNE   FMISS
             DECB
             BNE   CMPLP
 
-FMATCH:     LDX   HDRPTR
-            LEAX  1,X
-            LDB   HDRFLAGS
+FMATCH:     PULS  X                 ; header
+            LDB   ,X
+            PSHS  B                 ; length|flags
             ANDB  #$1F
             CLRA
+            LEAX  1,X
             LEAX  D,X
-            LEAX  2,X
-            LDD   ,X
-            PSHU  D                 ; xt
-            LDA   HDRFLAGS
+            LDD   2,X               ; CFA field
+            STD   ,U                ; xt replaces c-addr
+            PULS  A
             BITA  #$80
             BEQ   FISNORM
             LDD   #1
@@ -3076,21 +3058,17 @@ FISNORM:    LDD   #-1
 FPUSH:      PSHU  D                 ; 1 = immediate, -1 = normal
             RTS
 
-FNEXT:      LDX   HDRPTR
-            LEAX  1,X
-            LDB   HDRFLAGS
+FMISS:      PULS  X
+FNEXT:      LDB   ,X
             ANDB  #$1F
             CLRA
+            LEAX  1,X
             LEAX  D,X
-            LDD   ,X
-            STD   FNDPTR
+            LDX   ,X                ; LINK field
             BRA   FFLOOP
 
-NOTFOUND:   LDX   SNAMEP
-            LEAX  -1,X
-            PSHU  X                 ; c-addr
-            LDD   #0
-            PSHU  D                 ; 0 = not found
+NOTFOUND:   LDD   #0
+            PSHU  D                 ; 0 = not found, c-addr still beneath
             RTS
 
 ; ------------------------------------------------------------
