@@ -69,12 +69,12 @@
   okT{ : action-defer1 ACTION-OF defer1 ; -> }T
   okT{ ' * ' defer1 DEFER! -> }T
   okT{ 2 3 defer1 -> 6 }T  Actual:Expected 6 =?= 6 
-  okT{ ACTION-OF defer1 -> ' * }T  Actual:Expected -1372 =?= -1372 
-  okT{ action-defer1 -> ' * }T  Actual:Expected -1372 =?= -1372 
+  okT{ ACTION-OF defer1 -> ' * }T  Actual:Expected -1287 =?= -1287 
+  okT{ action-defer1 -> ' * }T  Actual:Expected -1287 =?= -1287 
   okT{ ' + IS defer1 -> }T
   okT{ 1 2 defer1 -> 3 }T  Actual:Expected 3 =?= 3 
-  okT{ ACTION-OF defer1 -> ' + }T  Actual:Expected -13C8 =?= -13C8 
-  okT{ action-defer1 -> ' + }T  Actual:Expected -13C8 =?= -13C8 
+  okT{ ACTION-OF defer1 -> ' + }T  Actual:Expected -12DD =?= -12DD 
+  okT{ action-defer1 -> ' + }T  Actual:Expected -12DD =?= -12DD 
   ok\ F.6.2.0825  BUFFER: - the "127" literals below need DECIMAL, but a
   ok\ bare DECIMAL with no restore leaks the base change forward into
   ok\ whatever section file loads next (MARKER only resets the
@@ -106,7 +106,7 @@
   okT{ 127 CHARS BUFFER: TBUF1 -> }T
   okT{ 127 CHARS BUFFER: TBUF2 -> }T
   ok\ Buffer is aligned   
-  okT{ TBUF1 ALIGNED -> TBUF1 }T  Actual:Expected 561 =?= 561 
+  okT{ TBUF1 ALIGNED -> TBUF1 }T  Actual:Expected 598 =?= 598 
   ok\ Buffers do not overlap   
   okT{ TBUF2 TBUF1 - ABS 127 CHARS < -> <FALSE> }T  Actual:Expected 0 =?= 0 
   okHEX
@@ -137,10 +137,10 @@ OVER I C@ = AND
   okT{ DEFER defer4 -> }T
   okT{ ' * ' defer4 DEFER! -> }T
   okT{ 2 3 defer4 -> 6 }T  Actual:Expected 6 =?= 6 
-  okT{ ' defer4 DEFER@ -> ' * }T  Actual:Expected -1372 =?= -1372 
+  okT{ ' defer4 DEFER@ -> ' * }T  Actual:Expected -1287 =?= -1287 
   okT{ ' + IS defer4 -> }T
   okT{ 1 2 defer4 -> 3 }T  Actual:Expected 3 =?= 3 
-  okT{ ' defer4 DEFER@ -> ' + }T  Actual:Expected -13C8 =?= -13C8 
+  okT{ ' defer4 DEFER@ -> ' + }T  Actual:Expected -12DD =?= -12DD 
   ok\ F.6.2.1725  IS
   okT{ DEFER defer5 -> }T
   okT{ : is-defer5 IS defer5 ; -> }T
