@@ -2579,3 +2579,21 @@ three BNE DUFAIL had been changed to LBNE (TSTDUMP.1) to assemble.
             BNE   DUFAIL
             ENDC                    ; <<<<<<<<<<
 
+
+TSTSEARCH.3  [bugfix]  (stage 5f)
+TSTSEARCH1 expected u3 = 3, the needle length. The standard result for "WOR" in
+"HELLOWORLD" is the remainder of the haystack from the match: u3 = 5.
+New tests: TSTBLANK, TSTCMOVEOVL, TSTCMOVEGTOVL, TSTCMOVELONG (Memory group),
+TSTSEARCH3/4, TSTREPLSUBS3/4 (StrParse group). TSTLOADSTR/TSTCHKSTR are shared
+helpers placed outside the group conditionals.
+
+TSTREPLSUBS.5  [stage 5g]
+TSTREPLSUBS1, 3 and 4 clear SUBHEAD and SUBFREE first so each starts with an empty
+64-byte pool. TSTREPLSUBS3 peaks at 41 bytes.
+
+TSTCLRREPL.1  [stage 5h]
+Tests CLR-REPLACES (CLRREPLACESW). The three REPLACES tests now call it instead of
+clearing SUBHEAD and SUBFREE by hand.
+
+TSTSQUOTE3.1  [stage 5i]
+Tests S" with an empty string (the closing quote is the first character parsed).

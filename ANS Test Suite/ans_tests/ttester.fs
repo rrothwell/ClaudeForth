@@ -229,7 +229,7 @@ LOOP
 THEN
 F-> ;
 
-: }T \ ( ... -- ) comapre stack (expected) contents with saved
+: }T \ ( ... -- ) compare stack (expected) contents with saved
 \ (actual) contents.
 \ BUG FIX / ENHANCEMENT: tallies TESTCOUNT (every call) and
 \ FAILCOUNT (only the two branches below that call ERROR) for

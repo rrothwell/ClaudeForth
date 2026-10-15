@@ -24,7 +24,7 @@ INITCODE    EQU   $FFA4             ; start of the init code (COLDSTRT)
             ; Commented-out code moved to shadow: MEMMAP.5
 BASECODE    EQU   $DCC4             ; base code. See shadow MEMMAP.6
             ; Commented-out code moved to shadow: MEMMAP.7
-BASEDICT    EQU   $D4B3             ; base dictionary. See shadow MEMMAP.8
+BASEDICT    EQU   $D498             ; base dictionary. See shadow MEMMAP.8
 INOUT       EQU   $C000             ; I/O block (ACIA), 256 bytes
 INOUTEND    EQU   INOUT+$FF
 RSTACK      EQU   $BFFF             ; return stack top
@@ -50,10 +50,12 @@ WORDMAXCHARS EQU   PADOFFSET-HOLDMINSIZE-1-3
 
 APPCODE     EQU   $7000             ; application code area
 APPDICT     EQU   $2000             ; application dictionary
-APPVARS     EQU   $021B             ; application variables
+SUBPOOL     EQU   $0200             ; REPLACES substitution table. See shadow
+SUBPOOLSZ   EQU   64                ; REPLACES.1; $0200-$023F
+APPVARS     EQU   SUBPOOL+SUBPOOLSZ ; application variables ($0240)
 APPVARSEND  EQU   APPDICT-1         ; end of application variables
-; Unclaimed: $01DD-$01FA (formerly WORDBUF) and $01FB-$021A (formerly
-; SIBUF). Original comment: shadow MEMMAP.17.
+; $01DD-$01FF were formerly WORDBUF and SIBUF; $0200 now starts SUBPOOL.
+; Original comment: shadow MEMMAP.17.
 
 ; Commented-out code moved to shadow: MEMMAP.18
 TIBBUF      EQU   $0106             ; terminal input buffer
@@ -182,7 +184,7 @@ TAGQDO      EQU   7                 ; ?DO marker. See bugfix: TAGQDO.1
 
 ; ============================================================
 ; GLOBALS - scratch and state cells in page zero (DP = $00, set in
-; COLDSTRT), laid out in RMB order. 175 of 256 bytes are used
+; COLDSTRT), laid out in RMB order. 127 of 256 bytes are used
 ; (GLOBALS_USED). Original comment: shadow GLOBALS.0.
 ; ============================================================
             ORG   $0000             ; GLOBALS page (DP = $00)
@@ -215,82 +217,58 @@ MSCR2       RMB   2                 ; offset $2B
 MSCR3       RMB   2                 ; offset $2D
 MSCR4       RMB   2                 ; offset $2F
 HLD         RMB   2                 ; offset $31
-AMAX        RMB   2                 ; offset $33
-ABUFP       RMB   2                 ; offset $35
-ACNT        RMB   2                 ; offset $37
-EMITCH      RMB   1                 ; offset $39
-NEWHDR      RMB   2                 ; offset $3A
+EMITCH      RMB   1                 ; offset $33
+NEWHDR      RMB   2                 ; offset $34
 ; CURXT is an alias of NEWHDR (page zero is full): it holds the xt of
 ; the word being compiled, for RECURSE. Original comment: shadow CURXT.1.
 CURXT       EQU   NEWHDR
-NAMEP       RMB   2                 ; offset $3C
-NAMELEN     RMB   1                 ; offset $3E
-PFIELD      RMB   2                 ; offset $3F
-NEWFLD      RMB   2                 ; offset $41
-CSP         RMB   2                 ; offset $43
-EXITCNT     RMB   2                 ; offset $45
-EXITPTR     RMB   2                 ; offset $47
-SCNT        RMB   2                 ; offset $49
-SPTR        RMB   2                 ; offset $4B
-SAVEN       RMB   2                 ; offset $4D
-DRWIDTH     RMB   2                 ; offset $4F
-DRLEN       RMB   2                 ; offset $51
-DRADDR      RMB   2                 ; offset $53
-DRPAD       RMB   2                 ; offset $55
-PRODHI      RMB   2                 ; offset $57
-PRODLO      RMB   2                 ; offset $59
-PSIGN       RMB   1                 ; offset $5B
-DIVNUM      RMB   2                 ; offset $5C
-DIVDEN      RMB   2                 ; offset $5E
-DIVREM      RMB   2                 ; offset $60
-DIVCNT      RMB   1                 ; offset $62
-DNSIGN      RMB   1                 ; offset $63
-DVSIGN      RMB   1                 ; offset $64
-DVOWNSIGN   RMB   1                 ; offset $65
-MAHI        RMB   1                 ; offset $66
-MALO        RMB   1                 ; offset $67
-MBHI        RMB   1                 ; offset $68
-MBLO        RMB   1                 ; offset $69
-MSIGN       RMB   1                 ; offset $6A
-REM         RMB   2                 ; offset $6B
-DCNT        RMB   1                 ; offset $6D
-UDHI        RMB   2                 ; offset $6E
-UDLO        RMB   2                 ; offset $70
-PRSIGN      RMB   1                 ; offset $72
-SHCNT       RMB   1                 ; offset $73
-PDELIM      RMB   1                 ; offset $74
-PSTART      RMB   2                 ; offset $75
-PLEN        RMB   2                 ; offset $77
-UESRCLEN    RMB   2                 ; offset $79
-UEDST       RMB   2                 ; offset $7B
-UEOUTLEN    RMB   2                 ; offset $7D
-SNXT        RMB   2                 ; offset $7F
-SNTARGET    RMB   2                 ; offset $81
-REPLNAME    RMB   2                 ; offset $83
-REPLNLEN    RMB   2                 ; offset $85
-REPLVAL     RMB   2                 ; offset $87
-REPLVLEN    RMB   2                 ; offset $89
-SUBDESTCAP  RMB   2                 ; offset $8B
-SUBDESTADR  RMB   2                 ; offset $8D
-SUBSRCADR   RMB   2                 ; offset $8F
-SUBSRCLEN   RMB   2                 ; offset $91
-SUBOUTLEN   RMB   2                 ; offset $93
-SUBWPTR     RMB   2                 ; offset $95
-SUBCOPYCNT  RMB   2                 ; offset $97
-SUBCOPYSRC  RMB   2                 ; offset $99
-SRCADDR     RMB   2                 ; offset $9B
-SRCLEN      RMB   2                 ; offset $9D
-SRCID       RMB   2                 ; offset $9F
-SPAN        RMB   2                 ; offset $A1
-DUMPADDR    RMB   2                 ; offset $A3
-DUMPCNT     RMB   2                 ; offset $A5
-DUMPCOL     RMB   1                 ; offset $A7
-HEXBUF      RMB   2                 ; offset $A8
-DUVALID     RMB   1                 ; offset $AA
-ENVLEN      RMB   2                 ; offset $AB
-ENVADDR     RMB   2                 ; offset $AD
+NAMEP       RMB   2                 ; offset $36
+NAMELEN     RMB   1                 ; offset $38
+PFIELD      RMB   2                 ; offset $39
+NEWFLD      RMB   2                 ; offset $3B
+CSP         RMB   2                 ; offset $3D
+EXITCNT     RMB   2                 ; offset $3F
+EXITPTR     RMB   2                 ; offset $41
+SCNT        RMB   2                 ; offset $43
+SPTR        RMB   2                 ; offset $45
+SAVEN       RMB   2                 ; offset $47
+PRODHI      RMB   2                 ; offset $49
+PRODLO      RMB   2                 ; offset $4B
+PSIGN       RMB   1                 ; offset $4D
+DIVNUM      RMB   2                 ; offset $4E
+DIVDEN      RMB   2                 ; offset $50
+DIVREM      RMB   2                 ; offset $52
+DIVCNT      RMB   1                 ; offset $54
+DNSIGN      RMB   1                 ; offset $55
+DVSIGN      RMB   1                 ; offset $56
+DVOWNSIGN   RMB   1                 ; offset $57
+MAHI        RMB   1                 ; offset $58
+MALO        RMB   1                 ; offset $59
+MBHI        RMB   1                 ; offset $5A
+MBLO        RMB   1                 ; offset $5B
+MSIGN       RMB   1                 ; offset $5C
+REM         RMB   2                 ; offset $5D
+DCNT        RMB   1                 ; offset $5F
+UDHI        RMB   2                 ; offset $60
+UDLO        RMB   2                 ; offset $62
+PRSIGN      RMB   1                 ; offset $64
+SHCNT       RMB   1                 ; offset $65
+PDELIM      RMB   1                 ; offset $66
+PSTART      RMB   2                 ; offset $67
+PLEN        RMB   2                 ; offset $69
+SNXT        RMB   2                 ; offset $6B
+SNTARGET    RMB   2                 ; offset $6D
+SRCADDR     RMB   2                 ; offset $6F
+SRCLEN      RMB   2                 ; offset $71
+SRCID       RMB   2                 ; offset $73
+SPAN        RMB   2                 ; offset $75
+ENVLEN      RMB   2                 ; offset $77
+ENVADDR     RMB   2                 ; offset $79
 
-GLOBALS_USED EQU   175              ; bytes used, of 256 available
+SUBHEAD     RMB   2                 ; offset $7B: newest REPLACES entry, 0 = none
+SUBFREE     RMB   2                 ; offset $7D: next free byte of SUBPOOL, 0 = empty
+
+GLOBALS_USED EQU   127              ; bytes used, of 256 available
 
 ; $0100-$0105 is unclaimed (was MVSCRATCH). See shadow MVSCRATCH.1
 
@@ -1195,10 +1173,15 @@ H_ERASE:
             FCC   "ERASE"
             FDB   H_FILL
             FDB   ERASEW
+H_BLANK:
+            FCB   $05
+            FCC   "BLANK"
+            FDB   H_ERASE
+            FDB   BLANKW
 H_CMOVE:
             FCB   $05
             FCC   "CMOVE"
-            FDB   H_ERASE
+            FDB   H_BLANK
             FDB   CMOVEW
 H_CMOVEGT:
             FCB   $06
@@ -1272,10 +1255,15 @@ H_REPLACES:
             FCC   "REPLACES"
             FDB   H_SLASHSTRING
             FDB   REPLACESW
+H_CLRREPLACES:
+            FCB   $0C
+            FCC   "CLR-REPLACES"
+            FDB   H_REPLACES
+            FDB   CLRREPLACESW
 H_SUBSTITUTE:
             FCB   $0A
             FCC   "SUBSTITUTE"
-            FDB   H_REPLACES
+            FDB   H_CLRREPLACES
             FDB   SUBSTITUTEW
 H_SNAME:
             FCB   $05
@@ -3509,12 +3497,9 @@ EMITWT:     LDA   ACIASR
 ; echoing as it goes. Backspace and DEL erase the last character; LF
 ; is ignored; CR ends the line. Returns the count +n2.
 ; ------------------------------------------------------------
-ACCEPTW:    PULU  D                 ; +n1
-            STD   AMAX
-            PULU  D                 ; c-addr
-            STD   ABUFP
-            LDD   #0
-            STD   ACNT
+ACCEPTW:    LEAU  -2,U              ; local count at 0,U; then +n1 at 2,U and
+            LDD   #0                ; c-addr at 4,U. See shadow ACCEPTW.5
+            STD   ,U
 
             IFEQ  SERIALPOLL        ; >>>>>>>>>>  interrupt-driven build: real
                                     ; RTS/CTS hardware flow control already
@@ -3537,17 +3522,17 @@ ALOOP:      JSR   KEYW
             CMPB  #127
             BEQ   ABKSP
 
-            LDD   ACNT
-            CMPD  AMAX
+            LDD   ,U
+            CMPD  2,U
             BEQ   ALOOP
 
-            LDX   ABUFP
+            LDX   4,U
             LEAX  D,X
             TFR   Y,D
             STB   ,X
-            LDD   ACNT
+            LDD   ,U
             ADDD  #1
-            STD   ACNT
+            STD   ,U
 
             TFR   Y,D
             CLRA
@@ -3555,10 +3540,10 @@ ALOOP:      JSR   KEYW
             JSR   EMITW
             BRA   ALOOP
 
-ABKSP:      LDD   ACNT
+ABKSP:      LDD   ,U
             BEQ   ALOOP
             SUBD  #1
-            STD   ACNT
+            STD   ,U
             LDD   #8
             PSHU  D
             JSR   EMITW
@@ -3578,8 +3563,9 @@ ADONE:
                                     ; with KEY never polled at all
             JSR   PUTXOFF
             ENDC                    ; <<<<<<<<<<
-            LDD   ACNT
-            PSHU  D                 ; +n2
+            LDD   ,U
+            STD   4,U               ; +n2
+            LEAU  4,U
             RTS
 
 ; ------------------------------------------------------------
@@ -4650,20 +4636,7 @@ ABORTQUOTEW:
             LDD   #-14
             PSHU  D
             JSR   THROWW
-AQSTOK:     LDD   #34
-            PSHU  D
-            LDD   CODEHERE          ; reserve 3 bytes
-            ADDD  #3                ; See bugfix: ABORTQUOTEW.1
-            STD   CODEHERE
-            JSR   WORDW
-            PULU  X
-            LDA   ,X
-            STA   SCNT
-            LEAX  1,X
-            STX   SPTR
-            LDD   CODEHERE          ; restore
-            SUBD  #3
-            STD   CODEHERE
+AQSTOK:     JSR   PARSEQUOTE        ; See bugfix: SQUOTEW.3
             LDD   #DOABORTQUOTE
             PSHU  D
             JSR   CCALL
@@ -6354,6 +6327,14 @@ ERASEW:     LDD   #0
             PSHU  D
             JMP   FILLW
 
+; ------------------------------------------------------------
+; BLANK  ( c-addr u -- )
+; Store a space in each of u bytes starting at c-addr.
+; ------------------------------------------------------------
+BLANKW:     LDD   #32
+            PSHU  D
+            JMP   FILLW
+
 ; ============================================================
 ; SECTION 19: STRING WORDS
 ; ============================================================
@@ -6386,20 +6367,33 @@ DOSTR:      PULS  X
 ; A 3-byte gap is reserved at CODEHERE while WORD parses, so that the
 ; compiled JSR DOSTR does not overwrite the text being staged.
 ; ------------------------------------------------------------
-SQUOTEW:    LDD   #34
+; Parse the text up to the next double quote for S", ." and ABORT".
+; WORD cannot be used: it skips leading delimiters, so an empty string
+; (S" ") ran on to the next quote in the source. PARSE does not skip.
+; PARSEQUOTE
+;    Inputs:
+;        none (parses from >IN)
+;    Outputs:
+;        SCNT = length, SPTR = address of the text in the input buffer.
+;        THROW -18 if the text is longer than 255 characters.
+;    Registers: RegA, RegB, RegX, RegY changed.
+; ------------------------------------------------------------
+PARSEQUOTE: LDD   #34
             PSHU  D
-            LDD   CODEHERE          ; reserve 3 bytes
-            ADDD  #3                ; See bugfix: SQUOTEW.1
-            STD   CODEHERE
-            JSR   WORDW
+            JSR   PARSEW
+            PULU  D                 ; length
+            TSTA
+            BNE   PQLONG
+            STB   SCNT
             PULU  X
-            LDA   ,X
-            STA   SCNT
-            LEAX  1,X
             STX   SPTR
-            LDD   CODEHERE          ; restore - undo the temporary reserve
-            SUBD  #3
-            STD   CODEHERE
+            RTS
+PQLONG:     LDD   #-18
+            PSHU  D
+            JMP   THROWW
+
+; ------------------------------------------------------------
+SQUOTEW:    JSR   PARSEQUOTE        ; See bugfix: SQUOTEW.3
             LDD   STATE
             BEQ   SQINTERP
 
@@ -6470,20 +6464,7 @@ DOTSTR:     PULS  X
 ; Compile DOTSTR followed by the string up to the closing quote as a
 ; counted string.
 ; ------------------------------------------------------------
-DOTQUOTEW:  LDD   #34
-            PSHU  D
-            LDD   CODEHERE          ; reserve 3 bytes
-            ADDD  #3                ; See bugfix: DOTQUOTEW.1
-            STD   CODEHERE
-            JSR   WORDW
-            PULU  X
-            LDA   ,X
-            STA   SCNT
-            LEAX  1,X
-            STX   SPTR
-            LDD   CODEHERE          ; restore
-            SUBD  #3
-            STD   CODEHERE
+DOTQUOTEW:  JSR   PARSEQUOTE        ; See bugfix: SQUOTEW.3
             LDD   #DOTSTR
             PSHU  D
             JSR   CCALL
@@ -6744,8 +6725,11 @@ CMOUT:      STD   6,U               ; result replaces c-addr1
 ; ------------------------------------------------------------
 SEARCHW:    LEAU  -6,U              ; locals: 0,U candidate address, 2,U positions
             LDD   6,U               ; left, 4,U end of the needle.  Then u2 at 6,
-            BEQ   SRCHNOTFOUND      ; c-addr2 at 8, u1 at 10, c-addr1 at 12
-            LDD   10,U
+            BNE   SRCHNZ            ; c-addr2 at 8, u1 at 10, c-addr1 at 12
+            LDD   12,U              ; an empty needle matches at the start
+            STD   ,U
+            BRA   SFOUND
+SRCHNZ:     LDD   10,U
             SUBD  6,U
             BLT   SRCHNOTFOUND
             ADDD  #1
@@ -6764,10 +6748,12 @@ SMATCH:     LDA   ,X+
             BNE   SNOMATCH
             CMPY  4,U
             BNE   SMATCH
-SFOUND:     LDD   ,U                ; See shadow SEARCHW.1: u3 is u2
+SFOUND:     LDD   12,U              ; u3 = (c-addr1 + u1) - match address,
+            ADDD  10,U              ; the characters remaining. See shadow
+            SUBD  ,U                ; SEARCHW.2
+            STD   10,U
+            LDD   ,U
             STD   12,U              ; c-addr3
-            LDD   6,U
-            STD   10,U              ; u3
             LDD   #TRUEV
             BRA   SRCHOUT
 SRCHNOTFOUND:
@@ -6837,19 +6823,14 @@ SNNOTFOUND: LDD   #0
 ; SUBSTITUTE turns it back into the original. u2 is the length of the
 ; result.
 ; ------------------------------------------------------------
-UNESCAPEW:  PULU  D                 ; c-addr2 (destination)
-            STD   UEDST             ; See bugfix: UNESCAPEW.1
-            PULU  D                 ; u1
-            STD   UESRCLEN
-            PULU  D                 ; c-addr1
-            TFR   D,X               ; X = source
-            LDD   #0
-            STD   UEOUTLEN
-            LDY   UEDST
+UNESCAPEW:  LDX   4,U                ; c-addr1. Parameters stay on the data stack:
+            LDY   ,U                ; c-addr2 at 0, u1 at 2. See bugfix:
+                                    ; UNESCAPEW.1 (still applies) and
+                                    ; shadow UNESCAPEW.5
 
             ; Double every %; copy all other characters unchanged.
             ; See bugfix: UNESCAPEW.2
-UELOOP:     LDD   UESRCLEN
+UELOOP:     LDD   2,U
             BEQ   UEDONE
             LDA   ,X+
             CMPA  #'%'
@@ -6857,17 +6838,16 @@ UELOOP:     LDD   UESRCLEN
             LDB   #'%'              ; extra % written first
             STB   ,Y+
 UENOTPCT:   STA   ,Y+               ; write the character
-            LDD   UESRCLEN
+            LDD   2,U
             SUBD  #1
-            STD   UESRCLEN
+            STD   2,U
             BRA   UELOOP
 UEDONE:     TFR   Y,D               ; See bugfix: UNESCAPEW.4
-            SUBD  UEDST             ; u2 = end - destination
-            STD   UEOUTLEN
-            LDD   UEDST
-            PSHU  D                 ; push c-addr2 (destination address)
-            LDD   UEOUTLEN
-            PSHU  D                 ; push u2 (actual unescaped length)
+            SUBD  ,U                ; u2 = end - destination
+            STD   2,U               ; result: c-addr2 u2
+            LDD   ,U
+            STD   4,U
+            LEAU  2,U
             RTS
 
 ; ------------------------------------------------------------
@@ -6877,14 +6857,125 @@ UEDONE:     TFR   Y,D               ; See bugfix: UNESCAPEW.4
 ; the previous one. The strings are not copied.
 ; Original comment: shadow REPLACESW.0.
 ; ------------------------------------------------------------
-REPLACESW:  PULU  D                 ; u2
-            STD   REPLNLEN
-            PULU  D                 ; c-addr2
-            STD   REPLNAME
-            PULU  D                 ; u1
-            STD   REPLVLEN
-            PULU  D                 ; c-addr1
-            STD   REPLVAL
+REPLACESW:  LDD   ,U                ; Parameters stay on the data stack: u2 at
+            CMPD  #255              ; 0, c-addr2 at 2, u1 at 4, c-addr1 at 6.
+            BHI   REPLERR           ; Names and texts are limited to 255
+            LDD   4,U               ; characters. See shadow REPLACES.1
+            CMPD  #255
+            BHI   REPLERR
+            LDD   ,U
+            LDX   2,U
+            JSR   SUBFIND           ; X = existing entry, or 0
+            CMPX  #0
+            BEQ   REPLNEW
+            LDB   5,U               ; the new text length
+            CMPB  4,X               ; does it fit the old entry's space?
+            BHI   REPLNEW
+            STB   3,X               ; yes: replace the text in place
+            LDB   2,X
+            CLRA
+            LEAY  5,X
+            LEAY  D,Y               ; Y = the text field
+            BRA   REPLTEXT
+REPLNEW:    LDD   SUBFREE           ; no: add a new entry at the head
+            BNE   REPLHAVE
+            LDD   #SUBPOOL          ; first use: the pool is empty
+REPLHAVE:   TFR   D,Y               ; Y = the new entry
+            CLRA
+            LDB   1,U
+            ADDD  #5
+            TFR   D,X
+            LDB   5,U
+            CLRA
+            LEAX  D,X               ; X = entry size: 5 + name + text
+            PSHS  X
+            TFR   Y,D
+            ADDD  ,S++              ; D = end of the entry
+            CMPD  #SUBPOOL+SUBPOOLSZ
+            BHI   REPLFULL
+            STD   SUBFREE
+            LDD   SUBHEAD
+            STD   ,Y                ; link
+            LDB   1,U
+            STB   2,Y               ; name length
+            LDB   5,U
+            STB   3,Y               ; text length
+            STB   4,Y               ; text capacity
+            PSHS  Y
+            LDX   2,U
+            LEAY  5,Y
+            LDB   1,U
+            BEQ   REPLNAMED
+REPLNLP:    LDA   ,X+
+            STA   ,Y+
+            DECB
+            BNE   REPLNLP
+REPLNAMED:  PULS  X
+            STX   SUBHEAD           ; the new entry is now the newest
+REPLTEXT:   LDX   6,U               ; copy the text to Y
+            LDB   5,U
+            BEQ   REPLDONE
+REPLVLP:    LDA   ,X+
+            STA   ,Y+
+            DECB
+            BNE   REPLVLP
+REPLDONE:   LEAU  8,U
+            RTS
+REPLERR:    LDD   #-18              ; parsed string overflow: name or text
+            BRA   REPLTHROW         ; longer than 255
+REPLFULL:   LDD   #-8               ; dictionary overflow: SUBPOOL is full
+REPLTHROW:  PSHU  D
+            JMP   THROWW
+
+; ------------------------------------------------------------
+; CLR-REPLACES ( -- )  Empties the REPLACES table, freeing the whole pool.
+; Not a standard word. See shadow CLRREPLACESW.1.
+; ------------------------------------------------------------
+CLRREPLACESW:
+            CLRA
+            CLRB
+            STD   SUBHEAD
+            STD   SUBFREE
+            RTS
+
+; ------------------------------------------------------------
+; Find the REPLACES entry for a name, newest first.
+; SUBFIND
+;    Inputs:
+;        RegD = name length, RegX = name address
+;    Outputs:
+;        RegX = entry address, or 0 if there is none. An entry is: 0 link,
+;        2 name length, 3 text length, 4 text capacity, 5 name, then text.
+;    Registers: RegA, RegB, RegX and RegY changed. A length over 255 is
+;        never found.
+; ------------------------------------------------------------
+SUBFIND:    TSTA
+            BNE   SFNONE            ; too long to be a name
+            PSHS  D,X               ; 0,S length, 2,S name address
+            LDY   SUBHEAD
+SFLOOP:     CMPY  #0
+            BEQ   SFEND
+            LDB   2,Y
+            CMPB  1,S
+            BNE   SFNEXT
+            LDX   2,S
+            PSHS  Y
+            LEAY  5,Y
+SFCMP:      TSTB
+            BEQ   SFMATCH
+            LDA   ,X+
+            CMPA  ,Y+
+            BNE   SFDIFF
+            DECB
+            BRA   SFCMP
+SFMATCH:    PULS  X                 ; the entry
+            LEAS  4,S
+            RTS
+SFDIFF:     PULS  Y
+SFNEXT:     LDY   ,Y
+            BRA   SFLOOP
+SFEND:      LEAS  4,S
+SFNONE:     LDX   #0
             RTS
 
 ; ------------------------------------------------------------
@@ -6892,32 +6983,30 @@ REPLACESW:  PULU  D                 ; u2
 ; would overflow.
 ; SUBCOPY
 ;    Inputs:
-;        RegD = byte count, RegX = source address
+;        RegD = byte count, RegX = source address, U = SUBSTITUTE's
+;        frame (6,U output length, 8,U write pointer, 10,U capacity)
 ;    Outputs:
-;        bytes appended at SUBWPTR; SUBOUTLEN and SUBWPTR advanced
-;    Registers: RegA, RegD, RegX and RegY changed; SUBCOPYCNT and
-;        SUBCOPYSRC used.
+;        bytes appended at the write pointer; length and pointer advanced
+;    Registers: RegA, RegD, RegX and RegY changed.
 ; ------------------------------------------------------------
-SUBCOPY:    STD   SUBCOPYCNT
-            STX   SUBCOPYSRC
-SUBCPLP:    LDD   SUBCOPYCNT
+SUBCOPY:    CMPD  #0
             BEQ   SUBCPDONE
-            LDD   SUBOUTLEN
-            CMPD  SUBDESTCAP
+            PSHS  D                 ; bytes still to copy
+SUBCPLP:    LDD   6,U               ; SUBSTITUTE's frame (U is unchanged):
+            CMPD  10,U              ; output length against capacity
             LBHS  SUBOVERFLOW       ; buffer full: THROW -1
-            LDX   SUBCOPYSRC
+            LDY   8,U               ; write pointer
             LDA   ,X+
-            STX   SUBCOPYSRC
-            LDY   SUBWPTR
             STA   ,Y+
-            STY   SUBWPTR
-            LDD   SUBOUTLEN
+            STY   8,U
+            LDD   6,U
             ADDD  #1
-            STD   SUBOUTLEN
-            LDD   SUBCOPYCNT
+            STD   6,U
+            LDD   ,S
             SUBD  #1
-            STD   SUBCOPYCNT
-            BRA   SUBCPLP
+            STD   ,S
+            BNE   SUBCPLP
+            LEAS  2,S
 SUBCPDONE:  RTS
 
 ; ------------------------------------------------------------
@@ -6932,134 +7021,145 @@ SUBCPDONE:  RTS
 ; SUBSTITUTEW.1.
 ; ------------------------------------------------------------
 SUBSTITUTEW:
-            PULU  D                 ; u2
-            STD   SUBDESTCAP
-            PULU  D                 ; c-addr2
-            STD   SUBDESTADR
-            PULU  D                 ; u1
-            STD   SUBSRCLEN
-            PULU  D                 ; c-addr1
-            STD   SUBSRCADR
-
-            LDY   SUBDESTADR
-            STY   SUBWPTR
+            LEAU  -10,U             ; frame: 0 read position, 2 substitution
+                                    ; count, 4 closing '%' position, 6 output
+                                    ; length, 8 write pointer; then the
+                                    ; parameters: 10 u2 (capacity), 12 c-addr2,
+                                    ; 14 u1, 16 c-addr1. See shadow SUBSTITUTEW.5
+            LDD   16,U              ; the source must not be the destination
+            CMPD  12,U
+            LBEQ  SUBBAD
             LDD   #0
-            STD   SUBOUTLEN
-            STD   MSCR              ; read position, starts at 0
-            STD   MSCR2             ; substitution count, starts at 0
+            STD   ,U
+            STD   2,U
+            STD   6,U
+            LDD   12,U
+            STD   8,U
 
-SUBSCAN:    LDD   MSCR
-            CMPD  SUBSRCLEN
+SUBSCAN:    LDD   ,U
+            CMPD  14,U
             LBHS  SUBSDONE
-            LDX   SUBSRCADR
+            LDX   16,U
             LEAX  D,X
             LDA   ,X
             CMPA  #$25              ; '%' delimiter
             BEQ   SUBPCT
             LDD   #1
             JSR   SUBCOPY
-            LDD   MSCR
+            LDD   ,U
             ADDD  #1
-            STD   MSCR
+            STD   ,U
             LBRA  SUBSCAN
 
-SUBPCT:     LDD   MSCR
+SUBPCT:     LDD   ,U
             ADDD  #1
-            STD   MSCR3             ; scan for the closing '%'
-SUBFINDCL:  LDD   MSCR3
-            CMPD  SUBSRCLEN
+            STD   4,U               ; scan for the closing '%'
+SUBFINDCL:  LDD   4,U
+            CMPD  14,U
             BLO   SUBFC2
             ; no closing delimiter found - residue passed unchanged
-            LDD   MSCR
-            LDX   SUBSRCADR
+            LDD   ,U
+            LDX   16,U
             LEAX  D,X
-            LDD   SUBSRCLEN
-            SUBD  MSCR
+            LDD   14,U
+            SUBD  ,U
             JSR   SUBCOPY
-            LDD   SUBSRCLEN
-            STD   MSCR
+            LDD   14,U
+            STD   ,U
             LBRA  SUBSCAN
-SUBFC2:     LDD   MSCR3
-            LDX   SUBSRCADR
+SUBFC2:     LDD   4,U
+            LDX   16,U
             LEAX  D,X
             LDA   ,X
             CMPA  #$25
             BEQ   SUBFOUNDCL
-            LDD   MSCR3
+            LDD   4,U
             ADDD  #1
-            STD   MSCR3
+            STD   4,U
             LBRA  SUBFINDCL
 
-SUBFOUNDCL: LDD   MSCR3
-            SUBD  MSCR
-            SUBD  #1
-            STD   MSCR4             ; enclosed name length
+SUBFOUNDCL: LDD   4,U
+            SUBD  ,U
+            SUBD  #1                ; enclosed name length
             LBNE  SUBHASNAME
             ; namelen 0: "%%" -> single '%' to output, count unchanged
-            LDD   MSCR
-            LDX   SUBSRCADR
+            LDD   ,U
+            LDX   16,U
             LEAX  D,X
             LDD   #1
             JSR   SUBCOPY
-            LDD   MSCR3
+            LDD   4,U
             ADDD  #1
-            STD   MSCR
+            STD   ,U
             LBRA  SUBSCAN
 
-SUBHASNAME: LDD   MSCR
+SUBHASNAME: LDD   ,U
             ADDD  #1
-            LDX   SUBSRCADR
-            LEAX  D,X
-            PSHU  X
-            LDD   MSCR4
-            PSHU  D
-            LDD   REPLNAME
-            PSHU  D
-            LDD   REPLNLEN
-            PSHU  D
-            JSR   COMPAREW
-            PULU  D
-            CMPD  #0
-            BNE   SUBNOMATCH
+            LDX   16,U
+            LEAX  D,X               ; X = the name
+            LDD   4,U
+            SUBD  ,U
+            SUBD  #1                ; D = its length
+            JSR   SUBFIND
+            CMPX  #0
+            BEQ   SUBNOMATCH
             ; valid name - replace the whole %name% span
-            LDX   REPLVAL
-            LDD   REPLVLEN
+            LDB   2,X               ; name length
+            CLRA
+            TFR   D,Y
+            LDB   3,X               ; text length
+            PSHS  B
+            LEAX  5,X
+            TFR   Y,D
+            LEAX  D,X               ; X = the text
+            PULS  B
+            CLRA
             JSR   SUBCOPY
-            LDD   MSCR2
+            LDD   2,U
             ADDD  #1
-            STD   MSCR2
-            LDD   MSCR3
+            STD   2,U
+            LDD   4,U
             ADDD  #1
-            STD   MSCR
+            STD   ,U
             LBRA  SUBSCAN
 
             ; Not a registered name: pass %name% through unchanged.
 SUBNOMATCH:
-            LDD   MSCR
-            LDX   SUBSRCADR
+            LDD   ,U
+            LDX   16,U
             LEAX  D,X
-            LDD   MSCR3
-            SUBD  MSCR
+            LDD   4,U
+            SUBD  ,U
             ADDD  #1
             JSR   SUBCOPY
-            LDD   MSCR3
+            LDD   4,U
             ADDD  #1
-            STD   MSCR
+            STD   ,U
             LBRA  SUBSCAN
 
-SUBSDONE:   LDX   SUBDESTADR
-            PSHU  X
-            LDD   SUBOUTLEN
-            PSHU  D
-            LDD   MSCR2
-            PSHU  D
+SUBSDONE:   LDD   12,U              ; result c-addr2 u3 n replaces the frame
+            STD   16,U
+            LDD   6,U
+            STD   14,U
+            LDD   2,U
+            STD   12,U
+            LEAU  12,U
             RTS
 
             ; The output buffer is too small: THROW -1.
 SUBOVERFLOW:
-            LDD   #-1
-            PSHU  D
-            JSR   THROWW
+            LEAS  4,S               ; SUBCOPY's count and return address
+            LDD   #-18              ; parsed string overflow: output too long
+            BRA   SUBFAIL
+SUBBAD:     LDD   #-9               ; invalid address: source = destination
+SUBFAIL:    TFR   D,X               ; error result c-addr2 0 n. See shadow
+            LDD   12,U              ; SUBSTITUTEW.6
+            STD   16,U
+            LDD   #0
+            STD   14,U
+            STX   12,U
+            LEAU  12,U
+            RTS
 
 ; ============================================================
 ; SECTION 20: NUMERIC OUTPUT (pictured + direct)
@@ -7242,7 +7342,7 @@ UDOTW:      LDD   #0                ; ud high cell = 0
 ; Display n1 right-justified in a field of n2 characters.
 ; ------------------------------------------------------------
 DOTRW:      PULU  D                 ; n2 (width)
-            STD   DRWIDTH
+            PSHS  D                 ; width waits on the return stack
             PULU  D                 ; n1
             STD   SAVEN
             BPL   DRABSOK
@@ -7258,62 +7358,44 @@ DRABSOK:    PSHU  D
             PSHU  D
             JSR   SIGNW
             JSR   NUMGTW
-            PULU  D
-            STD   DRLEN
-            PULU  D
-            STD   DRADDR
-            LDD   DRWIDTH
-            SUBD  DRLEN
-            BLE   DRNOPAD
-            STD   DRPAD
-DRPADLP:    LDD   DRPAD
-            BEQ   DRNOPAD
-            SUBD  #1
-            STD   DRPAD
-            LDD   #32
+            PULS  D                 ; width
+            LBRA  RTYPE
+
+; ------------------------------------------------------------
+; Type the string c-addr u right-justified in a field of D characters.
+; RTYPE   ( c-addr u -- )
+;    Inputs:
+;        RegD = field width; the string on the data stack
+;    Outputs:
+;        padding spaces, then the string
+;    Registers: all changed.
+; ------------------------------------------------------------
+RTYPE:      SUBD  ,U                ; width - u
+            BLE   RTNOPAD
+            PSHS  D                 ; spaces still to send
+RTPADLP:    LDD   #32
             PSHU  D
             JSR   EMITW
-            BRA   DRPADLP
-DRNOPAD:    LDX   DRADDR
-            PSHU  X
-            LDD   DRLEN
-            PSHU  D
-            JSR   TYPEW
-            RTS
+            LDD   ,S
+            SUBD  #1
+            STD   ,S
+            BNE   RTPADLP
+            LEAS  2,S
+RTNOPAD:    JMP   TYPEW
 
 ; ------------------------------------------------------------
 ; U.R  ( u n -- )
 ; Display u right-justified in a field of n characters.
 ; ------------------------------------------------------------
 UDOTRW:     PULU  D                 ; n (width)
-            STD   DRWIDTH
+            PSHS  D
             LDD   #0                ; ud high cell = 0
             PSHU  D
             JSR   LTNUMW
             JSR   NUMSW
             JSR   NUMGTW
-            PULU  D
-            STD   DRLEN
-            PULU  D
-            STD   DRADDR
-            LDD   DRWIDTH
-            SUBD  DRLEN
-            BLE   UDRNOPAD
-            STD   DRPAD
-UDRPADLP:   LDD   DRPAD
-            BEQ   UDRNOPAD
-            SUBD  #1
-            STD   DRPAD
-            LDD   #32
-            PSHU  D
-            JSR   EMITW
-            BRA   UDRPADLP
-UDRNOPAD:   LDX   DRADDR
-            PSHU  X
-            LDD   DRLEN
-            PSHU  D
-            JSR   TYPEW
-            RTS
+            PULS  D
+            LBRA  RTYPE
 
 ; ------------------------------------------------------------
 ; ?  ( a-addr -- )
@@ -7358,7 +7440,7 @@ DDPOS:      LDD   PRODLO
 ; Display the double d right-justified in a field of n characters.
 ; ------------------------------------------------------------
 DDOTRW:     PULU  D                 ; n (width)
-            STD   DRWIDTH
+            PSHS  D
             PULU  D                 ; d high
             STD   PRODHI
             PULU  D                 ; d low
@@ -7377,28 +7459,8 @@ DDRPOS:     LDD   PRODLO
             PSHU  D
             JSR   SIGNW
             JSR   NUMGTW
-            PULU  D
-            STD   DRLEN
-            PULU  D
-            STD   DRADDR
-            LDD   DRWIDTH
-            SUBD  DRLEN
-            BLE   DRDNOPAD
-            STD   DRPAD
-DRDPADLP:   LDD   DRPAD
-            BEQ   DRDNOPAD
-            SUBD  #1
-            STD   DRPAD
-            LDD   #32
-            PSHU  D
-            JSR   EMITW
-            BRA   DRDPADLP
-DRDNOPAD:   LDX   DRADDR
-            PSHU  X
-            LDD   DRLEN
-            PSHU  D
-            JSR   TYPEW
-            RTS
+            PULS  D
+            LBRA  RTYPE
 
 ; ============================================================
 ; SECTION 21: BASE / RADIX CONTROL
@@ -7796,67 +7858,58 @@ HEXBYTE:    PULU  D
 ; shown as ".". A partial last line is padded so the ASCII columns
 ; line up. A carriage return is sent first and after every line.
 ; ------------------------------------------------------------
-DUMPW:      PULU  D                 ; u
-            STD   DUMPCNT
-            PULU  D                 ; addr
-            STD   DUMPADDR
-            JSR   CRW               ; leading CR
-DULINE:     LDD   DUMPCNT
+DUMPW:      JSR   CRW               ; leading CR
+            LEAS  -4,S              ; locals: 0,S byte pointer, 2,S bytes on
+                                    ; this line, 3,S column. u stays at 0,U
+                                    ; and addr at 2,U. See shadow DUMPW.5
+DULINE:     LDD   ,U
             LBEQ  DUDONE            ; no bytes left
-            LDD   DUMPADDR
-            STD   HEXBUF
-            CLR   DUMPCOL
-            LDA   #16
-            STA   DUVALID
-DUHEX:      LDB   DUMPCOL
-            CMPB  #16
-            BEQ   DUASCII
-            LDD   DUMPCNT
-            BNE   DUHEXBYTE
-            LDA   DUMPCOL
-            STA   DUVALID
-            BRA   DUHEXPAD
-DUHEXBYTE:  LDX   DUMPADDR
-            LDB   ,X
+            CMPD  #16
+            BLS   DUN
+            LDD   #16
+DUN:        STB   2,S               ; n = bytes on this line
+            LDD   2,U
+            STD   ,S
+            CLR   3,S
+DUHEX:      LDB   3,S
+            CMPB  2,S
+            BEQ   DUHEXPAD
+            LDX   ,S
+            LDB   ,X+
+            STX   ,S
             CLRA
             PSHU  D
             JSR   HEXBYTE
             LDD   #32
             PSHU  D
             JSR   EMITW
-            LDX   DUMPADDR
-            LEAX  1,X
-            STX   DUMPADDR
-            LDD   DUMPCNT
-            SUBD  #1
-            STD   DUMPCNT
-            INC   DUMPCOL
+            INC   3,S
             BRA   DUHEX
-DUHEXPAD:   LDD   #32
-            PSHU  D
-            JSR   EMITW
-            PSHU  D
-            JSR   EMITW
-            PSHU  D
-            JSR   EMITW
-            INC   DUMPCOL
-            LDB   DUMPCOL
+DUHEXPAD:   LDB   3,S
             CMPB  #16
-            BNE   DUHEXPAD
-            BRA   DUASCII
+            BEQ   DUASCII
+            LDD   #32               ; three spaces for each missing byte
+            PSHU  D
+            JSR   EMITW
+            LDD   #32
+            PSHU  D
+            JSR   EMITW
+            LDD   #32
+            PSHU  D
+            JSR   EMITW
+            INC   3,S
+            BRA   DUHEXPAD
 DUASCII:    LDD   #32
             PSHU  D
             JSR   EMITW
-            CLR   DUMPCOL
-DUACHAR:    LDB   DUMPCOL
+            CLR   3,S
+DUACHAR:    LDB   3,S
             CMPB  #16
             BEQ   DULEND
-            CMPB  DUVALID
+            CMPB  2,S
             BHS   DUABLANK
-            LDX   HEXBUF
-            LDB   DUMPCOL
-            CLRA
-            LEAX  D,X
+            LDX   2,U
+            ABX                     ; X = line start + column
             LDA   ,X
             CMPA  #32
             BLO   DUDOT
@@ -7868,17 +7921,26 @@ DUPRINT:    TFR   A,B
             CLRA
             PSHU  D
             JSR   EMITW
-            INC   DUMPCOL
+            INC   3,S
             BRA   DUACHAR
 DUABLANK:   LDD   #32
             PSHU  D
             JSR   EMITW
-            INC   DUMPCOL
+            INC   3,S
             BRA   DUACHAR
 DULEND:     JSR   CRW
-            LDD   DUMPCNT
-            LBNE  DULINE            ; more bytes: next line
-DUDONE:     RTS
+            LDX   2,U               ; advance addr and reduce u by n
+            LDB   2,S
+            ABX
+            STX   2,U
+            LDD   ,U
+            SUBB  2,S
+            SBCA  #0
+            STD   ,U
+            LBRA  DULINE
+DUDONE:     LEAS  4,S
+            LEAU  4,U               ; drop addr and u
+            RTS
 
 ; ============================================================
 ; SECTION 26: CONSTANT-VALUE WORDS (TRUE, FALSE, 1, -1, 2, -2)

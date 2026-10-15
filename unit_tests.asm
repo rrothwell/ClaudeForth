@@ -66,6 +66,8 @@ TSTOHSAV    EQU   APPVARS+242       ; saved OUTHEAD (EMIT-family tests)
 
 TSTBASAV    EQU   APPVARS+243       ; saved BASE. See bugfix: TSTBASAV.1
 
+TSTLSRC     EQU   APPVARS+512       ; long CMOVE/CMOVE> source (260 bytes)
+TSTLDST     EQU   APPVARS+1024      ; long CMOVE/CMOVE> destination (260 bytes)
 TSTHANDSAV  EQU   APPVARS+245       ; saved HANDLER (CATCH test)
 
 TSTSISAV    EQU   APPVARS+247       ; saved SRCID (SOURCE-ID, REFILL tests)
@@ -10944,6 +10946,35 @@ TSTAQ2NAME: FCB   10
 ;    Registers: all changed.
 ; Original comment: shadow TSTMEMORY.0.
 ; ------------------------------------------------------------
+; Helpers for the string tests below. Strings are kept in ROM as a
+; count byte followed by the characters.
+; TSTLOADSTR
+;    Inputs:  RegX = counted string, RegY = destination
+;    Outputs: the characters copied to the destination
+;    Registers: RegA, RegB, RegX and RegY changed.
+; TSTCHKSTR
+;    Inputs:  RegX = counted string, RegY = memory to compare with
+;    Outputs: Z set if the memory holds exactly those characters
+;    Registers: RegA, RegB, RegX and RegY changed.
+; ------------------------------------------------------------
+TSTLOADSTR: LDB   ,X+
+            BEQ   TLSEND
+TLSLP:      LDA   ,X+
+            STA   ,Y+
+            DECB
+            BNE   TLSLP
+TLSEND:     RTS
+
+TSTCHKSTR:  LDB   ,X+
+            BEQ   TCSEND
+TCSLP:      LDA   ,X+
+            CMPA  ,Y+
+            BNE   TCSEND
+            DECB
+            BNE   TCSLP
+TCSEND:     RTS
+
+; ------------------------------------------------------------
 TSTMEMORY:  JSR   CRW
             LDX   #TSTMEMMSG
             PSHU  X
@@ -10970,6 +11001,10 @@ TSTMEMORY:  JSR   CRW
             JSR   TSTMOVE1
             JSR   TSTMOVE2
             JSR   TSTMOVE3
+            JSR   TSTBLANK
+            JSR   TSTCMOVEOVL
+            JSR   TSTCMOVEGTOVL
+            JSR   TSTCMOVELONG
 
             ENDC                    ; <<<<
 
@@ -11709,6 +11744,355 @@ TSTERNAME:  FCB   8
             FCC   "TSTERASE"
 
 ; ------------------------------------------------------------
+; unit test for BLANK. Ten 'x' characters, then BLANK over the five
+; starting at the third; the others must not change. A second call
+; with a count of zero must change nothing.
+; TSTBLANK
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTBLANK OK" or "TSTBLANK FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTBLANK:   LDX   #TSTBLSRC
+            LDY   #TSTCBUF
+            JSR   TSTLOADSTR
+
+            STU   TSTU0
+
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF+2
+            PSHU  D
+            LDD   #5
+            PSHU  D
+            STU   TSTUB4
+
+            JSR   BLANKW
+
+            STU   TSTUAF
+
+            LDX   #TSTBLEXP
+            LDY   #TSTCBUF
+            JSR   TSTCHKSTR
+            BNE   BLFAIL
+
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   BLFAIL
+
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4
+            BNE   BLFAIL
+
+            LDD   #TSTCBUF+4        ; a zero count changes nothing
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            JSR   BLANKW
+            LDX   #TSTBLEXP
+            LDY   #TSTCBUF
+            JSR   TSTCHKSTR
+            BNE   BLFAIL
+
+            LDD   #TRUEV
+            BRA   BLDONE
+BLFAIL:     LDD   #FALSEV
+BLDONE:     LDX   #TSTBLNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTBLNAME:  FCB   8
+            FCC   "TSTBLANK"
+TSTBLSRC:   FCB   10
+            FCC   "xxxxxxxxxx"
+TSTBLEXP:   FCB   10
+            FCC   "xx     xxx"
+
+; ------------------------------------------------------------
+; unit test for CMOVE with overlapping regions, in the direction it
+; is meant for. The standard's example: with "ABCD" at c-addr,
+; c-addr DUP CHAR+ 3 CMOVE propagates the first character, giving
+; "AAAA". Also copies down by one ("ABCDE" -> "BCDEE") and checks that
+; a zero count changes nothing.
+; TSTCMOVEOVL
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCMOVEOVL OK" or "TSTCMOVEOVL FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTCMOVEOVL:
+            LDX   #TSTCOABCD
+            LDY   #TSTCBUF
+            JSR   TSTLOADSTR
+
+            STU   TSTU0
+
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF          ; c-addr1
+            PSHU  D
+            LDD   #TSTCBUF+1        ; c-addr2
+            PSHU  D
+            LDD   #3
+            PSHU  D
+            STU   TSTUB4
+
+            JSR   CMOVEW
+
+            STU   TSTUAF
+
+            LDX   #TSTCOAAAA
+            LDY   #TSTCBUF
+            JSR   TSTCHKSTR
+            BNE   COFAIL
+
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   COFAIL
+
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-6
+            BNE   COFAIL
+
+            LDD   #TSTCBUF          ; zero count: nothing moves
+            PSHU  D
+            LDD   #TSTCBUF+2
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            JSR   CMOVEW
+            LDX   #TSTCOAAAA
+            LDY   #TSTCBUF
+            JSR   TSTCHKSTR
+            BNE   COFAIL
+
+            LDX   #TSTCOABCDE       ; copy down by one
+            LDY   #TSTCBUF
+            JSR   TSTLOADSTR
+            LDD   #TSTCBUF+1
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #4
+            PSHU  D
+            JSR   CMOVEW
+            LDX   #TSTCOBCDEE
+            LDY   #TSTCBUF
+            JSR   TSTCHKSTR
+            BNE   COFAIL
+
+            LDD   #TRUEV
+            BRA   CODONE
+COFAIL:     LDD   #FALSEV
+CODONE:     LDX   #TSTCONAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTCONAME:  FCB   11
+            FCC   "TSTCMOVEOVL"
+TSTCOABCD:  FCB   4
+            FCC   "ABCD"
+TSTCOAAAA:  FCB   4
+            FCC   "AAAA"
+TSTCOABCDE: FCB   5
+            FCC   "ABCDE"
+TSTCOBCDEE: FCB   5
+            FCC   "BCDEE"
+
+; ------------------------------------------------------------
+; unit test for CMOVE> with overlapping regions. The standard's
+; example: with "ABCD" at c-addr, c-addr DUP CHAR+ SWAP 3 CMOVE>
+; copies c-addr+1 to c-addr from the top down, giving "DDDD". Also
+; copies up by one ("ABCDE" -> "AABCD"), which is what CMOVE> is for,
+; and checks that a zero count changes nothing.
+; TSTCMOVEGTOVL
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCMOVEGTOVL OK" or "TSTCMOVEGTOVL FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTCMOVEGTOVL:
+            LDX   #TSTCOABCD
+            LDY   #TSTCBUF
+            JSR   TSTLOADSTR
+
+            STU   TSTU0
+
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF+1        ; c-addr1
+            PSHU  D
+            LDD   #TSTCBUF          ; c-addr2
+            PSHU  D
+            LDD   #3
+            PSHU  D
+            STU   TSTUB4
+
+            JSR   CMOVEGTW
+
+            STU   TSTUAF
+
+            LDX   #TSTCGDDDD
+            LDY   #TSTCBUF
+            JSR   TSTCHKSTR
+            BNE   CGOFAIL
+
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   CGOFAIL
+
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-6
+            BNE   CGOFAIL
+
+            LDD   #TSTCBUF          ; zero count: nothing moves
+            PSHU  D
+            LDD   #TSTCBUF+2
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            JSR   CMOVEGTW
+            LDX   #TSTCGDDDD
+            LDY   #TSTCBUF
+            JSR   TSTCHKSTR
+            BNE   CGOFAIL
+
+            LDX   #TSTCOABCDE       ; copy up by one
+            LDY   #TSTCBUF
+            JSR   TSTLOADSTR
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #TSTCBUF+1
+            PSHU  D
+            LDD   #4
+            PSHU  D
+            JSR   CMOVEGTW
+            LDX   #TSTCGAABCD
+            LDY   #TSTCBUF
+            JSR   TSTCHKSTR
+            BNE   CGOFAIL
+
+            LDD   #TRUEV
+            BRA   CGODONE
+CGOFAIL:    LDD   #FALSEV
+CGODONE:    LDX   #TSTCGONAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTCGONAME: FCB   13
+            FCC   "TSTCMOVEGTOVL"
+TSTCGDDDD:  FCB   4
+            FCC   "DDDD"
+TSTCGAABCD: FCB   5
+            FCC   "AABCD"
+
+; ------------------------------------------------------------
+; unit test for CMOVE and CMOVE> with a count over 255: copies 258
+; bytes and checks the first, a middle, the last and the byte just
+; beyond (which must keep its original value).
+; TSTCMOVELONG
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCMOVELONG OK" or "TSTCMOVELONG FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTCMOVELONG:
+            STU   TSTU0
+
+            LDD   #TSTLSRC          ; source: 258 'Z'
+            PSHU  D
+            LDD   #258
+            PSHU  D
+            LDD   #'Z'
+            PSHU  D
+            JSR   FILLW
+
+            LDD   #TSTLDST          ; destination: 260 '.'
+            PSHU  D
+            LDD   #260
+            PSHU  D
+            LDD   #'.'
+            PSHU  D
+            JSR   FILLW
+
+            LDD   #TSTLSRC
+            PSHU  D
+            LDD   #TSTLDST
+            PSHU  D
+            LDD   #258
+            PSHU  D
+            JSR   CMOVEW
+            JSR   TSTLONGCHK
+            BNE   CLFAIL
+
+            LDD   #TSTLDST          ; clear the destination again
+            PSHU  D
+            LDD   #260
+            PSHU  D
+            LDD   #'.'
+            PSHU  D
+            JSR   FILLW
+
+            LDD   #TSTLSRC
+            PSHU  D
+            LDD   #TSTLDST
+            PSHU  D
+            LDD   #258
+            PSHU  D
+            JSR   CMOVEGTW
+            JSR   TSTLONGCHK
+            BNE   CLFAIL
+
+            LDD   #TRUEV
+            BRA   CLDONE
+CLFAIL:     LDD   #FALSEV
+CLDONE:     LDX   #TSTCLNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTLONGCHK: LDA   TSTLDST           ; Z set if the long copy is right
+            CMPA  #'Z'
+            BNE   TLCEND
+            LDA   TSTLDST+128
+            CMPA  #'Z'
+            BNE   TLCEND
+            LDA   TSTLDST+256
+            CMPA  #'Z'
+            BNE   TLCEND
+            LDA   TSTLDST+257
+            CMPA  #'Z'
+            BNE   TLCEND
+            LDA   TSTLDST+258
+            CMPA  #'.'
+TLCEND:     RTS
+
+TSTCLNAME:  FCB   13
+            FCC   "TSTCMOVELONG"
+
+; ------------------------------------------------------------
 ; unit test for CMOVE. Non-overlapping regions (well
 ; separated within TSTCBUF's own 80 bytes) - CMOVE's own
 ; overlap-unsafe behavior in the high-over-low direction is
@@ -12153,14 +12537,20 @@ TSTSTRPARSE:
             JSR   TSTPARSENAME
             JSR   TSTSQUOTE1
             JSR   TSTSQUOTE2
+            JSR   TSTSQUOTE3
             JSR   TSTDOTQUOTE
             JSR   TSTSCOMPARE
             JSR   TSTSEARCH1
             JSR   TSTSEARCH2
+            JSR   TSTSEARCH3
+            JSR   TSTSEARCH4
             JSR   TSTDASHTRAILING
             JSR   TSTSLASHSTRING
             JSR   TSTREPLSUBS1
             JSR   TSTREPLSUBS2
+            JSR   TSTREPLSUBS3
+            JSR   TSTREPLSUBS4
+            JSR   TSTCLRREPL
             JSR   TSTSNAME1
             JSR   TSTSNAME2
             JSR   TSTUNESCAPE
@@ -12888,6 +13278,100 @@ TSTSQ2NAME: FCB   10
             FCC   "TSTSQUOTE2"
 
 ; ------------------------------------------------------------
+; unit test for S" with an empty string. The input is: " Z"  i.e. the
+; closing quote comes first. The result must be length 0 with >IN just
+; past that quote. (The old WORD-based parse skipped the first quote and
+; returned "Z", so S" " ran on to the next quote in the source.)
+; TSTSQUOTE3
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSQUOTE3 OK" or "TSTSQUOTE3 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTSQUOTE3: LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   STATE
+            STD   TSTSTSAV
+
+            LDA   #34
+            STA   TSTNAMEB
+            LDA   #'Z'
+            STA   TSTNAMEB+1
+            LDA   #34
+            STA   TSTNAMEB+2
+
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #3
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
+            STD   STATE
+
+            STU   TSTU0
+
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
+
+            JSR   SQUOTEW
+
+            STU   TSTUAF
+            LDD   TOIN
+            STD   TSTSCR
+
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTSTSAV
+            STD   STATE
+
+            PULU  D
+            CMPD  #0                ; length 0
+            BNE   SQ3FAIL
+            PULU  D                 ; address is not checked
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SQ3FAIL
+
+            LDD   TSTSCR            ; >IN just past the first quote
+            CMPD  #1
+            BNE   SQ3FAIL
+
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #4 
+            BNE   SQ3FAIL
+
+            LDD   #TRUEV
+            BRA   SQ3DONE
+SQ3FAIL:    LDD   #FALSEV
+SQ3DONE:    LDX   #TSTSQ3NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTSQ3NAME: FCB   10
+            FCC   "TSTSQUOTE3"
+
+; ------------------------------------------------------------
 ; unit test for .".
 ; TSTDOTQUOTE
 ;    Inputs:
@@ -13107,7 +13591,8 @@ TSTCQNAME:  FCB   11
 ; unit test for SEARCH, found case. Haystack "HELLOWORLD",
 ; needle "WOR" - verifies the returned addr3 lands exactly
 ; at the match position (not just that flag is true), len3
-; equals the needle's own length, and flag is true.
+; equals the characters remaining from the match to the end of
+; the haystack (5), and flag is true.
 ; TSTSEARCH1
 ;    Inputs:
 ;        none
@@ -13165,8 +13650,8 @@ TSTSEARCH1: LDA   #'H'
             CMPD  #TRUEV
             BNE   SR1FAIL
             PULU  D
-            CMPD  #3
-            BNE   SR1FAIL
+            CMPD  #5                ; characters remaining from the match,
+            BNE   SR1FAIL          ; not the needle's length. See shadow TSTSEARCH.3
             PULU  D
             CMPD  #TSTCBUF+5
             BNE   SR1FAIL
@@ -13269,6 +13754,142 @@ SR2DONE:    LDX   #TSTSR2NAME
 
 TSTSR2NAME: FCB   10
             FCC   "TSTSEARCH2"
+
+; ------------------------------------------------------------
+; unit test for SEARCH with an empty needle: it matches at the start,
+; so addr3 is addr1, len3 is len1 and the flag is true (the standard's
+; "s1 s7 SEARCH" case).
+; TSTSEARCH3
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSEARCH3 OK" or "TSTSEARCH3 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTSEARCH3: LDX   #TSTSRHELLO
+            LDY   #TSTCBUF
+            JSR   TSTLOADSTR
+
+            STU   TSTU0
+
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #10
+            PSHU  D
+            LDD   #TSTCBUF+20
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            STU   TSTUB4
+
+            JSR   SEARCHW
+
+            STU   TSTUAF
+
+            PULU  D
+            CMPD  #TRUEV
+            BNE   SR3FAIL
+            PULU  D
+            CMPD  #10
+            BNE   SR3FAIL
+            PULU  D
+            CMPD  #TSTCBUF
+            BNE   SR3FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SR3FAIL
+
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   SR3FAIL
+
+            LDD   #TRUEV
+            BRA   SR3DONE
+SR3FAIL:    LDD   #FALSEV
+SR3DONE:    LDX   #TSTSR3NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTSR3NAME: FCB   10
+            FCC   "TSTSEARCH3"
+TSTSRHELLO: FCB   10
+            FCC   "HELLOWORLD"
+
+; ------------------------------------------------------------
+; unit test for SEARCH, a match at the very end of the haystack
+; ("LD" in "HELLOWORLD"): addr3 is the haystack plus 8, len3 is 2.
+; TSTSEARCH4
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSEARCH4 OK" or "TSTSEARCH4 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTSEARCH4: LDX   #TSTSRHELLO
+            LDY   #TSTCBUF
+            JSR   TSTLOADSTR
+            LDX   #TSTSRLD
+            LDY   #TSTCBUF+20
+            JSR   TSTLOADSTR
+
+            STU   TSTU0
+
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   #TSTCBUF
+            PSHU  D
+            LDD   #10
+            PSHU  D
+            LDD   #TSTCBUF+20
+            PSHU  D
+            LDD   #2
+            PSHU  D
+            STU   TSTUB4
+
+            JSR   SEARCHW
+
+            STU   TSTUAF
+
+            PULU  D
+            CMPD  #TRUEV
+            BNE   SR4FAIL
+            PULU  D
+            CMPD  #2
+            BNE   SR4FAIL
+            PULU  D
+            CMPD  #TSTCBUF+8
+            BNE   SR4FAIL
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   SR4FAIL
+
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-2
+            BNE   SR4FAIL
+
+            LDD   #TRUEV
+            BRA   SR4DONE
+SR4FAIL:    LDD   #FALSEV
+SR4DONE:    LDX   #TSTSR4NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTSR4NAME: FCB   10
+            FCC   "TSTSEARCH4"
+TSTSRLD:    FCB   2
+            FCC   "LD"
 
 ; ------------------------------------------------------------
 ; unit test for -TRAILING. "AB   " (2 letters, 3 trailing
@@ -13445,6 +14066,7 @@ TSTREPLSUBS1:
             LDA   #'%'
             STA   TSTCBUF+29
 
+            JSR   CLRREPLACESW      ; start with an empty REPLACES pool
             STU   TSTU0
 
             LDD   #TSTGUARD
@@ -13636,6 +14258,313 @@ RS2DONE:    LDX   #TSTRS2NAME
 
 TSTRS2NAME: FCB   12
             FCC   "TSTREPLSUBS2"
+
+; ------------------------------------------------------------
+; Helpers for the REPLACES / SUBSTITUTE tests.
+; TSTDOREPL
+;    Inputs:  RegX = counted substitution text, RegY = counted name
+;    Outputs: REPLACES called; both strings are then overwritten in RAM
+;        to prove REPLACES keeps its own copy
+;    Registers: all changed.
+; TSTDOSUBST
+;    Inputs:  RegX = counted template, RegD = destination capacity
+;    Outputs: SUBSTITUTE called with the template copied to TSTCBUF+20
+;        and the destination at TSTCBUF+40; its results are left on the
+;        data stack
+;    Registers: all changed.
+; ------------------------------------------------------------
+TSTDOREPL:  PSHS  Y,X               ; 0,S text   2,S name
+            LDX   ,S
+            LDY   #TSTCBUF+56
+            JSR   TSTLOADSTR
+            LDX   ,S
+            LDB   ,X
+            CLRA
+            PSHS  D                 ; 0,S text length
+            LDD   #TSTCBUF+56
+            PSHU  D                 ; c-addr1
+            LDD   ,S
+            PSHU  D                 ; u1
+            LDX   4,S
+            LDY   #TSTCBUF+72
+            JSR   TSTLOADSTR
+            LDX   4,S
+            LDB   ,X
+            CLRA
+            TFR   D,Y               ; Y = name length
+            LDD   #TSTCBUF+72
+            PSHU  D                 ; c-addr2
+            PSHU  Y                 ; u2
+            JSR   REPLACESW
+            LDD   #TSTCBUF+56       ; overwrite both copies
+            PSHU  D
+            LDD   #24
+            PSHU  D
+            LDD   #'Q'
+            PSHU  D
+            JSR   FILLW
+            LEAS  6,S
+            RTS
+
+TSTDOSUBST: PSHS  D                 ; 0,S capacity
+            LDY   #TSTCBUF+20
+            PSHS  X
+            JSR   TSTLOADSTR
+            PULS  X
+            LDB   ,X
+            CLRA
+            PSHS  D                 ; 0,S template length   2,S capacity
+            LDD   #TSTCBUF+20
+            PSHU  D
+            LDD   ,S
+            PSHU  D
+            LDD   #TSTCBUF+40
+            PSHU  D
+            LDD   2,S
+            PSHU  D
+            JSR   SUBSTITUTEW
+            LEAS  4,S
+            RTS
+
+; ------------------------------------------------------------
+; unit test for several REPLACES names at once (the single-slot
+; version lost the first when the second was registered), a name
+; replaced by a shorter text (in place) and by a longer text (a new
+; entry), and for SUBSTITUTE using them: "%hi%,%wld%!" becomes
+; "hello,world!" and then "yo,universe!", two substitutions each time.
+; TSTREPLSUBS3
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTREPLSUBS3 OK" or "TSTREPLSUBS3 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTREPLSUBS3:
+            JSR   CLRREPLACESW      ; start with an empty REPLACES pool
+            STU   TSTU0
+
+            LDD   #TSTGUARD
+            PSHU  D
+
+            LDX   #TSTR3HELLO
+            LDY   #TSTR3HI
+            JSR   TSTDOREPL
+            LDX   #TSTR3WORLD
+            LDY   #TSTR3WLD
+            JSR   TSTDOREPL
+
+            LDX   #TSTR3TMPL
+            LDD   #20
+            JSR   TSTDOSUBST
+
+            PULU  D
+            CMPD  #2
+            BNE   RS3FAIL
+            PULU  D
+            CMPD  #12
+            BNE   RS3FAIL
+            PULU  D
+            CMPD  #TSTCBUF+40
+            BNE   RS3FAIL
+            LDX   #TSTR3EXP1
+            LDY   #TSTCBUF+40
+            JSR   TSTCHKSTR
+            BNE   RS3FAIL
+
+            LDX   #TSTR3YO          ; shorter than "hello": in place
+            LDY   #TSTR3HI
+            JSR   TSTDOREPL
+            LDX   #TSTR3UNIV        ; longer than "world": a new entry
+            LDY   #TSTR3WLD
+            JSR   TSTDOREPL
+
+            LDX   #TSTR3TMPL
+            LDD   #20
+            JSR   TSTDOSUBST
+
+            PULU  D
+            CMPD  #2
+            BNE   RS3FAIL
+            PULU  D
+            CMPD  #12
+            BNE   RS3FAIL
+            PULU  D
+            CMPD  #TSTCBUF+40
+            BNE   RS3FAIL
+            LDX   #TSTR3EXP2
+            LDY   #TSTCBUF+40
+            JSR   TSTCHKSTR
+            BNE   RS3FAIL
+
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   RS3FAIL
+
+            LDD   #TRUEV
+            BRA   RS3DONE
+RS3FAIL:    LDD   #FALSEV
+RS3DONE:    LDX   #TSTRS3NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTRS3NAME: FCB   12
+            FCC   "TSTREPLSUBS3"
+TSTR3HI:    FCB   2
+            FCC   "hi"
+TSTR3WLD:   FCB   3
+            FCC   "wld"
+TSTR3HELLO: FCB   5
+            FCC   "hello"
+TSTR3WORLD: FCB   5
+            FCC   "world"
+TSTR3YO:    FCB   2
+            FCC   "yo"
+TSTR3UNIV:  FCB   8
+            FCC   "universe"
+TSTR3TMPL:  FCB   11
+            FCC   "%hi%,%wld%!"
+TSTR3EXP1:  FCB   12
+            FCC   "hello,world!"
+TSTR3EXP2:  FCB   12
+            FCC   "yo,universe!"
+
+; ------------------------------------------------------------
+; unit test for SUBSTITUTE's error results: a destination too small
+; for the output returns n = -18 (the output is not written past it),
+; and a destination equal to the source returns n = -9. Neither
+; throws; the stack holds c-addr2 u3 n.
+; TSTREPLSUBS4
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTREPLSUBS4 OK" or "TSTREPLSUBS4 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTREPLSUBS4:
+            JSR   CLRREPLACESW      ; start with an empty REPLACES pool
+            STU   TSTU0
+
+            LDD   #TSTGUARD
+            PSHU  D
+
+            LDX   #TSTR4LONG
+            LDY   #TSTR4AB
+            JSR   TSTDOREPL
+
+            LDX   #TSTR4TMPL
+            LDD   #3                ; "cdefgh" does not fit in 3
+            JSR   TSTDOSUBST
+
+            PULU  D
+            CMPD  #-18
+            BNE   RS4FAIL
+            PULU  D                 ; u3 is not specified
+            PULU  D
+            CMPD  #TSTCBUF+40
+            BNE   RS4FAIL
+
+            LDD   #TSTCBUF+20       ; the template is still there:
+            PSHU  D                 ; use it as its own destination
+            LDD   #4
+            PSHU  D
+            LDD   #TSTCBUF+20
+            PSHU  D
+            LDD   #20
+            PSHU  D
+            JSR   SUBSTITUTEW
+            PULU  D
+            CMPD  #-9
+            BNE   RS4FAIL
+            PULU  D
+            PULU  D
+            CMPD  #TSTCBUF+20
+            BNE   RS4FAIL
+
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   RS4FAIL
+
+            LDD   #TRUEV
+            BRA   RS4DONE
+RS4FAIL:    LDD   #FALSEV
+RS4DONE:    LDX   #TSTRS4NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTRS4NAME: FCB   12
+            FCC   "TSTREPLSUBS4"
+TSTR4AB:    FCB   2
+            FCC   "ab"
+TSTR4LONG:  FCB   6
+            FCC   "cdefgh"
+TSTR4TMPL:  FCB   4
+            FCC   "%ab%"
+
+; ------------------------------------------------------------
+; unit test for CLR-REPLACES: define "ab", check SUBSTITUTE uses it,
+; clear, then check "%ab%" is left alone (n = 0) and that SUBHEAD and
+; SUBFREE are zero.
+; TSTCLRREPL
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTCLRREPL OK" or "TSTCLRREPL FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTCLRREPL: JSR   CLRREPLACESW
+            STU   TSTU0
+
+            LDX   #TSTR4LONG
+            LDY   #TSTR4AB
+            JSR   TSTDOREPL
+
+            LDX   #TSTR4TMPL
+            LDD   #20
+            JSR   TSTDOSUBST
+            PULU  D
+            CMPD  #1                ; defined: one substitution
+            BNE   CRFAIL
+            LEAU  4,U               ; discard u3, c-addr2
+
+            LDD   SUBHEAD           ; something is in the pool
+            BEQ   CRFAIL
+
+            JSR   CLRREPLACESW
+
+            LDD   SUBHEAD
+            BNE   CRFAIL
+            LDD   SUBFREE
+            BNE   CRFAIL
+
+            LDX   #TSTR4TMPL
+            LDD   #20
+            JSR   TSTDOSUBST
+            PULU  D
+            CMPD  #0
+            BNE   CRFAIL            ; cleared: no substitution
+            LEAU  4,U
+
+            LDD   #TRUEV
+            BRA   CRDONE
+CRFAIL:     LDD   #FALSEV
+CRDONE:     LDX   #TSTCRNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTCRNAME:  FCB   10
+            FCC   "TSTCLRREPL"
 
 ; ------------------------------------------------------------
 ; unit test for SNAME, found case. Searches the real, live

@@ -1,0 +1,171 @@
+\ ============================================================
+  ok\ ANS test suite - words implemented in forth6809.asm's
+  ok\ section 19 (19_string_words)
+  ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded
+  ok\ first, in that order (the prelude itself uses T{/->/}T, so
+  ok\ ttester.fs must come first). Extracted from the ANS Forth
+  ok\ Standard, Annex F
+  ok\ (https://forth-standard.org/standard/testsuite), which is
+  ok\ explicitly redistributable per its own copyright notice.
+  ok\ ============================================================
+  ok\ ---- section-marker: makes this file independently runnable ----
+  ok\ M27 snapshots the dictionary/HERE state right before this
+  ok\ file's own definitions begin. Invoking M27 at the end (below)
+  ok\ erases everything this file defined - including M27 itself -
+  ok\ restoring the system to the state it was in just after
+  ok\ ttester.fs + 00_test_prelude.fs were loaded. This lets the
+  ok\ automation load/run/reset one section file at a time, in any
+  ok\ order, without cross-file dictionary pollution.
+  okMARKER M27
+  ok\ Reset the pass/fail counters, record the stack depth.
+  okTEST-BEGIN
+  ok\ Default base is HEX.
+  okDECIMAL
+  ok\ String constant setup.
+  ok: s1 S" abcdefghijklmnopqrstuvwxyz" ;
+  okT{ : s2  S" abc"   ; -> }T
+  okT{ : s3  S" jklmn" ; -> }T
+  okT{ : s4  S" z"     ; -> }T
+  okT{ : s5  S" mnoq"  ; -> }T
+  okT{ : s6  S" 12345" ; -> }T
+  okT{ : s7  S" "      ; -> }T
+  okT{ : s8  S" abc  " ; -> }T
+  okT{ : s9  S"      " ; -> }T
+  okT{ : s10 S"    a " ; -> }T
+  ok: s11 S" 0abc" ;
+  ok: s12 S" 0aBc" ;
+  ok\ F.17.6.1.0780 BLANK
+  ok: s13 S" aaaaa      a" ;                \ Six spaces between the a's
+  okT{ PAD 25 CHAR a FILL -> }T             \ Fill PAD with 25 'a's
+  okT{ PAD 5 CHARS + 6 BLANK -> }T          \ Put 6 spaces from character 5
+  okT{ PAD 12 s13 COMPARE -> 0 }T           \ PAD should now be same as s13  Actual:Expected 0 =?= 0 
+  okT{ PAD 5 CHARS + 0 BLANK -> }T          \ A zero count changes nothing
+  okT{ PAD 12 s13 COMPARE -> 0 }T  Actual:Expected 0 =?= 0 
+  ok\ F.17.6.1.0910 CMOVE
+  ok\ Assume a character string at address 100: "ABCD".
+  ok\ Then after
+  ok\ 100 DUP CHAR+ 3 CMOVE
+  ok\ the string at address 100 is "AAAA".
+  ok: s15 S" ABCD" ;
+  ok: s16 S" AAAA" ;
+  okT{ s15 PAD SWAP CMOVE -> }T
+  okT{ PAD DUP CHAR+ 3 CMOVE -> }T
+  okT{ PAD 4 s16 COMPARE -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ PAD DUP CHAR+ 0 CMOVE -> }T          \ A zero count changes nothing
+  okT{ PAD 4 s16 COMPARE -> 0 }T  Actual:Expected 0 =?= 0 
+  ok\ Copying down by one is the direction CMOVE is meant for
+  ok: s17 S" ABCDE" ;
+  ok: s18 S" BCDEE" ;
+  okT{ s17 PAD SWAP CMOVE -> }T
+  okT{ PAD CHAR+ PAD 4 CMOVE -> }T
+  okT{ PAD 5 s18 COMPARE -> 0 }T  Actual:Expected 0 =?= 0 
+  ok\ F.17.6.1.0920 CMOVE>
+  ok\ Assume a character string at address 100: "ABCD".
+  ok\ Then after
+  ok\ 100 DUP CHAR+ SWAP 3 CMOVE>
+  ok\ the string at address 100 is "DDDD".
+  ok: s19 S" DDDD" ;
+  okT{ s15 PAD SWAP CMOVE -> }T
+  okT{ PAD DUP CHAR+ SWAP 3 CMOVE> -> }T
+  okT{ PAD 4 s19 COMPARE -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ PAD DUP CHAR+ SWAP 0 CMOVE> -> }T    \ A zero count changes nothing
+  okT{ PAD 4 s19 COMPARE -> 0 }T  Actual:Expected 0 =?= 0 
+  ok\ Copying up by one is the direction CMOVE> is meant for
+  ok: s20 S" AABCD" ;
+  okT{ s17 PAD SWAP CMOVE -> }T
+  okT{ PAD PAD CHAR+ 4 CMOVE> -> }T
+  okT{ PAD 5 s20 COMPARE -> 0 }T  Actual:Expected 0 =?= 0 
+  ok\ 17.6.1.0935 COMPARE
+  okT{ s1        s1 COMPARE ->  0  }T  Actual:Expected 0 =?= 0 
+  okT{ s1  PAD SWAP CMOVE   ->     }T    \ Copy s1 to PAD
+  okT{ s1  PAD OVER COMPARE ->  0  }T  Actual:Expected 0 =?= 0 
+  okT{ s1     PAD 6 COMPARE ->  1  }T  Actual:Expected 1 =?= 1 
+  okT{ PAD 10    s1 COMPARE -> -1  }T  Actual:Expected -1 =?= -1 
+  okT{ s1     PAD 0 COMPARE ->  1  }T  Actual:Expected 1 =?= 1 
+  okT{ PAD  0    s1 COMPARE -> -1  }T  Actual:Expected -1 =?= -1 
+  okT{ s1        s6 COMPARE ->  1  }T  Actual:Expected 1 =?= 1 
+  okT{ s6        s1 COMPARE -> -1  }T  Actual:Expected -1 =?= -1 
+  ok: "abdde" S" abdde" ;
+  ok: "abbde" S" abbde" ;
+  ok: "abcdf" S" abcdf" ;
+  ok: "abcdee" S" abcdee" ;
+  okT{ s1 "abdde"  COMPARE -> -1 }T  Actual:Expected -1 =?= -1 
+  okT{ s1 "abbde"  COMPARE ->  1 }T  Actual:Expected 1 =?= 1 
+  okT{ s1 "abcdf"  COMPARE -> -1 }T  Actual:Expected -1 =?= -1 
+  okT{ s1 "abcdee" COMPARE ->  1 }T  Actual:Expected 1 =?= 1 
+  okT{ s11 s12 COMPARE ->  1 }T  Actual:Expected 1 =?= 1 
+  okT{ s12 s11 COMPARE -> -1 }T  Actual:Expected -1 =?= -1 
+  ok\ F.17.6.1.0245 /STRING
+  okT{ s1  5 /STRING -> s1 SWAP 5 + SWAP 5 - }T  Actual:Expected 21 =?= 21 30678 =?= 30678 
+  okT{ s1 10 /STRING -4 /STRING -> s1 6 /STRING }T  Actual:Expected 20 =?= 20 30679 =?= 30679 
+  okT{ s1  0 /STRING -> s1 }T  Actual:Expected 26 =?= 26 30673 =?= 30673 
+  ok\ F.17.6.1.0170 -TRAILING
+  okT{  s1 -TRAILING -> s1 }T               \ "abcdefghijklmnopqrstuvwxyz"  Actual:Expected 26 =?= 26 30673 =?= 30673 
+  okT{  s8 -TRAILING -> s8 2 - }T           \ "abc "  Actual:Expected 3 =?= 3 30752 =?= 30752 
+  okT{  s7 -TRAILING -> s7 }T               \ " "  Actual:Expected 0 =?= 0 30747 =?= 30747 
+  okT{  s9 -TRAILING -> s9 DROP 0 }T        \ " "  Actual:Expected 0 =?= 0 30762 =?= 30762 
+  okT{ s10 -TRAILING -> s10 1- }T           \ " a "  Actual:Expected 4 =?= 4 30772 =?= 30772 
+  ok\ F.17.6.2.2141 REPLACES
+  ok\ See F.17.6.2.2255 SUBSTITUTE
+  ok\ F.17.6.1.2191 SEARCH
+  okT{ s1 s2 SEARCH -> s1 <TRUE>  }T  Actual:Expected -1 =?= -1 26 =?= 26 30673 =?= 30673 
+  okT{ s1 s3 SEARCH -> s1  9 /STRING <TRUE>  }T  Actual:Expected -1 =?= -1 17 =?= 17 30682 =?= 30682 
+  okT{ s1 s4 SEARCH -> s1 25 /STRING <TRUE>  }T  Actual:Expected -1 =?= -1 1 =?= 1 30698 =?= 30698 
+  okT{ s1 s5 SEARCH -> s1 <FALSE> }T  Actual:Expected 0 =?= 0 26 =?= 26 30673 =?= 30673 
+  okT{ s1 s6 SEARCH -> s1 <FALSE> }T  Actual:Expected 0 =?= 0 26 =?= 26 30673 =?= 30673 
+  okT{ s1 s7 SEARCH -> s1 <TRUE>  }T  Actual:Expected -1 =?= -1 26 =?= 26 30673 =?= 30673 
+  ok\ u3 is the length remaining from the match, not the needle's length
+  okT{ s1 s3 SEARCH ROT DROP -> 17 <TRUE> }T  Actual:Expected -1 =?= -1 17 =?= 17 
+  okT{ s1 s4 SEARCH ROT DROP ->  1 <TRUE> }T  Actual:Expected -1 =?= -1 1 =?= 1 
+  ok\ F.17.6.1.2212 SLITERAL
+  okT{ : s14 [ s1 ] SLITERAL ; -> }T
+  okT{ s1 s14 COMPARE -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ s1 s14 ROT = ROT ROT = -> <TRUE> <FALSE> }T  Actual:Expected 0 =?= 0 -1 =?= -1 
+  ok\ F.17.6.2.2255 SUBSTITUTE
+  ok30 CHARS BUFFER: subbuff \ Destination buffer
+  ok\ Define a few string constants
+  ok: "hi" S" hi" ;
+  ok: "wld" S" wld" ;
+  ok: "hello" S" hello" ;
+  ok: "world" S" world" ;
+  ok\ Define a few test strings
+  ok: sub1 S" Start: %hi%,%wld%! :End" ;    \ Original string
+  ok: sub2 S" Start: hello,world! :End" ;   \ First target string
+  ok: sub3 S" Start: world,hello! :End" ;   \ Second target string
+  ok\ Define the hi and wld substitutions
+  okT{ "hello" "hi"  REPLACES -> }T          \ Replace "%hi%" with "hello"
+  okT{ "world" "wld" REPLACES -> }T          \ Replace "%wld%" with "world"
+  ok\ "%hi%,%wld%" changed to "hello,world"
+  okT{ sub1 subbuff 30 SUBSTITUTE ROT ROT sub2 COMPARE -> 2 0 }T  Actual:Expected 0 =?= 0 2 =?= 2 
+  ok\ Change the hi and wld substitutions
+  okT{ "world" "hi"  REPLACES -> }T
+  okT{ "hello" "wld" REPLACES -> }T
+  ok\ Now "%hi%,%wld%" should be changed to "world,hello"
+  okT{ sub1 subbuff 30 SUBSTITUTE ROT ROT sub3 COMPARE -> 2 0 }T  Actual:Expected 0 =?= 0 2 =?= 2 
+  ok\ Where the subsitution name is not defined
+  ok: sub4 S" aaa%bbb%ccc" ;
+  okT{ sub4 subbuff 30 SUBSTITUTE ROT ROT sub4 COMPARE -> 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  ok\ Finally the % character itself
+  ok: sub5 S" aaa%%bbb" ;
+  ok: sub6 S" aaa%bbb" ;
+  okT{ sub5 subbuff 30 SUBSTITUTE ROT ROT sub6 COMPARE -> 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  ok\ Output too small for the result: n is negative
+  okT{ sub1 subbuff 5 SUBSTITUTE ROT DROP SWAP DROP 0< -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  ok\ Source and destination the same buffer: n is negative
+  okT{ sub1 subbuff SWAP CMOVE -> }T
+  okT{ subbuff 6 subbuff 30 SUBSTITUTE ROT DROP SWAP DROP 0< -> <TRUE> }T  Actual:Expected -1 =?= -1 
+  ok\ CLR-REPLACES (not a standard word) forgets all the substitutions
+  okT{ CLR-REPLACES -> }T
+  okT{ sub1 subbuff 30 SUBSTITUTE ROT ROT sub1 COMPARE -> 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  ok\ F.17.6.2.2375 UNESCAPE
+  ok\ Using subbuff, sub5 and sub6 from F.17.6.2.2255 SUBSTITUTE.
+  okT{ sub6 subbuff UNESCAPE sub5 COMPARE -> 0 }T  Actual:Expected 0 =?= 0 
+  ok\ Restore default base.
+  okHEX
+  ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
+  okTEST-END
+TEST SUMMARY: 78 run, 0 failed
+
+  ok\ ---- section-marker: undo everything above ----
+  okM27
+  ok

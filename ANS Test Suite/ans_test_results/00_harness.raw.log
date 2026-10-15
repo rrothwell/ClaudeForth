@@ -117,7 +117,7 @@ ACTUAL-RESULTS I CELLS + !
 LOOP
 THEN
 F-> ;
-  ok: }T \ ( ... -- ) comapre stack (expected) contents with saved
+  ok: }T \ ( ... -- ) compare stack (expected) contents with saved
 \ (actual) contents.
 \ BUG FIX / ENHANCEMENT: tallies TESTCOUNT (every call) and
 \ FAILCOUNT (only the two branches below that call ERROR) for
