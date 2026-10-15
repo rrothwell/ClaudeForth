@@ -1723,6 +1723,12 @@ TSTSQUOTE2.0  [explanatory]  (lines 12537-12545 of the stage-2 unit_tests file)
 ; ------------------------------------------------------------
 
 ================================================================
+TSTSQUOTE3.1  [stage 5i]
+----------------------------------------------------------------
+Tests S" with an empty string (the closing quote is the first character parsed).
+The old WORD-based parse skipped it and returned the next character, "Z".
+
+================================================================
 TSTDOTQUOTE.0  [explanatory]  (lines 12635-12650 of the stage-2 unit_tests file)
 ----------------------------------------------------------------
 ; ------------------------------------------------------------
@@ -1789,6 +1795,31 @@ TSTREPLSUBS2.0  [explanatory]  (lines 13262-13272 of the stage-2 unit_tests file
 ; test registers its own pair fresh rather than relying on any
 ; prior test's own registration still being active.
 ; ------------------------------------------------------------
+
+================================================================
+TSTREPLSUBS.5  [stage 5f to 5h]
+----------------------------------------------------------------
+TSTREPLSUBS3 (several names, redefinition in place and by a new longer entry) and
+TSTREPLSUBS4 (SUBSTITUTE errors: -18 overflow, -9 same buffer) are new. The three
+REPLACES tests (1, 3, 4) and TSTCLRREPL call CLR-REPLACES first, so each starts with
+an empty pool; the pool is 64 bytes and is never reset within a boot. TSTREPLSUBS3
+peaks at 41 bytes.
+
+================================================================
+TSTCLRREPL.1  [stage 5h]
+----------------------------------------------------------------
+Tests CLR-REPLACES (CLRREPLACESW): define a name, check SUBSTITUTE uses it, clear,
+check SUBHEAD and SUBFREE are zero and that the name is no longer substituted.
+
+================================================================
+TSTSEARCH.3  [bugfix (stage 5f)]
+----------------------------------------------------------------
+TSTSEARCH1 expected u3 = 3, the needle length. The standard result for "WOR" in
+"HELLOWORLD" is the remainder of the haystack from the match: u3 = 5.
+New tests: TSTBLANK, TSTCMOVEOVL, TSTCMOVEGTOVL, TSTCMOVELONG (Memory group),
+TSTSEARCH3/4 (empty needle, match at the end), TSTREPLSUBS3/4 (StrParse group).
+TSTLOADSTR and TSTCHKSTR are shared helpers placed outside the group conditionals so
+both groups can use them.
 
 ================================================================
 TSTSNAME1.1  [bugfix]  (lines 13980-13992 of the stage-3a unit_tests file)
@@ -2578,22 +2609,3 @@ three BNE DUFAIL had been changed to LBNE (TSTDUMP.1) to assemble.
             CMPA  #10
             BNE   DUFAIL
             ENDC                    ; <<<<<<<<<<
-
-
-TSTSEARCH.3  [bugfix]  (stage 5f)
-TSTSEARCH1 expected u3 = 3, the needle length. The standard result for "WOR" in
-"HELLOWORLD" is the remainder of the haystack from the match: u3 = 5.
-New tests: TSTBLANK, TSTCMOVEOVL, TSTCMOVEGTOVL, TSTCMOVELONG (Memory group),
-TSTSEARCH3/4, TSTREPLSUBS3/4 (StrParse group). TSTLOADSTR/TSTCHKSTR are shared
-helpers placed outside the group conditionals.
-
-TSTREPLSUBS.5  [stage 5g]
-TSTREPLSUBS1, 3 and 4 clear SUBHEAD and SUBFREE first so each starts with an empty
-64-byte pool. TSTREPLSUBS3 peaks at 41 bytes.
-
-TSTCLRREPL.1  [stage 5h]
-Tests CLR-REPLACES (CLRREPLACESW). The three REPLACES tests now call it instead of
-clearing SUBHEAD and SUBFREE by hand.
-
-TSTSQUOTE3.1  [stage 5i]
-Tests S" with an empty string (the closing quote is the first character parsed).

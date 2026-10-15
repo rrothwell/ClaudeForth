@@ -45,8 +45,10 @@ HOLDMINSIZE EQU   34
 PADOFFSET   EQU   PADMINSIZE        ; CODEHERE-to-PAD gap
 WORDMAXCHARS EQU   PADOFFSET-HOLDMINSIZE-1-3
             ; Maximum characters WORD can scan in the CODEHERE-to-PAD gap:
-            ; PADOFFSET - HOLDMINSIZE - 1 (count byte) - 3 (bytes reserved by
-            ; S", ." and ABORT"). Original comment: shadow WORDMAXCHARS.1.
+            ; PADOFFSET - HOLDMINSIZE - 1 (count byte) - 3. The 3 bytes were
+            ; once reserved by S", ." and ABORT" (they now use PARSE, stage
+            ; 5i). See shadow WORDMAXCHARS.2. Original comment: shadow
+            ; WORDMAXCHARS.1.
 
 APPCODE     EQU   $7000             ; application code area
 APPDICT     EQU   $2000             ; application dictionary
@@ -6360,13 +6362,6 @@ DOSTR:      PULS  X
             RTS
 
 ; ------------------------------------------------------------
-; S"  ( "ccc<quote>" -- c-addr u )
-; Parse up to the closing quote. When compiling, compile DOSTR
-; followed by the counted string. When interpreting, copy the string
-; to PAD and return its address and length.
-; A 3-byte gap is reserved at CODEHERE while WORD parses, so that the
-; compiled JSR DOSTR does not overwrite the text being staged.
-; ------------------------------------------------------------
 ; Parse the text up to the next double quote for S", ." and ABORT".
 ; WORD cannot be used: it skips leading delimiters, so an empty string
 ; (S" ") ran on to the next quote in the source. PARSE does not skip.
@@ -6392,6 +6387,12 @@ PQLONG:     LDD   #-18
             PSHU  D
             JMP   THROWW
 
+; ------------------------------------------------------------
+; S"  ( "ccc<quote>" -- c-addr u )
+; Parse up to the closing quote (PARSEQUOTE). When compiling, compile
+; DOSTR followed by the counted string. When interpreting, copy the
+; string to PAD and return its address and length. An empty string is
+; valid. See shadow SQUOTEW.3.
 ; ------------------------------------------------------------
 SQUOTEW:    JSR   PARSEQUOTE        ; See bugfix: SQUOTEW.3
             LDD   STATE

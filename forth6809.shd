@@ -436,6 +436,14 @@ WORDMAXCHARS.1  [explanatory]  (lines 364-384 of the stage-3p file)
                                     ; 128-34-1-3 = 90.
 
 ================================================================
+WORDMAXCHARS.2  [comment fix (stage 5j)]
+----------------------------------------------------------------
+WORDMAXCHARS still subtracts the 3 bytes that S", ." and ABORT" used to reserve
+ahead of CODEHERE while WORD parsed. They now use PARSE (SQUOTEW.3) and no longer
+reserve them, so WORD could scan 3 more characters; the constant was left alone so
+the object code stays identical.
+
+================================================================
 MEMMAP.13  [history]  (lines 386-392 of the stage-3p file)
 ----------------------------------------------------------------
 APPCODE     EQU   $7000             ; was $5000 - back to its original address.
@@ -479,6 +487,22 @@ APPVARSEND  EQU   APPDICT-1         ; was APPVARS+8000 ($215B) - now derives
                                     ; again, unlike the previous fixed-size
                                     ; definition. VUNUSEDW (below) is unchanged -
                                     ; it already computed against APPVARSEND
+
+================================================================
+REPLACES.1  [design (stages 5f, 5g)]
+----------------------------------------------------------------
+REPLACES keeps a list of entries in SUBPOOL ($0200-$023F, 64 bytes), headed by
+SUBHEAD, next free byte SUBFREE (0 = pool start). Entry: link(2) nlen(1) vlen(1)
+vcap(1) name text, so 5 bytes plus the name and text. Redefining a name whose
+new text fits vcap is done in place; otherwise a new entry is added at the head
+(the old one is shadowed, its space is not reclaimed). Names are case sensitive.
+Name or text over 255 bytes THROWs -18; a full pool THROWs -8. Entries are not
+scoped by MARKER. CLR-REPLACES empties the table (CLRREPLACESW.1).
+
+History: stage 5f made the pool 512 bytes (APPVARS at $0400); stage 5g cut it to
+64 bytes, which holds three 8-character name and text pairs (21 bytes each) and
+is ample for the ANS tests (25 bytes). APPVARS is back at $0240. BASEDICT is
+$D498 (the BLANK and CLR-REPLACES headers moved it down from $D4B3).
 
 ================================================================
 MEMMAP.17  [history]  (lines 415-433 of the stage-3p file)
@@ -1637,6 +1661,12 @@ PUTXON.0  [explanatory]  (lines 4106-4121 of the stage-3f file)
 ; ------------------------------------------------------------
 
 ================================================================
+ACCEPTW.5  [stage 5e: static temporaries moved to the stacks]
+----------------------------------------------------------------
+ACCEPT keeps its count in a one-cell local at 0,U, below +n1 and c-addr, instead
+of the page-zero cells AMAX, ABUFP and ACNT. See DUMPW.5.
+
+================================================================
 CATCHW.2  [explanatory]  (lines 4313-4313 of the stage-3g file)
 ----------------------------------------------------------------
                                     ; may have legitimately changed it)
@@ -2211,11 +2241,19 @@ six-byte LEAU frame (candidate address, positions left, end of needle).
 .S and WORDS keep their walking pointer on the return stack, ROLL keeps the
 rolled cell there, and 2>R, 2R>, 2R@ use Y as the second register.
 
-Existing behaviour preserved, to be reviewed: when SEARCH finds a match it
+Existing behaviour preserved at the time (fixed in stage 5f, see SEARCHW.2): when SEARCH finds a match it
 returns u3 = u2 (the length of the NEEDLE), and TSTSEARCH1 expects exactly
 that. The standard says u3 is the length of the remaining HAYSTACK from the
 match (u1 minus the offset of the match). The new code returns the same as
 the old code.
+
+================================================================
+SEARCHW.2  [bugfix (stage 5f)]
+----------------------------------------------------------------
+SEARCH returned u3 = the needle length. The standard says c-addr3 u3 is the part of
+the haystack that starts at the match, so u3 = (c-addr1 + u1) - c-addr3. An empty
+needle matches at c-addr1 (flag true, originals returned). Found by the optional
+string word tests (27_optional_strings), which had the right expectations.
 
 ================================================================
 DUMPW.5  [stage 5e: static temporaries moved to the stacks]
@@ -2224,8 +2262,8 @@ Removed from page zero (44 bytes): DRWIDTH, DRLEN, DRADDR, DRPAD (.R, U.R,
 D.R), DUMPADDR, DUMPCNT, DUMPCOL, HEXBUF, DUVALID (DUMP), UEDST, UESRCLEN,
 UEOUTLEN (UNESCAPE), SUBDESTCAP, SUBDESTADR, SUBSRCADR, SUBSRCLEN, SUBOUTLEN,
 SUBWPTR, SUBCOPYCNT, SUBCOPYSRC (SUBSTITUTE and its SUBCOPY helper) and AMAX,
-ABUFP, ACNT (ACCEPT). REPLNAME/REPLNLEN/REPLVAL/REPLVLEN stay: REPLACES must
-remember its single registration between calls.
+ABUFP, ACNT (ACCEPT). REPLNAME/REPLNLEN/REPLVAL/REPLVLEN stayed at this stage;
+they were replaced by the SUBPOOL table in stage 5f (REPLACES.1).
 
 .R, U.R and D.R share the new helper RTYPE (width in D, string on the data
 stack), which replaces three copies of the padding loop. DUMP keeps u and
@@ -2266,6 +2304,11 @@ FILLW.1  [bugfix]  (lines 6930-6949 of the stage-3k file)
             PULU  D
             TFR   D,X               ; address, kept directly in X rather than
                                     ; round-tripping through FILLADDR too
+
+================================================================
+BLANKW.1  [new word (stage 5f)]
+----------------------------------------------------------------
+BLANK ( c-addr u -- ) is 32 FILL: it pushes 32 and jumps to FILLW.
 
 ================================================================
 SQUOTEW.1  [bugfix]  (lines 7105-7117 of the stage-3l file)
@@ -2313,6 +2356,18 @@ SQINTERP:                           ; REDESIGN: was a fixed "LDX #SIBUF" here an
                                     ; above the old 32-character SIBUF limit) -
                                     ; SIBUF itself is now unused and retired (see
                                     ; the GLOBALS layout notes above).
+
+================================================================
+SQUOTEW.3  [bugfix (stage 5i)]
+----------------------------------------------------------------
+S", ." and ABORT" parsed their string with WORD, which skips leading delimiters.
+For an empty string (S" " as in the ANS test s7) the closing quote was skipped and
+the parse ran on to the next quote in the source, usually on a later line, so the
+definition never ended. They now use PARSEQUOTE, built on PARSE (which does not
+skip). The outer interpreter has already consumed the single blank after S". The
+3-byte CODEHERE reserve (SQUOTEW.1, DOTQUOTEW.1, ABORTQUOTEW.1) is no longer
+needed because PARSE does not build its result at CODEHERE. A string over 255
+characters THROWs -18 (before, WORD truncated it at WORDMAXCHARS).
 
 ================================================================
 DOTQUOTEW.1  [bugfix]  (lines 7208-7211 of the stage-3l file)
@@ -2403,10 +2458,25 @@ UEDONE:     TFR   Y,D               ; BUG FIX: was "LDD UEOUTLEN / STD ,U" -
                                     ; incremented alongside it.
 
 ================================================================
+UNESCAPEW.5  [stage 5e: static temporaries moved to the stacks]
+----------------------------------------------------------------
+UNESCAPE leaves its parameters on the data stack (c-addr2 at 0, u1 at 2) and
+walks the source and destination in X and Y, instead of the page-zero cells
+UEDST, UESRCLEN and UEOUTLEN. See DUMPW.5.
+
+================================================================
 REPLACESW.0  [explanatory]  (lines 7624-7625 of the stage-3l file)
 ----------------------------------------------------------------
 ; REPLACES/SUBSTITUTE - single-slot simplified version, per
 ; the explicit scoping-down discussed in the source conversation
+
+================================================================
+CLRREPLACESW.1  [new word (stage 5h)]
+----------------------------------------------------------------
+CLR-REPLACES ( -- ) is a non-standard word that empties the REPLACES table by
+zeroing SUBHEAD and SUBFREE. The 64-byte pool never reclaims space (a longer
+redefinition leaves the old entry's bytes unused) and a full pool THROWs -8, so
+this is the recovery. COLD starts empty.
 
 ================================================================
 SUBCOPY.1  [explanatory]  (lines 7642-7642 of the stage-3l file)
@@ -2439,6 +2509,22 @@ SUBSTITUTEW:                        ; REWRITE: was a plain substring search-and-
             ; running substitution count, MSCR3/MSCR4 = local scratch
             ; per %-pair found. Reuses the existing COMPAREW for name
             ; matching rather than a new comparison loop.
+
+================================================================
+SUBSTITUTEW.5  [stage 5e: static temporaries moved to the stacks]
+----------------------------------------------------------------
+SUBSTITUTE builds a ten-byte frame below its four parameters: 0 read position,
+2 substitution count, 4 closing % position, 6 output length, 8 write pointer;
+then 10 u2 (capacity), 12 c-addr2, 14 u1, 16 c-addr1. SUBCOPY reaches it through U.
+This replaced SUBDESTCAP, SUBDESTADR, SUBSRCADR, SUBSRCLEN, SUBOUTLEN, SUBWPTR,
+SUBCOPYCNT and SUBCOPYSRC. See DUMPW.5.
+
+================================================================
+SUBSTITUTEW.6  [bugfix (stage 5f)]
+----------------------------------------------------------------
+Errors no longer THROW: they return c-addr2 u3 n with n negative (-18 output
+overflow, -9 source and destination are the same buffer), as the standard says.
+Names are looked up with SUBFIND, which walks the REPLACES list.
 
 ================================================================
 SIGNW.1  [bugfix]  (lines 7910-7930 of the stage-3m file)
@@ -2943,51 +3029,3 @@ VECTORS.1  [history]  (lines 8824-8824 of the stage-3o file)
 VECTOREND.1  [history]  (lines 8834-8834 of the stage-3o file)
 ----------------------------------------------------------------
 ; Verify vectors size, value should match $10.
-
-
-SEARCHW.2  [bugfix]  (stage 5f)
-SEARCH returned u3 = needle length. The standard says c-addr3 u3 is the part of
-the haystack that starts at the match, so u3 = (c-addr1 + u1) - c-addr3. An empty
-needle matches at c-addr1 (flag true, originals returned). Found by the optional
-string word tests (27_optional_strings), which had the right expectations.
-
-REPLACES.1  [design]  (stage 5f)
-REPLACES now keeps a list of entries in SUBPOOL ($0200-$03FF, 512 bytes), headed
-by SUBHEAD, next free byte SUBFREE (0 = pool start). Entry: link(2) nlen(1)
-vlen(1) vcap(1) name text. Redefining a name whose new text fits vcap is done in
-place; otherwise a new entry is added at the head (the old one is shadowed, its
-space is not reclaimed). Names are case sensitive. Name or text over 255 bytes
-THROWs -18; a full pool THROWs -8. Entries are not scoped by MARKER. APPVARS
-moved from $021B to $0400 and BASEDICT from $D4B3 to $D4A9 to make room.
-
-SUBSTITUTEW.6  [bugfix]  (stage 5f)
-Errors no longer THROW: they return c-addr2 u3 n with n negative (-18 output
-overflow, -9 source and destination are the same buffer), as the standard says.
-Names are looked up with SUBFIND, which walks the REPLACES list.
-
-BLANK.1  [new word]  (stage 5f)
-BLANK ( c-addr u -- ) is 32 FILL: it pushes 32 and jumps to FILLW.
-
-REPLACES.2  [design]  (stage 5g)
-SUBPOOL reduced from 512 to 64 bytes ($0200-$023F); APPVARS is back to $0240.
-Each entry costs 5 bytes plus name plus text, so 64 bytes holds three 8-character
-name and text pairs (21 bytes each). The ANS tests need 25 bytes. The unit tests
-that use REPLACES empty the pool first (SUBHEAD and SUBFREE cleared), since the
-pool is never reset within a boot.
-
-CLRREPLACESW.1  [new word]  (stage 5h)
-CLR-REPLACES ( -- ) is a non-standard word that empties the REPLACES table by
-zeroing SUBHEAD and SUBFREE. The 64-byte pool never reclaims space (a longer
-redefinition leaves the old entry's bytes unused) and a full pool THROWs -8, so
-this is the recovery. COLD starts empty. BASEDICT moved from $D4A9 to $D498 for
-the 17-byte header.
-
-SQUOTEW.3  [bugfix]  (stage 5i)
-S", ." and ABORT" parsed their string with WORD, which skips leading delimiters.
-For an empty string (S" " as in the ANS test s7) the closing quote was skipped and the
-parse ran on to the next quote in the source, usually on a later line, so the
-definition never ended. They now use PARSEQUOTE, built on PARSE (which does not
-skip). The outer interpreter has already consumed the single blank after S". The
-3-byte CODEHERE reserve (SQUOTEW.1, DOTQUOTEW.1, ABORTQUOTEW.1) is no longer
-needed because PARSE does not build its result at CODEHERE. A string over 255
-characters THROWs -18 (before, WORD truncated it at WORDMAXCHARS).
