@@ -186,7 +186,7 @@ TAGQDO      EQU   7                 ; ?DO marker. See bugfix: TAGQDO.1
 
 ; ============================================================
 ; GLOBALS - scratch and state cells in page zero (DP = $00, set in
-; COLDSTRT), laid out in RMB order. 127 of 256 bytes are used
+; COLDSTRT), laid out in RMB order. 96 of 256 bytes are used
 ; (GLOBALS_USED). Original comment: shadow GLOBALS.0.
 ; ============================================================
             ORG   $0000             ; GLOBALS page (DP = $00)
@@ -200,77 +200,59 @@ HANDLER     RMB   2                 ; offset $0C
 THROWN      RMB   2                 ; offset $0E
 TOIN        RMB   2                 ; offset $10
 NTIB        RMB   2                 ; offset $12
-DELIM       RMB   1                 ; offset $14
-WSTART      RMB   2                 ; offset $15
-SLEN        RMB   1                 ; offset $17
-SNAMEP      RMB   2                 ; offset $18
-FNDPTR      RMB   2                 ; offset $1A
-HDRPTR      RMB   2                 ; offset $1C
-HDRFLAGS    RMB   1                 ; offset $1E
-CADDR       RMB   2                 ; offset $1F
-CNTREM      RMB   1                 ; offset $21
-NUMNEG      RMB   1                 ; offset $22
-NADDR       RMB   2                 ; offset $23
-NCNT        RMB   2                 ; offset $25
-MULBASE     RMB   1                 ; offset $27
-CARRY       RMB   1                 ; offset $28
-MSCR        RMB   2                 ; offset $29 (shared: -, *, WITHIN...)
-MSCR2       RMB   2                 ; offset $2B
-MSCR3       RMB   2                 ; offset $2D
-MSCR4       RMB   2                 ; offset $2F
-HLD         RMB   2                 ; offset $31
-EMITCH      RMB   1                 ; offset $33
-NEWHDR      RMB   2                 ; offset $34
-; CURXT is an alias of NEWHDR (page zero is full): it holds the xt of
-; the word being compiled, for RECURSE. Original comment: shadow CURXT.1.
-CURXT       EQU   NEWHDR
-NAMEP       RMB   2                 ; offset $36
-NAMELEN     RMB   1                 ; offset $38
-PFIELD      RMB   2                 ; offset $39
-NEWFLD      RMB   2                 ; offset $3B
-CSP         RMB   2                 ; offset $3D
-EXITCNT     RMB   2                 ; offset $3F
-EXITPTR     RMB   2                 ; offset $41
-SCNT        RMB   2                 ; offset $43
-SPTR        RMB   2                 ; offset $45
-SAVEN       RMB   2                 ; offset $47
-PRODHI      RMB   2                 ; offset $49
-PRODLO      RMB   2                 ; offset $4B
-PSIGN       RMB   1                 ; offset $4D
-DIVNUM      RMB   2                 ; offset $4E
-DIVDEN      RMB   2                 ; offset $50
-DIVREM      RMB   2                 ; offset $52
-DIVCNT      RMB   1                 ; offset $54
-DNSIGN      RMB   1                 ; offset $55
-DVSIGN      RMB   1                 ; offset $56
-DVOWNSIGN   RMB   1                 ; offset $57
-MAHI        RMB   1                 ; offset $58
-MALO        RMB   1                 ; offset $59
-MBHI        RMB   1                 ; offset $5A
-MBLO        RMB   1                 ; offset $5B
-MSIGN       RMB   1                 ; offset $5C
-REM         RMB   2                 ; offset $5D
-DCNT        RMB   1                 ; offset $5F
-UDHI        RMB   2                 ; offset $60
-UDLO        RMB   2                 ; offset $62
-PRSIGN      RMB   1                 ; offset $64
-SHCNT       RMB   1                 ; offset $65
-PDELIM      RMB   1                 ; offset $66
-PSTART      RMB   2                 ; offset $67
-PLEN        RMB   2                 ; offset $69
-SNXT        RMB   2                 ; offset $6B
-SNTARGET    RMB   2                 ; offset $6D
-SRCADDR     RMB   2                 ; offset $6F
-SRCLEN      RMB   2                 ; offset $71
-SRCID       RMB   2                 ; offset $73
-SPAN        RMB   2                 ; offset $75
-ENVLEN      RMB   2                 ; offset $77
-ENVADDR     RMB   2                 ; offset $79
+SLEN        RMB   1                 ; offset $14
+SNAMEP      RMB   2                 ; offset $15
+FNDPTR      RMB   2                 ; offset $17
+HDRPTR      RMB   2                 ; offset $19
+HDRFLAGS    RMB   1                 ; offset $1B
+CADDR       RMB   2                 ; offset $1C
+CNTREM      RMB   1                 ; offset $1E
+NUMNEG      RMB   1                 ; offset $1F
+NADDR       RMB   2                 ; offset $20
+NCNT        RMB   2                 ; offset $22
+MULBASE     RMB   1                 ; offset $24
+CARRY       RMB   1                 ; offset $25
+MSCR        RMB   2                 ; offset $26 (shared: -, *, WITHIN...)
+MSCR2       RMB   2                 ; offset $28
+MSCR3       RMB   2                 ; offset $2A
+MSCR4       RMB   2                 ; offset $2C
+HLD         RMB   2                 ; offset $2E
+EMITCH      RMB   1                 ; offset $30
+; CURXT holds the xt of the word being compiled, for RECURSE.
+; Original comment: shadow CURXT.1.
+CURXT       RMB   2                 ; offset $31
+CSP         RMB   2                 ; offset $33
+SAVEN       RMB   2                 ; offset $35
+PRODHI      RMB   2                 ; offset $37
+PRODLO      RMB   2                 ; offset $39
+PSIGN       RMB   1                 ; offset $3B
+DIVNUM      RMB   2                 ; offset $3C
+DIVDEN      RMB   2                 ; offset $3E
+DIVREM      RMB   2                 ; offset $40
+DIVCNT      RMB   1                 ; offset $42
+DNSIGN      RMB   1                 ; offset $43
+DVSIGN      RMB   1                 ; offset $44
+DVOWNSIGN   RMB   1                 ; offset $45
+MAHI        RMB   1                 ; offset $46
+MALO        RMB   1                 ; offset $47
+MBHI        RMB   1                 ; offset $48
+MBLO        RMB   1                 ; offset $49
+MSIGN       RMB   1                 ; offset $4A
+REM         RMB   2                 ; offset $4B
+DCNT        RMB   1                 ; offset $4D
+UDHI        RMB   2                 ; offset $4E
+UDLO        RMB   2                 ; offset $50
+PRSIGN      RMB   1                 ; offset $52
+SHCNT       RMB   1                 ; offset $53
+SRCADDR     RMB   2                 ; offset $54
+SRCLEN      RMB   2                 ; offset $56
+SRCID       RMB   2                 ; offset $58
+SPAN        RMB   2                 ; offset $5A
 
-SUBHEAD     RMB   2                 ; offset $7B: newest REPLACES entry, 0 = none
-SUBFREE     RMB   2                 ; offset $7D: next free byte of SUBPOOL, 0 = empty
+SUBHEAD     RMB   2                 ; offset $5C: newest REPLACES entry, 0 = none
+SUBFREE     RMB   2                 ; offset $5E: next free byte of SUBPOOL, 0 = empty
 
-GLOBALS_USED EQU   127              ; bytes used, of 256 available
+GLOBALS_USED EQU   96               ; bytes used, of 256 available
 
 ; $0100-$0105 is unclaimed (was MVSCRATCH). See shadow MVSCRATCH.1
 
@@ -2449,44 +2431,36 @@ VUNUSEDW:   LDD   #APPVARSEND       ; See bugfix: VUNUSEDW.1
 ;        smudge-flag on the data stack (non-zero hides the new word)
 ;        name parsed from the input stream
 ;    Outputs:
-;        header built at DPHERE; LATEST and NEWHDR = address of the
-;        new header
+;        header built at DPHERE; LATEST = address of the new header
 ;    Registers: RegA, RegB, RegX, RegY and CC changed.
 ; ------------------------------------------------------------
 HEADER:     LDD   #32
             PSHU  D
             JSR   WORDW
             PULU  X                 ; c-addr of the name
-            LDA   ,X
-            STA   NAMELEN
-            LEAX  1,X
-            STX   NAMEP
-
-            PULU  D                 ; smudge flag
-            PSHS  B
-
-            LDD   DPHERE
-            STD   NEWHDR
-            LDX   DPHERE
-            LDA   NAMELEN
-            TST   ,S+               ; smudge flag
+            PULU  D                 ; smudge flag in B
+            LDA   ,X+               ; name length, X = name text
+            PSHS  A                 ; 2,S = length (5k: S-frame, no scratch)
+            TSTB
             BEQ   HDNOSM
             ORA   #$40
-HDNOSM:     STA   ,X+
-            LDY   NAMEP
-            LDB   NAMELEN
+HDNOSM:     LDY   DPHERE
+            PSHS  Y                 ; 0,S = address of the new header
+            STA   ,Y+
+            LDB   2,S
             BEQ   HDNONM
-HDCPY:      LDA   ,Y+
-            STA   ,X+
+HDCPY:      LDA   ,X+
+            STA   ,Y+
             DECB
             BNE   HDCPY
 HDNONM:     LDD   LATEST
-            STD   ,X++
+            STD   ,Y++
             LDD   CODEHERE
-            STD   ,X++
-            STX   DPHERE
-            LDD   NEWHDR
+            STD   ,Y++
+            STY   DPHERE
+            PULS  D
             STD   LATEST
+            LEAS  1,S
             RTS
 
 ; ============================================================
@@ -2982,10 +2956,11 @@ IDONE:      PULU  X                 ; c-addr from WORD (empty). See bugfix: INTE
 ; Skip leading delimiters, then parse text up to the next char from
 ; the input source. The text is stored as a counted string at
 ; CODEHERE, which is not advanced. An exhausted input gives a zero
-; count.
+; count. Its scratch lives in an S frame; see shadow WORDW.7.
 ; ------------------------------------------------------------
 WORDW:      PULU  D                 ; char
-            STB   DELIM
+            LEAS  -3,S              ; frame (5k): 0,S = delimiter,
+            STB   ,S                ; 1,S = start of the text
             LDD   TOIN
             LDX   SRCADDR
             LEAX  D,X
@@ -2997,19 +2972,19 @@ WORDW:      PULU  D                 ; char
 SKIPLP:     CMPY  #0
             BEQ   EMPTY
             LDA   ,X
-            CMPA  DELIM
+            CMPA  ,S
             BNE   STARTW
             LEAX  1,X
             LEAY  -1,Y
             BRA   SKIPLP
 
-STARTW:     STX   WSTART
+STARTW:     STX   1,S
             LDB   #0
 
 SCANLP:     CMPY  #0
             BEQ   ENDW
             LDA   ,X
-            CMPA  DELIM
+            CMPA  ,S
             BEQ   CONSUME
             CMPB  #WORDMAXCHARS     ; Length limit. See shadow: WORDW.2
             BEQ   ENDW
@@ -3029,18 +3004,20 @@ ENDW:       PSHS  B                 ; Save the count. See bugfix: WORDW.3
             LDX   CODEHERE          ; Result buffer; CODEHERE is not advanced.
                                     ; See shadow: WORDW.4
             STB   ,X+
-            LDY   WSTART
+            LDY   1,S
 COPYLP:     TSTB
             BEQ   COPYDONE
             LDA   ,Y+
             STA   ,X+
             DECB
             BRA   COPYLP
-COPYDONE:   LDX   CODEHERE          ; Result address (see WORDW.4)
+COPYDONE:   LEAS  3,S               ; drop the frame
+            LDX   CODEHERE          ; Result address (see WORDW.4)
             PSHU  X                 ; c-addr
             RTS
 
-EMPTY:      LDX   CODEHERE          ; Empty string at the result buffer
+EMPTY:      LEAS  3,S               ; drop the frame
+            LDX   CODEHERE          ; Empty string at the result buffer
             CLR   ,X
             PSHU  X                 ; c-addr
             RTS
@@ -3757,7 +3734,7 @@ ELSEW:      PULU  D
             BEQ   ELOK
             JSR   CFERR
 ELOK:       PULU  D                 ; orig1
-            STD   MSCR              ; See bugfix: ELSEW.1
+            PSHS  D                 ; See bugfix: ELSEW.1 (5k: kept on S)
             LDD   #BRANCH
             PSHU  D
             JSR   CCALL
@@ -3765,14 +3742,12 @@ ELOK:       PULU  D                 ; orig1
             PSHU  D
             JSR   CODECOMMA
             LDD   CODEHERE
-            SUBD  #2
-            STD   NEWFLD
-            LDD   CODEHERE
             PSHU  D
-            LDD   MSCR
+            PULS  D                 ; orig1
             PSHU  D
             JSR   PATCH
-            LDD   NEWFLD
+            LDD   CODEHERE
+            SUBD  #2
             PSHU  D                 ; orig2
             LDD   #TAGFWD
             PSHU  D
@@ -3807,11 +3782,7 @@ UNOK:       PULU  D                 ; dest
             JSR   CODECOMMA
             LDD   CODEHERE
             SUBD  #2
-            STD   PFIELD
-            PULU  D
-            PSHU  D
-            LDD   PFIELD
-            PSHU  D
+            PSHU  D                 ; location; the parked dest is beneath
             JSR   PATCH
             RTS
 
@@ -3833,11 +3804,7 @@ AGOK:       PULU  D                 ; dest
             JSR   CODECOMMA
             LDD   CODEHERE
             SUBD  #2
-            STD   PFIELD
-            PULU  D
-            PSHU  D
-            LDD   PFIELD
-            PSHU  D
+            PSHU  D                 ; location; the parked dest is beneath
             JSR   PATCH
             RTS
 
@@ -3870,7 +3837,7 @@ REPEATW:    PULU  D
             BEQ   RPOK1
             JSR   CFERR
 RPOK1:      PULU  X                 ; orig
-            STX   NEWFLD            ; save orig
+            PSHS  X                 ; 2,S = orig (5k: S-frame)
 
             ; Find the BEGIN frame, scanning past any open TAGFWD frames.
             ; See bugfix: REPEATW.1
@@ -3894,7 +3861,7 @@ RPSKIP:     LDD   MSCR4
             BRA   RPSCAN
 RPFOUND:    LDX   MSCR4             ; X = found BEGIN frame
             LDD   2,X               ; dest = BEGIN's address
-            STD   PFIELD            ; kept in PFIELD
+            PSHS  D                 ; 0,S = dest
 
             ; Close the gap: move the frames above the BEGIN frame down 4
             ; bytes, highest word first.
@@ -3923,19 +3890,18 @@ RPSHIFTDONE:
             LDD   #0
             PSHU  D
             JSR   CODECOMMA
-            LDD   CODEHERE
-            SUBD  #2
-            STD   MSCR3             ; MSCR3 = branch operand address
-            LDD   PFIELD            ; target = BEGIN's address
+            LDD   0,S               ; target = BEGIN's address
             PSHU  D
-            LDD   MSCR3             ; location = the operand just compiled
+            LDD   CODEHERE
+            SUBD  #2                ; location = the operand just compiled
             PSHU  D
             JSR   PATCH
             LDD   CODEHERE
             PSHU  D
-            LDD   NEWFLD
+            LDD   2,S               ; orig
             PSHU  D
             JSR   PATCH
+            LEAS  4,S               ; drop the frame
             RTS
 
 ; ------------------------------------------------------------
@@ -4032,11 +3998,7 @@ LOOPOK:     PULU  D                 ; dest
             JSR   CODECOMMA
             LDD   CODEHERE
             SUBD  #2
-            STD   PFIELD
-            PULU  D
-            PSHU  D
-            LDD   PFIELD
-            PSHU  D
+            PSHU  D                 ; location; the parked dest is beneath
             JSR   PATCH
 
             LDD   ,U
@@ -4100,11 +4062,7 @@ PLOOPOK:    PULU  D                 ; dest
             JSR   CODECOMMA
             LDD   CODEHERE
             SUBD  #2
-            STD   PFIELD
-            PULU  D
-            PSHU  D
-            LDD   PFIELD
-            PSHU  D
+            PSHU  D                 ; location; the parked dest is beneath
             JSR   PATCH
 
             LDD   ,U
@@ -4237,29 +4195,22 @@ UNLOOPW:    PULS  X
 ; found on the control-flow stack. The count is not used at run time.
 ; A loop must be left with UNLOOP before EXIT.
 ; ------------------------------------------------------------
-EXITW:      LDD   #0
-            STD   EXITCNT
-            TFR   U,D
-            STD   EXITPTR
-EXSCAN:     LDD   EXITPTR
-            CMPD  CSP
+EXITW:      LDY   #0                ; Y = count of DO frames (5k: no scratch)
+            TFR   U,X               ; X = scan pointer
+EXSCAN:     CMPX  CSP
             BEQ   EXSCANDONE
-            LDX   EXITPTR
             LDD   ,X
             CMPD  #TAGDO
             BNE   EXNOTDO
-            LDD   EXITCNT
-            ADDD  #1
-            STD   EXITCNT
-EXNOTDO:    LDD   EXITPTR
-            ADDD  #4
-            STD   EXITPTR
+            LEAY  1,Y
+EXNOTDO:    LEAX  4,X
             BRA   EXSCAN
 EXSCANDONE:
+            PSHS  Y                 ; the count survives CCALL on S
             LDD   #EXITUNLOOP
             PSHU  D
             JSR   CCALL
-            LDD   EXITCNT
+            PULS  D
             PSHU  D
             JSR   CODECOMMA
             RTS
@@ -4327,7 +4278,7 @@ ENDOFW:     PULU  D
             BEQ   EOFOK
             JSR   CFERR
 EOFOK:      PULU  D                 ; orig1
-            STD   MSCR              ; See bugfix: ENDOFW.1
+            PSHS  D                 ; See bugfix: ENDOFW.1 (5k: kept on S)
             LDD   #BRANCH
             PSHU  D
             JSR   CCALL
@@ -4335,14 +4286,12 @@ EOFOK:      PULU  D                 ; orig1
             PSHU  D
             JSR   CODECOMMA
             LDD   CODEHERE
-            SUBD  #2
-            STD   NEWFLD
-            LDD   CODEHERE
             PSHU  D
-            LDD   MSCR
+            PULS  D                 ; orig1
             PSHU  D
             JSR   PATCH
-            LDD   NEWFLD
+            LDD   CODEHERE
+            SUBD  #2
             PSHU  D                 ; orig2
             LDD   #TAGENDOF
             PSHU  D
@@ -4569,25 +4518,8 @@ SLITERALW:  LDD   STATE
             LDD   #-14
             PSHU  D
             JSR   THROWW
-SLSTOK:     PULU  D                 ; u
-            STD   SCNT
-            PULU  D                 ; c-addr
-            STD   SPTR
-            LDD   #DOSTR
-            PSHU  D
-            JSR   CCALL
-            LDX   CODEHERE
-            LDB   SCNT+1
-            STB   ,X+
-            LDY   SPTR
-            LDB   SCNT+1
-            BEQ   SLEND
-SLCPY:      LDA   ,Y+
-            STA   ,X+
-            DECB
-            BNE   SLCPY
-SLEND:      STX   CODEHERE
-            RTS
+SLSTOK:     LDD   #DOSTR
+            JMP   CSTRCOMP          ; compile DOSTR and the counted string
 
 ; ------------------------------------------------------------
 ; Run-time part of ABORT". The counted string follows the call. If
@@ -4599,30 +4531,22 @@ SLEND:      STX   CODEHERE
 ;        count byte
 ;    Outputs:
 ;        execution continues after the string, or THROW -2
-;    Registers: RegA, RegB, RegD, RegX changed; SPTR and SCNT used as
-;        scratch.
+;    Registers: RegA, RegB, RegD, RegX, RegY changed.
 ; ------------------------------------------------------------
 DOABORTQUOTE:
             PULS  X
             LDB   ,X
-            LEAX  1,X
-            STX   SPTR
+            LEAX  1,X               ; X = text, B = length
             CLRA
-            STD   SCNT
-            LDX   SPTR
-            LDB   SCNT+1
-            LEAX  B,X
-            PULU  D                 ; flag
-            CMPD  #0
+            PULU  Y                 ; flag
+            CMPY  #0
             BNE   AQTHROW
+            LEAX  B,X
             PSHS  X
             RTS
-AQTHROW:    LDD   SPTR
-            PSHU  D
-            LDD   SCNT
+AQTHROW:    PSHU  X
             PSHU  D
             JSR   TYPEW
-            PSHS  X
             LDD   #-2               ; -2
             PSHU  D
             JMP   THROWW
@@ -4640,20 +4564,7 @@ ABORTQUOTEW:
             JSR   THROWW
 AQSTOK:     JSR   PARSEQUOTE        ; See bugfix: SQUOTEW.3
             LDD   #DOABORTQUOTE
-            PSHU  D
-            JSR   CCALL
-            LDX   CODEHERE
-            LDA   SCNT
-            STA   ,X+
-            LDY   SPTR
-            LDB   SCNT
-            BEQ   AQEND
-AQCPY:      LDA   ,Y+
-            STA   ,X+
-            DECB
-            BNE   AQCPY
-AQEND:      STX   CODEHERE
-            RTS
+            JMP   CSTRCOMP
 
 ; ------------------------------------------------------------
 ; BL  ( -- char )
@@ -6369,23 +6280,44 @@ DOSTR:      PULS  X
 ;    Inputs:
 ;        none (parses from >IN)
 ;    Outputs:
-;        SCNT = length, SPTR = address of the text in the input buffer.
+;        c-addr u on the data stack: the text in the input buffer.
 ;        THROW -18 if the text is longer than 255 characters.
 ;    Registers: RegA, RegB, RegX, RegY changed.
 ; ------------------------------------------------------------
 PARSEQUOTE: LDD   #34
             PSHU  D
             JSR   PARSEW
-            PULU  D                 ; length
-            TSTA
+            TST   ,U                ; high byte of the length
             BNE   PQLONG
-            STB   SCNT
-            PULU  X
-            STX   SPTR
             RTS
 PQLONG:     LDD   #-18
             PSHU  D
             JMP   THROWW
+
+; ------------------------------------------------------------
+; Compile a call to a run-time word followed by a counted string.
+; CSTRCOMP   ( c-addr u -- )
+;    Inputs:
+;        RegD = xt of the run-time word (DOSTR, DOTSTR, DOABORTQUOTE)
+;        c-addr u on the data stack
+;    Outputs:
+;        JSR xt, the count byte and the text compiled at CODEHERE
+;    Registers: RegA, RegB, RegX, RegY changed.
+; ------------------------------------------------------------
+CSTRCOMP:   PSHU  D
+            JSR   CCALL
+            PULU  D                 ; u
+            PULU  Y                 ; c-addr
+            LDX   CODEHERE
+            STB   ,X+
+            TSTB
+            BEQ   CSEND
+CSCPY:      LDA   ,Y+
+            STA   ,X+
+            DECB
+            BNE   CSCPY
+CSEND:      STX   CODEHERE
+            RTS
 
 ; ------------------------------------------------------------
 ; S"  ( "ccc<quote>" -- c-addr u )
@@ -6397,42 +6329,25 @@ PQLONG:     LDD   #-18
 SQUOTEW:    JSR   PARSEQUOTE        ; See bugfix: SQUOTEW.3
             LDD   STATE
             BEQ   SQINTERP
-
             LDD   #DOSTR
-            PSHU  D
-            JSR   CCALL
-            LDX   CODEHERE
-            LDA   SCNT
-            STA   ,X+
-            LDY   SPTR
-            LDB   SCNT
-            BEQ   SQEND
-SQCPY:      LDA   ,Y+
-            STA   ,X+
-            DECB
-            BNE   SQCPY
-SQEND:      STX   CODEHERE
-            RTS
+            JMP   CSTRCOMP
 
             ; Interpreting: copy the string to PAD. Original comment: shadow
             ; SQUOTEW.2.
 SQINTERP:
             JSR   PADW
-            PULU  X
-            STX   MSCR4             ; save PAD address
-            LDY   SPTR
-            LDB   SCNT
+            PULU  X                 ; PAD
+            PULU  D                 ; u
+            PULU  Y                 ; c-addr
+            PSHU  X                 ; result c-addr
+            PSHU  D                 ; result u
+            TSTB
             BEQ   SQIEND
 SQICPY:     LDA   ,Y+
             STA   ,X+
             DECB
             BNE   SQICPY
-SQIEND:     LDX   MSCR4
-            PSHU  X
-            CLRA
-            LDB   SCNT
-            PSHU  D
-            RTS
+SQIEND:     RTS
 
 ; ------------------------------------------------------------
 ; Run-time part of ."  The counted string follows the call: TYPE it
@@ -6442,23 +6357,17 @@ SQIEND:     LDX   MSCR4
 ;        return address on S points at the count byte
 ;    Outputs:
 ;        string displayed; execution resumes after the string
-;    Registers: RegB, RegD and RegX changed; SPTR and SCNT used as
-;        scratch.
+;    Registers: RegB, RegD and RegX changed.
 ; ------------------------------------------------------------
 DOTSTR:     PULS  X
             LDB   ,X
             LEAX  1,X
-            STX   SPTR
+            PSHU  X
             CLRA
-            STD   SCNT
+            PSHU  D
             LEAX  B,X
             PSHS  X
-            LDX   SPTR
-            PSHU  X
-            LDD   SCNT
-            PSHU  D
-            JSR   TYPEW
-            RTS
+            JMP   TYPEW
 
 ; ------------------------------------------------------------
 ; ."  ( "ccc<quote>" -- )
@@ -6467,20 +6376,7 @@ DOTSTR:     PULS  X
 ; ------------------------------------------------------------
 DOTQUOTEW:  JSR   PARSEQUOTE        ; See bugfix: SQUOTEW.3
             LDD   #DOTSTR
-            PSHU  D
-            JSR   CCALL
-            LDX   CODEHERE
-            LDA   SCNT
-            STA   ,X+
-            LDY   SPTR
-            LDB   SCNT
-            BEQ   DQEND
-DQCPY:      LDA   ,Y+
-            STA   ,X+
-            DECB
-            BNE   DQCPY
-DQEND:      STX   CODEHERE
-            RTS
+            JMP   CSTRCOMP
 
 ; ------------------------------------------------------------
 ; TYPE  ( c-addr u -- )
@@ -6556,38 +6452,38 @@ BCSTOK:     LDD   #32
 ; as an exhausted input (empty result).
 ; ------------------------------------------------------------
 PARSEW:     PULU  D                 ; char
-            STB   PDELIM
+            PSHS  B                 ; 0,S = delimiter (5k: no scratch cells)
+            LDD   SRCLEN
+            SUBD  TOIN
+            LBLO  PEMP              ; See bugfix: PARSEW.1
+            TFR   D,Y
             LDD   TOIN
             LDX   SRCADDR
             LEAX  D,X
-            STX   PSTART
-            LDD   SRCLEN
-            SUBD  TOIN
-            LBLO  PNEMPTY           ; See bugfix: PARSEW.1
-            TFR   D,Y
-            LDD   #0
-            STD   PLEN
+            PSHU  X                 ; c-addr result; u is computed at the end
 PSCAN:      CMPY  #0
             BEQ   PDONE
             LDA   ,X
-            CMPA  PDELIM
+            CMPA  ,S
             BEQ   PFOUND
             LEAX  1,X
             LEAY  -1,Y
-            LDD   PLEN
-            ADDD  #1
-            STD   PLEN
             BRA   PSCAN
-PFOUND:     LEAX  1,X
-            LEAY  -1,Y
+PFOUND:     TFR   X,D
+            SUBD  ,U                ; length excludes the delimiter
+            PSHU  D
+            LEAX  1,X               ; consume the delimiter
+            BRA   PFIN
 PDONE:      TFR   X,D
+            SUBD  ,U
+            PSHU  D
+PFIN:       TFR   X,D
             SUBD  SRCADDR
             STD   TOIN
-            LDX   PSTART
-            PSHU  X
-            LDD   PLEN
-            PSHU  D
+            LEAS  1,S
             RTS
+PEMP:       LEAS  1,S
+            LBRA  PNEMPTY
 
 ; ------------------------------------------------------------
 ; PARSE-NAME  ( "<spaces>name<space>" -- c-addr u )
@@ -6609,9 +6505,7 @@ PNSKIP:     CMPY  #0
             LEAX  1,X
             LEAY  -1,Y
             BRA   PNSKIP
-PNSTART:    STX   PSTART
-            LDD   #0
-            STD   PLEN
+PNSTART:    PSHU  X                 ; c-addr result
 PNSCAN:     CMPY  #0
             BEQ   PNDONE
             LDA   ,X
@@ -6619,19 +6513,18 @@ PNSCAN:     CMPY  #0
             BEQ   PNFOUND
             LEAX  1,X
             LEAY  -1,Y
-            LDD   PLEN
-            ADDD  #1
-            STD   PLEN
             BRA   PNSCAN
-PNFOUND:    LEAX  1,X
-            LEAY  -1,Y
+PNFOUND:    TFR   X,D
+            SUBD  ,U
+            PSHU  D
+            LEAX  1,X
+            BRA   PNFIN
 PNDONE:     TFR   X,D
+            SUBD  ,U
+            PSHU  D
+PNFIN:      TFR   X,D
             SUBD  SRCADDR
             STD   TOIN
-            LDX   PSTART
-            PSHU  X
-            LDD   PLEN
-            PSHU  D
             RTS
 PNEMPTY:    LDD   SRCLEN
             LDX   SRCADDR
@@ -6664,22 +6557,18 @@ SLASHSTRINGW:
 ; Reduce the length to exclude trailing blanks.
 ; ------------------------------------------------------------
 DASHTRAILINGW:
-            LDD   ,U
-            STD   PLEN
-DTLOOP:     LDD   PLEN
-            BEQ   DTDONE
+            LDY   ,U
             LDX   2,U
-            LEAX  D,X
-            LEAX  -1,X
-            LDA   ,X
+            TFR   Y,D
+            LEAX  D,X               ; X = end of the string
+DTLOOP:     CMPY  #0
+            BEQ   DTDONE
+            LDA   ,-X
             CMPA  #32
             BNE   DTDONE
-            LDD   PLEN
-            SUBD  #1
-            STD   PLEN
+            LEAY  -1,Y
             BRA   DTLOOP
-DTDONE:     LDD   PLEN
-            STD   ,U
+DTDONE:     STY   ,U
             RTS
 
 ; ------------------------------------------------------------
@@ -6775,43 +6664,25 @@ SNOMATCH:   LDX   ,U
 ; Find the name of the word whose xt is given by searching the
 ; dictionary from LATEST. Return the name or two zeros if not found.
 ; ------------------------------------------------------------
-SNAMEW:     PULU  D                 ; xt
-            STD   SNTARGET
-            LDD   LATEST
-            STD   SNXT
-SNLOOP:     LDD   SNXT
+SNAMEW:     PULU  Y                 ; xt (5k: Y = target, X = header, no scratch)
+            LDX   LATEST
+SNLOOP:     CMPX  #0
             BEQ   SNNOTFOUND
-            LDX   SNXT
-            LDA   ,X
-            STA   HDRFLAGS
-            LEAX  1,X
-            LDB   HDRFLAGS
-            ANDB  #$1F
+            LDB   ,X
+            ANDB  #$1F              ; name length
             CLRA
-            LEAX  D,X
-            LEAX  2,X
-            LDD   ,X
-            CMPD  SNTARGET
+            LEAX  D,X               ; X = header + length
+            CMPY  3,X               ; CFA field follows the name and link
             BEQ   SNFOUND
-            LDX   SNXT
-            LEAX  1,X
-            LDB   HDRFLAGS
-            ANDB  #$1F
-            CLRA
-            LEAX  D,X
-            LDD   ,X
-            STD   SNXT
+            LDX   1,X               ; LINK field
             BRA   SNLOOP
-SNFOUND:    LDX   SNXT
-            LEAX  1,X
-            PSHU  X
-            LDX   SNXT
-            LDA   ,X
-            ANDA  #$1F
-            CLRB
-            TFR   A,B
-            CLRA
+SNFOUND:    TFR   D,Y               ; Y = length
+            TFR   X,D
+            PSHS  Y
+            SUBD  ,S++              ; header
+            ADDD  #1                ; name address
             PSHU  D
+            PSHU  Y
             RTS
 SNNOTFOUND: LDD   #0
             PSHU  D
@@ -7639,20 +7510,20 @@ EVALUATEW:  LDD   SRCADDR           ; save the input source on S
 ; Original comment: shadow ENVQW.0.
 ; ------------------------------------------------------------
 ENVQW:      PULU  D                 ; u
-            STD   ENVLEN
+            PSHS  D                 ; frame: 2,S = u, 0,S = c-addr (5k)
             PULU  D                 ; c-addr
-            STD   ENVADDR
+            PSHS  D
             LDX   #ENVTABLE
 ENVLOOP:    LDD   ,X
             CMPD  #0
             BEQ   ENV2START         ; end of table: try ENVTABLE2
-            PSHS  X                 ; See bugfix: ENVQW.2
+            PSHS  X                 ; See bugfix: ENVQW.2 (frame now +2)
             PSHU  D
             LDD   2,X
             PSHU  D
-            LDD   ENVADDR
+            LDD   2,S               ; c-addr
             PSHU  D
-            LDD   ENVLEN
+            LDD   4,S               ; u
             PSHU  D
             JSR   COMPAREW
             PULS  X                 ; restore X before using it again
@@ -7661,7 +7532,8 @@ ENVLOOP:    LDD   ,X
             BEQ   ENVFOUND
             LEAX  6,X
             BRA   ENVLOOP
-ENVFOUND:   LDD   4,X
+ENVFOUND:   LEAS  4,S               ; drop frame
+            LDD   4,X
             PSHU  D
             LDD   #TRUEV
             PSHU  D
@@ -7675,9 +7547,9 @@ ENV2LOOP:   LDD   ,X
             PSHU  D
             LDD   2,X
             PSHU  D
-            LDD   ENVADDR
+            LDD   2,S               ; c-addr
             PSHU  D
-            LDD   ENVLEN
+            LDD   4,S               ; u
             PSHU  D
             JSR   COMPAREW
             PULS  X
@@ -7686,7 +7558,8 @@ ENV2LOOP:   LDD   ,X
             BEQ   ENV2FOUND
             LEAX  8,X               ; 8-byte entries
             BRA   ENV2LOOP
-ENV2FOUND:  LDD   4,X               ; low cell, pushed first
+ENV2FOUND:  LEAS  4,S               ; drop frame
+            LDD   4,X               ; low cell, pushed first
             PSHU  D
             LDD   6,X               ; high cell - pushed second/top
             PSHU  D
@@ -7695,6 +7568,7 @@ ENV2FOUND:  LDD   4,X               ; low cell, pushed first
             RTS
 
 ENVNOTFOUND:
+            LEAS  4,S               ; drop frame
             LDD   #FALSEV
             PSHU  D
             RTS

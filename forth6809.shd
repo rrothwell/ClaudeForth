@@ -1458,6 +1458,32 @@ WORDW.4  [explanatory]  (lines 3694-3700 of the stage-3e file)
                                     ; whatever gets compiled/allocated next.
 
 ================================================================
+WORDW.7  [history (stage 5k)]
+----------------------------------------------------------------
+Stage 5k removed 31 bytes of page-zero scratch (127 -> 96 bytes used) and 219
+bytes of code. The cells DELIM, WSTART, PDELIM, PSTART, PLEN, NEWHDR, NAMEP,
+NAMELEN, SCNT, SPTR, SNXT, SNTARGET, ENVLEN, ENVADDR, PFIELD, NEWFLD, EXITCNT
+and EXITPTR were all used inside a single routine (never across a call that
+could be re-entered), so they became registers or short S-frames:
+  WORD         S frame: 0,S = delimiter, 1,S = start of the text.
+  PARSE, PARSE-NAME   the start address is pushed on U as the result c-addr and
+               the length is X - start, so no cell is needed.
+  -TRAILING    Y = remaining count, X walks back from the end.
+  HEADER       S frame: header address and name length.
+  SNAME        Y = target xt, X = header being tested.
+  ENVIRONMENT? S frame holding c-addr and u.
+  ELSE, ENDOF  orig1 is parked on S; orig2 is CODEHERE-2 after PATCH.
+  UNTIL, AGAIN, LOOP, +LOOP   the parked dest already sits under the operand
+               address, so PATCH is called directly.
+  REPEAT       S frame: orig and dest.
+  EXIT         Y counts the DO frames, X scans the control-flow stack.
+  S" family    PARSEQUOTE leaves c-addr u on U; CSTRCOMP compiles the call and
+               the counted string for S", ."  ABORT" and SLITERAL.
+CURXT used to be an alias of NEWHDR; it is now a cell of its own, since it
+holds real state (the xt being compiled, for RECURSE). S frames survive THROW
+because CATCH and THROW restore S.
+
+================================================================
 NUMBERQ.1  [explanatory]  (lines 3875-3887 of the stage-3e file)
 ----------------------------------------------------------------
             ; NEW: ANS double-number input convention (forth-standard.org/
