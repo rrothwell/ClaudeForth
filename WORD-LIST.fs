@@ -3,6 +3,7 @@
 \ ie: a counted string of the last word defined in the wordlist.
 
 
+HERE
 DECIMAL
 CREATE #ORDER  1 ,  \ No. of active wordlists starts at 1
 VARIABLE WID-LINK   \ Pointer to the most recently defined wordlist
@@ -110,3 +111,6 @@ ONLY FORTH DEFINITIONS
 ;
 
  INIT-WORDLISTS
+
+CR HERE SWAP - DECIMAL SPACE . .( bytes)
+HEX
