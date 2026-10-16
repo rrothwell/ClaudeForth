@@ -21,7 +21,7 @@ VARIABLE START-DEPTH
 : ERROR ERROR-XT @ EXECUTE ; 
 
 
-\ Empty stack; handles underflowed stack too.
+\ Empty the stack; handles underflowed stack too.
 : EMPTY-STACK \ ( ... -- ) 
     DEPTH START-DEPTH @ < 
     IF
@@ -91,4 +91,32 @@ EMPTY-STACK \ throw away everything else
         1 FAILCOUNT +!
         S" WRONG NUMBER OF RESULTS: " ERROR
     THEN
+;
+
+
+\ Test SUMMARY
+
+VARIABLE TEST-DEPTH
+
+: TEST-BEGIN ( -- )
+    0 TESTCOUNT ! 0 FAILCOUNT !
+    DEPTH TEST-DEPTH !
+;
+       
+: TEST-END ( -- )
+    BASE @ >R DECIMAL
+    CR ." TEST SUMMARY: " TESTCOUNT @ . ." run, "
+    FAILCOUNT @ . ." failed" CR
+    DEPTH TEST-DEPTH @ > 
+    IF
+        ." STACK IMBALANCE: " DEPTH TEST-DEPTH @ - .
+        ." extra cell(s) dropped" CR
+        DEPTH TEST-DEPTH @ DO DROP LOOP
+    THEN
+    DEPTH TEST-DEPTH @ < 
+    IF
+        ." STACK IMBALANCE: " TEST-DEPTH @ DEPTH - .
+        ." cell(s) missing" CR
+    THEN
+    R> BASE ! 
 ;

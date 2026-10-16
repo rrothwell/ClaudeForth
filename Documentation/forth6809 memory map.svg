@@ -30,21 +30,21 @@
   <text x="40" y="132" font-size="10.5" fill="#8A7245">BASECODE end differs by serial build: polled (SERIALPOLL=1, default) / interrupt-driven (SERIALPOLL=0)</text>
 
   <!-- ruler -->
-  <line x1="60" y1="158.0" x2="60" y2="1182.5" stroke="#5A4526" stroke-width="1.5"/>
+  <line x1="60" y1="158.0" x2="60" y2="1182.2" stroke="#5A4526" stroke-width="1.5"/>
     <line x1="55" y1="158.0" x2="65" y2="158.0" stroke="#D6923A" stroke-width="1.5"/>
     <text x="50" y="158.0" font-family="'JetBrains Mono','Courier New',monospace" font-size="10.5"
           fill="#D6923A" text-anchor="end" dominant-baseline="middle">$FFFF</text>
-    <line x1="55" y1="696.6" x2="65" y2="696.6" stroke="#D6923A" stroke-width="1.5"/>
-    <text x="50" y="696.6" font-family="'JetBrains Mono','Courier New',monospace" font-size="10.5"
+    <line x1="55" y1="696.3" x2="65" y2="696.3" stroke="#D6923A" stroke-width="1.5"/>
+    <text x="50" y="696.3" font-family="'JetBrains Mono','Courier New',monospace" font-size="10.5"
           fill="#D6923A" text-anchor="end" dominant-baseline="middle">$8000</text>
-    <line x1="55" y1="769.5" x2="65" y2="769.5" stroke="#D6923A" stroke-width="1.5"/>
-    <text x="50" y="769.5" font-family="'JetBrains Mono','Courier New',monospace" font-size="10.5"
+    <line x1="55" y1="769.2" x2="65" y2="769.2" stroke="#D6923A" stroke-width="1.5"/>
+    <text x="50" y="769.2" font-family="'JetBrains Mono','Courier New',monospace" font-size="10.5"
           fill="#D6923A" text-anchor="end" dominant-baseline="middle">$4000</text>
-    <line x1="55" y1="847.9" x2="65" y2="847.9" stroke="#D6923A" stroke-width="1.5"/>
-    <text x="50" y="847.9" font-family="'JetBrains Mono','Courier New',monospace" font-size="10.5"
+    <line x1="55" y1="847.6" x2="65" y2="847.6" stroke="#D6923A" stroke-width="1.5"/>
+    <text x="50" y="847.6" font-family="'JetBrains Mono','Courier New',monospace" font-size="10.5"
           fill="#D6923A" text-anchor="end" dominant-baseline="middle">$1000</text>
-    <line x1="55" y1="1182.5" x2="65" y2="1182.5" stroke="#D6923A" stroke-width="1.5"/>
-    <text x="50" y="1182.5" font-family="'JetBrains Mono','Courier New',monospace" font-size="10.5"
+    <line x1="55" y1="1182.2" x2="65" y2="1182.2" stroke="#D6923A" stroke-width="1.5"/>
+    <text x="50" y="1182.2" font-family="'JetBrains Mono','Courier New',monospace" font-size="10.5"
           fill="#D6923A" text-anchor="end" dominant-baseline="middle">$0000</text>
 
   <!-- region blocks -->
@@ -67,161 +67,161 @@
             font-size="11" fill="#D6923A" text-anchor="end" dominant-baseline="middle" font-weight="600">$FFA4–$FFEB</text>
     </g>
     <g>
-      <rect x="150" y="229.5" width="560" height="75.3" rx="3"
+      <rect x="150" y="229.5" width="560" height="75.0" rx="3"
             fill="#3A2A12" stroke="#D6923A" stroke-width="1.2" opacity="0.92"/>
-      <text x="164" y="261.1" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="261.0" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="12.5" font-weight="700" fill="#F5D9A3" dominant-baseline="middle">BASECODE</text>
-      <text x="164" y="285.9" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">ROM primitives + system words</text>
-      <text x="700" y="261.1" font-family="'JetBrains Mono','Courier New',monospace"
-            font-size="11" fill="#D6923A" text-anchor="end" dominant-baseline="middle" font-weight="600">$DCC4–$FD14 polled</text>
-      <text x="700" y="285.9" font-family="'JetBrains Mono','Courier New',monospace"
-            font-size="11" fill="#D6923A" text-anchor="end" dominant-baseline="middle" font-weight="600">$DCC4–$FE53 interrupt</text>
+      <text x="164" y="285.7" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">ROM primitives + system words</text>
+      <text x="700" y="261.0" font-family="'JetBrains Mono','Courier New',monospace"
+            font-size="11" fill="#D6923A" text-anchor="end" dominant-baseline="middle" font-weight="600">$DCC4–$FBDE polled</text>
+      <text x="700" y="285.7" font-family="'JetBrains Mono','Courier New',monospace"
+            font-size="11" fill="#D6923A" text-anchor="end" dominant-baseline="middle" font-weight="600">$DCC4–$FD1D interrupt</text>
     </g>
     <g>
-      <rect x="150" y="310.3" width="560" height="63.8" rx="3"
+      <rect x="150" y="310.0" width="560" height="63.8" rx="3"
             fill="#3A2A12" stroke="#D6923A" stroke-width="1.2" opacity="0.92"/>
-      <text x="164" y="337.1" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="336.8" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="12.5" font-weight="700" fill="#F5D9A3" dominant-baseline="middle">BASEDICT</text>
-      <text x="164" y="358.1" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">ROM dictionary headers</text>
-      <text x="700" y="337.1" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="357.8" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">ROM dictionary headers</text>
+      <text x="700" y="336.8" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="11" fill="#D6923A" text-anchor="end" dominant-baseline="middle" font-weight="600">$D498–$DCC3</text>
     </g>
     <g>
-      <rect x="150" y="379.6" width="560" height="70.9" rx="3"
+      <rect x="150" y="379.3" width="560" height="70.9" rx="3"
             fill="#232320" stroke="#6B6B60" stroke-width="1.2" opacity="0.92" stroke-dasharray="4,2"/>
-      <text x="164" y="409.4" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="409.1" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="12.5" font-weight="700" fill="#F5D9A3" dominant-baseline="middle">(unused)</text>
-      <text x="164" y="432.8" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">spare ROM — INOUT shadow to BASEDICT</text>
-      <text x="700" y="409.4" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="432.5" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">spare ROM — INOUT shadow to BASEDICT</text>
+      <text x="700" y="409.1" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="11" fill="#6B6B60" text-anchor="end" dominant-baseline="middle" font-weight="600">$C100–$D497</text>
     </g>
     <g>
-      <rect x="150" y="456.0" width="560" height="46.7" rx="3"
+      <rect x="150" y="455.7" width="560" height="46.7" rx="3"
             fill="#3A1717" stroke="#D9584A" stroke-width="1.2" opacity="0.92"/>
-      <text x="164" y="475.6" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="475.3" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="12.5" font-weight="700" fill="#F5D9A3" dominant-baseline="middle">INOUT</text>
-      <text x="164" y="491.1" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">I/O block — ACIA regs at INOUT+8</text>
-      <text x="700" y="475.6" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="490.8" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">I/O block — ACIA regs at INOUT+8</text>
+      <text x="700" y="475.3" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="11" fill="#D9584A" text-anchor="end" dominant-baseline="middle" font-weight="600">$C000–$C0FF</text>
     </g>
     <g>
-      <rect x="150" y="508.2" width="560" height="55.6" rx="3"
+      <rect x="150" y="507.9" width="560" height="55.6" rx="3"
             fill="#132A3D" stroke="#5AA8DE" stroke-width="1.2" opacity="0.92"/>
-      <text x="164" y="531.6" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="531.3" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="12.5" font-weight="700" fill="#F5D9A3" dominant-baseline="middle">RSTACK</text>
-      <text x="164" y="550.0" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">return stack (S) — grows down</text>
-      <text x="700" y="531.6" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="549.7" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">return stack (S) — grows down</text>
+      <text x="700" y="531.3" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="11" fill="#5AA8DE" text-anchor="end" dominant-baseline="middle" font-weight="600">$BD00–$BFFF</text>
     </g>
     <g>
-      <rect x="150" y="569.4" width="560" height="58.0" rx="3"
+      <rect x="150" y="569.1" width="560" height="58.0" rx="3"
             fill="#132A3D" stroke="#5AA8DE" stroke-width="1.2" opacity="0.92"/>
-      <text x="164" y="593.7" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="593.4" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="12.5" font-weight="700" fill="#F5D9A3" dominant-baseline="middle">DSTACK</text>
-      <text x="164" y="612.9" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">data stack (U) — grows down</text>
-      <text x="700" y="593.7" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="612.6" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">data stack (U) — grows down</text>
+      <text x="700" y="593.4" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="11" fill="#5AA8DE" text-anchor="end" dominant-baseline="middle" font-weight="600">$B900–$BCFF</text>
     </g>
     <g>
-      <rect x="150" y="632.9" width="560" height="81.7" rx="3"
+      <rect x="150" y="632.6" width="560" height="81.7" rx="3"
             fill="#12341D" stroke="#4FCB7E" stroke-width="1.2" opacity="0.92"/>
-      <text x="164" y="667.2" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="666.9" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="12.5" font-weight="700" fill="#F5D9A3" dominant-baseline="middle">APPCODE</text>
-      <text x="164" y="694.1" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">application code (CODEHERE)</text>
-      <text x="700" y="667.2" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="693.8" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">application code (CODEHERE)</text>
+      <text x="700" y="666.9" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="11" fill="#4FCB7E" text-anchor="end" dominant-baseline="middle" font-weight="600">$7000–$B8FF</text>
-      <rect x="470.0" y="694.5" width="230" height="14.0" rx="2"
+      <rect x="470.0" y="694.2" width="230" height="14.0" rx="2"
             fill="none" stroke="#7ADE7A" stroke-width="1" stroke-dasharray="3,2" opacity="0.85"/>
-      <text x="585.0" y="701.5" font-size="8" fill="#9BEFAF"
+      <text x="585.0" y="701.2" font-size="8" fill="#9BEFAF"
             text-anchor="middle" dominant-baseline="middle">Transient (floating, 128 B above CODEHERE)</text>
     </g>
     <g>
-      <rect x="150" y="720.0" width="560" height="82.4" rx="3"
+      <rect x="150" y="719.7" width="560" height="82.4" rx="3"
             fill="#12341D" stroke="#4FCB7E" stroke-width="1.2" opacity="0.92"/>
-      <text x="164" y="754.6" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="754.3" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="12.5" font-weight="700" fill="#F5D9A3" dominant-baseline="middle">APPDICT</text>
-      <text x="164" y="781.8" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">application dictionary (DPHERE)</text>
-      <text x="700" y="754.6" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="781.5" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">application dictionary (DPHERE)</text>
+      <text x="700" y="754.3" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="11" fill="#4FCB7E" text-anchor="end" dominant-baseline="middle" font-weight="600">$2000–$6FFF</text>
     </g>
     <g>
-      <rect x="150" y="807.9" width="560" height="74.3" rx="3"
+      <rect x="150" y="807.6" width="560" height="74.3" rx="3"
             fill="#1E3D1E" stroke="#7ADE7A" stroke-width="1.2" opacity="0.92"/>
-      <text x="164" y="839.2" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="838.9" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="12.5" font-weight="700" fill="#F5D9A3" dominant-baseline="middle">APPVARS</text>
-      <text x="164" y="863.7" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">mutable var space (VARHERE)</text>
-      <text x="700" y="839.2" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="863.4" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">mutable var space (VARHERE)</text>
+      <text x="700" y="838.9" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="11" fill="#7ADE7A" text-anchor="end" dominant-baseline="middle" font-weight="600">$0240–$1FFF</text>
     </g>
     <g>
-      <rect x="150" y="887.8" width="560" height="35.4" rx="3"
+      <rect x="150" y="887.5" width="560" height="35.4" rx="3"
             fill="#2C1A3D" stroke="#B26AE0" stroke-width="1.2" opacity="0.92"/>
-      <text x="164" y="902.6" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="902.3" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="12.5" font-weight="700" fill="#F5D9A3" dominant-baseline="middle">SUBPOOL</text>
-      <text x="164" y="914.3" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">REPLACES substitution table (64 bytes)</text>
-      <text x="700" y="902.6" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="914.0" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">REPLACES substitution table (64 bytes)</text>
+      <text x="700" y="902.3" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="11" fill="#B26AE0" text-anchor="end" dominant-baseline="middle" font-weight="600">$0200–$023F</text>
     </g>
     <g>
-      <rect x="150" y="928.7" width="560" height="35.4" rx="3"
+      <rect x="150" y="928.4" width="560" height="35.4" rx="3"
             fill="#3A1717" stroke="#D9584A" stroke-width="1.2" opacity="0.92"/>
-      <text x="164" y="943.5" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="943.2" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="12.5" font-weight="700" fill="#F5D9A3" dominant-baseline="middle">OUTBUF</text>
-      <text x="164" y="955.2" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">output ring buffer (interrupt build)</text>
-      <text x="700" y="943.5" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="954.9" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">output ring buffer (interrupt build)</text>
+      <text x="700" y="943.2" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="11" fill="#D9584A" text-anchor="end" dominant-baseline="middle" font-weight="600">$01C0–$01FF</text>
     </g>
     <g>
-      <rect x="150" y="969.6" width="560" height="35.4" rx="3"
+      <rect x="150" y="969.3" width="560" height="35.4" rx="3"
             fill="#3A1717" stroke="#D9584A" stroke-width="1.2" opacity="0.92"/>
-      <text x="164" y="984.4" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="984.1" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="12.5" font-weight="700" fill="#F5D9A3" dominant-baseline="middle">INBUF</text>
-      <text x="164" y="996.1" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">input ring buffer (interrupt build)</text>
-      <text x="700" y="984.4" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="995.8" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">input ring buffer (interrupt build)</text>
+      <text x="700" y="984.1" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="11" fill="#D9584A" text-anchor="end" dominant-baseline="middle" font-weight="600">$0180–$01BF</text>
     </g>
     <g>
-      <rect x="150" y="1010.5" width="560" height="20.3" rx="3"
+      <rect x="150" y="1010.2" width="560" height="20.3" rx="3"
             fill="#3A1717" stroke="#D9584A" stroke-width="1.2" opacity="0.92"/>
-      <text x="164" y="1020.6" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="1020.3" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="12.5" font-weight="700" fill="#F5D9A3" dominant-baseline="middle">SERBUFCTL</text>
-      <text x="290" y="1020.6" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">serial indices + error counters</text>
-      <text x="700" y="1019.0" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="290" y="1020.3" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">serial indices + error counters</text>
+      <text x="700" y="1018.7" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="11" fill="#D9584A" text-anchor="end" dominant-baseline="middle" font-weight="600">$0176–$017F</text>
     </g>
     <g>
-      <rect x="150" y="1036.2" width="560" height="29.7" rx="3"
+      <rect x="150" y="1035.9" width="560" height="29.7" rx="3"
             fill="#232320" stroke="#6B6B60" stroke-width="1.2" opacity="0.92" stroke-dasharray="4,2"/>
-      <text x="164" y="1051.1" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="1050.8" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="12.5" font-weight="700" fill="#F5D9A3" dominant-baseline="middle">(unclaimed)</text>
-      <text x="290" y="1051.1" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">not used for any purpose</text>
-      <text x="700" y="1048.7" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="290" y="1050.8" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">not used for any purpose</text>
+      <text x="700" y="1048.4" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="11" fill="#6B6B60" text-anchor="end" dominant-baseline="middle" font-weight="600">$0156–$0175</text>
     </g>
     <g>
-      <rect x="150" y="1071.5" width="560" height="37.2" rx="3"
+      <rect x="150" y="1071.2" width="560" height="37.2" rx="3"
             fill="#2C1A3D" stroke="#B26AE0" stroke-width="1.2" opacity="0.92"/>
-      <text x="164" y="1087.1" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="1086.8" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="12.5" font-weight="700" fill="#F5D9A3" dominant-baseline="middle">TIBBUF</text>
-      <text x="164" y="1099.4" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">terminal input buffer (80 bytes)</text>
-      <text x="700" y="1087.1" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="1099.1" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">terminal input buffer (80 bytes)</text>
+      <text x="700" y="1086.8" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="11" fill="#B26AE0" text-anchor="end" dominant-baseline="middle" font-weight="600">$0106–$0155</text>
     </g>
     <g>
-      <rect x="150" y="1114.2" width="560" height="16.1" rx="3"
+      <rect x="150" y="1113.9" width="560" height="16.1" rx="3"
             fill="#232320" stroke="#6B6B60" stroke-width="1.2" opacity="0.92" stroke-dasharray="4,2"/>
-      <text x="164" y="1122.2" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="1121.9" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="12.5" font-weight="700" fill="#F5D9A3" dominant-baseline="middle">(unclaimed)</text>
-      <text x="700" y="1121.0" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="700" y="1120.7" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="11" fill="#6B6B60" text-anchor="end" dominant-baseline="middle" font-weight="600">$0100–$0105</text>
     </g>
     <g>
-      <rect x="150" y="1135.8" width="560" height="46.7" rx="3"
+      <rect x="150" y="1135.5" width="560" height="46.7" rx="3"
             fill="#1B3A38" stroke="#4FD9CB" stroke-width="1.2" opacity="0.92"/>
-      <text x="164" y="1155.4" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="1155.1" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="12.5" font-weight="700" fill="#F5D9A3" dominant-baseline="middle">GLOBALS</text>
-      <text x="164" y="1170.8" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">shared system globals — Direct Page (127 of 256 used)</text>
-      <text x="700" y="1155.4" font-family="'JetBrains Mono','Courier New',monospace"
+      <text x="164" y="1170.5" font-size="9.5" fill="#C9AE85" dominant-baseline="middle">shared system globals — Direct Page (69 of 256 used)</text>
+      <text x="700" y="1155.1" font-family="'JetBrains Mono','Courier New',monospace"
             font-size="11" fill="#4FD9CB" text-anchor="end" dominant-baseline="middle" font-weight="600">$0000–$00FF</text>
     </g>
 
