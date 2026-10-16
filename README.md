@@ -56,7 +56,8 @@ brew install binutils
 * ~~Warning: not functional at this time.~~*
 * ~~Warning: all words tested as functional, but with limited test coverage of edge cases. Tagged as version 1.00.~~*
 * ~~Warning: all words tested as functional, with extensive automated tests. Tagged as version 1.10.~~*
-* Warning: all words tested as functional, complying with ANS Forth Test Suite. Tagged as version 1.20. *
+* ~~Warning: most words tested as functional, complying with the ANS Forth Test Suite. Tagged as version 1.20.~~*
+* Usable: all words tested as functional & performant, nearly all complying with the ANS Forth Test Suite. Tagged as version 1.30. *
 
 | Item             | Version   | Completed   |
 |:-----------------|----------:|------------:|
@@ -154,7 +155,7 @@ brew install binutils
    Possibly pad each word to 8 character width and if longer to 16 character width.
 1. Format the output of DUMP to show an address per line.
 1. Debugging support.
-1. Reorganise dictionary ordering to improved compilation support.
+1. Reorganise dictionary ordering to improved compilation speed.
 1. Optimised words for common constants. [DONE]
 1. Dictionary vocabulary support.
 1. Inbuilt assembler.
@@ -170,5 +171,7 @@ brew install binutils
    In particular the ability to programatically change the behavior of EMIT, etc..
 1. Improve the number parser to recognise binary and hexadecimal numbers.
 1. Move the serial communications code to an include file.
+1. Complete ANS string implementation with tests [DONE].
+1. Complete ANS double word implementation with tests.
 
 
