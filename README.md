@@ -150,11 +150,11 @@ brew install binutils
 ## Plans
 | Item             | Version   | Completed   |
 |:-----------------|----------:|------------:|
-| Assemble and test a bare bones ANS Forth . | |white_check_mark|
-| Scan for refactoring opportunities, removing code duplication,  | |white_check_mark|
-| Optimised words for common constants.  | |white_check_mark|
-| Complete ANS double word implementation with tests.  | |white_check_mark|
-| Complete ANS string implementation with tests  | |white_check_mark|.
+| Assemble and test a bare bones ANS Forth . | |:white_check_mark:|
+| Scan for refactoring opportunities, removing code duplication,  | |:white_check_mark:|
+| Optimised words for common constants.  | |:white_check_mark:|
+| Complete ANS double word implementation with tests.  | |:white_check_mark:|
+| Complete ANS string implementation with tests  | |:white_check_mark:|.
 | Development support words such as [IF], [ELSE], [THEN], FORGET, .(), etc..  | | |
 | Format the output of WORDS to 10 forth words per line.
 Possibly pad each word to 8 character width and if longer to 16 character width.  | | |
