@@ -93,7 +93,7 @@ python3 ans_test_runner.py \
     --retrigger-cmd $HOME/git/ClaudeForth/ANS\ Test\ Suite/retrigger.cmd \
     --skip-assemble \
     --ans-dir $HOME/git/ClaudeForth/ANS\ Test\ Suite/ans_tests \
-    --sections 08 09 10 11 12 13 14 15 16 17 18 19 20 21 23 24 26 \
+    --sections 08 09 10 11 12 13 14 15 16 17 18 19 20 21 23 24 26 27 28 29 \
     --char-delay 0.05 \
     --retries 0 \
     --log-dir $HOME/git/ClaudeForth/ANS\ Test\ Suite/ans_test_results
@@ -253,7 +253,11 @@ Other guidance:
 - A bare `DECIMAL` or `HEX` leaks into the next section file, 
   because `MARKER` restores the dictionary but not `BASE`. 
   Restore it unconditionally, as the existing files do.
-- `>R`/`R>` must not span separate top-level lines.
+- `>R`/`R>` must not span separate top-level lines. Better still, keep them
+  inside a definition: their interpretation semantics are undefined, and at the top
+  level they leave the value under the interpreter's own return address
+  (a `T{ ... >R ... R> ... }T` line in `29_coreext_strings.tests.fs` reset the
+  target until it was wrapped in a colon definition).
 - Keep `TEST-BEGIN` after `MARKER Mnn` and `TEST-END` before the closing `Mnn`.
   For a new section file that already has its `MARKER Mnn` lines,
   `python3 apply_test_markers.py ans_tests [--dry-run]` inserts both.
@@ -345,6 +349,16 @@ have no directly-callable ANS name, so there are no tests.
 Everything else in Core (F.6.1) and the Core Extension subset this
 system implements (F.6.2) maps to exactly one section.
 
+Three files were added after that count was made, and sit outside the
+one-file-per-assembler-section rule:
+
+1. `27_optional_strings.tests.fs`: the optional String words.
+1. `28_double_word.tests.fs`: the Double-Number word set, core and extension,
+   built from the tests at forth-standard.org/standard/double.
+1. `29_coreext_strings.tests.fs`: the Core Extension words that no other
+   section file covers: `.(`, `C"`, `S\"`, `CONVERT`, `SAVE-INPUT`,
+   `RESTORE-INPUT`, and the `CORE-EXT` environment query.
+
 ## Differences from the Published Annex F Suite
 
 ### Test File Section Independence
@@ -402,6 +416,24 @@ Where the section files differ from the published test text:
 - **`ENVIRONMENT?` erratum (section 24).** The published `X:deferred` test,
   `DUP 0= XOR INVERT -> <TRUE>`, can never pass on any system. It checks
   instead that the answer is a single well-formed flag.
+- **`ENVIRONMENT?` query table (section 24).** Annex F tests only
+  `X:deferred` and `X:notfound`. Section 24 also checks every query in the
+  standard table. Word-set queries (`CORE`, `CORE-EXT`, `DOUBLE`,
+  `DOUBLE-EXT`) return a value flag and then the recognized flag, so each
+  expects `<TRUE> <TRUE>`. `/HOLD` and `/PAD` are checked only against the
+  standard minimums (34 and 84).
+- **Double-Number (section 28).** The constants `MAX-2INT`, `MIN-2INT`,
+  `HI-2INT` and `LO-2INT` are computed from `MAX-INT`, `MIN-INT` and `D2/`
+  rather than hard-coded, and `dbl1`/`dbl2` use `M*/`, so the file also
+  checks that these words agree with each other. A `MAX-D` query is checked
+  against `MAX-2INT`. The `D.`/`D.R` test only prints, and is judged by eye:
+  the lines it prints must appear in identical pairs. Typos in the source
+  text were corrected (`0D-`, a stray `1s`), and the original constant block
+  was replaced.
+- **Core Extension strings (section 29).** Written for this project. A terminal
+  source cannot be rewound across lines, so `SAVE-INPUT` and `RESTORE-INPUT` are
+  tested only for the saved shape and the failure paths. `S\"` and `CONVERT` have
+  tests that cover each escape and the digit scan.
 - **`SM/REM` (section 15).** One expected remainder is corrected to follow the
   sign-of-dividend pattern of its neighbours.
 - **`CATCH`/`THROW` (section 11).** The undefined-word case expects `-13`.
@@ -415,13 +447,11 @@ Defects in `forth6809.asm` that these tests exposed are recorded in `bug_fixes.m
 - **Compliance is not claimed.** Annex F is a necessary check, not proof of 
   compliance. Many Annex F tests are adapted for a 16-bit cell and the
   suite excludes the word sets listed below.
-- **Double-Number tests are not loaded.** The system implements part of the
-  Double-Number word set (see *Tests Not Included*) but no Annex F double-number
-  test file exists in `ans_tests` yet. Adding one, and implementing the missing words
-  it needs, is the main open item.
 - **`ENVIRONMENT?` coverage.** `X:deferred` is not in the query table, so it answers false. 
   The test accepts either answer. `WORDLISTS` is deliberately absent 
   (no Search-Order word set).
+- **`RESTORE-INPUT` is only partly tested.** It cannot restore across `REFILL` or
+  into a different source, and the success path needs a multi-line source.
 - **`ABORT` is silent.** It prints nothing and returns to the prompt, 
   and `-1 THROW` at the top level also prints nothing. 
   `ABORT"` message behaviour at the top level is not covered by the suite.
@@ -437,14 +467,6 @@ Defects in `forth6809.asm` that these tests exposed are recorded in `bug_fixes.m
 The following tests are not included because the word set 
 is not implemented or is implemented only in part:
 
-1. Double-Number. *Partly implemented, no tests yet.* 
-   Present: `D+`, `D-`, `DNEGATE`, `DABS`, `DMAX`, `DMIN`, `M+`, `S>D`, `D>S`, 
-   `D=`, `D<`, `DU<`, `D.`, `D.R`, `2ROT`, `2VARIABLE`, `2CONSTANT`, 
-   and double-number literals (`123.`).
-   Appear to be missing: `D0=`, `D0<`, `D2*`, `D2/`, `M*/`, `2LITERAL`, `2VALUE`.
-   Several of the present words are exercised indirectly 
-   by sections 15 and 20 (`M*`, `S>D`, `UM/MOD`, `>NUMBER`, `HOLD`), 
-   but there is no Annex F Double-Number test file.
 1. Facility. Only `KEY?` is implemented. No tests are included for it.
 1. File-Access.
 1. Floating-Point.

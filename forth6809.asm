@@ -22,9 +22,9 @@ USROMEND    EQU   VECTORS-1         ; usable ROM end (VECTORS-1)
 VECTORS     EQU   $FFF0
 INITCODE    EQU   $FFA4             ; start of the init code (COLDSTRT)
             ; Commented-out code moved to shadow: MEMMAP.5
-BASECODE    EQU   $DCC4             ; base code. See shadow MEMMAP.6
+BASECODE    EQU   $DC44             ; base code. See shadow MEMMAP.6
             ; Commented-out code moved to shadow: MEMMAP.7
-BASEDICT    EQU   $D429             ; base dictionary. See shadow MEMMAP.8
+BASEDICT    EQU   $D395             ; base dictionary. See shadow MEMMAP.8
 INOUT       EQU   $C000             ; I/O block (ACIA), 256 bytes
 INOUTEND    EQU   INOUT+$FF
 RSTACK      EQU   $BFFF             ; return stack top
@@ -1532,7 +1532,18 @@ H_RESTOREINPUT: FCB 13
             FDB   H_SAVEINPUT
             FDB   RESTOREINPUTW
 
-BASELATEST  EQU   H_RESTOREINPUT        ; head of the ROM dictionary (see COLD)
+H_SQUOTEESC: FCB  $83
+            FCC   "S\"
+            FCB   $22               ; '"' split out of the FCC string
+            FDB   H_RESTOREINPUT
+            FDB   SQUOTEESCW
+
+H_CONVERT:  FCB   7
+            FCC   "CONVERT"
+            FDB   H_SQUOTEESC
+            FDB   CONVERTW
+
+BASELATEST  EQU   H_CONVERT        ; head of the ROM dictionary (see COLD)
 
 ; Verify no collision with base code.
 ; Value should match ORG BASECODE
@@ -6545,7 +6556,7 @@ CSEND:      STX   CODEHERE
 ; valid. See shadow SQUOTEW.3.
 ; ------------------------------------------------------------
 SQUOTEW:    JSR   PARSEQUOTE        ; See bugfix: SQUOTEW.3
-            LDD   STATE
+SQSTATE:    LDD   STATE
             BEQ   SQINTERP
             LDD   #DOSTR
             JMP   CSTRCOMP
@@ -6566,6 +6577,139 @@ SQICPY:     LDA   ,Y+
             DECB
             BNE   SQICPY
 SQIEND:     RTS
+
+; ------------------------------------------------------------
+; S\"  ( "ccc<quote>" -- c-addr u )
+; As S", but the text may contain escape sequences introduced by a
+; backslash, and a backslash-quote does not end the string. The
+; translated text is built at PAD and then handled exactly like S" text
+; (SQSTATE). The escapes are: \a 7, \b 8, \e 27, \f 12, \l 10, \m the
+; pair 13 10, \n 10, \q 34, \r 13, \t 9, \v 11, \z 0, \" 34, \\ 92 and
+; \xhh (one or two hex digits). Any other character after a backslash
+; stands for itself. An unterminated string ends at the end of the line.
+; A result over 255 characters throws -18.
+; Frame on S: 0,S input end, 2,S output start, 4,S output pointer.
+; ------------------------------------------------------------
+SQUOTEESCW: JSR   PADW              ; leaves PAD on the data stack
+            LDD   ,U
+            PSHS  D                 ; output pointer
+            PSHS  D                 ; output start
+            LDD   SRCADDR
+            ADDD  SRCLEN
+            PSHS  D                 ; input end
+            LDD   SRCADDR
+            ADDD  TOIN
+            TFR   D,Y               ; input pointer
+SQEL:       CMPY  0,S
+            BHS   SQEND
+            LDA   ,Y+
+            CMPA  #34
+            BEQ   SQEND
+            CMPA  #92
+            BNE   SQEPUT
+            CMPY  0,S
+            BHS   SQEND
+            LDA   ,Y+               ; the escaped character
+            CMPA  #'x'
+            BEQ   SQEHEX
+            CMPA  #'m'
+            BEQ   SQEM
+            LDX   #SQETAB
+SQEFND:     TST   ,X
+            BEQ   SQEPUT            ; not in the table: stands for itself
+            CMPA  ,X++
+            BNE   SQEFND
+            LDA   -1,X
+SQEPUT:     LDX   4,S
+            STA   ,X+
+            STX   4,S
+            BRA   SQEL
+SQEM:       LDX   4,S
+            LDA   #13
+            STA   ,X+
+            LDA   #10
+            STA   ,X+
+            STX   4,S
+            BRA   SQEL
+SQEHEX:     BSR   SQEHD             ; first digit
+            BCS   SQEL              ; none: nothing is added
+            LEAY  1,Y
+            TFR   A,B
+            BSR   SQEHD             ; second digit
+            BCC   SQEH2
+            TFR   B,A               ; one digit only
+            BRA   SQEPUT
+SQEH2:      LEAY  1,Y
+            ASLB
+            ASLB
+            ASLB
+            ASLB
+            PSHS  B
+            ADDA  ,S+
+            BRA   SQEPUT
+; Hex digit at ,Y: value in A, carry clear; carry set if not a digit
+; or the input is exhausted. Y is not advanced. RegB is preserved.
+SQEHD:      CMPY  2,S               ; input end (one return address down)
+            BHS   SQEHNO
+            LDA   ,Y
+            CMPA  #'0'
+            BLO   SQEHNO
+            CMPA  #'9'
+            BLS   SQEHDG
+            ANDA  #$DF              ; to upper case
+            CMPA  #'A'
+            BLO   SQEHNO
+            CMPA  #'F'
+            BHI   SQEHNO
+            SUBA  #'A'-10
+            ANDCC #$FE
+            RTS
+SQEHDG:     SUBA  #'0'
+            ANDCC #$FE
+            RTS
+SQEHNO:     ORCC  #1
+            RTS
+SQEND:      TFR   Y,D
+            SUBD  SRCADDR
+            STD   TOIN              ; resume after the closing quote
+            LDD   4,S
+            SUBD  2,S               ; length
+            LEAS  6,S
+            TSTA
+            BNE   SQEOVF
+            PSHU  D                 ; ( c-addr u )
+            JMP   SQSTATE
+SQEOVF:     LDD   #-18
+            PSHU  D
+            JMP   THROWW
+
+; Escape table: character, value. A zero character ends it.
+SQETAB:     FCB   'a',7
+            FCB   'b',8
+            FCB   'e',27
+            FCB   'f',12
+            FCB   'l',10
+            FCB   'n',10
+            FCB   'q',34
+            FCB   'r',13
+            FCB   't',9
+            FCB   'v',11
+            FCB   'z',0
+            FCB   0
+
+; ------------------------------------------------------------
+; CONVERT  ( ud1 c-addr1 -- ud2 c-addr2 )
+; Obsolescent. Convert the digits after c-addr1 using >NUMBER with no
+; length limit; c-addr2 is the first character that is not a digit.
+; ------------------------------------------------------------
+CONVERTW:   LDD   ,U
+            ADDD  #1
+            STD   ,U                ; skip the character at c-addr1
+            LDD   #$FFFF
+            PSHU  D                 ; u
+            JSR   TONUMBERW
+            LEAU  2,U               ; drop u2
+            RTS
 
 ; ------------------------------------------------------------
 ; Run-time part of ."  The counted string follows the call: TYPE it

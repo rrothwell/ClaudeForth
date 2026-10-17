@@ -155,14 +155,16 @@ brew install binutils
 | Optimised words for common constants.  | |:white_check_mark:|
 | Complete ANS double word implementation with tests.  | |:white_check_mark:|
 | Complete ANS string implementation with tests  | |:white_check_mark:|.
-| Development support words such as [IF], [ELSE], [THEN], FORGET, .(), etc..  | | |
+| Development support words such as [IF], [ELSE], [THEN], .(), etc..  | | |
+| Forth decompiler.  | | |
+| Reorganise dictionary ordering to improved compilation speed.  | | |
+| Reorganise memory map so that the stacks are below $8000. Move the in-RAM code and dictionary up to fill the gap below $C000. | | |
+| Adjust DICT:CODE ratio to 1:4| | |
+| Vectored I/O. In particular the ability to programatically change the behavior of EMIT, etc..  | | |
+| Dictionary vocabulary support. | | |
 | Format the output of WORDS to 10 forth words per line. Possibly pad each word to 8 character width and if longer to 16 character width.  | | |
 | Format the output of DUMP to show an address per line. | | |
-| Debugging support. | | |
-| Reorganise dictionary ordering to improved compilation speed.  | | |
-| Dictionary vocabulary support. | | |
 | Inbuilt assembler.  | | |
-| Forth decompiler.  | | |
 | Interrupt chaining to call forth words.  | | |
 | Cooperative multitasking.  | | |
 | Mass storage support - SD Card or Flash.  | | |
@@ -170,8 +172,8 @@ brew install binutils
 | Hardware/software floating point support.  | | |
 | Buffered serial communications with software XON/XOFF handshaking.  | | |
 | Change formatting of ok line output to match GForth.  | | |
-| Vectored I/O. In particular the ability to programatically change the behavior of EMIT, etc..  | | |
 | Improve the number parser to recognise binary and hexadecimal numbers.  | | |
 | Move the serial communications code to an include file.  | | |
+| Debugging support. | | |
 
 

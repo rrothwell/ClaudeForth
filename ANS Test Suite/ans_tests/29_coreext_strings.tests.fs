@@ -6,6 +6,8 @@
 MARKER M29
 TEST-BEGIN
 
+HEX
+
 \ F.6.1.1345  ENVIRONMENT? CORE-EXT
 
 : ENV-COREEXT S" CORE-EXT" ENVIRONMENT? ;
@@ -20,7 +22,7 @@ T{ .( visible-1) -> }T  \ -->
 \ Display is visual: a line saying "visible-2" 
 \ must appear at compile time, not when run. 
 T{ : dp1 .( visible-2) ; -> }T   \ --> 
-T{ dp1 -> }T  \ XXX 
+T{ dp1 -> }T  \ --> ____ 
 
 
 \ F.6.2.0855  C"
@@ -50,6 +52,58 @@ T{ 0 RESTORE-INPUT -> <TRUE> }T
 \ since the EVALUATEd string has another address and length.
 : ri1 S" SAVE-INPUT" EVALUATE ;
 T{ ri1 RESTORE-INPUT -> <TRUE> }T
+
+
+\ F.6.2.2266 S\" 
+
+\ Build a string from a quoted string 
+\ containing the escape characters:
+\      \a 7  \b 8  \e 1B  \f C  \l A  \m 0D 0A  \n A  \q 22
+\     \r D  \t 9  \v B  \z 0  \" 22  \\ 5C  \xhh
+
+
+: SQ1 S\" abc" ;
+T{ SQ1 NIP -> 3 }T
+T{ SQ1 DROP C@ -> 61 }T
+: SQ2 S\" a\qb\\c" ;
+T{ SQ2 NIP -> 5 }T
+T{ SQ2 DROP 1+ C@ -> 22 }T
+T{ SQ2 DROP 3 + C@ -> 5C }T
+: SQ3 S\" \a\b\e\f\l\n\r\t\v\z" ;
+T{ SQ3 NIP -> A }T
+T{ SQ3 DROP C@ -> 7 }T
+T{ SQ3 DROP 2 + C@ -> 1B }T
+T{ SQ3 DROP 8 + C@ -> B }T
+T{ SQ3 DROP 9 + C@ -> 0 }T
+: SQ4 S\" \m" ;
+T{ SQ4 NIP -> 2 }T
+T{ SQ4 DROP C@ -> D }T
+T{ SQ4 DROP 1+ C@ -> A }T
+\ \" does not end the string
+: SQ5 S\" x\"y" ;
+T{ SQ5 NIP -> 3 }T
+T{ SQ5 DROP 1+ C@ -> 22 }T
+\ Hex escapes: upper or lower case, two digits
+: SQ6 S\" \x41\x7a!" ;
+T{ SQ6 NIP -> 3 }T
+T{ SQ6 DROP C@ -> 41 }T
+T{ SQ6 DROP 1+ C@ -> 7A }T
+T{ SQ6 DROP 2 + C@ -> 21 }T
+\ Interpreted S\" gives the same result
+T{ S\" a\tb" NIP -> 3 }T
+T{ S\" a\tb" DROP 1+ C@ -> 9 }T
+\ The text after the closing quote is still interpreted
+T{ S\" \q" NIP 5 -> 1 5 }T
+
+
+\ F.0000 CONVERT
+\ Obsolescent, removed from ANS Forth 2012.
+\ Use >NUMBER instead.
+
+CREATE CVB 20 C, 31 C, 32 C, 33 C, 0 C,
+\ The test base is HEX, so "123" converts to 123 hex.
+T{ 0 0 CVB CONVERT CVB 4 + = -> 123 0 <TRUE> }T
+T{ 5 0 CVB CONVERT DROP -> 5123 0 }T
 
 TEST-END
 M29
