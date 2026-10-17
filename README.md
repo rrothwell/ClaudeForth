@@ -148,30 +148,32 @@ brew install binutils
 
 
 ## Plans
-1. Assemble and test a bare bones ANS Forth [DONE].
-1. Scan for refactoring opportunities, removing code duplication [DONE].
-1. Development support words such as [IF], [ELSE], [THEN], FORGET, .(), etc..
-1. Format the output of WORDS to 10 forth words per line.
-   Possibly pad each word to 8 character width and if longer to 16 character width.
-1. Format the output of DUMP to show an address per line.
-1. Debugging support.
-1. Reorganise dictionary ordering to improved compilation speed.
-1. Optimised words for common constants. [DONE]
-1. Dictionary vocabulary support.
-1. Inbuilt assembler.
-1. Forth decompiler.
-1. Interrupt chaining to call forth words.
-1. Cooperative multitasking.
-1. Mass storage support - SD Card or Flash.
-1. Application compilation to the ROM area via ROM emulation.
-1. Hardware/software floating point support.
-1. Buffered serial communications with software XON/XOFF handshaking.
-1. Change formatting of ok line output to match GForth.
-1. Vectored I/O. 
-   In particular the ability to programatically change the behavior of EMIT, etc..
-1. Improve the number parser to recognise binary and hexadecimal numbers.
-1. Move the serial communications code to an include file.
-1. Complete ANS string implementation with tests [DONE].
-1. Complete ANS double word implementation with tests.
+| Item             | Version   | Completed   |
+|:-----------------|----------:|------------:|
+|: Assemble and test a bare bones ANS Forth . | :|:white_check_mark:|
+|: Scan for refactoring opportunities, removing code duplication,  | :|:white_check_mark:|
+|: Optimised words for common constants.  | :|:white_check_mark:|
+|: Complete ANS double word implementation with tests.  | :|:white_check_mark:|
+|: Complete ANS string implementation with tests  | :|:white_check_mark:|.
+|: Development support words such as [IF], [ELSE], [THEN], FORGET, .(), etc..  | :| :|
+|: Format the output of WORDS to 10 forth words per line. 
+   Possibly pad each word to 8 character width and if longer to 16 character width.  | :| :|
+|: Format the output of DUMP to show an address per line. | :| :|
+|: Debugging support. | :| :|
+|: Reorganise dictionary ordering to improved compilation speed.  | :| :|
+|: Dictionary vocabulary support. | :| :|
+|: Inbuilt assembler.  | :| :|
+|: Forth decompiler.  | :| :|
+|: Interrupt chaining to call forth words.  | :| :|
+|: Cooperative multitasking.  | :| :|
+|: Mass storage support - SD Card or Flash.  | :| :|
+|: Application compilation to the ROM area via ROM emulation.  | :| :|
+|: Hardware/software floating point support.  | :| :|
+|: Buffered serial communications with software XON/XOFF handshaking.  | :| :|
+|: Change formatting of ok line output to match GForth.  | :| :|
+|: Vectored I/O.  | :| :|
+   In particular the ability to programatically change the behavior of EMIT, etc..  | :| :|
+|: Improve the number parser to recognise binary and hexadecimal numbers.  | :| :|
+|: Move the serial communications code to an include file.  | :| :|
 
 
