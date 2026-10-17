@@ -156,8 +156,7 @@ brew install binutils
 | Complete ANS double word implementation with tests.  | |:white_check_mark:|
 | Complete ANS string implementation with tests  | |:white_check_mark:|.
 | Development support words such as [IF], [ELSE], [THEN], FORGET, .(), etc..  | | |
-| Format the output of WORDS to 10 forth words per line. 
-Possibly pad each word to 8 character width and if longer to 16 character width.  | | |
+| Format the output of WORDS to 10 forth words per line. Possibly pad each word to 8 character width and if longer to 16 character width.  | | |
 | Format the output of DUMP to show an address per line. | | |
 | Debugging support. | | |
 | Reorganise dictionary ordering to improved compilation speed.  | | |
@@ -171,8 +170,7 @@ Possibly pad each word to 8 character width and if longer to 16 character width.
 | Hardware/software floating point support.  | | |
 | Buffered serial communications with software XON/XOFF handshaking.  | | |
 | Change formatting of ok line output to match GForth.  | | |
-| Vectored I/O. 
-In particular the ability to programatically change the behavior of EMIT, etc..  | | |
+| Vectored I/O. In particular the ability to programatically change the behavior of EMIT, etc..  | | |
 | Improve the number parser to recognise binary and hexadecimal numbers.  | | |
 | Move the serial communications code to an include file.  | | |
 
