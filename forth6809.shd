@@ -2222,6 +2222,22 @@ STODW.1  [bugfix]  (lines 6348-6360 of the stage-3j file)
                                     ; -1 - no sign extension was happening at all.
 
 ================================================================
+M*/W.1  [explanatory (stage 6a)]
+----------------------------------------------------------------
+M*/ ( d1 n1 +n2 -- d2 ) needs a 48-bit intermediate product. It is built from
+two UMUL32 calls on the magnitudes: |d1 low| * |n1| gives P0 and part of P1,
+|d1 high| * |n1| is added in one word higher and the carry goes to P2.
+The division is schoolbook long division by |n2|, one 16-bit word at a time:
+P2 / n2 (only the remainder is kept, the quotient is above bit 31 and is
+dropped), then R:P1 / n2 gives q1, then R:P0 / n2 gives q0. Each step is a
+32/16 division whose quotient is below 65536 because R < n2, so UDIV32 can be
+used unchanged. The result is q1:q0, negated if an odd number of d1, n1 and n2
+is negative. Quotients are truncated toward zero, which matches the FLOORED =
+false answer of ENVIRONMENT?. The method was checked against exact integer
+arithmetic in a model of the same steps for 200000 random operands including
+the extremes (most negative double, n1 = -32768, n2 = 32767).
+
+================================================================
 TWOFETCHW.1  [bugfix]  (lines 6838-6843 of the stage-3k file)
 ----------------------------------------------------------------
 TWOFETCHW:    PULU  X                 ; BUG FIX (runner, section 18): standard

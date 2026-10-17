@@ -1,8 +1,22 @@
+\ Defining some constants  
+\ as I wish to run the tests without the prelude.
+
 0 CONSTANT 0S
 0 INVERT CONSTANT 1S
 
 0S CONSTANT <FALSE>
 1S CONSTANT <TRUE>
+
+0 INVERT CONSTANT 1S
+0 INVERT 1 RSHIFT CONSTANT MAX-INT
+0 INVERT 1 RSHIFT INVERT CONSTANT MIN-INT
+
+0 INVERT CONSTANT MAX-UINT
+
+\ Why the test prelude sets this to 24 is unknown.
+24 CONSTANT MAX-BASE   
+
+\ Defining variables for end of test result summary  
 
 VARIABLE TESTCOUNT
 VARIABLE FAILCOUNT

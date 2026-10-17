@@ -25,7 +25,7 @@ TEST-BEGIN
 
 VARIABLE SCANS
 
-\ This test must retain the multiline split 
+\ This test must retain the multiline split
 \ to proceed to completion by scanning multiple lines.
 \ It infinite loops in INTERPRET otherwise.
 : RESCAN? -1 SCANS +! SCANS @ IF 0 >IN ! THEN ;
@@ -138,6 +138,41 @@ T{ BL -> 20 }T
 T{ S" X:deferred" ENVIRONMENT? DUP 0= OVER TRUE = OR NIP -> <TRUE> }T
 T{ S" X:notfound" ENVIRONMENT? DUP 0= XOR INVERT -> <FALSE> }T
 
+\ ---- Standard environmental query table (forth-standard.org) ----
+\ Result shape: a recognised query returns its value (one cell for
+\ the numeric and flag queries, two for MAX-D and MAX-UD) followed
+\ by the "recognised" flag true. An unrecognised query returns
+\ only false. Base is HEX here.
+T{ S" /COUNTED-STRING" ENVIRONMENT? -> FF <TRUE> }T
+T{ S" ADDRESS-UNIT-BITS" ENVIRONMENT? -> 8 <TRUE> }T
+T{ S" MAX-CHAR" ENVIRONMENT? -> FF <TRUE> }T
+T{ S" MAX-N" ENVIRONMENT? -> MAX-INT <TRUE> }T
+T{ S" MAX-U" ENVIRONMENT? -> MAX-UINT <TRUE> }T
+T{ S" MAX-D" ENVIRONMENT? -> MAX-UINT MAX-INT <TRUE> }T
+T{ S" MAX-UD" ENVIRONMENT? -> MAX-UINT MAX-UINT <TRUE> }T
+T{ S" FLOORED" ENVIRONMENT? -> <FALSE> <TRUE> }T
+
+\ /HOLD and /PAD are only required to meet the standard minimums:
+\ /HOLD at least 2n+2 = 34 (22 hex) characters for 16-bit cells and
+\ /PAD at least 84 (54 hex).
+T{ S" /HOLD" ENVIRONMENT? SWAP 22 < 0= SWAP -> <TRUE> <TRUE> }T
+T{ S" /PAD" ENVIRONMENT? SWAP 54 < 0= SWAP -> <TRUE> <TRUE> }T
+
+\ Word-set queries: value flag (the set is present) then recognised.
+T{ S" CORE" ENVIRONMENT? -> <TRUE> <TRUE> }T
+T{ S" CORE-EXT" ENVIRONMENT? -> <TRUE> <TRUE> }T
+T{ S" DOUBLE" ENVIRONMENT? -> <TRUE> <TRUE> }T
+T{ S" DOUBLE-EXT" ENVIRONMENT? -> <TRUE> <TRUE> }T
+
+\ Stack sizes: any positive size is acceptable.
+T{ S" STACK-CELLS" ENVIRONMENT? SWAP 0> SWAP -> <TRUE> <TRUE> }T
+T{ S" RETURN-STACK-CELLS" ENVIRONMENT? SWAP 0> SWAP -> <TRUE> <TRUE> }T
+
+\ Near-misses (longer, shorter, empty) must not be recognised.
+T{ S" CORE-EXTX" ENVIRONMENT? -> <FALSE> }T
+T{ S" DOUBL" ENVIRONMENT? -> <FALSE> }T
+T{ S" " ENVIRONMENT? -> <FALSE> }T
+
 \ F.6.1.1360  EVALUATE
 
 : GE1 S" 123" ; IMMEDIATE
@@ -158,7 +193,7 @@ T{ GE7 -> 124 }T
 : GS1 S" SOURCE" 2DUP EVALUATE >R SWAP >R = R> R> = ;
 T{ GS1 -> <TRUE> <TRUE> }T
 
-: GS4 SOURCE >IN ! DROP ;   
+: GS4 SOURCE >IN ! DROP ;
 T{ GS4 123 456 -> }T
 
 \ Print this file's TEST SUMMARY and trim any stray stack cells.

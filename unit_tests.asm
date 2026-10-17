@@ -146,6 +146,7 @@ TSTRUNNER:  LDD   #APPCODE          ; The tests run before COLD, so CODEHERE wou
             JSR   TSTCOMPWORDS
             JSR   TSTMEMORY
             JSR   TSTSTRPARSE
+            JSR   TSTSTRPARSE2
             JSR   TSTNUMOUT
             JSR   TSTBASERADIX
             JSR   TSTEXCEPTION
@@ -3535,6 +3536,12 @@ TSTDARITH:  JSR   CRW
             JSR   TSTDTOS
             JSR   TSTDMAX
             JSR   TSTDMIN
+            JSR   TSTDZEQ
+            JSR   TSTDZLT
+            JSR   TSTD2STAR
+            JSR   TSTD2SLASH
+            JSR   TSTMSL
+            JSR   TSTMSLZ
 
             ENDC                    ; <<<<
 
@@ -4585,6 +4592,337 @@ RZDONE:     LDX   #TSTSMRZNAME
 TSTSMRZNAME:
             FCB   7
             FCC   "TSTSMRZ"
+
+; ------------------------------------------------------------
+; Table-driven helper for the one-double-in tests (D0=, D0<, D2*,
+; D2/). Each table row is 4 cells: input low, input high, expected
+; (for mode 0, low then high; for mode 1, the flag then an unused
+; cell). The word is called with a guard cell beneath its argument and
+; the data-stack depth is checked.
+; TSTDUN
+;    Inputs:
+;        RegX = table, RegY = xt of the word, RegB = number of rows,
+;        RegA = 0 if the word returns a double, 1 if it returns a flag
+;    Outputs:
+;        RegD = TRUEV if every row passed, otherwise FALSEV
+;    Registers: all changed. S frame: 0,S mode, 1,S rows left, 2,S row
+;        pointer, 4,S word.
+; ------------------------------------------------------------
+TSTDUN:     PSHS  A,B,X,Y
+TDULOOP:    LDX   2,S
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   ,X
+            PSHU  D                 ; low cell
+            LDD   2,X
+            PSHU  D                 ; high cell
+            STU   TSTUB4
+            LDY   4,S
+            JSR   ,Y
+            STU   TSTUAF
+            LDX   2,S
+            TST   ,S
+            BNE   TDUFLAG
+            PULU  D                 ; high cell of the result
+            CMPD  6,X
+            BNE   TDUFAIL
+            PULU  D                 ; low cell
+            CMPD  4,X
+            BNE   TDUFAIL
+            LDD   #0                ; two cells in, two out
+            BRA   TDUDEPTH
+TDUFLAG:    PULU  D
+            CMPD  4,X
+            BNE   TDUFAIL
+            LDD   #-2               ; two cells in, one out
+TDUDEPTH:   PSHS  D
+            PULU  D                 ; the guard
+            CMPD  #TSTGUARD
+            BNE   TDUFAIL2
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  ,S++
+            BNE   TDUFAIL
+            LDX   2,S
+            LEAX  8,X
+            STX   2,S
+            DEC   1,S
+            BNE   TDULOOP
+            LDD   #TRUEV
+            LEAS  6,S
+            RTS
+TDUFAIL2:   LEAS  2,S
+TDUFAIL:    LDD   #FALSEV
+            LEAS  6,S
+            RTS
+
+
+; ------------------------------------------------------------
+; unit test for D0=. zero and non-zero doubles.
+; TSTDZEQ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDZEQ OK" or "TSTDZEQ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTDZEQ:    STU   TSTU0
+            LDX   #TSTDZEQTAB
+            LDY   #DZEROEQW
+            LDA   #1
+            LDB   #5
+            JSR   TSTDUN
+            LDX   #TSTDZEQNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTDZEQTAB:
+            FDB   $0000,$0000,$FFFF,$0000
+            FDB   $0001,$0000,$0000,$0000
+            FDB   $0000,$0001,$0000,$0000
+            FDB   $0000,$8000,$0000,$0000
+            FDB   $FFFF,$FFFF,$0000,$0000
+TSTDZEQNAME:
+            FCB   7
+            FCC   "TSTDZEQ"
+
+; ------------------------------------------------------------
+; unit test for D0<. sign of the high cell.
+; TSTDZLT
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTDZLT OK" or "TSTDZLT FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTDZLT:    STU   TSTU0
+            LDX   #TSTDZLTTAB
+            LDY   #DZEROLTW
+            LDA   #1
+            LDB   #5
+            JSR   TSTDUN
+            LDX   #TSTDZLTNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTDZLTTAB:
+            FDB   $0000,$0000,$0000,$0000
+            FDB   $0001,$0000,$0000,$0000
+            FDB   $FFFF,$7FFF,$0000,$0000
+            FDB   $0000,$8000,$FFFF,$0000
+            FDB   $FFFF,$FFFF,$FFFF,$0000
+TSTDZLTNAME:
+            FCB   7
+            FCC   "TSTDZLT"
+
+; ------------------------------------------------------------
+; unit test for D2*. carry from the low cell into the high cell.
+; TSTD2STAR
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTD2STAR OK" or "TSTD2STAR FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTD2STAR:  STU   TSTU0
+            LDX   #TSTD2STARTAB
+            LDY   #DTWOSTARW
+            LDA   #0
+            LDB   #7
+            JSR   TSTDUN
+            LDX   #TSTD2STARNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTD2STARTAB:
+            FDB   $0000,$0000,$0000,$0000
+            FDB   $0001,$0000,$0002,$0000
+            FDB   $8000,$0000,$0000,$0001
+            FDB   $FFFF,$FFFF,$FFFE,$FFFF
+            FDB   $0000,$4000,$0000,$8000
+            FDB   $0000,$8000,$0000,$0000
+            FDB   $8000,$8000,$0000,$0001
+TSTD2STARNAME:
+            FCB   9
+            FCC   "TSTD2STAR"
+
+; ------------------------------------------------------------
+; unit test for D2/. arithmetic shift; the sign is kept.
+; TSTD2SLASH
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTD2SLASH OK" or "TSTD2SLASH FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTD2SLASH: STU   TSTU0
+            LDX   #TSTD2SLASHTAB
+            LDY   #DTWOSLASHW
+            LDA   #0
+            LDB   #8
+            JSR   TSTDUN
+            LDX   #TSTD2SLASHNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTD2SLASHTAB:
+            FDB   $0000,$0000,$0000,$0000
+            FDB   $0002,$0000,$0001,$0000
+            FDB   $0001,$0000,$0000,$0000
+            FDB   $0000,$0001,$8000,$0000
+            FDB   $FFFF,$FFFF,$FFFF,$FFFF
+            FDB   $0000,$8000,$0000,$C000
+            FDB   $0001,$8000,$0000,$C000
+            FDB   $FFFE,$FFFF,$FFFF,$FFFF
+TSTD2SLASHNAME:
+            FCB   10
+            FCC   "TSTD2SLASH"
+
+; ------------------------------------------------------------
+; unit test for M*/. Signs, truncation toward zero, the extremes of
+; the double range and a product that does not fit in 32 bits before
+; the division. Rows are d1 low, d1 high, n1, n2, expected low,
+; expected high.
+; TSTMSL
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTMSL OK" or "TSTMSL FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTMSL:     STU   TSTU0
+            LDX   #TSTMSLTAB
+            LDB   #14
+TMLLOOP:    PSHS  B,X               ; 0,S rows left, 1,S row pointer
+            LDD   #TSTGUARD
+            PSHU  D
+            LDD   ,X
+            PSHU  D                 ; d1 low
+            LDD   2,X
+            PSHU  D                 ; d1 high
+            LDD   4,X
+            PSHU  D                 ; n1
+            LDD   6,X
+            PSHU  D                 ; n2
+            STU   TSTUB4
+            JSR   MSTARSLASHW
+            STU   TSTUAF
+            LDX   1,S
+            PULU  D                 ; d2 high
+            CMPD  10,X
+            BNE   TMLFAIL
+            PULU  D                 ; d2 low
+            CMPD  8,X
+            BNE   TMLFAIL
+            PULU  D                 ; the guard
+            CMPD  #TSTGUARD
+            BNE   TMLFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #-4               ; four cells in, two out
+            BNE   TMLFAIL
+            PULS  B,X
+            LEAX  12,X
+            DECB
+            BNE   TMLLOOP
+            LDD   #TRUEV
+            BRA   TMLDONE
+TMLFAIL:    LEAS  3,S
+            LDD   #FALSEV
+TMLDONE:    LDX   #TSTMSLNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTMSLTAB:
+            FDB   $0005,$0000,$0007,$000B,$0003,$0000 ; 5 7 11 M*/
+            FDB   $0005,$0000,$FFF9,$000B,$FFFD,$FFFF ; 5 -7 11 M*/
+            FDB   $FFFB,$FFFF,$0007,$000B,$FFFD,$FFFF ; -5 7 11 M*/
+            FDB   $FFFB,$FFFF,$FFF9,$000B,$0003,$0000 ; -5 -7 11 M*/
+            FDB   $FFFF,$7FFF,$0008,$0010,$FFFF,$3FFF ; 2147483647 8 16 M*/
+            FDB   $0000,$8000,$0008,$0010,$0000,$C000 ; -2147483648 8 16 M*/
+            FDB   $FFFF,$7FFF,$7FFF,$7FFF,$FFFF,$7FFF ; 2147483647 32767 32767 M*/
+            FDB   $0000,$8000,$8000,$7FFF,$0002,$8001 ; -2147483648 -32768 32767 M*/
+            FDB   $4240,$000F,$0003,$0002,$E360,$0016 ; 1000000 3 2 M*/
+            FDB   $7960,$FFFE,$0007,$0003,$708B,$FFFC ; -100000 7 3 M*/
+            FDB   $0001,$0000,$0001,$0001,$0001,$0000 ; 1 1 1 M*/
+            FDB   $0000,$8000,$0001,$0001,$0000,$8000 ; -2147483648 1 1 M*/
+            FDB   $0000,$0000,$7FFF,$0005,$0000,$0000 ; 0 32767 5 M*/
+            FDB   $CD15,$075B,$03E8,$0007,$716E,$1B3A ; 123456789 1000 7 M*/
+TSTMSLNAME:
+            FCB   6
+            FCC   "TSTMSL"
+
+; ------------------------------------------------------------
+; unit test for M*/, divide-by-zero case. n2 = 0 throws -10 and CATCH
+; restores the depth.
+; TSTMSLZ
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTMSLZ OK" or "TSTMSLZ FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTMSLZ:    STU   TSTU0
+
+            LDD   #TSTD1LO
+            PSHU  D
+            LDD   #TSTD1HI
+            PSHU  D
+            LDD   #3
+            PSHU  D
+            LDD   #0
+            PSHU  D
+            LDX   #MSTARSLASHW
+            PSHU  X
+            STU   TSTUB4
+
+            JSR   CATCHW
+
+            STU   TSTUAF
+
+            PULU  D
+            CMPD  #-10
+            BNE   MZFAIL
+
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   MZFAIL
+
+            LDD   #TRUEV
+            BRA   MZDONE
+MZFAIL:     LDD   #FALSEV
+MZDONE:     LDX   #TSTMSLZNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTMSLZNAME:
+            FCB   7
+            FCC   "TSTMSLZ"
 
             ENDC                    ; <<<<
 
@@ -12546,14 +12884,6 @@ TSTSTRPARSE:
             JSR   TSTSEARCH4
             JSR   TSTDASHTRAILING
             JSR   TSTSLASHSTRING
-            JSR   TSTREPLSUBS1
-            JSR   TSTREPLSUBS2
-            JSR   TSTREPLSUBS3
-            JSR   TSTREPLSUBS4
-            JSR   TSTCLRREPL
-            JSR   TSTSNAME1
-            JSR   TSTSNAME2
-            JSR   TSTUNESCAPE
 
             ENDC                    ; <<<<
 
@@ -14025,6 +14355,48 @@ SLSDONE:    LDX   #TSTSLSNAME
 
 TSTSLSNAME: FCB   14
             FCC   "TSTSLASHSTRING"
+
+            ENDC                    ; <<<< end of selector 11 tests
+
+; ------------------------------------------------------------
+; Strings & parsing tests, part 2 (selector 18): REPLACES,
+; SUBSTITUTE, SNAME and UNESCAPE. Split from selector 11 because
+; the whole group no longer fit below the dictionary in the
+; interrupt-driven build.
+; TSTSTRPARSE2
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; ------------------------------------------------------------
+TSTSTRPARSE2:
+            JSR   CRW
+            LDX   #TSTSTRP2MSG
+            PSHU  X
+            LDD   #9
+            PSHU  D
+            JSR   TYPEW
+            JSR   CRW
+
+            IFEQ  TSTSELECTOR-18    ; >>>>
+
+            JSR   TSTREPLSUBS1
+            JSR   TSTREPLSUBS2
+            JSR   TSTREPLSUBS3
+            JSR   TSTREPLSUBS4
+            JSR   TSTCLRREPL
+            JSR   TSTSNAME1
+            JSR   TSTSNAME2
+            JSR   TSTUNESCAPE
+
+            ENDC                    ; <<<<
+
+            RTS
+
+TSTSTRP2MSG: FCC  "StrParse2"
+
+            IFEQ  TSTSELECTOR-18    ; >>>>
 
 ; ------------------------------------------------------------
 ; unit test for REPLACES and SUBSTITUTE together (can only

@@ -24,7 +24,7 @@ INITCODE    EQU   $FFA4             ; start of the init code (COLDSTRT)
             ; Commented-out code moved to shadow: MEMMAP.5
 BASECODE    EQU   $DCC4             ; base code. See shadow MEMMAP.6
             ; Commented-out code moved to shadow: MEMMAP.7
-BASEDICT    EQU   $D498             ; base dictionary. See shadow MEMMAP.8
+BASEDICT    EQU   $D429             ; base dictionary. See shadow MEMMAP.8
 INOUT       EQU   $C000             ; I/O block (ACIA), 256 bytes
 INOUTEND    EQU   INOUT+$FF
 RSTACK      EQU   $BFFF             ; return stack top
@@ -317,7 +317,7 @@ ROM:
 ; The original header comment is shadow SECTION27.0.
 ; ============================================================
 
-            ORG   BASEDICT          ; BASEDICT is $D83F
+            ORG   BASEDICT
 
 H_KEY:
             FCB   $03
@@ -1476,7 +1476,63 @@ H_NEGTWO:   FCB   2
             FDB   H_POSTWO
             FDB   NEGTWOW
 
-BASELATEST  EQU   H_NEGTWO          ; head of the ROM dictionary (see COLD)
+H_DZEROEQ:  FCB   3
+            FCC   "D0="
+            FDB   H_NEGTWO
+            FDB   DZEROEQW
+
+H_DZEROLT:  FCB   3
+            FCC   "D0<"
+            FDB   H_DZEROEQ
+            FDB   DZEROLTW
+
+H_DTWOSTAR: FCB   3
+            FCC   "D2*"
+            FDB   H_DZEROLT
+            FDB   DTWOSTARW
+
+H_DTWOSLASH: FCB  3
+            FCC   "D2/"
+            FDB   H_DTWOSTAR
+            FDB   DTWOSLASHW
+
+H_MSTARSLASH: FCB 3
+            FCC   "M*/"
+            FDB   H_DTWOSLASH
+            FDB   MSTARSLASHW
+
+H_TWOLITERAL: FCB $88
+            FCC   "2LITERAL"
+            FDB   H_MSTARSLASH
+            FDB   TWOLITERALW
+
+H_TWOVALUE: FCB   6
+            FCC   "2VALUE"
+            FDB   H_TWOLITERAL
+            FDB   TWOVALUEW
+
+H_DOTPAREN: FCB   $82
+            FCC   ".("
+            FDB   H_TWOVALUE
+            FDB   DOTPARENW
+
+H_CQUOTE:   FCB   $82
+            FCC   "C"
+            FCB   $22               ; '"' split out of the FCC string
+            FDB   H_DOTPAREN
+            FDB   CQUOTEW
+
+H_SAVEINPUT: FCB  10
+            FCC   "SAVE-INPUT"
+            FDB   H_CQUOTE
+            FDB   SAVEINPUTW
+
+H_RESTOREINPUT: FCB 13
+            FCC   "RESTORE-INPUT"
+            FDB   H_SAVEINPUT
+            FDB   RESTOREINPUTW
+
+BASELATEST  EQU   H_RESTOREINPUT        ; head of the ROM dictionary (see COLD)
 
 ; Verify no collision with base code.
 ; Value should match ORG BASECODE
@@ -2629,6 +2685,27 @@ VALUEW:     LDD   #DOVALUE
             RTS
 
 ; ------------------------------------------------------------
+; Behaviour of a 2VALUE word: fetch the two-cell value, x2 at the
+; lower address as 2@ expects.
+; DO2VALUE   ( pfa -- x1 x2 )
+; ------------------------------------------------------------
+DO2VALUE:   JMP   TWOFETCHW
+
+; ------------------------------------------------------------
+; 2VALUE  ( x1 x2 "name" -- )
+; Build a word that returns x1 x2, which can be changed with TO. The
+; two cells are kept in the variable area so that they are writable.
+; ------------------------------------------------------------
+TWOVALUEW:  LDD   #DO2VALUE
+            JSR   BLDDOES
+            LDD   VARHERE           ; PFA = VARHERE (writable space)
+            PSHU  D
+            JSR   CODECOMMA
+            JSR   VCOMMAW           ; x2 at the lower address
+            JSR   VCOMMAW           ; then x1
+            RTS
+
+; ------------------------------------------------------------
 ; TO  ( x "name" -- )  IMMEDIATE
 ; Store x in the named VALUE. When compiling, instead compile code to
 ; store a run-time x in it. Error -13 if the name is not found.
@@ -2644,7 +2721,11 @@ TOW:        LDD   #32
             LDD   #-13
             PSHU  D
             JSR   THROWW
-TOFOUND:    JSR   TOBODYW
+TOFOUND:    LDX   ,U                ; xt: is it a 2VALUE? (behaviour cell at xt+3)
+            LDD   3,X
+            CMPD  #DO2VALUE
+            BEQ   TOTWO
+            JSR   TOBODYW
             LDD   STATE
             BEQ   TOIMMED
             JSR   LITERALW
@@ -2656,6 +2737,15 @@ TOIMMED:    PULU  X                 ; a-addr of the value cell
             PULU  D                 ; x
             STD   ,X
             RTS
+TOTWO:      JSR   TOBODYW           ; 2VALUE: store x1 x2 with 2!
+            LDD   STATE
+            BEQ   TOTWOIMM
+            JSR   LITERALW
+            LDD   #TWOSTOREW
+            PSHU  D
+            JSR   CCALL
+            RTS
+TOTWOIMM:   JMP   TWOSTOREW
 
 ; ------------------------------------------------------------
 ; 2VARIABLE  ( "name" -- )
@@ -4363,6 +4453,19 @@ LITERALW:   LDD   #LIT
             RTS
 
 ; ------------------------------------------------------------
+; 2LITERAL  ( x1 x2 -- )  IMMEDIATE
+; Compile two LITs so that x1 x2 are pushed when the definition runs.
+; ------------------------------------------------------------
+TWOLITERALW:
+            PULU  D                 ; x2
+            PSHS  D
+            JSR   LITERALW          ; x1 first, so it lands below x2
+            PULS  D
+            PSHU  D
+            JSR   LITERALW
+            RTS
+
+; ------------------------------------------------------------
 ; [']  ( "name" -- )
 ; Compile the xt of the next name as a literal. THROW -14 if not
 ; compiling, -13 if the name is not found.
@@ -6056,6 +6159,171 @@ DULTRUE:    LDD   #TRUEV
             PSHU  D
             RTS
 
+; ------------------------------------------------------------
+; D0=  ( xd -- flag )
+; True if the double is zero.
+; ------------------------------------------------------------
+DZEROEQW:   LDD   ,U                ; high cell
+            BNE   DZEFALSE
+            LDD   2,U               ; low cell
+            BNE   DZEFALSE
+            LDD   #TRUEV
+            BRA   DZEDONE
+DZEFALSE:   LDD   #FALSEV
+DZEDONE:    LEAU  2,U
+            STD   ,U
+            RTS
+
+; ------------------------------------------------------------
+; D0<  ( d -- flag )
+; True if the double is negative.
+; ------------------------------------------------------------
+DZEROLTW:   LDD   ,U                ; high cell holds the sign
+            BMI   DZLTRUE
+            LDD   #FALSEV
+            BRA   DZLDONE
+DZLTRUE:    LDD   #TRUEV
+DZLDONE:    LEAU  2,U
+            STD   ,U
+            RTS
+
+; ------------------------------------------------------------
+; D2*  ( xd1 -- xd2 )
+; Shift the double left one bit.
+; ------------------------------------------------------------
+DTWOSTARW:  LDD   2,U               ; low cell
+            ASLB
+            ROLA
+            STD   2,U               ; STD leaves the carry alone
+            LDD   ,U                ; neither does LDD
+            ROLB
+            ROLA
+            STD   ,U
+            RTS
+
+; ------------------------------------------------------------
+; D2/  ( xd1 -- xd2 )
+; Arithmetic shift of the double right one bit; the sign is kept.
+; ------------------------------------------------------------
+DTWOSLASHW: LDD   ,U                ; high cell
+            ASRA
+            RORB
+            STD   ,U
+            LDD   2,U               ; low cell takes the bit shifted out
+            RORA
+            RORB
+            STD   2,U
+            RTS
+
+; ------------------------------------------------------------
+; M*/  ( d1 n1 +n2 -- d2 )
+; Multiply d1 by n1 into a 48-bit intermediate product and divide it
+; by n2. The quotient is truncated toward zero (like */ and symmetric
+; division in this system) and its low 32 bits are returned. THROW -10
+; if n2 is zero. Method: take the magnitudes; form |d1.lo|*|n1| and
+; |d1.hi|*|n1| with UMUL32 and add them into three words P2:P1:P0;
+; then divide P2, then R:P1, then R:P0 by |n2| with UDIV32, each a
+; 32/16 division whose quotient fits in 16 bits. The sign is applied
+; to the 32-bit result at the end. See shadow M*/W.1.
+; M*/W
+;    Inputs:
+;        d1 n1 n2 on the data stack (n2 on top)
+;    Outputs:
+;        d2 on the data stack
+;    Registers: RegD, RegX changed; PRODHI/PRODLO, DIVDEN, DIVREM,
+;        MAHI-MBLO used. S frame: 0,S sign, 1,S P0, 3,S P1, 5,S P2.
+; ------------------------------------------------------------
+MSTARSLASHW:
+            LDD   ,U
+            BNE   MSLOK
+            LDD   #-10              ; -10, division by zero
+            PSHU  D
+            JSR   THROWW
+MSLOK:      LEAS  -7,S
+            CLR   ,S                ; sign of the result
+            LDD   ,U                ; |n2|
+            BPL   MSLN1
+            COM   ,S
+            COMA
+            COMB
+            ADDD  #1
+            STD   ,U
+MSLN1:      LDD   2,U               ; |n1|
+            BPL   MSLD1
+            COM   ,S
+            COMA
+            COMB
+            ADDD  #1
+            STD   2,U
+MSLD1:      LDD   4,U               ; |d1|
+            BPL   MSLMUL
+            COM   ,S
+            LDD   6,U
+            STD   PRODLO
+            LDD   4,U
+            STD   PRODHI
+            JSR   MNEG32
+            LDD   PRODLO
+            STD   6,U
+            LDD   PRODHI
+            STD   4,U
+MSLMUL:     LDD   6,U               ; d1 low * n1
+            STA   MAHI
+            STB   MALO
+            LDD   2,U
+            STA   MBHI
+            STB   MBLO
+            JSR   UMUL32
+            LDD   PRODLO
+            STD   1,S               ; P0
+            LDD   PRODHI
+            STD   3,S               ; P1 so far
+            LDD   4,U               ; d1 high * n1
+            STA   MAHI
+            STB   MALO
+            LDD   2,U
+            STA   MBHI
+            STB   MBLO
+            JSR   UMUL32
+            LDD   3,S
+            ADDD  PRODLO
+            STD   3,S               ; P1
+            LDD   PRODHI
+            ADCB  #0
+            ADCA  #0
+            STD   5,S               ; P2
+            LDD   ,U                ; divisor
+            STD   DIVDEN
+            CLR   PRODHI
+            CLR   PRODHI+1
+            LDD   5,S
+            STD   PRODLO
+            JSR   UDIV32            ; remainder only; the quotient is above bit 31
+            LDD   DIVREM
+            STD   PRODHI
+            LDD   3,S
+            STD   PRODLO
+            JSR   UDIV32
+            LDD   PRODLO
+            STD   3,S               ; q1
+            LDD   DIVREM
+            STD   PRODHI
+            LDD   1,S
+            STD   PRODLO
+            JSR   UDIV32            ; PRODLO = q0
+            LDD   3,S
+            STD   PRODHI            ; PRODHI:PRODLO = q1:q0
+            TST   ,S
+            BEQ   MSLPOS
+            JSR   MNEG32
+MSLPOS:     LEAU  4,U               ; drop n2 and n1
+            LDD   PRODHI
+            STD   ,U
+            LDD   PRODLO
+            STD   2,U
+            LEAS  7,S
+            RTS
+
 ; ============================================================
 ; SECTION 18: MEMORY (fetch/store, block ops)
 ; ============================================================
@@ -6327,6 +6595,47 @@ DOTSTR:     PULS  X
 DOTQUOTEW:  JSR   PARSEQUOTE        ; See bugfix: SQUOTEW.3
             LDD   #DOTSTR
             JMP   CSTRCOMP
+
+; ------------------------------------------------------------
+; Run-time part of C"  The counted string follows the call: push its
+; address and skip over it.
+; DOCSTR
+;    Outputs:
+;        ( -- c-addr ) the count byte address; execution resumes after
+;        the string
+;    Registers: RegB, RegD and RegX changed.
+; ------------------------------------------------------------
+DOCSTR:     PULS  X
+            PSHU  X
+            LDB   ,X
+            LEAX  1,X
+            LEAX  B,X
+            PSHS  X
+            RTS
+
+; ------------------------------------------------------------
+; C"  ( "ccc<quote>" -- )  compile: ( -- c-addr ) run-time
+; Compile DOCSTR followed by the string up to the closing quote as a
+; counted string. THROW -14 if not compiling.
+; ------------------------------------------------------------
+CQUOTEW:    LDD   STATE
+            BNE   CQOK
+            LDD   #-14
+            PSHU  D
+            JSR   THROWW
+CQOK:       JSR   PARSEQUOTE
+            LDD   #DOCSTR
+            JMP   CSTRCOMP
+
+; ------------------------------------------------------------
+; .(  ( "ccc<paren>" -- )
+; Immediate. Parse up to the closing parenthesis and display the text
+; at once, even while compiling.
+; ------------------------------------------------------------
+DOTPARENW:  LDD   #41
+            PSHU  D
+            JSR   PARSEW
+            JMP   TYPEW
 
 ; ------------------------------------------------------------
 ; TYPE  ( c-addr u -- )
@@ -7393,6 +7702,48 @@ SOURCEIDW:  LDD   SRCID
             RTS
 
 ; ------------------------------------------------------------
+; SAVE-INPUT  ( -- x1 x2 x3 3 )
+; Save the source address, source length and >IN.
+; ------------------------------------------------------------
+SAVEINPUTW: LDD   SRCADDR
+            PSHU  D
+            LDD   SRCLEN
+            PSHU  D
+            LDD   TOIN
+            PSHU  D
+            LDD   #3
+            PSHU  D
+            RTS
+
+; ------------------------------------------------------------
+; RESTORE-INPUT  ( x1 x2 x3 3 -- flag )
+; Restore >IN if the input source is the same one that was saved.
+; Return false on success, true if the saved state is unusable (wrong
+; cell count, or a different source address or length).
+; ------------------------------------------------------------
+RESTOREINPUTW:
+            PULU  D                 ; n
+            CMPD  #3
+            BNE   RIBAD
+            PULU  Y                 ; saved >IN
+            PULU  D                 ; saved source length
+            PULU  X                 ; saved source address
+            CMPD  SRCLEN
+            BNE   RIFAIL
+            CMPX  SRCADDR
+            BNE   RIFAIL
+            STY   TOIN
+            LDD   #FALSEV
+            PSHU  D
+            RTS
+RIBAD:      ASLB                    ; drop n cells
+            ROLA
+            LEAU  D,U
+RIFAIL:     LDD   #TRUEV
+            PSHU  D
+            RTS
+
+; ------------------------------------------------------------
 ; REFILL  ( -- flag )
 ; From the terminal, read a new line with QUERY and return true. From
 ; an EVALUATEd string, return false.
@@ -7549,6 +7900,10 @@ ENVTABLE:
                                     ; RETURN-STACK-CELLS
             FDB   EN14,EN14L,(DSTACK-CODETOP+1)/2
                                     ; STACK-CELLS
+            FDB   EN15,EN15L,TRUEV  ; CORE (complete)
+            FDB   EN16,EN16L,TRUEV  ; DOUBLE (complete)
+            FDB   EN17,EN17L,TRUEV  ; DOUBLE-EXT (complete)
+            FDB   EN18,EN18L,TRUEV  ; CORE-EXT (complete)
             FDB   0
 EN1:        FCC   "/COUNTED-STRING"
 EN1L        EQU   *-EN1
@@ -7570,6 +7925,14 @@ EN13:       FCC   "RETURN-STACK-CELLS"
 EN13L       EQU   *-EN13
 EN14:       FCC   "STACK-CELLS"
 EN14L       EQU   *-EN14
+EN15:       FCC   "CORE"
+EN15L       EQU   *-EN15
+EN16:       FCC   "DOUBLE"
+EN16L       EQU   *-EN16
+EN17:       FCC   "DOUBLE-EXT"
+EN17L       EQU   *-EN17
+EN18:       FCC   "CORE-EXT"
+EN18L       EQU   *-EN18
 
 ; ============================================================
 ; SECTION 25: TOOLS WORD SET (.S / WORDS / DUMP)

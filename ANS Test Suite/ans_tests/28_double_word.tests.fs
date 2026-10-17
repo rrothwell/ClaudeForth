@@ -1,12 +1,15 @@
 \ ============================================================
-\ ANS test suite - words implemented in forth6809.asm's
-\ section 08 (08_defining_words)
+\ ANS test suite - Double-Number word set (core + extension)
+\ forth6809.asm section 28 (28_double_word)
 \ Requires ttester.fs then 00_test_prelude.fs to be loaded
 \ first, in that order (the prelude itself uses T{/->/}T, so
 \ ttester.fs must come first). Extracted from the ANS Forth
 \ Standard, Annex F
-\ (https://forth-standard.org/standard/testsuite), which is
+\ (https://forth-standard.org/standard/double), which is
 \ explicitly redistributable per its own copyright notice.
+\
+\ Also needs: 2CONSTANT 2VARIABLE 2LITERAL 2VALUE TO M*/ D2/
+\ and ENVIRONMENT? answering DOUBLE, DOUBLE-EXT and MAX-D.
 \ ============================================================
 
 \ ---- section-marker: makes this file independently runnable ----
@@ -24,37 +27,51 @@ TEST-BEGIN
 \ Default base is HEX.
 DECIMAL
 
-\ ---- 8.6.1 Double-Number words ----
+\ ---- ENVIRONMENT? queries for the double word sets ----
+\ ENVIRONMENT? takes a counted-string pair, so each query is
+\ wrapped in a definition (S" is compile-only here).
+: ENV-DOUBLE     S" DOUBLE"     ENVIRONMENT? ;
+: ENV-DOUBLE-EXT S" DOUBLE-EXT" ENVIRONMENT? ;
+: ENV-MAX-D      S" MAX-D"      ENVIRONMENT? ;
+: ENV-NOSUCH     S" NO-SUCH-QUERY" ENVIRONMENT? ;
 
+\ DOUBLE and DOUBLE-EXT return a flag value (is the set present?)
+\ followed by the "query recognised" flag, so two cells. An
+\ unknown query returns the single flag false.
+T{ ENV-DOUBLE     -> <TRUE> <TRUE> }T
+T{ ENV-DOUBLE-EXT -> <TRUE> <TRUE> }T
+T{ ENV-NOSUCH     -> <FALSE> }T
 
-\ Double number constant setup.
-\ TODO Define these in the dictionary.
-\ or maybe not.
+\ ---- Double-Number constant setup ----
+\ MAX-INT and MIN-INT come from the prelude. The double-cell
+\ limits are built from them and from D2/, so they do not
+\ depend on the cell size. 2CONSTANT takes ( lo hi -- ).
 
 HEX
 
-7FFF CONSTANT MAX-INT
-8000 CONSTANT MIN-INT
+0 INVERT MAX-INT 2CONSTANT MAX-2INT
+0 MIN-INT        2CONSTANT MIN-2INT
+MAX-2INT D2/     2CONSTANT HI-2INT
+MIN-2INT D2/     2CONSTANT LO-2INT
 MAX-INT 2/ CONSTANT HI-INT
 MIN-INT 2/ CONSTANT LO-INT
 
-FFFF 7FFF 2CONSTANT MAX-2INT
-0000 8000 2CONSTANT MIN-2INT
+\ Lower-case spellings are the same words (dictionary lookup is
+\ case-insensitive); redefining them exercises that.
 MAX-2INT 2CONSTANT max-2INT
 MIN-2INT 2CONSTANT min-2INT
 MAX-2INT 2CONSTANT max-2int
 MIN-2INT 2CONSTANT min-2int
+HI-2INT  2CONSTANT hi-2INT
+LO-2INT  2CONSTANT lo-2INT
 
-\ MAX-2INT D2/ 2CONSTANT HI-2INT
-\ MIN-2INT D2/ 2CONSTANT LO-2INT
-FFFF 3FFF 2CONSTANT HI-2INT
-0000 C000 2CONSTANT LO-2INT
-HI-2INT 2CONSTANT hi-2INT
-LO-2INT 2CONSTANT lo-2INT
-
-\ Depends on M*/ which is not implemented.
-\ MAX-2INT 71 73 M*/ 2CONSTANT dbl1
-\ MIN-2INT 73 79 M*/ 2CONSTANT dbl2
+\ Cross-check the computed limits against known 16-bit values
+\ and against the MAX-D environment query.
+T{ MAX-2INT -> FFFF 7FFF }T
+T{ MIN-2INT -> 0000 8000 }T
+T{ HI-2INT  -> FFFF 3FFF }T
+T{ LO-2INT  -> 0000 C000 }T
+T{ ENV-MAX-D -> MAX-2INT <TRUE> }T
 
 DECIMAL
 
@@ -72,13 +89,13 @@ T{ 2c2 -> -1 -2 }T
 T{ 4 5 2CONSTANT 2c3 IMMEDIATE 2c3 -> 4 5 }T
 T{ : cd6 2c3 2LITERAL ; cd6 -> 4 5 }T
 
-\ F.8.6.1.0390 2LITERAL (Not implemented)
+\ F.8.6.1.0390 2LITERAL
 
-\ T{ : cd1 [ MAX-2INT ] 2LITERAL ; -> }T
-\ T{ cd1 -> MAX-2INT }T
-\ T{ 2VARIABLE 2v4 IMMEDIATE 5 6 2v4 2! -> }T
-\ T{ : cd7 2v4 [ 2@ ] 2LITERAL ; cd7 -> 5 6 }T
-\ T{ : cd8 [ 6 7 ] 2v4 [ 2! ] ; 2v4 2@ -> 6 7 }T
+T{ : cd1 [ MAX-2INT ] 2LITERAL ; -> }T
+T{ cd1 -> MAX-2INT }T
+T{ 2VARIABLE 2v4 IMMEDIATE 5 6 2v4 2! -> }T
+T{ : cd7 2v4 [ 2@ ] 2LITERAL ; cd7 -> 5 6 }T
+T{ : cd8 [ 6 7 ] 2v4 [ 2! ] ; 2v4 2@ -> 6 7 }T
 
 \ F.8.6.1.0440 2VARIABLE
 
@@ -146,7 +163,7 @@ T{  0 -1  0  2 D- ->  0 -3 }T
 T{  0 -1  0 -2 D- ->  0  1 }T
 T{  0  0  0  1 D- ->  0 -1 }T
 T{ MIN-INT 0 2DUP D- -> 0. }T
-T{ MIN-INT S>D MAX-INT 0D- -> 1 1s }T
+T{ MIN-INT S>D MAX-INT 0 D- -> 1 1S }T
 T{ MAX-2INT max-2INT D- -> 0. }T    \ large integers
 T{ MIN-2INT min-2INT D- -> 0. }T
 T{ MAX-2INT  hi-2INT D- -> lo-2INT DNEGATE }T
@@ -156,10 +173,10 @@ T{ MIN-2INT min-2INT D- -> 0. }T
 T{ MIN-2INT  lo-2INT D- -> lo-2INT }T
 
 
-\ F.8.6.1.1060 D. (Not tested) 
-
-\ F.8.6.1.1070 D.R 
-(has a dependency on M*/ which is not implemented)
+\ F.8.6.1.1060 D. and F.8.6.1.1070 D.R
+\ These produce display output, so the test is visual: the
+\ lines shown must come out in identical pairs. dbl1 and dbl2
+\ are built with M*/ (decimal 71/73 and 73/79 scaling).
 
 MAX-2INT 71 73 M*/ 2CONSTANT dbl1
 MIN-2INT 73 79 M*/ 2CONSTANT dbl2
@@ -186,44 +203,44 @@ dbl2 d>ascii 2CONSTANT "dbl2"
 T{ DoubleOutput -> }T
 
 
-\ F.8.6.1.1075 D0< (Not implemented)
+\ F.8.6.1.1075 D0<
 
-\ T{                0. D0< -> <FALSE> }T
-\ T{                1. D0< -> <FALSE> }T
-\ T{  MIN-INT        0 D0< -> <FALSE> }T
-\ T{        0  MAX-INT D0< -> <FALSE> }T
-\ T{          MAX-2INT D0< -> <FALSE> }T
-\ T{               -1. D0< -> <TRUE>  }T
-\ T{          MIN-2INT D0< -> <TRUE>  }T
-
-
-\ F.8.6.1.1080 D0= (Not implemented)
-
-\ T{               1. D0= -> <FALSE> }T
-\ T{ MIN-INT        0 D0= -> <FALSE> }T
-\ T{         MAX-2INT D0= -> <FALSE> }T
-\ T{      -1  MAX-INT D0= -> <FALSE> }T
-\ T{               0. D0= -> <TRUE>  }T
-\ T{              -1. D0= -> <FALSE> }T
-\ T{       0  MIN-INT D0= -> <FALSE> }T
+T{                0. D0< -> <FALSE> }T
+T{                1. D0< -> <FALSE> }T
+T{  MIN-INT        0 D0< -> <FALSE> }T
+T{        0  MAX-INT D0< -> <FALSE> }T
+T{          MAX-2INT D0< -> <FALSE> }T
+T{               -1. D0< -> <TRUE>  }T
+T{          MIN-2INT D0< -> <TRUE>  }T
 
 
-\ F.8.6.1.1090 D2* (Not implemented)
+\ F.8.6.1.1080 D0=
 
-\ T{              0. D2* -> 0. D2* }T
-\ T{ MIN-INT       0 D2* -> 0 1 }T
-\ T{         HI-2INT D2* -> MAX-2INT 1. D- }T
-\ T{         LO-2INT D2* -> MIN-2INT }T
+T{               1. D0= -> <FALSE> }T
+T{ MIN-INT        0 D0= -> <FALSE> }T
+T{         MAX-2INT D0= -> <FALSE> }T
+T{      -1  MAX-INT D0= -> <FALSE> }T
+T{               0. D0= -> <TRUE>  }T
+T{              -1. D0= -> <FALSE> }T
+T{       0  MIN-INT D0= -> <FALSE> }T
 
 
-\ F.8.6.1.1100 D2/ (Not implemented)
+\ F.8.6.1.1090 D2*
 
-\ T{       0. D2/ -> 0.        }T
-\ T{       1. D2/ -> 0.        }T
-\ T{      0 1 D2/ -> MIN-INT 0 }T
-\ T{ MAX-2INT D2/ -> HI-2INT   }T
-\ T{      -1. D2/ -> -1.       }T
-\ T{ MIN-2INT D2/ -> LO-2INT   }T
+T{              0. D2* -> 0. D2* }T
+T{ MIN-INT       0 D2* -> 0 1 }T
+T{         HI-2INT D2* -> MAX-2INT 1. D- }T
+T{         LO-2INT D2* -> MIN-2INT }T
+
+
+\ F.8.6.1.1100 D2/
+
+T{       0. D2/ -> 0.        }T
+T{       1. D2/ -> 0.        }T
+T{      0 1 D2/ -> MIN-INT 0 }T
+T{ MAX-2INT D2/ -> HI-2INT   }T
+T{      -1. D2/ -> -1.       }T
+T{ MIN-2INT D2/ -> LO-2INT   }T
 
 \ F.8.6.1.1110 D<
 
@@ -337,25 +354,27 @@ T{  -1. DNEGATE ->  1. }T
 T{ max-2int DNEGATE -> min-2int SWAP 1+ SWAP }T
 T{ min-2int SWAP 1+ SWAP DNEGATE -> max-2int }T
 
-\ F.8.6.1.1820 M*/ (Not implemented)
+\ F.8.6.1.1820 M*/
+\ ?FLOORED adjusts the expected result when division is floored.
+\ This system divides symmetrically, so it is a no-op here.
 
-\ : ?floored [ -3 2 / -2 = ] LITERAL IF 1. D- THEN ;
-\ 
-\ T{       5.       7             11 M*/ ->  3. }T
-\ T{       5.      -7             11 M*/ -> -3. ?floored }T
-\ T{      -5.       7             11 M*/ -> -3. ?floored }T
-\ T{      -5.      -7             11 M*/ ->  3. }T
-\ T{ MAX-2INT       8             16 M*/ -> HI-2INT }T
-\ T{ MAX-2INT      -8             16 M*/ -> HI-2INT DNEGATE ?floored }T
-\ T{ MIN-2INT       8             16 M*/ -> LO-2INT }T
-\ T{ MIN-2INT      -8             16 M*/ -> LO-2INT DNEGATE }T
-\ 
-\ T{ MAX-2INT MAX-INT        MAX-INT M*/ -> MAX-2INT }T
-\ T{ MAX-2INT MAX-INT 2/     MAX-INT M*/ -> MAX-INT 1- HI-2INT NIP }T
-\ T{ MIN-2INT LO-2INT NIP DUP NEGATE M*/ -> MIN-2INT }T
-\ T{ MIN-2INT LO-2INT NIP 1- MAX-INT M*/ -> MIN-INT 3 + HI-2INT NIP 2 + }T
-\ T{ MAX-2INT LO-2INT NIP DUP NEGATE M*/ -> MAX-2INT DNEGATE }T
-\ T{ MIN-2INT MAX-INT            DUP M*/ -> MIN-2INT }T
+: ?floored [ -3 2 / -2 = ] LITERAL IF 1. D- THEN ;
+
+T{       5.       7             11 M*/ ->  3. }T
+T{       5.      -7             11 M*/ -> -3. ?floored }T
+T{      -5.       7             11 M*/ -> -3. ?floored }T
+T{      -5.      -7             11 M*/ ->  3. }T
+T{ MAX-2INT       8             16 M*/ -> HI-2INT }T
+T{ MAX-2INT      -8             16 M*/ -> HI-2INT DNEGATE ?floored }T
+T{ MIN-2INT       8             16 M*/ -> LO-2INT }T
+T{ MIN-2INT      -8             16 M*/ -> LO-2INT DNEGATE }T
+
+T{ MAX-2INT MAX-INT        MAX-INT M*/ -> MAX-2INT }T
+T{ MAX-2INT MAX-INT 2/     MAX-INT M*/ -> MAX-INT 1- HI-2INT NIP }T
+T{ MIN-2INT LO-2INT NIP DUP NEGATE M*/ -> MIN-2INT }T
+T{ MIN-2INT LO-2INT NIP 1- MAX-INT M*/ -> MIN-INT 3 + HI-2INT NIP 2 + }T
+T{ MAX-2INT LO-2INT NIP DUP NEGATE M*/ -> MAX-2INT DNEGATE }T
+T{ MIN-2INT MAX-INT            DUP M*/ -> MIN-2INT }T
 
 
 \ F.8.6.1.1830 M+
@@ -367,20 +386,20 @@ T{ LO-2INT  -1 M+ -> LO-2INT  -1. D+ }T
 
 \ ---- 8.6.2 Double-Number extension words ----
 
-\ F.8.6.2.0420 2ROT 
+\ F.8.6.2.0420 2ROT
 
 T{       1.       2. 3. 2ROT ->       2. 3.       1. }T
 T{ MAX-2INT MIN-2INT 1. 2ROT -> MIN-2INT 1. MAX-2INT }T
 
 
-\ F.8.6.2.0435 2VALUE (Not implemented)
+\ F.8.6.2.0435 2VALUE
 
-\ T{ 1 2 2VALUE t2val -> }T
-\ T{ t2val -> 1 2 }T
-\ T{ 3 4 TO t2val -> }T
-\ T{ t2val -> 3 4 }T
-\ : sett2val t2val 2SWAP TO t2val ;
-\ T{ 5 6 sett2val t2val -> 3 4 5 6 }T
+T{ 1 2 2VALUE t2val -> }T
+T{ t2val -> 1 2 }T
+T{ 3 4 TO t2val -> }T
+T{ t2val -> 3 4 }T
+: sett2val t2val 2SWAP TO t2val ;
+T{ 5 6 sett2val t2val -> 3 4 5 6 }T
 
 \ F.8.6.2.1270 DU<
 
