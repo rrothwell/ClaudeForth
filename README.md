@@ -81,6 +81,7 @@ brew install binutils
 |Retest with assembler test suite and adjust expectations.| 1.20|:white_check_mark:|
 |Update general documentation, including applying style rules to assembler code and introducing shadow files.| 1.20|:white_check_mark:|
 |Optimisation for space & application performance| 1.30|:white_check_mark:|
+|Test coverage audit| 1.30|:white_check_mark:|
 |Optimisation for compiler performance| 1.40| |
 |Update documentation| 1.30| |
 |Burn ROM and install onto real MECB 6809 hardware. | 1.30| |
