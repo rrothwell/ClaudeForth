@@ -59,7 +59,7 @@ brew install binutils
 * ~~Warning: all words tested as functional, but with limited test coverage of edge cases. Tagged as version 1.00.~~*
 * ~~Warning: all words tested as functional, with extensive automated tests. Tagged as version 1.10.~~*
 * ~~Warning: most words tested as functional, complying with the ANS Forth Test Suite. Tagged as version 1.20.~~*
-* Usable: all words tested as functional & performant, nearly all complying with the ANS Forth Test Suite. Tagged as version 1.30. *
+* ~~Usable: all words tested as functional & performant, nearly all complying with the ANS Forth Test Suite. Tagged as version 1.30.~~*
 * Trustworthy: all words tested as functional & performant, with complete test coverage, complying with the ANS Forth Test Suite. Tagged as version 1.40. *
 
 | Item             | Version   | Completed   |
