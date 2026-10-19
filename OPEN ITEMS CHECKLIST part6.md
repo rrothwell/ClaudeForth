@@ -53,8 +53,9 @@ every test selector from 0 to 18.
 - [x] **ANS test file `29_coreext_strings.tests.fs`.** A `T{ ... >R ... R> ... }T`
       line at top level reset the target (`>R` leaves the value under the
       interpreter's return address); the test now uses a definition.
-- [ ] **MAME confirmation of stage 6c** (`S\"`, `CONVERT` and the section 29 tests).
-      Stage 6b was confirmed.
+- [x] **MAME confirmation of stage 6c** (`S\"`, `CONVERT` and the section 29 tests):
+      all unit tests and ANS tests pass. The section 29 file was then tidied by
+      hand (formatting consistent with the other section files, base set to HEX).
 
 ## ROM layout and unit tests
 
