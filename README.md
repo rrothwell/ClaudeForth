@@ -21,6 +21,8 @@ a couple of days. The result was not remotely functional.
 
 Manual testing, over 3 weeks, one glossary section at a time, 
 show numerous logic bugs, some arising from subtleties of the 6809 instruction set. 
+This included aliasing of A:B to D and variations in instructions setting condition codes.
+
 When a bug was isolated, the description  was pushed to Claude often resulting in 
 a sophisticated analysis and resolution. Failing that the code was single stepped 
 using the MAME debugger, identified and the result passed to Claude for verification

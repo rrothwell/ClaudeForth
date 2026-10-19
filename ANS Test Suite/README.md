@@ -93,7 +93,7 @@ python3 ans_test_runner.py \
     --retrigger-cmd $HOME/git/ClaudeForth/ANS\ Test\ Suite/retrigger.cmd \
     --skip-assemble \
     --ans-dir $HOME/git/ClaudeForth/ANS\ Test\ Suite/ans_tests \
-    --sections 08 09 10 11 12 13 14 15 16 17 18 19 20 21 23 24 26 27 28 29 \
+    --sections 08 09 10 11 12 13 14 15 16 17 18 19 20 21 23 24 26 27 28 29 30 31 \
     --char-delay 0.05 \
     --retries 0 \
     --log-dir $HOME/git/ClaudeForth/ANS\ Test\ Suite/ans_test_results
@@ -185,7 +185,6 @@ select the text, copy it to the clipboard and then paste it into the minicom win
 All the files are loaded in this way, 
 in the same order as used by the python test runner:
 
-1. `00a_tool_ext_conditionals.fs`
 1. `ttester.fs`
 1. `00_test_prelude.fs`
 1. any section files, in any order.
@@ -281,13 +280,12 @@ and the function of each file.
 
 ### Forth Conditional Compilation Support
 
-The utility file 00a_tool_ext_conditionals.fs is loaded first to provide
-conditional forth compilation for floating point testing support when
-the following ttester.fs file is compiled.
-
-This file provides `[IF]`/`[ELSE]`/`[THEN]` 
-from the Programming-Tools word set. 
-These words are not provided by ClaudeForth.
+`[IF]`, `[ELSE]` and `[THEN]` from the Programming-Tools word set are
+part of the ROM since stage 6d, so `ttester.fs` (which gates its floating
+point code behind `HAS-FLOATING [IF]`) loads directly. The former utility
+file `00a_tool_ext_conditionals.fs` is no longer needed and should be removed
+from the harness list in `ans_test_runner.py`, the line that reads
+`for fname in ("00a_tool_ext_conditionals.fs", "ttester.fs", "00_test_prelude.fs"):`.
 
 `ttester.fs` needs them immediately, in its own conditional compilation of the
 `HAS-FLOATING`/`HAS-FLOATING-STACK` source blocks, so this file loads first, 
@@ -358,6 +356,11 @@ one-file-per-assembler-section rule:
 1. `29_coreext_strings.tests.fs`: the Core Extension words that no other
    section file covers: `.(`, `C"`, `S\"`, `CONVERT`, `SAVE-INPUT`,
    `RESTORE-INPUT`, and the `CORE-EXT` environment query.
+1. `30_coreext_misc.tests.fs`: words that had no test elsewhere (`PICK`, `ROLL`,
+   `2R@`, `<>`, `0<>`, `U>`, `WITHIN`, `AGAIN`, `ERASE`, `PARSE`, `SOURCE-ID`,
+   `REFILL`, `TIB`, `#TIB`, `.R`, `U.R`) and the ClaudeForth extensions (`2+`,
+   `BINARY`, `SNAME`, `VHERE`, `V,`, `VC,`, `VALLOT`, `UNUSED`, `VUNUSED`).
+1. `31_tools_conditionals.tests.fs`: `[IF]`, `[ELSE]`, `[THEN]`.
 
 ## Differences from the Published Annex F Suite
 
@@ -391,8 +394,7 @@ number of times, from a single shared harness+prelude load:
   and `S=`, all provided by `00_test_prelude.fs`, which sits outside
   every section's own `MARKER` bracket and is loaded once, up front.
 
-The load order is simply: `00a_tool_ext_conditionals.fs`,
-`ttester.fs`, `00_test_prelude.fs`, then any subset of section files, in
+The load order is simply: `ttester.fs`, `00_test_prelude.fs`, then any subset of section files, in
 any sequence — see `ans_test_runner.py` (one level up), which automates
 exactly this against either MAME or a real serial-connected MECB6809.
 
@@ -434,6 +436,13 @@ Where the section files differ from the published test text:
   source cannot be rewound across lines, so `SAVE-INPUT` and `RESTORE-INPUT` are
   tested only for the saved shape and the failure paths. `S\"` and `CONVERT` have
   tests that cover each escape and the digit scan.
+- **Misc words (section 30).** Written for this project, following the Core and
+  Core-Ext suites for the standard words. `.R` and `U.R` are visual: the lines
+  shown must appear in identical pairs.
+- **Conditional compilation (section 31).** The standard's own `[IF]` tests plus
+  use inside definitions, nesting, case, look-alike names and the end of an
+  `EVALUATE` string. The last two tests are spread over several lines, so a
+  runner waits for a reply timeout on each of their interior lines.
 - **`SM/REM` (section 15).** One expected remainder is corrected to follow the
   sign-of-dividend pattern of its neighbours.
 - **`CATCH`/`THROW` (section 11).** The undefined-word case expects `-13`.

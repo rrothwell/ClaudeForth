@@ -3099,3 +3099,14 @@ VECTORS.1  [history]  (lines 8824-8824 of the stage-3o file)
 VECTOREND.1  [history]  (lines 8834-8834 of the stage-3o file)
 ----------------------------------------------------------------
 ; Verify vectors size, value should match $10.
+
+================================================================
+ROLLW.1  [bugfix]  (stage 6d)
+----------------------------------------------------------------
+; BUG FIX: ROLL read u with PULU D and then branched on zero with BEQ.
+; PULU does not change the condition codes, so the branch used whatever
+; the previous instruction left behind: with u >= 1 and Z set, ROLL did
+; nothing (found by 30_coreext_misc.tests.fs in MAME: 1 2 3 1 ROLL left
+; 1 2 3). The unit test passed by luck, because the STU before the call
+; always leaves Z clear. Now LDD ,U++ (two bytes, like PULU D) sets the
+; flags from u, and the unit test leaves Z set before calling ROLL.

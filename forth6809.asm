@@ -22,9 +22,9 @@ USROMEND    EQU   VECTORS-1         ; usable ROM end (VECTORS-1)
 VECTORS     EQU   $FFF0
 INITCODE    EQU   $FFA4             ; start of the init code (COLDSTRT)
             ; Commented-out code moved to shadow: MEMMAP.5
-BASECODE    EQU   $DC44             ; base code. See shadow MEMMAP.6
+BASECODE    EQU   $DBF0             ; base code. See shadow MEMMAP.6
             ; Commented-out code moved to shadow: MEMMAP.7
-BASEDICT    EQU   $D395             ; base dictionary. See shadow MEMMAP.8
+BASEDICT    EQU   $D322             ; base dictionary. See shadow MEMMAP.8
 INOUT       EQU   $C000             ; I/O block (ACIA), 256 bytes
 INOUTEND    EQU   INOUT+$FF
 RSTACK      EQU   $BFFF             ; return stack top
@@ -1543,7 +1543,22 @@ H_CONVERT:  FCB   7
             FDB   H_SQUOTEESC
             FDB   CONVERTW
 
-BASELATEST  EQU   H_CONVERT        ; head of the ROM dictionary (see COLD)
+H_BRIF:     FCB   $84
+            FCC   "[IF]"
+            FDB   H_CONVERT
+            FDB   BRIFW
+
+H_BRELSE:   FCB   $86
+            FCC   "[ELSE]"
+            FDB   H_BRIF
+            FDB   BRELSEW
+
+H_BRTHEN:   FCB   $86
+            FCC   "[THEN]"
+            FDB   H_BRELSE
+            FDB   BRTHENW
+
+BASELATEST  EQU   H_BRTHEN         ; head of the ROM dictionary (see COLD)
 
 ; Verify no collision with base code.
 ; Value should match ORG BASECODE
@@ -4820,8 +4835,8 @@ PICKW:      PULU  D                 ; u
 ; cells above it down one place. RDST holds the byte offset and RVAL
 ; the cell being moved.
 ; ------------------------------------------------------------
-ROLLW:      PULU  D                 ; u
-            BEQ   ROLLDONE
+ROLLW:      LDD   ,U++              ; u (LDD sets CC; PULU would not). See
+            BEQ   ROLLDONE          ; bugfix: ROLLW.1
             TFR   D,Y               ; Y = cells to shift
             LSLB
             ROLA
@@ -8263,6 +8278,81 @@ DULEND:     JSR   CRW
 DUDONE:     LEAS  4,S
             LEAU  4,U               ; drop addr and u
             RTS
+
+
+; ------------------------------------------------------------
+; [IF]  ( flag -- )     [ELSE]  ( -- )     [THEN]  ( -- )
+; Programming-Tools conditional compilation. All three are
+; immediate, so they work while interpreting and while compiling.
+; [IF] with a true flag does nothing. With a false flag, and for
+; [ELSE], the input is skipped word by word, counting nested
+; [IF]s, up to the matching [ELSE] or [THEN]. The three names are
+; matched exactly, as the dictionary matches every name. If the line
+; runs out, the next line is read with REFILL; if no more input is
+; available the skip ends.
+; [THEN] is a marker and does nothing when it is executed.
+; The nesting level is kept at 0,S.
+; ------------------------------------------------------------
+BRIFW:      PULU  D
+            CMPD  #0
+            BNE   BRTHENW           ; true: nothing to skip
+BRELSEW:    LDD   #1
+            PSHS  D                 ; level
+BRNEXT:     JSR   PARSENAMEW
+            PULU  D                 ; length
+            PULU  X                 ; address
+            CMPD  #0
+            BEQ   BRREFILL
+            CMPD  #4
+            BEQ   BR4
+            CMPD  #6
+            BNE   BRNEXT
+            LDB   #6
+            LDY   #BRSELSE
+            PSHS  X
+            JSR   BRCMP
+            PULS  X
+            BNE   BR6B
+            LDD   ,S                ; [ELSE]: ends the skip at level 1
+            SUBD  #1
+            BEQ   BRDONE
+            BRA   BRNEXT
+BR6B:       LDB   #6
+            LDY   #BRSTHEN
+            JSR   BRCMP
+            BNE   BRNEXT
+            LDD   ,S                ; [THEN]: one level less
+            SUBD  #1
+            STD   ,S
+            BEQ   BRDONE
+            BRA   BRNEXT
+BR4:        LDB   #4
+            LDY   #BRSIF
+            JSR   BRCMP
+            BNE   BRNEXT
+            LDD   ,S                ; [IF]: one level more
+            ADDD  #1
+            STD   ,S
+            BRA   BRNEXT
+BRREFILL:   JSR   REFILLW
+            PULU  D
+            CMPD  #0
+            BNE   BRNEXT
+BRDONE:     LEAS  2,S
+BRTHENW:    RTS
+
+; Compare B characters at X with the pattern at Y. Case matters, as it
+; does for every name in this system. Z is set if equal.
+BRCMP:      LDA   ,X+
+            CMPA  ,Y+
+            BNE   BRCX
+            DECB
+            BNE   BRCMP
+BRCX:       RTS
+
+BRSIF:      FCC   "[IF]"
+BRSELSE:    FCC   "[ELSE]"
+BRSTHEN:    FCC   "[THEN]"
 
 ; ============================================================
 ; SECTION 26: CONSTANT-VALUE WORDS (TRUE, FALSE, 1, -1, 2, -2)

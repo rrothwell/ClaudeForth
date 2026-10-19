@@ -1625,6 +1625,7 @@ TSTROLL:    STU   TSTU0
             LDD   #2
             PSHU  D
             STU   TSTUB4
+            CLRA                    ; leave Z set: ROLL must test u itself
 
             JSR   ROLLW
 
@@ -17684,6 +17685,7 @@ TSTTOOLS:   JSR   CRW
             JSR   TSTDOTS
             JSR   TSTWORDS
             JSR   TSTDUMP
+            JSR   TSTBRCOND
 
             ENDC                    ; <<<<
 
@@ -17960,6 +17962,130 @@ DUDONE2:    LDX   #TSTDUNAME
 
 TSTDUNAME:  FCB   7
             FCC   "TSTDUMP"
+
+; ------------------------------------------------------------
+; unit test for [IF], [ELSE] and [THEN]: each table entry sets the
+; input source to a string, calls the word, and checks where >IN
+; ended up and that the data stack holds nothing extra. The string
+; labels end just before the text that must still be unread.
+; Entry: FDB string, FDB length, FDB expected >IN, FCB mode
+; (0 = [ELSE], 1 = [IF] with a false flag, 2 = [IF] with a true flag).
+; TSTBRCOND
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTBRCOND OK" or "TSTBRCOND FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTBRCOND:  LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   SRCID
+            STD   TSTSISAV
+            LDD   TOIN
+            STD   TSTTISAV
+            STU   TSTU0
+            LDY   #TSTBRTAB
+BRTLOOP:     LDX   ,Y
+            BEQ   BRTPASS
+            STX   SRCADDR
+            LDD   2,Y
+            STD   SRCLEN
+            LDD   #-1
+            STD   SRCID
+            LDD   #0
+            STD   TOIN
+            PSHS  Y
+            LDA   6,Y
+            BEQ   BRTELSE
+            CMPA  #1
+            BEQ   BRTFALSE          ; mode 1: false flag
+            LDD   #TRUEV
+            BRA   BRTIF
+BRTFALSE:   LDD   #FALSEV
+BRTIF:      PSHU  D
+            JSR   BRIFW
+            BRA   BRTCHK
+BRTELSE:     JSR   BRELSEW
+BRTCHK:      PULS  Y
+            LDD   TOIN
+            CMPD  4,Y
+            BNE   BRTFAIL
+            CMPU  TSTU0
+            BNE   BRTFAIL
+            LEAY  7,Y
+            BRA   BRTLOOP
+BRTPASS:     LDD   #TRUEV
+            BRA   BRTREP
+BRTFAIL:     LDD   #FALSEV
+BRTREP:      LDX   TSTSASAV
+            STX   SRCADDR
+            LDX   TSTSLSAV
+            STX   SRCLEN
+            LDX   TSTSISAV
+            STX   SRCID
+            LDX   TSTTISAV
+            STX   TOIN
+            LDU   TSTU0
+            LDX   #TSTBRNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTBRNAME:  FCB   9
+            FCC   "TSTBRCOND"
+
+; Skipped to just past [ELSE]
+BQ1:        FCC   " A B [ELSE]"
+BQ1E:       FCC   " C [THEN] D"
+BQ1L        EQU   *-BQ1
+; Nested [IF] ... [ELSE] ... [THEN] skipped, then the outer [ELSE]
+BQ2:        FCC   " 1 [IF] 2 [ELSE] 3 [THEN] [ELSE]"
+BQ2E:       FCC   " 4 [THEN] Z"
+BQ2L        EQU   *-BQ2
+; Lower and mixed case names are not markers: only the exact names count
+BQ3:        FCC   " x [else] [If] [ELSE]"
+BQ3E:       FCC   " y"
+BQ3L        EQU   *-BQ3
+BQ4:        FCC   " a [Then] [then] [THEN]"
+BQ4E:       FCC   " b"
+BQ4L        EQU   *-BQ4
+; No terminator: the skip ends at the end of the string
+BQ5:        FCC   " a b c"
+BQ5L        EQU   *-BQ5
+; True flag: nothing is skipped
+BQ6:        FCC   " a [ELSE] b"
+BQ6L        EQU   *-BQ6
+; [ELSE] entered directly, skipping a nested [IF] ... [THEN]
+BQ7:        FCC   " a [IF] b [THEN] c [THEN]"
+BQ7E:       FCC   " d"
+BQ7L        EQU   *-BQ7
+; Words of other lengths that start with a bracket are not markers
+BQ8:        FCC   " [IFX] [THE] [ELSEY] [THEN]"
+BQ8E:       FCC   " e"
+BQ8L        EQU   *-BQ8
+
+TSTBRTAB:   FDB   BQ1,BQ1L,BQ1E+1-BQ1
+            FCB   1
+            FDB   BQ2,BQ2L,BQ2E+1-BQ2
+            FCB   1
+            FDB   BQ3,BQ3L,BQ3E+1-BQ3
+            FCB   1
+            FDB   BQ4,BQ4L,BQ4E+1-BQ4
+            FCB   1
+            FDB   BQ5,BQ5L,BQ5L
+            FCB   1
+            FDB   BQ6,BQ6L,0
+            FCB   2
+            FDB   BQ7,BQ7L,BQ7E+1-BQ7
+            FCB   0
+            FDB   BQ8,BQ8L,BQ8E+1-BQ8
+            FCB   1
+            FDB   0
 
             ENDC                    ; <<<<
 

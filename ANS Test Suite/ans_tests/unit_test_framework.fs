@@ -12,9 +12,34 @@
 0 INVERT 1 RSHIFT INVERT CONSTANT MIN-INT
 
 0 INVERT CONSTANT MAX-UINT
+0 INVERT 1 RSHIFT CONSTANT MID-UINT
+0 INVERT 1 RSHIFT INVERT CONSTANT MID-UINT+1
 
 \ Why the test prelude sets this to 24 is unknown.
 24 CONSTANT MAX-BASE   
+
+\ Helper comparison words.  
+
+\ Compare two strings.
+
+: S= ( ADDR1 C1 ADDR2 C2 -- T/F ) 
+    >R SWAP R@ = \ Do the strings have same length?
+    IF 
+        R> ?DUP  \ Are the strings non-empty?
+        IF 
+            0 DO
+                OVER C@ OVER C@ - \ Are characters the same?
+                IF  
+                    2DROP <FALSE> UNLOOP EXIT 
+                THEN
+                SWAP CHAR+ SWAP CHAR+
+            LOOP
+        THEN
+        2DROP <TRUE> \ Verified that strings match
+    ELSE
+        R> DROP 2DROP <FALSE> \ Lengths mismatch
+    THEN 
+;
 
 \ Defining variables for end of test result summary  
 
