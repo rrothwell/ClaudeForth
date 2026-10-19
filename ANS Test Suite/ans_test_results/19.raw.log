@@ -24,7 +24,7 @@
   okT{ CHAR X -> 58 }T  Actual:Expected 58 =?= 58 
   okT{ CHAR HELLO -> 48 }T  Actual:Expected 48 =?= 48 
   ok\ F.6.1.0980  COUNT
-  okT{ GT1STRING COUNT -> GT1STRING CHAR+ 3 }T  Actual:Expected 3 =?= 3 77CE =?= 77CE 
+  okT{ GT1STRING COUNT -> GT1STRING CHAR+ 3 }T  Actual:Expected 3 =?= 3 7710 =?= 7710 
   ok\ F.6.1.2310  TYPE
   ok\ See F.6.1.1320 EMIT.
   ok\ F.6.1.2450  WORD

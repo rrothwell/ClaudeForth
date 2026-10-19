@@ -23,7 +23,7 @@
   okALIGN 1 ALLOT HERE ALIGN HERE 3 CELLS ALLOT
   okCONSTANT A-ADDR 
   okCONSTANT UA-ADDR   
-  okT{ UA-ADDR ALIGNED -> A-ADDR }T  Actual:Expected 77CE =?= 77CE 
+  okT{ UA-ADDR ALIGNED -> A-ADDR }T  Actual:Expected 7710 =?= 7710 
   okT{ 1 A-ADDR C! A-ADDR C@ -> 1 }T  Actual:Expected 1 =?= 1 
   okT{ 1234 A-ADDR ! A-ADDR @ -> 1234 }T  Actual:Expected 1234 =?= 1234 
   okT{ 123 456 A-ADDR 2! A-ADDR 2@ -> 123 456 }T  Actual:Expected 456 =?= 456 123 =?= 123 

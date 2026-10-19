@@ -21,7 +21,7 @@
   okTEST-BEGIN
   ok\ F.6.1.0560  >IN
   okVARIABLE SCANS
-  ok\ This test must retain the multiline split 
+  ok\ This test must retain the multiline split
   ok\ to proceed to completion by scanning multiple lines.
   ok\ It infinite loops in INTERPRET otherwise.
   ok: RESCAN? -1 SCANS +! SCANS @ IF 0 >IN ! THEN ;
@@ -74,9 +74,9 @@
   ok: GN-STRING GN-BUF 1 ;
   ok: GN-CONSUMED GN-BUF CHAR+ 0 ;
   ok: GN' [CHAR] ' WORD CHAR+ C@ GN-BUF C! GN-STRING ;
-  okT{ 0 0 GN' 0' >NUMBER -> 0 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 781A =?= 781A 0 =?= 0 0 =?= 0 
-  okT{ 0 0 GN' 1' >NUMBER -> 1 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 781A =?= 781A 0 =?= 0 1 =?= 1 
-  okT{ 1 0 GN' 1' >NUMBER -> BASE @ 1+ 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 781A =?= 781A 0 =?= 0 11 =?= 11 
+  okT{ 0 0 GN' 0' >NUMBER -> 0 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 775C =?= 775C 0 =?= 0 0 =?= 0 
+  okT{ 0 0 GN' 1' >NUMBER -> 1 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 775C =?= 775C 0 =?= 0 1 =?= 1 
+  okT{ 1 0 GN' 1' >NUMBER -> BASE @ 1+ 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 775C =?= 775C 0 =?= 0 11 =?= 11 
   ok\ FOLLOWING SHOULD FAIL TO CONVERT
   ok\ BUG FIX: these three tests used to be glued onto the end of this
   ok\ comment's own line - the same "comment swallows the rest of the
@@ -84,16 +84,16 @@
   ok\ 23_comment_words.tests.fs, 08_defining_words.tests.fs, and
   ok\ 19_string_words.tests.fs - so none of them ever ran. Split onto
   ok\ their own line below.
-  okT{ 0 0 GN' -' >NUMBER -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 7819 =?= 7819 0 =?= 0 0 =?= 0 
-  okT{ 0 0 GN' +' >NUMBER -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 7819 =?= 7819 0 =?= 0 0 =?= 0 
-  okT{ 0 0 GN' .' >NUMBER -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 7819 =?= 7819 0 =?= 0 0 =?= 0 
+  okT{ 0 0 GN' -' >NUMBER -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 775B =?= 775B 0 =?= 0 0 =?= 0 
+  okT{ 0 0 GN' +' >NUMBER -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 775B =?= 775B 0 =?= 0 0 =?= 0 
+  okT{ 0 0 GN' .' >NUMBER -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 775B =?= 775B 0 =?= 0 0 =?= 0 
   ok: >NUMBER-BASED BASE @ >R BASE ! >NUMBER R> BASE ! ;
-  okT{ 0 0 GN' 2' 10 >NUMBER-BASED -> 2 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 781A =?= 781A 0 =?= 0 2 =?= 2 
-  okT{ 0 0 GN' 2' 2 >NUMBER-BASED -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 7819 =?= 7819 0 =?= 0 0 =?= 0 
-  okT{ 0 0 GN' F' 10 >NUMBER-BASED -> F 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 781A =?= 781A 0 =?= 0 F =?= F 
-  okT{ 0 0 GN' G' 10 >NUMBER-BASED -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 7819 =?= 7819 0 =?= 0 0 =?= 0 
-  okT{ 0 0 GN' G' MAX-BASE >NUMBER-BASED -> 10 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 781A =?= 781A 0 =?= 0 10 =?= 10 
-  okT{ 0 0 GN' Z' MAX-BASE >NUMBER-BASED -> 23 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 781A =?= 781A 0 =?= 0 23 =?= 23 
+  okT{ 0 0 GN' 2' 10 >NUMBER-BASED -> 2 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 775C =?= 775C 0 =?= 0 2 =?= 2 
+  okT{ 0 0 GN' 2' 2 >NUMBER-BASED -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 775B =?= 775B 0 =?= 0 0 =?= 0 
+  okT{ 0 0 GN' F' 10 >NUMBER-BASED -> F 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 775C =?= 775C 0 =?= 0 F =?= F 
+  okT{ 0 0 GN' G' 10 >NUMBER-BASED -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 775B =?= 775B 0 =?= 0 0 =?= 0 
+  okT{ 0 0 GN' G' MAX-BASE >NUMBER-BASED -> 10 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 775C =?= 775C 0 =?= 0 10 =?= 10 
+  okT{ 0 0 GN' Z' MAX-BASE >NUMBER-BASED -> 23 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 775C =?= 775C 0 =?= 0 23 =?= 23 
   ok: GN1 ( UD BASE -- UD' LEN )
 BASE @ >R BASE !
 <# #S #> 0 0 2SWAP >NUMBER SWAP DROP
@@ -118,6 +118,36 @@ R> BASE ! ;
   ok\ harness depth check enforces). X:notfound below is unchanged.
   okT{ S" X:deferred" ENVIRONMENT? DUP 0= OVER TRUE = OR NIP -> <TRUE> }T  Actual:Expected -1 =?= -1 
   okT{ S" X:notfound" ENVIRONMENT? DUP 0= XOR INVERT -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  ok\ ---- Standard environmental query table (forth-standard.org) ----
+  ok\ Result shape: a recognised query returns its value (one cell for
+  ok\ the numeric and flag queries, two for MAX-D and MAX-UD) followed
+  ok\ by the "recognised" flag true. An unrecognised query returns
+  ok\ only false. Base is HEX here.
+  okT{ S" /COUNTED-STRING" ENVIRONMENT? -> FF <TRUE> }T  Actual:Expected -1 =?= -1 FF =?= FF 
+  okT{ S" ADDRESS-UNIT-BITS" ENVIRONMENT? -> 8 <TRUE> }T  Actual:Expected -1 =?= -1 8 =?= 8 
+  okT{ S" MAX-CHAR" ENVIRONMENT? -> FF <TRUE> }T  Actual:Expected -1 =?= -1 FF =?= FF 
+  okT{ S" MAX-N" ENVIRONMENT? -> MAX-INT <TRUE> }T  Actual:Expected -1 =?= -1 7FFF =?= 7FFF 
+  okT{ S" MAX-U" ENVIRONMENT? -> MAX-UINT <TRUE> }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{ S" MAX-D" ENVIRONMENT? -> MAX-UINT MAX-INT <TRUE> }T  Actual:Expected -1 =?= -1 7FFF =?= 7FFF -1 =?= -1 
+  okT{ S" MAX-UD" ENVIRONMENT? -> MAX-UINT MAX-UINT <TRUE> }T  Actual:Expected -1 =?= -1 -1 =?= -1 -1 =?= -1 
+  okT{ S" FLOORED" ENVIRONMENT? -> <FALSE> <TRUE> }T  Actual:Expected -1 =?= -1 0 =?= 0 
+  ok\ /HOLD and /PAD are only required to meet the standard minimums:
+  ok\ /HOLD at least 2n+2 = 34 (22 hex) characters for 16-bit cells and
+  ok\ /PAD at least 84 (54 hex).
+  okT{ S" /HOLD" ENVIRONMENT? SWAP 22 < 0= SWAP -> <TRUE> <TRUE> }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{ S" /PAD" ENVIRONMENT? SWAP 54 < 0= SWAP -> <TRUE> <TRUE> }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  ok\ Word-set queries: value flag (the set is present) then recognised.
+  okT{ S" CORE" ENVIRONMENT? -> <TRUE> <TRUE> }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{ S" CORE-EXT" ENVIRONMENT? -> <TRUE> <TRUE> }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{ S" DOUBLE" ENVIRONMENT? -> <TRUE> <TRUE> }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{ S" DOUBLE-EXT" ENVIRONMENT? -> <TRUE> <TRUE> }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  ok\ Stack sizes: any positive size is acceptable.
+  okT{ S" STACK-CELLS" ENVIRONMENT? SWAP 0> SWAP -> <TRUE> <TRUE> }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{ S" RETURN-STACK-CELLS" ENVIRONMENT? SWAP 0> SWAP -> <TRUE> <TRUE> }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  ok\ Near-misses (longer, shorter, empty) must not be recognised.
+  okT{ S" CORE-EXTX" ENVIRONMENT? -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ S" DOUBL" ENVIRONMENT? -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ S" " ENVIRONMENT? -> <FALSE> }T  Actual:Expected 0 =?= 0 
   ok\ F.6.1.1360  EVALUATE
   ok: GE1 S" 123" ; IMMEDIATE
   ok: GE2 S" 123 1+" ; IMMEDIATE
@@ -134,11 +164,11 @@ R> BASE ! ;
   ok\ F.6.1.2216  SOURCE
   ok: GS1 S" SOURCE" 2DUP EVALUATE >R SWAP >R = R> R> = ;
   okT{ GS1 -> <TRUE> <TRUE> }T  Actual:Expected -1 =?= -1 -1 =?= -1 
-  ok: GS4 SOURCE >IN ! DROP ;   
+  ok: GS4 SOURCE >IN ! DROP ;
   okT{ GS4 123 456 -> }T
   ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
   okTEST-END
-TEST SUMMARY: 34 run, 0 failed
+TEST SUMMARY: 53 run, 0 failed
 
   ok\ ---- section-marker: undo everything above ----
   okM24

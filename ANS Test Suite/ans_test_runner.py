@@ -24,6 +24,8 @@ task list:
      (00a_tool_ext_conditionals.fs) - forth6809.asm doesn't implement
      them, but ttester.fs needs them immediately (its own
      HAS-FLOATING / HAS-FLOATING-STACK checks use [IF]/[ELSE]/[THEN]).
+     This step is not required if [IF]/[ELSE]/[THEN] are supplied
+     by the ANS Forth implementation.
   2. Loads the shared preamble: ttester.fs, then 00_test_prelude.fs.
   3. Loads one or more per-section *.tests.fs files. Each of those files
      is now self-contained: 09_outer_interpreter.tests.fs carries its
@@ -134,7 +136,7 @@ IMBALANCE_RE = re.compile(rb"STACK IMBALANCE:[^\r\n]*")
 DEFAULT_SECTIONS = [
     "08", "09", "10", "11", "12", "13", "14", "15", "16",
     "17", "18", "19", "20", "21", "23", "24", "26",
-    "27","28","29"
+    "27","28","29","30","31",
 ]
 
 # dpANS/Forth-2012 chapter numbering: 18 = FLOATING-POINT, 19 = FLOATING-POINT
@@ -931,7 +933,8 @@ def main():
         harness_log = Path(args.log_dir) / "00_harness.raw.log"
         transcript = []
         with open(harness_log, "wb") as log:
-            for fname in ("00a_tool_ext_conditionals.fs", "ttester.fs", "00_test_prelude.fs"):
+            #  for fname in ("00a_tool_ext_conditionals.fs", "ttester.fs", "00_test_prelude.fs"):
+            for fname in ("ttester.fs", "00_test_prelude.fs"):
                 fpath = Path(args.ans_dir) / fname
                 print(f"=== loading {fname} ===")
                 send_file(transport, fpath, args.char_delay, args.reply_timeout, args.retries, log, transcript,

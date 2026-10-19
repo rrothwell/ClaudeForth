@@ -31,8 +31,8 @@
   okT{ GT2 EXECUTE -> 123 }T  Actual:Expected 123 =?= 123 
   okHERE 3 C, CHAR G C, CHAR T C, CHAR 1 C, CONSTANT GT1STRING
   okHERE 3 C, CHAR G C, CHAR T C, CHAR 2 C, CONSTANT GT2STRING 
-  okT{ GT1STRING FIND -> ' GT1 -1 }T  Actual:Expected -1 =?= -1 77CD =?= 77CD 
-  okT{ GT2STRING FIND -> ' GT2 1 }T  Actual:Expected 1 =?= 1 77D3 =?= 77D3 
+  okT{ GT1STRING FIND -> ' GT1 -1 }T  Actual:Expected -1 =?= -1 770F =?= 770F 
+  okT{ GT2STRING FIND -> ' GT2 1 }T  Actual:Expected 1 =?= 1 7715 =?= 7715 
   ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
   okTEST-END
 TEST SUMMARY: 6 run, 0 failed

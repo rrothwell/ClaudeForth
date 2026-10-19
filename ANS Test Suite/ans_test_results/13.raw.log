@@ -31,7 +31,7 @@ You should see 2345: 2345
   ok\ See F.6.1.1320 EMIT.
   ok\ F.6.1.0550  >BODY
   okT{ CREATE CR0 -> }T
-  okT{ ' CR0 >BODY -> HERE }T  Actual:Expected 7805 =?= 7805 
+  okT{ ' CR0 >BODY -> HERE }T  Actual:Expected 7747 =?= 7747 
   ok\ F.6.1.1370  EXECUTE
   ok\ See F.6.1.0070 ' and F.6.1.2510 '].
   ok\ F.6.1.1710  IMMEDIATE
@@ -53,7 +53,7 @@ You should see 2345: 2345
   okT{ iw10 find-iw iw10 -> 224 1 }T  Actual:Expected 1 =?= 1 224 =?= 224 
   ok\ F.6.1.1780  LITERAL
   okT{ : GT3 GT2 LITERAL ; -> }T
-  okT{ GT3 -> ' GT1 }T  Actual:Expected 77CD =?= 77CD 
+  okT{ GT3 -> ' GT1 }T  Actual:Expected 770F =?= 770F 
   ok\ F.6.1.2033  POSTPONE
   okT{ : GT4 POSTPONE GT1 ; IMMEDIATE -> }T
   okT{ : GT5 GT4 ; -> }T
