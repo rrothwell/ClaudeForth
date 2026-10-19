@@ -60,6 +60,7 @@ brew install binutils
 * ~~Warning: all words tested as functional, with extensive automated tests. Tagged as version 1.10.~~*
 * ~~Warning: most words tested as functional, complying with the ANS Forth Test Suite. Tagged as version 1.20.~~*
 * Usable: all words tested as functional & performant, nearly all complying with the ANS Forth Test Suite. Tagged as version 1.30. *
+* Trustworthy: all words tested as functional & performant, with complete test coverage, complying with the ANS Forth Test Suite. Tagged as version 1.40. *
 
 | Item             | Version   | Completed   |
 |:-----------------|----------:|------------:|
@@ -81,8 +82,8 @@ brew install binutils
 |Retest with assembler test suite and adjust expectations.| 1.20|:white_check_mark:|
 |Update general documentation, including applying style rules to assembler code and introducing shadow files.| 1.20|:white_check_mark:|
 |Optimisation for space & application performance| 1.30|:white_check_mark:|
-|Test coverage audit| 1.30|:white_check_mark:|
-|Optimisation for compiler performance| 1.40| |
+|Test coverage audit and completions| 1.30|:white_check_mark:|
+|Optimisation for compiler performance| 1.40|:white_check_mark:|
 |Update documentation| 1.40| |
 |Burn ROM and install onto real MECB 6809 hardware. | 1.40| |
 |Develop a simple forth application| 1.40| |
@@ -159,9 +160,9 @@ brew install binutils
 | Optimised words for common constants.  | |:white_check_mark:|
 | Complete ANS double word implementation with tests.  | |:white_check_mark:|
 | Complete ANS string implementation with tests  | |:white_check_mark:|.
-| Development support words such as [IF], [ELSE], [THEN], .(), etc..  | | |
+| Development support words such as [IF], [ELSE], [THEN], .(), etc..  | |:white_check_mark:|
+| Reorganise dictionary ordering to improved compilation speed.  | |:white_check_mark:|
 | Forth decompiler.  | | |
-| Reorganise dictionary ordering to improved compilation speed.  | | |
 | Reorganise memory map so that the stacks are below $8000. Move the in-RAM code and dictionary up to fill the gap below $C000. | | |
 | Adjust DICT:CODE ratio to 1:4| | |
 | Vectored I/O. In particular the ability to programatically change the behavior of EMIT, etc..  | | |
