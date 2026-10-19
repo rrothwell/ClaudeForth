@@ -1,0 +1,436 @@
+ok\ ============================================================
+  ok\ ANS test suite - Double-Number word set (core + extension)
+  ok\ forth6809.asm section 28 (28_double_word)
+  ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded
+  ok\ first, in that order (the prelude itself uses T{/->/}T, so
+  ok\ ttester.fs must come first). Extracted from the ANS Forth
+  ok\ Standard, Annex F
+  ok\ (https://forth-standard.org/standard/double), which is
+  ok\ explicitly redistributable per its own copyright notice.
+  ok\
+  ok\ Also needs: 2CONSTANT 2VARIABLE 2LITERAL 2VALUE TO M*/ D2/
+  ok\ and ENVIRONMENT? answering DOUBLE, DOUBLE-EXT and MAX-D.
+  ok\ ============================================================
+  ok
+  ok\ ---- section-marker: makes this file independently runnable ----
+  ok\ M28 snapshots the dictionary/HERE state right before this
+  ok\ file's own definitions begin. Invoking M28 at the end (below)
+  ok\ erases everything this file defined - including M28 itself -
+  ok\ restoring the system to the state it was in just after
+  ok\ ttester.fs + 00_test_prelude.fs were loaded. This lets the
+  ok\ automation load/run/reset one section file at a time, in any
+  ok\ order, without cross-file dictionary pollution.
+  okMARKER M28
+  ok\ Reset the pass/fail counters, record the stack depth.
+  okTEST-BEGIN
+  ok
+  ok\ Default base is HEX.
+  okDECIMAL
+  ok
+  ok\ ---- ENVIRONMENT? queries for the double word sets ----
+  ok\ ENVIRONMENT? takes a counted-string pair, so each query is
+  ok\ wrapped in a definition (S" is compile-only here).
+  ok: ENV-DOUBLE     S" DOUBLE"     ENVIRONMENT? ;
+  ok: ENV-DOUBLE-EXT S" DOUBLE-EXT" ENVIRONMENT? ;
+  ok: ENV-MAX-D      S" MAX-D"      ENVIRONMENT? ;
+  ok: ENV-NOSUCH     S" NO-SUCH-QUERY" ENVIRONMENT? ;
+  ok
+  ok\ DOUBLE and DOUBLE-EXT return a flag value (is the set present?)
+  ok\ followed by the "query recognised" flag, so two cells. An
+  ok\ unknown query returns the single flag false.
+  okT{ ENV-DOUBLE     -> <TRUE> <TRUE> }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{ ENV-DOUBLE-EXT -> <TRUE> <TRUE> }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{ ENV-NOSUCH     -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  ok
+  ok\ ---- Double-Number constant setup ----
+  ok\ MAX-INT and MIN-INT come from the prelude. The double-cell
+  ok\ limits are built from them and from D2/, so they do not
+  ok\ depend on the cell size. 2CONSTANT takes ( lo hi -- ).
+  ok
+  okHEX
+  ok
+  ok0 INVERT MAX-INT 2CONSTANT MAX-2INT
+  ok0 MIN-INT        2CONSTANT MIN-2INT
+  okMAX-2INT D2/     2CONSTANT HI-2INT
+  okMIN-2INT D2/     2CONSTANT LO-2INT
+  okMAX-INT 2/ CONSTANT HI-INT
+  okMIN-INT 2/ CONSTANT LO-INT
+  ok
+  ok\ Lower-case spellings are the same words (dictionary lookup is
+  ok\ case-insensitive); redefining them exercises that.
+  okMAX-2INT 2CONSTANT max-2INT
+  okMIN-2INT 2CONSTANT min-2INT
+  okMAX-2INT 2CONSTANT max-2int
+  okMIN-2INT 2CONSTANT min-2int
+  okHI-2INT  2CONSTANT hi-2INT
+  okLO-2INT  2CONSTANT lo-2INT
+  ok
+  ok\ Cross-check the computed limits against known 16-bit values
+  ok\ and against the MAX-D environment query.
+  okT{ MAX-2INT -> FFFF 7FFF }T  Actual:Expected 7FFF =?= 7FFF -1 =?= -1 
+  okT{ MIN-2INT -> 0000 8000 }T  Actual:Expected -8000 =?= -8000 0 =?= 0 
+  okT{ HI-2INT  -> FFFF 3FFF }T  Actual:Expected 3FFF =?= 3FFF -1 =?= -1 
+  okT{ LO-2INT  -> 0000 C000 }T  Actual:Expected -4000 =?= -4000 0 =?= 0 
+  okT{ ENV-MAX-D -> MAX-2INT <TRUE> }T  Actual:Expected -1 =?= -1 7FFF =?= 7FFF -1 =?= -1 
+  ok
+  okDECIMAL
+  ok
+  ok\ F.8.6.1.0360 2CONSTANT
+  ok
+  okT{ 1 2 2CONSTANT 2c1 -> }T
+  okT{ 2c1 -> 1 2 }T  Actual:Expected 2 =?= 2 1 =?= 1 
+  okT{ : cd1 2c1 ; -> }T
+  okT{ cd1 -> 1 2 }T  Actual:Expected 2 =?= 2 1 =?= 1 
+  ok
+  okT{ : cd2 2CONSTANT ; -> }T
+  okT{ -1 -2 cd2 2c2 -> }T
+  okT{ 2c2 -> -1 -2 }T  Actual:Expected -2 =?= -2 -1 =?= -1 
+  ok
+  okT{ 4 5 2CONSTANT 2c3 IMMEDIATE 2c3 -> 4 5 }T  Actual:Expected 5 =?= 5 4 =?= 4 
+  okT{ : cd6 2c3 2LITERAL ; cd6 -> 4 5 }T  Actual:Expected 5 =?= 5 4 =?= 4 
+  ok
+  ok\ F.8.6.1.0390 2LITERAL
+  ok
+  okT{ : cd1 [ MAX-2INT ] 2LITERAL ; -> }T
+  okT{ cd1 -> MAX-2INT }T  Actual:Expected 32767 =?= 32767 -1 =?= -1 
+  okT{ 2VARIABLE 2v4 IMMEDIATE 5 6 2v4 2! -> }T
+  okT{ : cd7 2v4 [ 2@ ] 2LITERAL ; cd7 -> 5 6 }T  Actual:Expected 6 =?= 6 5 =?= 5 
+  okT{ : cd8 [ 6 7 ] 2v4 [ 2! ] ; 2v4 2@ -> 6 7 }T  Actual:Expected 7 =?= 7 6 =?= 6 
+  ok
+  ok\ F.8.6.1.0440 2VARIABLE
+  ok
+  okT{ 2VARIABLE 2v1 -> }T
+  okT{ 0. 2v1 2! ->    }T
+  okT{    2v1 2@ -> 0. }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ -1 -2 2v1 2! ->       }T
+  okT{       2v1 2@ -> -1 -2 }T  Actual:Expected -2 =?= -2 -1 =?= -1 
+  okT{ : cd2 2VARIABLE ; -> }T
+  okT{ cd2 2v2 -> }T
+  okT{ : cd3 2v2 2! ; -> }T
+  okT{ -2 -1 cd3 -> }T
+  okT{ 2v2 2@ -> -2 -1 }T  Actual:Expected -1 =?= -1 -2 =?= -2 
+  ok
+  okT{ 2VARIABLE 2v3 IMMEDIATE 5 6 2v3 2! -> }T
+  okT{ 2v3 2@ -> 5 6 }T  Actual:Expected 6 =?= 6 5 =?= 5 
+  ok
+  ok\ F.8.6.1.1040 D+
+  ok
+  okT{  0.  5. D+ ->  5. }T                         \ small integers  Actual:Expected 0 =?= 0 5 =?= 5 
+  okT{ -5.  0. D+ -> -5. }T  Actual:Expected -1 =?= -1 -5 =?= -5 
+  okT{  1.  2. D+ ->  3. }T  Actual:Expected 0 =?= 0 3 =?= 3 
+  okT{  1. -2. D+ -> -1. }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{ -1.  2. D+ ->  1. }T  Actual:Expected 0 =?= 0 1 =?= 1 
+  okT{ -1. -2. D+ -> -3. }T  Actual:Expected -1 =?= -1 -3 =?= -3 
+  okT{ -1.  1. D+ ->  0. }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{  0  0  0  5 D+ ->  0  5 }T                  \ mid range integers  Actual:Expected 5 =?= 5 0 =?= 0 
+  okT{ -1  5  0  0 D+ -> -1  5 }T  Actual:Expected 5 =?= 5 -1 =?= -1 
+  okT{  0  0  0 -5 D+ ->  0 -5 }T  Actual:Expected -5 =?= -5 0 =?= 0 
+  okT{  0 -5 -1  0 D+ -> -1 -5 }T  Actual:Expected -5 =?= -5 -1 =?= -1 
+  okT{  0  1  0  2 D+ ->  0  3 }T  Actual:Expected 3 =?= 3 0 =?= 0 
+  okT{ -1  1  0 -2 D+ -> -1 -1 }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{  0 -1  0  2 D+ ->  0  1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{  0 -1 -1 -2 D+ -> -1 -3 }T  Actual:Expected -3 =?= -3 -1 =?= -1 
+  okT{ -1 -1  0  1 D+ -> -1  0 }T  Actual:Expected 0 =?= 0 -1 =?= -1 
+  ok
+  okT{ MIN-INT 0 2DUP D+ -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{ MIN-INT S>D MIN-INT 0 D+ -> 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  ok
+  okT{  HI-2INT       1. D+ -> 0 HI-INT 1+ }T    \ large double integers  Actual:Expected 16384 =?= 16384 0 =?= 0 
+  okT{  HI-2INT     2DUP D+ -> 1S 1- MAX-INT }T  Actual:Expected 32767 =?= 32767 -2 =?= -2 
+  okT{ MAX-2INT MIN-2INT D+ -> -1. }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{ MAX-2INT  LO-2INT D+ -> HI-2INT }T  Actual:Expected 16383 =?= 16383 -1 =?= -1 
+  okT{  LO-2INT     2DUP D+ -> MIN-2INT }T  Actual:Expected -32768 =?= -32768 0 =?= 0 
+  okT{  HI-2INT MIN-2INT D+ 1. D+ -> LO-2INT }T  Actual:Expected -16384 =?= -16384 0 =?= 0 
+  ok
+  ok
+  ok\ F.8.6.1.1050 D-
+  ok
+  okT{  0.  5. D- -> -5. }T              \ small integers  Actual:Expected -1 =?= -1 -5 =?= -5 
+  okT{  5.  0. D- ->  5. }T  Actual:Expected 0 =?= 0 5 =?= 5 
+  okT{  0. -5. D- ->  5. }T  Actual:Expected 0 =?= 0 5 =?= 5 
+  okT{  1.  2. D- -> -1. }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{  1. -2. D- ->  3. }T  Actual:Expected 0 =?= 0 3 =?= 3 
+  okT{ -1.  2. D- -> -3. }T  Actual:Expected -1 =?= -1 -3 =?= -3 
+  okT{ -1. -2. D- ->  1. }T  Actual:Expected 0 =?= 0 1 =?= 1 
+  okT{ -1. -1. D- ->  0. }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{  0  0  0  5 D- ->  0 -5 }T       \ mid-range integers  Actual:Expected -5 =?= -5 0 =?= 0 
+  okT{ -1  5  0  0 D- -> -1  5 }T  Actual:Expected 5 =?= 5 -1 =?= -1 
+  okT{  0  0 -1 -5 D- ->  1  4 }T  Actual:Expected 4 =?= 4 1 =?= 1 
+  okT{  0 -5  0  0 D- ->  0 -5 }T  Actual:Expected -5 =?= -5 0 =?= 0 
+  okT{ -1  1  0  2 D- -> -1 -1 }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{  0  1 -1 -2 D- ->  1  2 }T  Actual:Expected 2 =?= 2 1 =?= 1 
+  okT{  0 -1  0  2 D- ->  0 -3 }T  Actual:Expected -3 =?= -3 0 =?= 0 
+  okT{  0 -1  0 -2 D- ->  0  1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{  0  0  0  1 D- ->  0 -1 }T  Actual:Expected -1 =?= -1 0 =?= 0 
+  okT{ MIN-INT 0 2DUP D- -> 0. }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ MIN-INT S>D MAX-INT 0 D- -> 1 1S }T  Actual:Expected -1 =?= -1 1 =?= 1 
+  okT{ MAX-2INT max-2INT D- -> 0. }T    \ large integers  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ MIN-2INT min-2INT D- -> 0. }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ MAX-2INT  hi-2INT D- -> lo-2INT DNEGATE }T  Actual:Expected 16384 =?= 16384 0 =?= 0 
+  okT{  HI-2INT  lo-2INT D- -> max-2INT }T  Actual:Expected 32767 =?= 32767 -1 =?= -1 
+  okT{  LO-2INT  hi-2INT D- -> min-2INT 1. D+ }T  Actual:Expected -32768 =?= -32768 1 =?= 1 
+  okT{ MIN-2INT min-2INT D- -> 0. }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ MIN-2INT  lo-2INT D- -> lo-2INT }T  Actual:Expected -16384 =?= -16384 0 =?= 0 
+  ok
+  ok
+  ok\ F.8.6.1.1060 D. and F.8.6.1.1070 D.R
+  ok\ These produce display output, so the test is visual: the
+  ok\ lines shown must come out in identical pairs. dbl1 and dbl2
+  ok\ are built with M*/ (decimal 71/73 and 73/79 scaling).
+  ok
+  okMAX-2INT 71 73 M*/ 2CONSTANT dbl1
+  okMIN-2INT 73 79 M*/ 2CONSTANT dbl2
+  ok: d>ascii ( d -- caddr u )
+   DUP >R <# DABS #S R> SIGN #>    ( -- caddr1 u )
+   HERE SWAP 2DUP 2>R CHARS DUP ALLOT MOVE 2R>
+;
+  ok
+  okdbl1 d>ascii 2CONSTANT "dbl1"
+  okdbl2 d>ascii 2CONSTANT "dbl2"
+  ok
+  ok: DoubleOutput
+   CR ." You should see lines duplicated:" CR
+   5 SPACES "dbl1" TYPE CR
+   5 SPACES dbl1 D. CR
+   8 SPACES "dbl1" DUP >R TYPE CR
+   5 SPACES dbl1 R> 3 + D.R CR
+   5 SPACES "dbl2" TYPE CR
+   5 SPACES dbl2 D. CR
+   10 SPACES "dbl2" DUP >R TYPE CR
+   5 SPACES dbl2 R> 5 + D.R CR
+;
+  ok
+  okT{ DoubleOutput -> }T
+You should see lines duplicated:
+     2088648478
+     2088648478 
+        2088648478
+        2088648478
+     -1984383624
+     -1984383624 
+          -1984383624
+          -1984383624
+
+  ok
+  ok
+  ok\ F.8.6.1.1075 D0<
+  ok
+  okT{                0. D0< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{                1. D0< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{  MIN-INT        0 D0< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{        0  MAX-INT D0< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{          MAX-2INT D0< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{               -1. D0< -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{          MIN-2INT D0< -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  ok
+  ok
+  ok\ F.8.6.1.1080 D0=
+  ok
+  okT{               1. D0= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MIN-INT        0 D0= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{         MAX-2INT D0= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{      -1  MAX-INT D0= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{               0. D0= -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{              -1. D0= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{       0  MIN-INT D0= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  ok
+  ok
+  ok\ F.8.6.1.1090 D2*
+  ok
+  okT{              0. D2* -> 0. D2* }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{ MIN-INT       0 D2* -> 0 1 }T  Actual:Expected 1 =?= 1 0 =?= 0 
+  okT{         HI-2INT D2* -> MAX-2INT 1. D- }T  Actual:Expected 32767 =?= 32767 -2 =?= -2 
+  okT{         LO-2INT D2* -> MIN-2INT }T  Actual:Expected -32768 =?= -32768 0 =?= 0 
+  ok
+  ok
+  ok\ F.8.6.1.1100 D2/
+  ok
+  okT{       0. D2/ -> 0.        }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{       1. D2/ -> 0.        }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{      0 1 D2/ -> MIN-INT 0 }T  Actual:Expected 0 =?= 0 -32768 =?= -32768 
+  okT{ MAX-2INT D2/ -> HI-2INT   }T  Actual:Expected 16383 =?= 16383 -1 =?= -1 
+  okT{      -1. D2/ -> -1.       }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{ MIN-2INT D2/ -> LO-2INT   }T  Actual:Expected -16384 =?= -16384 0 =?= 0 
+  ok
+  ok\ F.8.6.1.1110 D<
+  ok
+  okT{       0.       1. D< -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{       0.       0. D< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{       1.       0. D< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{      -1.       1. D< -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{      -1.       0. D< -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{      -2.      -1. D< -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{      -1.      -2. D< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{      -1. MAX-2INT D< -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{ MIN-2INT MAX-2INT D< -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{ MAX-2INT      -1. D< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MAX-2INT MIN-2INT D< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MAX-2INT 2DUP -1. D+ D< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MIN-2INT 2DUP  1. D+ D< -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  ok
+  ok
+  ok\ F.8.6.1.1120 D=
+  ok
+  okT{      -1.      -1. D= -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{      -1.       0. D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{      -1.       1. D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{       0.      -1. D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{       0.       0. D= -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{       0.       1. D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{       1.      -1. D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{       1.       0. D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{       1.       1. D= -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{   0   -1    0  -1 D= -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{   0   -1    0   0 D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{   0   -1    0   1 D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{   0    0    0  -1 D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{   0    0    0   0 D= -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{   0    0    0   1 D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{   0    1    0  -1 D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{   0    1    0   0 D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{   0    1    0   1 D= -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  ok
+  okT{ MAX-2INT MIN-2INT D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MAX-2INT       0. D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MAX-2INT MAX-2INT D= -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{ MAX-2INT HI-2INT  D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MAX-2INT MIN-2INT D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MIN-2INT MIN-2INT D= -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{ MIN-2INT LO-2INT  D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MIN-2INT MAX-2INT D= -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  ok
+  ok\ F.8.6.1.1140 D>S
+  ok
+  okT{    1234  0 D>S ->  1234   }T  Actual:Expected 1234 =?= 1234 
+  okT{   -1234 -1 D>S -> -1234   }T  Actual:Expected -1234 =?= -1234 
+  okT{ MAX-INT  0 D>S -> MAX-INT }T  Actual:Expected 32767 =?= 32767 
+  okT{ MIN-INT -1 D>S -> MIN-INT }T  Actual:Expected -32768 =?= -32768 
+  ok
+  ok
+  ok\ F.8.6.1.1160 DABS
+  ok
+  okT{       1. DABS -> 1.       }T  Actual:Expected 0 =?= 0 1 =?= 1 
+  okT{      -1. DABS -> 1.       }T  Actual:Expected 0 =?= 0 1 =?= 1 
+  okT{ MAX-2INT DABS -> MAX-2INT }T  Actual:Expected 32767 =?= 32767 -1 =?= -1 
+  okT{ MIN-2INT 1. D+ DABS -> MAX-2INT }T  Actual:Expected 32767 =?= 32767 -1 =?= -1 
+  ok
+  ok
+  ok\ F.8.6.1.1210 DMAX
+  ok
+  okT{       1.       2. DMAX ->  2.      }T  Actual:Expected 0 =?= 0 2 =?= 2 
+  okT{       1.       0. DMAX ->  1.      }T  Actual:Expected 0 =?= 0 1 =?= 1 
+  okT{       1.      -1. DMAX ->  1.      }T  Actual:Expected 0 =?= 0 1 =?= 1 
+  okT{       1.       1. DMAX ->  1.      }T  Actual:Expected 0 =?= 0 1 =?= 1 
+  okT{       0.       1. DMAX ->  1.      }T  Actual:Expected 0 =?= 0 1 =?= 1 
+  okT{       0.      -1. DMAX ->  0.      }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{      -1.       1. DMAX ->  1.      }T  Actual:Expected 0 =?= 0 1 =?= 1 
+  okT{      -1.      -2. DMAX -> -1.      }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{ MAX-2INT  HI-2INT DMAX -> MAX-2INT }T  Actual:Expected 32767 =?= 32767 -1 =?= -1 
+  okT{ MAX-2INT MIN-2INT DMAX -> MAX-2INT }T  Actual:Expected 32767 =?= 32767 -1 =?= -1 
+  okT{ MIN-2INT MAX-2INT DMAX -> MAX-2INT }T  Actual:Expected 32767 =?= 32767 -1 =?= -1 
+  okT{ MIN-2INT  LO-2INT DMAX -> LO-2INT  }T  Actual:Expected -16384 =?= -16384 0 =?= 0 
+  ok
+  okT{ MAX-2INT       1. DMAX -> MAX-2INT }T  Actual:Expected 32767 =?= 32767 -1 =?= -1 
+  okT{ MAX-2INT      -1. DMAX -> MAX-2INT }T  Actual:Expected 32767 =?= 32767 -1 =?= -1 
+  okT{ MIN-2INT       1. DMAX ->  1.      }T  Actual:Expected 0 =?= 0 1 =?= 1 
+  okT{ MIN-2INT      -1. DMAX -> -1.      }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  ok
+  ok\ F.8.6.1.1220 DMIN
+  ok
+  okT{       1.       2. DMIN ->  1.      }T  Actual:Expected 0 =?= 0 1 =?= 1 
+  okT{       1.       0. DMIN ->  0.      }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{       1.      -1. DMIN -> -1.      }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{       1.       1. DMIN ->  1.      }T  Actual:Expected 0 =?= 0 1 =?= 1 
+  okT{       0.       1. DMIN ->  0.      }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{       0.      -1. DMIN -> -1.      }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{      -1.       1. DMIN -> -1.      }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{      -1.      -2. DMIN -> -2.      }T  Actual:Expected -1 =?= -1 -2 =?= -2 
+  okT{ MAX-2INT  HI-2INT DMIN -> HI-2INT  }T  Actual:Expected 16383 =?= 16383 -1 =?= -1 
+  okT{ MAX-2INT MIN-2INT DMIN -> MIN-2INT }T  Actual:Expected -32768 =?= -32768 0 =?= 0 
+  okT{ MIN-2INT MAX-2INT DMIN -> MIN-2INT }T  Actual:Expected -32768 =?= -32768 0 =?= 0 
+  okT{ MIN-2INT  LO-2INT DMIN -> MIN-2INT }T  Actual:Expected -32768 =?= -32768 0 =?= 0 
+  ok
+  okT{ MAX-2INT       1. DMIN ->  1.      }T  Actual:Expected 0 =?= 0 1 =?= 1 
+  okT{ MAX-2INT      -1. DMIN -> -1.      }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{ MIN-2INT       1. DMIN -> MIN-2INT }T  Actual:Expected -32768 =?= -32768 0 =?= 0 
+  okT{ MIN-2INT      -1. DMIN -> MIN-2INT }T  Actual:Expected -32768 =?= -32768 0 =?= 0 
+  ok
+  ok
+  ok\ F.8.6.1.1230 DNEGATE
+  ok
+  okT{   0. DNEGATE ->  0. }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  okT{   1. DNEGATE -> -1. }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{  -1. DNEGATE ->  1. }T  Actual:Expected 0 =?= 0 1 =?= 1 
+  okT{ max-2int DNEGATE -> min-2int SWAP 1+ SWAP }T  Actual:Expected -32768 =?= -32768 1 =?= 1 
+  okT{ min-2int SWAP 1+ SWAP DNEGATE -> max-2int }T  Actual:Expected 32767 =?= 32767 -1 =?= -1 
+  ok
+  ok\ F.8.6.1.1820 M*/
+  ok\ ?FLOORED adjusts the expected result when division is floored.
+  ok\ This system divides symmetrically, so it is a no-op here.
+  ok
+  ok: ?floored [ -3 2 / -2 = ] LITERAL IF 1. D- THEN ;
+  ok
+  okT{       5.       7             11 M*/ ->  3. }T  Actual:Expected 0 =?= 0 3 =?= 3 
+  okT{       5.      -7             11 M*/ -> -3. ?floored }T  Actual:Expected -1 =?= -1 -3 =?= -3 
+  okT{      -5.       7             11 M*/ -> -3. ?floored }T  Actual:Expected -1 =?= -1 -3 =?= -3 
+  okT{      -5.      -7             11 M*/ ->  3. }T  Actual:Expected 0 =?= 0 3 =?= 3 
+  okT{ MAX-2INT       8             16 M*/ -> HI-2INT }T  Actual:Expected 16383 =?= 16383 -1 =?= -1 
+  okT{ MAX-2INT      -8             16 M*/ -> HI-2INT DNEGATE ?floored }T  Actual:Expected -16384 =?= -16384 1 =? 
+  okT{ MIN-2INT       8             16 M*/ -> LO-2INT }T  Actual:Expected -16384 =?= -16384 0 =?= 0 
+  okT{ MIN-2INT      -8             16 M*/ -> LO-2INT DNEGATE }T  Actual:Expected 16384 =?= 16384 0 =?= 0 
+  ok
+  okT{ MAX-2INT MAX-INT        MAX-INT M*/ -> MAX-2INT }T  Actual:Expected 32767 =?= 32767 -1 =?= -1 
+  okT{ MAX-2INT MAX-INT 2/     MAX-INT M*/ -> MAX-INT 1- HI-2INT NIP }T  Actual:Expected 16383 =?= 16383 32766 =? 
+  okT{ MIN-2INT LO-2INT NIP DUP NEGATE M*/ -> MIN-2INT }T  Actual:Expected -32768 =?= -32768 0 =?= 0 
+  okT{ MIN-2INT LO-2INT NIP 1- MAX-INT M*/ -> MIN-INT 3 + HI-2INT NIP 2 + }T  Actual:Expected 16385 =?= 16385 -32 
+  okT{ MAX-2INT LO-2INT NIP DUP NEGATE M*/ -> MAX-2INT DNEGATE }T  Actual:Expected -32768 =?= -32768 1 =?= 1 
+  okT{ MIN-2INT MAX-INT            DUP M*/ -> MIN-2INT }T  Actual:Expected -32768 =?= -32768 0 =?= 0 
+  ok
+  ok
+  ok\ F.8.6.1.1830 M+
+  ok
+  okT{ HI-2INT   1 M+ -> HI-2INT   1. D+ }T  Actual:Expected 16384 =?= 16384 0 =?= 0 
+  okT{ MAX-2INT -1 M+ -> MAX-2INT -1. D+ }T  Actual:Expected 32767 =?= 32767 -2 =?= -2 
+  okT{ MIN-2INT  1 M+ -> MIN-2INT  1. D+ }T  Actual:Expected -32768 =?= -32768 1 =?= 1 
+  okT{ LO-2INT  -1 M+ -> LO-2INT  -1. D+ }T  Actual:Expected -16385 =?= -16385 -1 =?= -1 
+  ok
+  ok\ ---- 8.6.2 Double-Number extension words ----
+  ok
+  ok\ F.8.6.2.0420 2ROT
+  ok
+  okT{       1.       2. 3. 2ROT ->       2. 3.       1. }T  Actual:Expected 0 =?= 0 1 =?= 1 0 =?= 0 3 =?= 3 0 =? 
+  okT{ MAX-2INT MIN-2INT 1. 2ROT -> MIN-2INT 1. MAX-2INT }T  Actual:Expected 32767 =?= 32767 -1 =?= -1 0 =?= 0 1  
+  ok
+  ok
+  ok\ F.8.6.2.0435 2VALUE
+  ok
+  okT{ 1 2 2VALUE t2val -> }T
+  okT{ t2val -> 1 2 }T  Actual:Expected 2 =?= 2 1 =?= 1 
+  okT{ 3 4 TO t2val -> }T
+  okT{ t2val -> 3 4 }T  Actual:Expected 4 =?= 4 3 =?= 3 
+  ok: sett2val t2val 2SWAP TO t2val ;
+  okT{ 5 6 sett2val t2val -> 3 4 5 6 }T  Actual:Expected 6 =?= 6 5 =?= 5 4 =?= 4 3 =?= 3 
+  ok
+  ok\ F.8.6.2.1270 DU<
+  ok
+  okT{       1.       1. DU< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{       1.      -1. DU< -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{      -1.       1. DU< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{      -1.      -2. DU< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MAX-2INT  HI-2INT DU< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{  HI-2INT MAX-2INT DU< -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{ MAX-2INT MIN-2INT DU< -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  okT{ MIN-2INT MAX-2INT DU< -> <FALSE> }T  Actual:Expected 0 =?= 0 
+  okT{ MIN-2INT  LO-2INT DU< -> <TRUE>  }T  Actual:Expected -1 =?= -1 
+  ok
+  ok
+  ok
+  ok\ Restore default base.
+  okHEX
+  ok
+  ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
+  okTEST-END
+TEST SUMMARY: 227 run, 0 failed
+
+  ok\ ---- section-marker: undo everything above ----
+  okM28

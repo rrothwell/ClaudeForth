@@ -1,4 +1,0 @@
-mecb6809.bin WRONG CHECKSUMS:
-    EXPECTED: CRC(3bd8acaa) SHA1(5f76b8e1e554a3dddcaebd63f6ccf7e545948546)
-       FOUND: CRC(27cb08c9) SHA1(b8a18d5b3e94e39fe5e817bbb74c613aa9be0691)
-WARNING: the machine might not run correctly.

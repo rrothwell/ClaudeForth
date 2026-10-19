@@ -495,8 +495,9 @@ class SerialTransport:
 def launch_mame(args):
     cmd = [
         args.mame_bin, args.mame_system,
-        "-rs232", "null_modem",
+        "-rs232", "null_modem",  
         "-bitb", f"socket.{args.listener_host}:{args.listener_port}",
+        "-throttle",
         "-debug", "-debugscript", args.retrigger_cmd,
         "-window", "-resolution", "640x480",
     ]

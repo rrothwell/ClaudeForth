@@ -318,1152 +318,1318 @@ ROM:
 ; ============================================================
 
             ORG   BASEDICT
+; Dictionary order (head to tail, i.e. search order): see Dictionary_search_order.md.
+; Headers are laid out tail first, so the head (searched first) is the last
+; header below and BASELATEST names it. LINK always points to the header
+; immediately before it in memory (0 for the first).
+; H_ABORT and H_QUIT are hand-built (HEADER/CREATE could not be used for them).
+; Original comment: shadow H_ABORT.0.
 
-H_KEY:
-            FCB   $03
-            FCC   "KEY"
+H_BRTHEN:   FCB   $86
+            FCC   "[THEN]"
             FDB   0
-            FDB   KEYW
-H_KEYQ:
+            FDB   BRTHENW
+
+H_BRELSE:   FCB   $86
+            FCC   "[ELSE]"
+            FDB   H_BRTHEN
+            FDB   BRELSEW
+
+H_BRIF:     FCB   $84
+            FCC   "[IF]"
+            FDB   H_BRELSE
+            FDB   BRIFW
+
+H_DUMP:
             FCB   $04
-            FCC   "KEY?"
-            FDB   H_KEY
-            FDB   KEYQW
-H_EMIT:
-            FCB   $04
-            FCC   "EMIT"
-            FDB   H_KEYQ
-            FDB   EMITW
-H_ACCEPT:
-            FCB   $06
-            FCC   "ACCEPT"
-            FDB   H_EMIT
-            FDB   ACCEPTW
-H_EXPECT:
-            FCB   $06
-            FCC   "EXPECT"
-            FDB   H_ACCEPT
-            FDB   EXPECTW
-H_QUERY:
+            FCC   "DUMP"
+            FDB   H_BRIF
+            FDB   DUMPW
+
+H_WORDS:
             FCB   $05
-            FCC   "QUERY"
-            FDB   H_EXPECT
-            FDB   QUERYW
-H_TYPE:
+            FCC   "WORDS"
+            FDB   H_DUMP
+            FDB   WORDSW
+
+H_DOTS:
+            FCB   $02
+            FCC   ".S"
+            FDB   H_WORDS
+            FDB   DOTSW
+
+H_BL:
+            FCB   $02
+            FCC   "BL"
+            FDB   H_DOTS
+            FDB   BLW
+
+H_SPAN:
             FCB   $04
-            FCC   "TYPE"
-            FDB   H_QUERY
-            FDB   TYPEW
-H_CR:
-            FCB   $02
-            FCC   "CR"
-            FDB   H_TYPE
-            FDB   CRW
-H_SPACE:
-            FCB   $05
-            FCC   "SPACE"
-            FDB   H_CR
-            FDB   SPACEW
-H_SPACES:
-            FCB   $06
-            FCC   "SPACES"
-            FDB   H_SPACE
-            FDB   SPACESW
-H_DUP:
+            FCC   "SPAN"
+            FDB   H_BL
+            FDB   SPANW
+
+H_TOIN:
             FCB   $03
-            FCC   "DUP"
-            FDB   H_SPACES
-            FDB   DUPW
-H_DROP:
+            FCC   ">IN"
+            FDB   H_SPAN
+            FDB   TOINW
+
+H_NUMTIB:
             FCB   $04
-            FCC   "DROP"
-            FDB   H_DUP
-            FDB   DROPW
-H_SWAP:
-            FCB   $04
-            FCC   "SWAP"
-            FDB   H_DROP
-            FDB   SWAPW
-H_OVER:
-            FCB   $04
-            FCC   "OVER"
-            FDB   H_SWAP
-            FDB   OVERW
-H_ROT:
+            FCC   "#TIB"
+            FDB   H_TOIN
+            FDB   NUMTIBW
+
+H_TIB:
             FCB   $03
-            FCC   "ROT"
-            FDB   H_OVER
-            FDB   ROTW
-H_QDUP:
-            FCB   $04
-            FCC   "?DUP"
-            FDB   H_ROT
-            FDB   QDUPW
-H_DEPTH:
-            FCB   $05
-            FCC   "DEPTH"
-            FDB   H_QDUP
-            FDB   DEPTHW
-H_DDUP:
-            FCB   $04
-            FCC   "2DUP"
-            FDB   H_DEPTH
-            FDB   DDUPW
-H_DDROP:
-            FCB   $05
-            FCC   "2DROP"
-            FDB   H_DDUP
-            FDB   DDROPW
-H_DSWAP:
-            FCB   $05
-            FCC   "2SWAP"
-            FDB   H_DDROP
-            FDB   DSWAPW
-H_DOVER:
-            FCB   $05
-            FCC   "2OVER"
-            FDB   H_DSWAP
-            FDB   DOVERW
-H_NIP:
-            FCB   $03
-            FCC   "NIP"
-            FDB   H_DOVER
-            FDB   NIPW
-H_TUCK:
-            FCB   $04
-            FCC   "TUCK"
-            FDB   H_NIP
-            FDB   TUCKW
-H_PICK:
-            FCB   $04
-            FCC   "PICK"
-            FDB   H_TUCK
-            FDB   PICKW
-H_ROLL:
-            FCB   $04
-            FCC   "ROLL"
-            FDB   H_PICK
-            FDB   ROLLW
-H_DROT:
-            FCB   $04
-            FCC   "2ROT"
-            FDB   H_ROLL
-            FDB   DROTW
-H_TOR:
-            FCB   $02
-            FCC   ">R"
-            FDB   H_DROT
-            FDB   TORW
-H_FROMR:
-            FCB   $02
-            FCC   "R>"
-            FDB   H_TOR
-            FDB   FROMRW
-H_RFETCH:
-            FCB   $02
-            FCC   "R@"
-            FDB   H_FROMR
-            FDB   RFETCHW
-H_TWOTOR:
-            FCB   $03
-            FCC   "2>R"
-            FDB   H_RFETCH
-            FDB   TWOTORW
-H_TWOFROMR:
-            FCB   $03
-            FCC   "2R>"
-            FDB   H_TWOTOR
-            FDB   TWOFROMRW
-H_TWORFETCH:
-            FCB   $03
-            FCC   "2R@"
-            FDB   H_TWOFROMR
-            FDB   TWORFETCHW
-H_PLUS:
-            FCB   $01
-            FCC   "+"
-            FDB   H_TWORFETCH
-            FDB   PLUSW
-H_MINUS:
-            FCB   $01
-            FCC   "-"
-            FDB   H_PLUS
-            FDB   MINUSW
-H_STAR:
-            FCB   $01
-            FCC   "*"
-            FDB   H_MINUS
-            FDB   STARW
-H_SLASH:
-            FCB   $01
-            FCC   "/"
-            FDB   H_STAR
-            FDB   SLASHW
-H_MOD:
-            FCB   $03
-            FCC   "MOD"
-            FDB   H_SLASH
-            FDB   MODW
-H_SLASHMOD:
-            FCB   $04
-            FCC   "/MOD"
-            FDB   H_MOD
-            FDB   SLASHMODW
-H_NEGATE:
-            FCB   $06
-            FCC   "NEGATE"
-            FDB   H_SLASHMOD
-            FDB   NEGATEW
-H_ABS:
-            FCB   $03
-            FCC   "ABS"
-            FDB   H_NEGATE
-            FDB   ABSW
-H_MIN:
-            FCB   $03
-            FCC   "MIN"
-            FDB   H_ABS
-            FDB   MINW
-H_MAX:
-            FCB   $03
-            FCC   "MAX"
-            FDB   H_MIN
-            FDB   MAXW
-H_ONEPLUS:
-            FCB   $02
-            FCC   "1+"
-            FDB   H_MAX
-            FDB   ONEPLUSW
-H_ONEMINUS:
-            FCB   $02
-            FCC   "1-"
-            FDB   H_ONEPLUS
-            FDB   ONEMINUSW
-H_TWOPLUS:
-            FCB   $02
-            FCC   "2+"
-            FDB   H_ONEMINUS
-            FDB   TWOPLUSW
-H_TWOSTAR:
-            FCB   $02
-            FCC   "2*"
-            FDB   H_TWOPLUS
-            FDB   TWOSTARW
-H_TWOSLASH:
-            FCB   $02
-            FCC   "2/"
-            FDB   H_TWOSTAR
-            FDB   TWOSLASHW
-H_STARSLASH:
-            FCB   $02
-            FCC   "*/"
-            FDB   H_TWOSLASH
-            FDB   STARSLASHW
-H_STARSLASHMOD:
-            FCB   $05
-            FCC   "*/MOD"
-            FDB   H_STARSLASH
-            FDB   STARSLASHMODW
-H_UMSTAR:
-            FCB   $03
-            FCC   "UM*"
-            FDB   H_STARSLASHMOD
-            FDB   UMSTARW
-H_UMSLASHMOD:
-            FCB   $06
-            FCC   "UM/MOD"
-            FDB   H_UMSTAR
-            FDB   UMSLASHMODW
-H_MSTAR:
-            FCB   $02
-            FCC   "M*"
-            FDB   H_UMSLASHMOD
-            FDB   MSTARW
-H_FMSLASHMOD:
-            FCB   $06
-            FCC   "FM/MOD"
-            FDB   H_MSTAR
-            FDB   FMSLASHMODW
-H_SMSLASHREM:
-            FCB   $06
-            FCC   "SM/REM"
-            FDB   H_FMSLASHMOD
-            FDB   SMSLASHREMW
-H_DPLUS:
-            FCB   $02
-            FCC   "D+"
-            FDB   H_SMSLASHREM
-            FDB   DPLUSW
-H_DMINUS:
-            FCB   $02
-            FCC   "D-"
-            FDB   H_DPLUS
-            FDB   DMINUSW
-H_DNEGATE:
-            FCB   $07
-            FCC   "DNEGATE"
-            FDB   H_DMINUS
-            FDB   DNEGATEW
-H_DABS:
-            FCB   $04
-            FCC   "DABS"
-            FDB   H_DNEGATE
-            FDB   DABSW
-H_MPLUS:
-            FCB   $02
-            FCC   "M+"
-            FDB   H_DABS
-            FDB   MPLUSW
-H_STOD:
-            FCB   $03
-            FCC   "S>D"
-            FDB   H_MPLUS
-            FDB   STODW
-H_DTOS:
-            FCB   $03
-            FCC   "D>S"
-            FDB   H_STOD
-            FDB   DTOSW
-H_DMAX:
-            FCB   $04
-            FCC   "DMAX"
-            FDB   H_DTOS
-            FDB   DMAXW
-H_DMIN:
-            FCB   $04
-            FCC   "DMIN"
-            FDB   H_DMAX
-            FDB   DMINW
-H_AND:
-            FCB   $03
-            FCC   "AND"
-            FDB   H_DMIN
-            FDB   ANDW
-H_OR:
-            FCB   $02
-            FCC   "OR"
-            FDB   H_AND
-            FDB   ORW
-H_XOR:
-            FCB   $03
-            FCC   "XOR"
-            FDB   H_OR
-            FDB   XORW
-H_INVERT:
-            FCB   $06
-            FCC   "INVERT"
-            FDB   H_XOR
-            FDB   INVERTW
-H_LSHIFT:
-            FCB   $06
-            FCC   "LSHIFT"
-            FDB   H_INVERT
-            FDB   LSHIFTW
-H_RSHIFT:
-            FCB   $06
-            FCC   "RSHIFT"
-            FDB   H_LSHIFT
-            FDB   RSHIFTW
-H_CELLS:
-            FCB   $05
-            FCC   "CELLS"
-            FDB   H_RSHIFT
-            FDB   CELLSW
-H_CELLPLUS:
-            FCB   $05
-            FCC   "CELL+"
-            FDB   H_CELLS
-            FDB   CELLPLUSW
-H_CHARS:
-            FCB   $05
-            FCC   "CHARS"
-            FDB   H_CELLPLUS
-            FDB   CHARSW
-H_CHARPLUS:
-            FCB   $05
-            FCC   "CHAR+"
-            FDB   H_CHARS
-            FDB   CHARPLUSW
-H_ALIGN:
-            FCB   $05
-            FCC   "ALIGN"
-            FDB   H_CHARPLUS
-            FDB   ALIGNW
-H_ALIGNED:
-            FCB   $07
-            FCC   "ALIGNED"
-            FDB   H_ALIGN
-            FDB   ALIGNEDW
-H_EQUAL:
-            FCB   $01
-            FCC   "="
-            FDB   H_ALIGNED
-            FDB   EQUALW
-H_LESS:
-            FCB   $01
-            FCC   "<"
-            FDB   H_EQUAL
-            FDB   LESSW
-H_GREATER:
-            FCB   $01
-            FCC   ">"
-            FDB   H_LESS
-            FDB   GREATERW
-H_ZEROEQ:
-            FCB   $02
-            FCC   "0="
-            FDB   H_GREATER
-            FDB   ZEROEQW
-H_ZEROLT:
-            FCB   $02
-            FCC   "0<"
-            FDB   H_ZEROEQ
-            FDB   ZEROLTW
-H_ULESS:
-            FCB   $02
-            FCC   "U<"
-            FDB   H_ZEROLT
-            FDB   ULESSW
-H_NOTEQUAL:
-            FCB   $02
-            FCC   "<>"
-            FDB   H_ULESS
-            FDB   NOTEQUALW
-H_ZERONE:
-            FCB   $03
-            FCC   "0<>"
-            FDB   H_NOTEQUAL
-            FDB   ZERONEW
-H_ZEROGT:
-            FCB   $02
-            FCC   "0>"
-            FDB   H_ZERONE
-            FDB   ZEROGTW
-H_UGREATER:
-            FCB   $02
-            FCC   "U>"
-            FDB   H_ZEROGT
-            FDB   UGREATERW
-H_WITHIN:
-            FCB   $06
-            FCC   "WITHIN"
-            FDB   H_UGREATER
-            FDB   WITHINW
-H_DEQUAL:
-            FCB   $02
-            FCC   "D="
-            FDB   H_WITHIN
-            FDB   DEQUALW
-H_DLESS:
-            FCB   $02
-            FCC   "D<"
-            FDB   H_DEQUAL
-            FDB   DLESSW
-H_DULESS:
-            FCB   $03
-            FCC   "DU<"
-            FDB   H_DLESS
-            FDB   DULESSW
-H_IF:
-            FCB   $82
-            FCC   "IF"
-            FDB   H_DULESS
-            FDB   IFW
-H_THEN:
-            FCB   $84
-            FCC   "THEN"
-            FDB   H_IF
-            FDB   THENW
-H_ELSE:
-            FCB   $84
-            FCC   "ELSE"
-            FDB   H_THEN
-            FDB   ELSEW
-H_BEGIN:
-            FCB   $85
-            FCC   "BEGIN"
-            FDB   H_ELSE
-            FDB   BEGINW
-H_UNTIL:
-            FCB   $85
-            FCC   "UNTIL"
-            FDB   H_BEGIN
-            FDB   UNTILW
-H_AGAIN:
-            FCB   $85
-            FCC   "AGAIN"
-            FDB   H_UNTIL
-            FDB   AGAINW
-H_WHILE:
-            FCB   $85
-            FCC   "WHILE"
-            FDB   H_AGAIN
-            FDB   WHILEW
-H_REPEAT:
-            FCB   $86
-            FCC   "REPEAT"
-            FDB   H_WHILE
-            FDB   REPEATW
-H_RECURSE:
-            FCB   $87
-            FCC   "RECURSE"
-            FDB   H_REPEAT
-            FDB   RECURSEW
-H_DO:
-            FCB   $82
-            FCC   "DO"
-            FDB   H_RECURSE
-            FDB   DOW
-H_QDO:
-            FCB   $83
-            FCC   "?DO"
-            FDB   H_DO
-            FDB   QDOW
-H_LOOP:
-            FCB   $84
-            FCC   "LOOP"
-            FDB   H_QDO
-            FDB   LOOPW
-H_PLUSLOOP:
-            FCB   $85
-            FCC   "+LOOP"
-            FDB   H_LOOP
-            FDB   PLUSLOOPW
-H_I:
-            FCB   $01
-            FCC   "I"
-            FDB   H_PLUSLOOP
-            FDB   IW
-H_J:
-            FCB   $01
-            FCC   "J"
-            FDB   H_I
-            FDB   JW
-H_LEAVE:
-            FCB   $05
-            FCC   "LEAVE"
-            FDB   H_J
-            FDB   LEAVEW
-H_UNLOOP:
-            FCB   $06
-            FCC   "UNLOOP"
-            FDB   H_LEAVE
-            FDB   UNLOOPW
-H_EXIT:
-            FCB   $84
-            FCC   "EXIT"
-            FDB   H_UNLOOP
-            FDB   EXITW
-H_CASE:
-            FCB   $84
-            FCC   "CASE"
-            FDB   H_EXIT
-            FDB   CASEW
-H_OF:
-            FCB   $82
-            FCC   "OF"
-            FDB   H_CASE
-            FDB   OFW
-H_ENDOF:
-            FCB   $85
-            FCC   "ENDOF"
-            FDB   H_OF
-            FDB   ENDOFW
-H_ENDCASE:
-            FCB   $87
-            FCC   "ENDCASE"
-            FDB   H_ENDOF
-            FDB   ENDCASEW
-H_COLON:
-            FCB   $01
-            FCC   ":"
-            FDB   H_ENDCASE
-            FDB   COLONW
-H_SEMI:
-            FCB   $81
-            FCC   ";"
-            FDB   H_COLON
-            FDB   SEMIW
-H_NONAME:
-            FCB   $07               ; not IMMEDIATE (runs only in INTERPRET)
-            FCC   ":NONAME"
-            FDB   H_SEMI
-            FDB   NONAMEW
-H_CREATE:
-            FCB   $06
-            FCC   "CREATE"
-            FDB   H_NONAME
-            FDB   CREATEW
-H_DOESGT:
-            FCB   $85               ; $80 IMMEDIATE | 5 (length of "DOES>")
-            FCC   "DOES>"
-            FDB   H_CREATE
-            FDB   DOESGTW
-H_VARIABLE:
+            FCC   "TIB"
+            FDB   H_NUMTIB
+            FDB   TIBW
+
+H_EVALUATE:
             FCB   $08
-            FCC   "VARIABLE"
-            FDB   H_DOESGT
-            FDB   VARIABLEW
-H_CONSTANT:
-            FCB   $08
-            FCC   "CONSTANT"
-            FDB   H_VARIABLE
-            FDB   CONSTANTW
-H_VALUE:
-            FCB   $05
-            FCC   "VALUE"
-            FDB   H_CONSTANT
-            FDB   VALUEW
-H_TO:
-            FCB   $82
-            FCC   "TO"
-            FDB   H_VALUE
-            FDB   TOW
-H_TWOVARIABLE:
-            FCB   $09
-            FCC   "2VARIABLE"
-            FDB   H_TO
-            FDB   TWOVARIABLEW
-H_TWOCONSTANT:
-            FCB   $09
-            FCC   "2CONSTANT"
-            FDB   H_TWOVARIABLE
-            FDB   TWOCONSTANTW
-H_BUFFERCOLON:
-            FCB   $07
-            FCC   "BUFFER:"
-            FDB   H_TWOCONSTANT
-            FDB   BUFFERCOLONW
-H_DEFER:
-            FCB   $05
-            FCC   "DEFER"
-            FDB   H_BUFFERCOLON
-            FDB   DEFERW
-H_DEFERFETCH:
+            FCC   "EVALUATE"
+            FDB   H_TIB
+            FDB   EVALUATEW
+
+H_REFILL:
             FCB   $06
-            FCC   "DEFER@"
-            FDB   H_DEFER
-            FDB   DEFERFETCHW
-H_DEFERSTORE:
+            FCC   "REFILL"
+            FDB   H_EVALUATE
+            FDB   REFILLW
+
+H_SOURCEID:
+            FCB   $09
+            FCC   "SOURCE-ID"
+            FDB   H_REFILL
+            FDB   SOURCEIDW
+
+H_SOURCE:
             FCB   $06
-            FCC   "DEFER!"
-            FDB   H_DEFERFETCH
-            FDB   DEFERSTOREW
-H_IS:
-            FCB   $82
-            FCC   "IS"
-            FDB   H_DEFERSTORE
-            FDB   ISW
-H_ACTIONOF:
-            FCB   $89
-            FCC   "ACTION-OF"
-            FDB   H_IS
-            FDB   ACTIONOFW
+            FCC   "SOURCE"
+            FDB   H_SOURCEID
+            FDB   SOURCEW
+
+H_ENVQ:
+            FCB   $0C
+            FCC   "ENVIRONMENT?"
+            FDB   H_SOURCE
+            FDB   ENVQW
+
+H_TWOVALUE: FCB   6
+            FCC   "2VALUE"
+            FDB   H_ENVQ
+            FDB   TWOVALUEW
+
 H_MARKER:
             FCB   $06
             FCC   "MARKER"
-            FDB   H_ACTIONOF
+            FDB   H_TWOVALUE
             FDB   MARKERW
-H_IMMEDIATE:
-            FCB   $09
-            FCC   "IMMEDIATE"
+
+H_ACTIONOF:
+            FCB   $89
+            FCC   "ACTION-OF"
             FDB   H_MARKER
-            FDB   IMMEDIATEW
-H_STATE:
+            FDB   ACTIONOFW
+
+H_IS:
+            FCB   $82
+            FCC   "IS"
+            FDB   H_ACTIONOF
+            FDB   ISW
+
+H_DEFERSTORE:
+            FCB   $06
+            FCC   "DEFER!"
+            FDB   H_IS
+            FDB   DEFERSTOREW
+
+H_DEFERFETCH:
+            FCB   $06
+            FCC   "DEFER@"
+            FDB   H_DEFERSTORE
+            FDB   DEFERFETCHW
+
+H_DEFER:
             FCB   $05
-            FCC   "STATE"
-            FDB   H_IMMEDIATE
-            FDB   STATEW
-H_LBRACKET:
-            FCB   $81
-            FCC   "["
-            FDB   H_STATE
-            FDB   LBRACKETW
-H_RBRACKET:
-            FCB   $81
-            FCC   "]"
-            FDB   H_LBRACKET
-            FDB   RBRACKETW
-H_TICK:
-            FCB   $01
-            FCC   "'"
-            FDB   H_RBRACKET
-            FDB   TICKW
-H_COMPILECOMMA:
-            FCB   $08
-            FCC   "COMPILE,"
-            FDB   H_TICK
-            FDB   COMPILECOMMAW
-H_LITERAL:
-            FCB   $87
-            FCC   "LITERAL"
-            FDB   H_COMPILECOMMA
-            FDB   LITERALW
-H_BRACKTICK:
-            FCB   $83
-            FCC   "[']"
-            FDB   H_LITERAL
-            FDB   BRACKTICKW
-H_POSTPONE:
-            FCB   $88
-            FCC   "POSTPONE"
-            FDB   H_BRACKTICK
-            FDB   POSTPONEW
-H_BRACKCOMPILE:
-            FCB   $89               ; $80 IMMEDIATE | 9 (length of "[COMPILE]")
-            FCC   "[COMPILE]"
-            FDB   H_POSTPONE
-            FDB   BRACKCOMPILEW
-H_TOBODY:
-            FCB   $05
-            FCC   ">BODY"
-            FDB   H_BRACKCOMPILE
-            FDB   TOBODYW
-H_EXECUTE:
+            FCC   "DEFER"
+            FDB   H_DEFERFETCH
+            FDB   DEFERW
+
+H_BUFFERCOLON:
             FCB   $07
-            FCC   "EXECUTE"
-            FDB   H_TOBODY
-            FDB   EXECUTEW
-H_SLITERAL:
-            FCB   $88
-            FCC   "SLITERAL"
-            FDB   H_EXECUTE
-            FDB   SLITERALW
+            FCC   "BUFFER:"
+            FDB   H_DEFER
+            FDB   BUFFERCOLONW
+
+H_TWOCONSTANT:
+            FCB   $09
+            FCC   "2CONSTANT"
+            FDB   H_BUFFERCOLON
+            FDB   TWOCONSTANTW
+
+H_TWOVARIABLE:
+            FCB   $09
+            FCC   "2VARIABLE"
+            FDB   H_TWOCONSTANT
+            FDB   TWOVARIABLEW
+
+H_TO:
+            FCB   $82
+            FCC   "TO"
+            FDB   H_TWOVARIABLE
+            FDB   TOW
+
+H_VALUE:
+            FCB   $05
+            FCC   "VALUE"
+            FDB   H_TO
+            FDB   VALUEW
+
+H_CONSTANT:
+            FCB   $08
+            FCC   "CONSTANT"
+            FDB   H_VALUE
+            FDB   CONSTANTW
+
+H_VARIABLE:
+            FCB   $08
+            FCC   "VARIABLE"
+            FDB   H_CONSTANT
+            FDB   VARIABLEW
+
+H_DOESGT:
+            FCB   $85               ; $80 IMMEDIATE | 5 (length of "DOES>")
+            FCC   "DOES>"
+            FDB   H_VARIABLE
+            FDB   DOESGTW
+
+H_CREATE:
+            FCB   $06
+            FCC   "CREATE"
+            FDB   H_DOESGT
+            FDB   CREATEW
+
+H_NONAME:
+            FCB   $07               ; not IMMEDIATE (runs only in INTERPRET)
+            FCC   ":NONAME"
+            FDB   H_CREATE
+            FDB   NONAMEW
+
+H_SEMI:
+            FCB   $81
+            FCC   ";"
+            FDB   H_NONAME
+            FDB   SEMIW
+
+H_COLON:
+            FCB   $01
+            FCC   ":"
+            FDB   H_SEMI
+            FDB   COLONW
+
+H_TWOLITERAL: FCB $88
+            FCC   "2LITERAL"
+            FDB   H_COLON
+            FDB   TWOLITERALW
+
 H_ABORTQUOTE:
             FCB   $86
             FCC   "ABORT"
             FCB   $22               ; '"' split out of the FCC string
-            FDB   H_SLITERAL
+            FDB   H_TWOLITERAL
             FDB   ABORTQUOTEW
-H_FETCH:
-            FCB   $01
-            FCC   "@"
+
+H_SLITERAL:
+            FCB   $88
+            FCC   "SLITERAL"
             FDB   H_ABORTQUOTE
-            FDB   FETCHW
-H_STORE:
-            FCB   $01
-            FCC   "!"
-            FDB   H_FETCH
-            FDB   STOREW
-H_CFETCH:
-            FCB   $02
-            FCC   "C@"
-            FDB   H_STORE
-            FDB   CFETCHW
-H_CSTORE:
-            FCB   $02
-            FCC   "C!"
-            FDB   H_CFETCH
-            FDB   CSTOREW
-H_PLUSSTORE:
-            FCB   $02
-            FCC   "+!"
-            FDB   H_CSTORE
-            FDB   PLUSSTOREW
-H_TWOFETCH:
-            FCB   $02
-            FCC   "2@"
-            FDB   H_PLUSSTORE
-            FDB   TWOFETCHW
-H_TWOSTORE:
-            FCB   $02
-            FCC   "2!"
-            FDB   H_TWOFETCH
-            FDB   TWOSTOREW
-H_COMMA:
-            FCB   $01
-            FCC   ","
-            FDB   H_TWOSTORE
-            FDB   COMMAW
-H_CCOMMA:
-            FCB   $02
-            FCC   "C,"
-            FDB   H_COMMA
-            FDB   CCOMMAW
-H_ALLOT:
-            FCB   $05
-            FCC   "ALLOT"
-            FDB   H_CCOMMA
-            FDB   ALLOTW
-H_HERE:
-            FCB   $04
-            FCC   "HERE"
-            FDB   H_ALLOT
-            FDB   HEREW
-H_VCOMMA:
-            FCB   $02
-            FCC   "V,"
-            FDB   H_HERE
-            FDB   VCOMMAW
-H_VCCOMMA:
-            FCB   $03
-            FCC   "VC,"
-            FDB   H_VCOMMA
-            FDB   VCCOMMAW
-H_VALLOT:
-            FCB   $06
-            FCC   "VALLOT"
-            FDB   H_VCCOMMA
-            FDB   VALLOTW
-H_VHERE:
-            FCB   $05
-            FCC   "VHERE"
-            FDB   H_VALLOT
-            FDB   VHEREW
-H_PAD:
-            FCB   $03
-            FCC   "PAD"
-            FDB   H_VHERE
-            FDB   PADW
-H_UNUSED:
-            FCB   $06
-            FCC   "UNUSED"
-            FDB   H_PAD
-            FDB   UNUSEDW
-H_VUNUSED:
+            FDB   SLITERALW
+
+H_EXECUTE:
             FCB   $07
-            FCC   "VUNUSED"
-            FDB   H_UNUSED
-            FDB   VUNUSEDW
-H_MOVE:
-            FCB   $04
-            FCC   "MOVE"
-            FDB   H_VUNUSED
-            FDB   MOVEW
-H_FILL:
-            FCB   $04
-            FCC   "FILL"
-            FDB   H_MOVE
-            FDB   FILLW
-H_ERASE:
+            FCC   "EXECUTE"
+            FDB   H_SLITERAL
+            FDB   EXECUTEW
+
+H_TOBODY:
             FCB   $05
-            FCC   "ERASE"
-            FDB   H_FILL
-            FDB   ERASEW
-H_BLANK:
-            FCB   $05
-            FCC   "BLANK"
-            FDB   H_ERASE
-            FDB   BLANKW
-H_CMOVE:
-            FCB   $05
-            FCC   "CMOVE"
-            FDB   H_BLANK
-            FDB   CMOVEW
-H_CMOVEGT:
-            FCB   $06
-            FCC   "CMOVE>"
-            FDB   H_CMOVE
-            FDB   CMOVEGTW
-H_COUNT:
-            FCB   $05
-            FCC   "COUNT"
-            FDB   H_CMOVEGT
-            FDB   COUNTW
-H_WORD:
-            FCB   $04
-            FCC   "WORD"
-            FDB   H_COUNT
-            FDB   WORDW
-H_CHAR:
-            FCB   $04
-            FCC   "CHAR"
-            FDB   H_WORD
-            FDB   CHARW
-H_BRACKCHAR:
-            FCB   $86
-            FCC   "[CHAR]"
-            FDB   H_CHAR
-            FDB   BRACKCHARW
-H_PARSE:
-            FCB   $05
-            FCC   "PARSE"
-            FDB   H_BRACKCHAR
-            FDB   PARSEW
-H_PARSENAME:
-            FCB   $0A
-            FCC   "PARSE-NAME"
-            FDB   H_PARSE
-            FDB   PARSENAMEW
-H_SQUOTE:
-            FCB   $82
-            FCC   "S"
-            FCB   $22               ; '"' split out of the FCC string
-            FDB   H_PARSENAME
-            FDB   SQUOTEW
-H_DOTQUOTE:
-            FCB   $82
-            FCC   "."
-            FCB   $22               ; '"' split out of the FCC string
-            FDB   H_SQUOTE
-            FDB   DOTQUOTEW
-H_COMPARE:
-            FCB   $07
-            FCC   "COMPARE"
-            FDB   H_DOTQUOTE
-            FDB   COMPAREW
-H_SEARCH:
-            FCB   $06
-            FCC   "SEARCH"
-            FDB   H_COMPARE
-            FDB   SEARCHW
-H_DASHTRAILING:
-            FCB   $09
-            FCC   "-TRAILING"
-            FDB   H_SEARCH
-            FDB   DASHTRAILINGW
-H_SLASHSTRING:
-            FCB   $07
-            FCC   "/STRING"
-            FDB   H_DASHTRAILING
-            FDB   SLASHSTRINGW
-H_REPLACES:
+            FCC   ">BODY"
+            FDB   H_EXECUTE
+            FDB   TOBODYW
+
+H_BRACKCOMPILE:
+            FCB   $89               ; $80 IMMEDIATE | 9 (length of "[COMPILE]")
+            FCC   "[COMPILE]"
+            FDB   H_TOBODY
+            FDB   BRACKCOMPILEW
+
+H_POSTPONE:
+            FCB   $88
+            FCC   "POSTPONE"
+            FDB   H_BRACKCOMPILE
+            FDB   POSTPONEW
+
+H_BRACKTICK:
+            FCB   $83
+            FCC   "[']"
+            FDB   H_POSTPONE
+            FDB   BRACKTICKW
+
+H_LITERAL:
+            FCB   $87
+            FCC   "LITERAL"
+            FDB   H_BRACKTICK
+            FDB   LITERALW
+
+H_COMPILECOMMA:
             FCB   $08
-            FCC   "REPLACES"
-            FDB   H_SLASHSTRING
-            FDB   REPLACESW
-H_CLRREPLACES:
-            FCB   $0C
-            FCC   "CLR-REPLACES"
-            FDB   H_REPLACES
-            FDB   CLRREPLACESW
-H_SUBSTITUTE:
-            FCB   $0A
-            FCC   "SUBSTITUTE"
-            FDB   H_CLRREPLACES
-            FDB   SUBSTITUTEW
-H_SNAME:
-            FCB   $05
-            FCC   "SNAME"
-            FDB   H_SUBSTITUTE
-            FDB   SNAMEW
-H_UNESCAPE:
-            FCB   $08
-            FCC   "UNESCAPE"
-            FDB   H_SNAME
-            FDB   UNESCAPEW
-H_LTNUM:
-            FCB   $02
-            FCC   "<#"
-            FDB   H_UNESCAPE
-            FDB   LTNUMW
-H_NUM:
+            FCC   "COMPILE,"
+            FDB   H_LITERAL
+            FDB   COMPILECOMMAW
+
+H_TICK:
             FCB   $01
-            FCC   "#"
-            FDB   H_LTNUM
-            FDB   NUMW
-H_NUMS:
-            FCB   $02
-            FCC   "#S"
-            FDB   H_NUM
-            FDB   NUMSW
-H_NUMGT:
-            FCB   $02
-            FCC   "#>"
-            FDB   H_NUMS
-            FDB   NUMGTW
-H_HOLD:
-            FCB   $04
-            FCC   "HOLD"
-            FDB   H_NUMGT
-            FDB   HOLDW
-H_HOLDS:
-            FCB   $05
-            FCC   "HOLDS"
-            FDB   H_HOLD
-            FDB   HOLDSW
-H_SIGN:
-            FCB   $04
-            FCC   "SIGN"
-            FDB   H_HOLDS
-            FDB   SIGNW
-H_TONUMBER:
-            FCB   $07
-            FCC   ">NUMBER"
-            FDB   H_SIGN
-            FDB   TONUMBERW
-H_DOT:
-            FCB   $01
-            FCC   "."
-            FDB   H_TONUMBER
-            FDB   DOTW
-H_UDOT:
-            FCB   $02
-            FCC   "U."
-            FDB   H_DOT
-            FDB   UDOTW
-H_DOTR:
-            FCB   $02
-            FCC   ".R"
-            FDB   H_UDOT
-            FDB   DOTRW
-H_UDOTR:
-            FCB   $03
-            FCC   "U.R"
-            FDB   H_DOTR
-            FDB   UDOTRW
-H_QMARK:
-            FCB   $01
-            FCC   "?"
-            FDB   H_UDOTR
-            FDB   QMARKW
-H_DDOT:
-            FCB   $02
-            FCC   "D."
-            FDB   H_QMARK
-            FDB   DDOTW
-H_DDOTR:
-            FCB   $03
-            FCC   "D.R"
-            FDB   H_DDOT
-            FDB   DDOTRW
-H_BASE:
-            FCB   $04
-            FCC   "BASE"
-            FDB   H_DDOTR
-            FDB   BASEW
-H_DECIMAL:
-            FCB   $07
-            FCC   "DECIMAL"
-            FDB   H_BASE
-            FDB   DECIMALW
-H_HEX:
-            FCB   $03
-            FCC   "HEX"
-            FDB   H_DECIMAL
-            FDB   HEXW
-H_BINARY:
-            FCB   $06
-            FCC   "BINARY"
-            FDB   H_HEX
-            FDB   BINARYW
-H_CATCH:
-            FCB   $05
-            FCC   "CATCH"
-            FDB   H_BINARY
-            FDB   CATCHW
-H_THROW:
-            FCB   $05
-            FCC   "THROW"
-            FDB   H_CATCH
-            FDB   THROWW
-H_LPAREN:
+            FCC   "'"
+            FDB   H_COMPILECOMMA
+            FDB   TICKW
+
+H_RBRACKET:
             FCB   $81
-            FCC   "("
-            FDB   H_THROW
-            FDB   LPARENW
-H_BACKSLASH:
+            FCC   "]"
+            FDB   H_TICK
+            FDB   RBRACKETW
+
+H_LBRACKET:
             FCB   $81
-            FCC   "\"
-            FDB   H_LPAREN
-            FDB   BACKSLASHW
-H_ENVQ:
-            FCB   $0C
-            FCC   "ENVIRONMENT?"
-            FDB   H_BACKSLASH
-            FDB   ENVQW
-H_SOURCE:
-            FCB   $06
-            FCC   "SOURCE"
-            FDB   H_ENVQ
-            FDB   SOURCEW
-H_SOURCEID:
+            FCC   "["
+            FDB   H_RBRACKET
+            FDB   LBRACKETW
+
+H_STATE:
+            FCB   $05
+            FCC   "STATE"
+            FDB   H_LBRACKET
+            FDB   STATEW
+
+H_IMMEDIATE:
             FCB   $09
-            FCC   "SOURCE-ID"
-            FDB   H_SOURCE
-            FDB   SOURCEIDW
-H_REFILL:
-            FCB   $06
-            FCC   "REFILL"
-            FDB   H_SOURCEID
-            FDB   REFILLW
-H_EVALUATE:
-            FCB   $08
-            FCC   "EVALUATE"
-            FDB   H_REFILL
-            FDB   EVALUATEW
-H_TIB:
-            FCB   $03
-            FCC   "TIB"
-            FDB   H_EVALUATE
-            FDB   TIBW
-H_NUMTIB:
-            FCB   $04
-            FCC   "#TIB"
-            FDB   H_TIB
-            FDB   NUMTIBW
-H_TOIN:
-            FCB   $03
-            FCC   ">IN"
-            FDB   H_NUMTIB
-            FDB   TOINW
-H_SPAN:
-            FCB   $04
-            FCC   "SPAN"
-            FDB   H_TOIN
-            FDB   SPANW
-H_BL:
-            FCB   $02
-            FCC   "BL"
-            FDB   H_SPAN
-            FDB   BLW
-H_DOTS:
-            FCB   $02
-            FCC   ".S"
-            FDB   H_BL
-            FDB   DOTSW
-H_WORDS:
-            FCB   $05
-            FCC   "WORDS"
-            FDB   H_DOTS
-            FDB   WORDSW
-H_DUMP:
-            FCB   $04
-            FCC   "DUMP"
-            FDB   H_WORDS
-            FDB   DUMPW
+            FCC   "IMMEDIATE"
+            FDB   H_STATE
+            FDB   IMMEDIATEW
 
-H_TRUE:
-            FCB   $04
-            FCC   "TRUE"
-            FDB   H_DUMP
-            FDB   TRUEW
+H_CONVERT:  FCB   7
+            FCC   "CONVERT"
+            FDB   H_IMMEDIATE
+            FDB   CONVERTW
 
-H_FALSE:
-            FCB   $05
-            FCC   "FALSE"
-            FDB   H_TRUE
-            FDB   FALSEW
+H_SQUOTEESC: FCB  $83
+            FCC   "S\"
+            FCB   $22               ; '"' split out of the FCC string
+            FDB   H_CONVERT
+            FDB   SQUOTEESCW
 
-; H_ABORT and H_QUIT are hand-built (HEADER/CREATE could not be used
-; for them). Chain, newest first: H_NEGTWO, H_POSTWO, H_NEGONE,
-; H_POSONE, H_FIND, H_QUIT, H_ABORT, H_FALSE ... H_KEY, then 0.
-; Original comment: shadow H_ABORT.0.
-H_ABORT:    FCB   5
-            FCC   "ABORT"
-            FDB   H_FALSE           ; previous newest entry
-            FDB   ABORTW            ; See bugfix: H_ABORT.2
+H_RESTOREINPUT: FCB 13
+            FCC   "RESTORE-INPUT"
+            FDB   H_SQUOTEESC
+            FDB   RESTOREINPUTW
 
-H_QUIT:     FCB   4
-            FCC   "QUIT"
-            FDB   H_ABORT
-            FDB   QUITW
+H_SAVEINPUT: FCB  10
+            FCC   "SAVE-INPUT"
+            FDB   H_RESTOREINPUT
+            FDB   SAVEINPUTW
+
+H_CQUOTE:   FCB   $82
+            FCC   "C"
+            FCB   $22               ; '"' split out of the FCC string
+            FDB   H_SAVEINPUT
+            FDB   CQUOTEW
 
 ; FIND: pushes xt and 1 (immediate) or -1 (normal) on success; on
 ; failure pushes the original c-addr and 0.
 H_FIND:     FCB   4
             FCC   "FIND"
-            FDB   H_QUIT
+            FDB   H_CQUOTE
             FDB   FINDW
 
-H_POSONE:   FCB   1
-            FCC   "1"
+H_TONUMBER:
+            FCB   $07
+            FCC   ">NUMBER"
             FDB   H_FIND
-            FDB   POSONEW
+            FDB   TONUMBERW
+
+H_UNESCAPE:
+            FCB   $08
+            FCC   "UNESCAPE"
+            FDB   H_TONUMBER
+            FDB   UNESCAPEW
+
+H_SNAME:
+            FCB   $05
+            FCC   "SNAME"
+            FDB   H_UNESCAPE
+            FDB   SNAMEW
+
+H_SUBSTITUTE:
+            FCB   $0A
+            FCC   "SUBSTITUTE"
+            FDB   H_SNAME
+            FDB   SUBSTITUTEW
+
+H_CLRREPLACES:
+            FCB   $0C
+            FCC   "CLR-REPLACES"
+            FDB   H_SUBSTITUTE
+            FDB   CLRREPLACESW
+
+H_REPLACES:
+            FCB   $08
+            FCC   "REPLACES"
+            FDB   H_CLRREPLACES
+            FDB   REPLACESW
+
+H_SLASHSTRING:
+            FCB   $07
+            FCC   "/STRING"
+            FDB   H_REPLACES
+            FDB   SLASHSTRINGW
+
+H_DASHTRAILING:
+            FCB   $09
+            FCC   "-TRAILING"
+            FDB   H_SLASHSTRING
+            FDB   DASHTRAILINGW
+
+H_SEARCH:
+            FCB   $06
+            FCC   "SEARCH"
+            FDB   H_DASHTRAILING
+            FDB   SEARCHW
+
+H_COMPARE:
+            FCB   $07
+            FCC   "COMPARE"
+            FDB   H_SEARCH
+            FDB   COMPAREW
+
+H_SQUOTE:
+            FCB   $82
+            FCC   "S"
+            FCB   $22               ; '"' split out of the FCC string
+            FDB   H_COMPARE
+            FDB   SQUOTEW
+
+H_PARSENAME:
+            FCB   $0A
+            FCC   "PARSE-NAME"
+            FDB   H_SQUOTE
+            FDB   PARSENAMEW
+
+H_PARSE:
+            FCB   $05
+            FCC   "PARSE"
+            FDB   H_PARSENAME
+            FDB   PARSEW
+
+H_BRACKCHAR:
+            FCB   $86
+            FCC   "[CHAR]"
+            FDB   H_PARSE
+            FDB   BRACKCHARW
+
+H_CHAR:
+            FCB   $04
+            FCC   "CHAR"
+            FDB   H_BRACKCHAR
+            FDB   CHARW
+
+H_WORD:
+            FCB   $04
+            FCC   "WORD"
+            FDB   H_CHAR
+            FDB   WORDW
+
+H_COUNT:
+            FCB   $05
+            FCC   "COUNT"
+            FDB   H_WORD
+            FDB   COUNTW
+
+H_MSTARSLASH: FCB 3
+            FCC   "M*/"
+            FDB   H_COUNT
+            FDB   MSTARSLASHW
+
+H_DTWOSLASH: FCB  3
+            FCC   "D2/"
+            FDB   H_MSTARSLASH
+            FDB   DTWOSLASHW
+
+H_DTWOSTAR: FCB   3
+            FCC   "D2*"
+            FDB   H_DTWOSLASH
+            FDB   DTWOSTARW
+
+H_DZEROLT:  FCB   3
+            FCC   "D0<"
+            FDB   H_DTWOSTAR
+            FDB   DZEROLTW
+
+H_DZEROEQ:  FCB   3
+            FCC   "D0="
+            FDB   H_DZEROLT
+            FDB   DZEROEQW
+
+H_DMIN:
+            FCB   $04
+            FCC   "DMIN"
+            FDB   H_DZEROEQ
+            FDB   DMINW
+
+H_DMAX:
+            FCB   $04
+            FCC   "DMAX"
+            FDB   H_DMIN
+            FDB   DMAXW
+
+H_DTOS:
+            FCB   $03
+            FCC   "D>S"
+            FDB   H_DMAX
+            FDB   DTOSW
+
+H_STOD:
+            FCB   $03
+            FCC   "S>D"
+            FDB   H_DTOS
+            FDB   STODW
+
+H_MPLUS:
+            FCB   $02
+            FCC   "M+"
+            FDB   H_STOD
+            FDB   MPLUSW
+
+H_DABS:
+            FCB   $04
+            FCC   "DABS"
+            FDB   H_MPLUS
+            FDB   DABSW
+
+H_DNEGATE:
+            FCB   $07
+            FCC   "DNEGATE"
+            FDB   H_DABS
+            FDB   DNEGATEW
+
+H_DMINUS:
+            FCB   $02
+            FCC   "D-"
+            FDB   H_DNEGATE
+            FDB   DMINUSW
+
+H_DPLUS:
+            FCB   $02
+            FCC   "D+"
+            FDB   H_DMINUS
+            FDB   DPLUSW
+
+H_SMSLASHREM:
+            FCB   $06
+            FCC   "SM/REM"
+            FDB   H_DPLUS
+            FDB   SMSLASHREMW
+
+H_FMSLASHMOD:
+            FCB   $06
+            FCC   "FM/MOD"
+            FDB   H_SMSLASHREM
+            FDB   FMSLASHMODW
+
+H_MSTAR:
+            FCB   $02
+            FCC   "M*"
+            FDB   H_FMSLASHMOD
+            FDB   MSTARW
+
+H_UMSLASHMOD:
+            FCB   $06
+            FCC   "UM/MOD"
+            FDB   H_MSTAR
+            FDB   UMSLASHMODW
+
+H_UMSTAR:
+            FCB   $03
+            FCC   "UM*"
+            FDB   H_UMSLASHMOD
+            FDB   UMSTARW
+
+H_TWORFETCH:
+            FCB   $03
+            FCC   "2R@"
+            FDB   H_UMSTAR
+            FDB   TWORFETCHW
+
+H_TWOFROMR:
+            FCB   $03
+            FCC   "2R>"
+            FDB   H_TWORFETCH
+            FDB   TWOFROMRW
+
+H_TWOTOR:
+            FCB   $03
+            FCC   "2>R"
+            FDB   H_TWOFROMR
+            FDB   TWOTORW
+
+H_RFETCH:
+            FCB   $02
+            FCC   "R@"
+            FDB   H_TWOTOR
+            FDB   RFETCHW
+
+H_FROMR:
+            FCB   $02
+            FCC   "R>"
+            FDB   H_RFETCH
+            FDB   FROMRW
+
+H_TOR:
+            FCB   $02
+            FCC   ">R"
+            FDB   H_FROMR
+            FDB   TORW
+
+H_THROW:
+            FCB   $05
+            FCC   "THROW"
+            FDB   H_TOR
+            FDB   THROWW
+
+H_CATCH:
+            FCB   $05
+            FCC   "CATCH"
+            FDB   H_THROW
+            FDB   CATCHW
+
+H_QUIT:     FCB   4
+            FCC   "QUIT"
+            FDB   H_CATCH
+            FDB   QUITW
+
+H_ABORT:    FCB   5
+            FCC   "ABORT"
+            FDB   H_QUIT           ; previous newest entry
+            FDB   ABORTW            ; See bugfix: H_ABORT.2
+
+H_SPACES:
+            FCB   $06
+            FCC   "SPACES"
+            FDB   H_ABORT
+            FDB   SPACESW
+
+H_CR:
+            FCB   $02
+            FCC   "CR"
+            FDB   H_SPACES
+            FDB   CRW
+
+H_TYPE:
+            FCB   $04
+            FCC   "TYPE"
+            FDB   H_CR
+            FDB   TYPEW
+
+H_QUERY:
+            FCB   $05
+            FCC   "QUERY"
+            FDB   H_TYPE
+            FDB   QUERYW
+
+H_EXPECT:
+            FCB   $06
+            FCC   "EXPECT"
+            FDB   H_QUERY
+            FDB   EXPECTW
+
+H_ACCEPT:
+            FCB   $06
+            FCC   "ACCEPT"
+            FDB   H_EXPECT
+            FDB   ACCEPTW
+
+H_EMIT:
+            FCB   $04
+            FCC   "EMIT"
+            FDB   H_ACCEPT
+            FDB   EMITW
+
+H_KEYQ:
+            FCB   $04
+            FCC   "KEY?"
+            FDB   H_EMIT
+            FDB   KEYQW
+
+H_KEY:
+            FCB   $03
+            FCC   "KEY"
+            FDB   H_KEYQ
+            FDB   KEYW
+
+H_SPACE:
+            FCB   $05
+            FCC   "SPACE"
+            FDB   H_KEY
+            FDB   SPACEW
+
+H_DOTQUOTE:
+            FCB   $82
+            FCC   "."
+            FCB   $22               ; '"' split out of the FCC string
+            FDB   H_SPACE
+            FDB   DOTQUOTEW
+
+H_BINARY:
+            FCB   $06
+            FCC   "BINARY"
+            FDB   H_DOTQUOTE
+            FDB   BINARYW
+
+H_HEX:
+            FCB   $03
+            FCC   "HEX"
+            FDB   H_BINARY
+            FDB   HEXW
+
+H_DECIMAL:
+            FCB   $07
+            FCC   "DECIMAL"
+            FDB   H_HEX
+            FDB   DECIMALW
+
+H_BASE:
+            FCB   $04
+            FCC   "BASE"
+            FDB   H_DECIMAL
+            FDB   BASEW
+
+H_DDOTR:
+            FCB   $03
+            FCC   "D.R"
+            FDB   H_BASE
+            FDB   DDOTRW
+
+H_DDOT:
+            FCB   $02
+            FCC   "D."
+            FDB   H_DDOTR
+            FDB   DDOTW
+
+H_QMARK:
+            FCB   $01
+            FCC   "?"
+            FDB   H_DDOT
+            FDB   QMARKW
+
+H_UDOTR:
+            FCB   $03
+            FCC   "U.R"
+            FDB   H_QMARK
+            FDB   UDOTRW
+
+H_DOTR:
+            FCB   $02
+            FCC   ".R"
+            FDB   H_UDOTR
+            FDB   DOTRW
+
+H_UDOT:
+            FCB   $02
+            FCC   "U."
+            FDB   H_DOTR
+            FDB   UDOTW
+
+H_SIGN:
+            FCB   $04
+            FCC   "SIGN"
+            FDB   H_UDOT
+            FDB   SIGNW
+
+H_HOLDS:
+            FCB   $05
+            FCC   "HOLDS"
+            FDB   H_SIGN
+            FDB   HOLDSW
+
+H_HOLD:
+            FCB   $04
+            FCC   "HOLD"
+            FDB   H_HOLDS
+            FDB   HOLDW
+
+H_NUMGT:
+            FCB   $02
+            FCC   "#>"
+            FDB   H_HOLD
+            FDB   NUMGTW
+
+H_NUMS:
+            FCB   $02
+            FCC   "#S"
+            FDB   H_NUMGT
+            FDB   NUMSW
+
+H_NUM:
+            FCB   $01
+            FCC   "#"
+            FDB   H_NUMS
+            FDB   NUMW
+
+H_LTNUM:
+            FCB   $02
+            FCC   "<#"
+            FDB   H_NUM
+            FDB   LTNUMW
+
+H_DOT:
+            FCB   $01
+            FCC   "."
+            FDB   H_LTNUM
+            FDB   DOTW
+
+H_CMOVEGT:
+            FCB   $06
+            FCC   "CMOVE>"
+            FDB   H_DOT
+            FDB   CMOVEGTW
+
+H_CMOVE:
+            FCB   $05
+            FCC   "CMOVE"
+            FDB   H_CMOVEGT
+            FDB   CMOVEW
+
+H_BLANK:
+            FCB   $05
+            FCC   "BLANK"
+            FDB   H_CMOVE
+            FDB   BLANKW
+
+H_ERASE:
+            FCB   $05
+            FCC   "ERASE"
+            FDB   H_BLANK
+            FDB   ERASEW
+
+H_FILL:
+            FCB   $04
+            FCC   "FILL"
+            FDB   H_ERASE
+            FDB   FILLW
+
+H_MOVE:
+            FCB   $04
+            FCC   "MOVE"
+            FDB   H_FILL
+            FDB   MOVEW
+
+H_VUNUSED:
+            FCB   $07
+            FCC   "VUNUSED"
+            FDB   H_MOVE
+            FDB   VUNUSEDW
+
+H_UNUSED:
+            FCB   $06
+            FCC   "UNUSED"
+            FDB   H_VUNUSED
+            FDB   UNUSEDW
+
+H_PAD:
+            FCB   $03
+            FCC   "PAD"
+            FDB   H_UNUSED
+            FDB   PADW
+
+H_VHERE:
+            FCB   $05
+            FCC   "VHERE"
+            FDB   H_PAD
+            FDB   VHEREW
+
+H_VALLOT:
+            FCB   $06
+            FCC   "VALLOT"
+            FDB   H_VHERE
+            FDB   VALLOTW
+
+H_VCCOMMA:
+            FCB   $03
+            FCC   "VC,"
+            FDB   H_VALLOT
+            FDB   VCCOMMAW
+
+H_VCOMMA:
+            FCB   $02
+            FCC   "V,"
+            FDB   H_VCCOMMA
+            FDB   VCOMMAW
+
+H_HERE:
+            FCB   $04
+            FCC   "HERE"
+            FDB   H_VCOMMA
+            FDB   HEREW
+
+H_ALLOT:
+            FCB   $05
+            FCC   "ALLOT"
+            FDB   H_HERE
+            FDB   ALLOTW
+
+H_CCOMMA:
+            FCB   $02
+            FCC   "C,"
+            FDB   H_ALLOT
+            FDB   CCOMMAW
+
+H_COMMA:
+            FCB   $01
+            FCC   ","
+            FDB   H_CCOMMA
+            FDB   COMMAW
+
+H_TWOSTORE:
+            FCB   $02
+            FCC   "2!"
+            FDB   H_COMMA
+            FDB   TWOSTOREW
+
+H_TWOFETCH:
+            FCB   $02
+            FCC   "2@"
+            FDB   H_TWOSTORE
+            FDB   TWOFETCHW
+
+H_PLUSSTORE:
+            FCB   $02
+            FCC   "+!"
+            FDB   H_TWOFETCH
+            FDB   PLUSSTOREW
+
+H_CSTORE:
+            FCB   $02
+            FCC   "C!"
+            FDB   H_PLUSSTORE
+            FDB   CSTOREW
+
+H_CFETCH:
+            FCB   $02
+            FCC   "C@"
+            FDB   H_CSTORE
+            FDB   CFETCHW
+
+H_STORE:
+            FCB   $01
+            FCC   "!"
+            FDB   H_CFETCH
+            FDB   STOREW
+
+H_FETCH:
+            FCB   $01
+            FCC   "@"
+            FDB   H_STORE
+            FDB   FETCHW
+
+H_ALIGNED:
+            FCB   $07
+            FCC   "ALIGNED"
+            FDB   H_FETCH
+            FDB   ALIGNEDW
+
+H_ALIGN:
+            FCB   $05
+            FCC   "ALIGN"
+            FDB   H_ALIGNED
+            FDB   ALIGNW
+
+H_CHARPLUS:
+            FCB   $05
+            FCC   "CHAR+"
+            FDB   H_ALIGN
+            FDB   CHARPLUSW
+
+H_CHARS:
+            FCB   $05
+            FCC   "CHARS"
+            FDB   H_CHARPLUS
+            FDB   CHARSW
+
+H_CELLPLUS:
+            FCB   $05
+            FCC   "CELL+"
+            FDB   H_CHARS
+            FDB   CELLPLUSW
+
+H_CELLS:
+            FCB   $05
+            FCC   "CELLS"
+            FDB   H_CELLPLUS
+            FDB   CELLSW
+
+H_RSHIFT:
+            FCB   $06
+            FCC   "RSHIFT"
+            FDB   H_CELLS
+            FDB   RSHIFTW
+
+H_LSHIFT:
+            FCB   $06
+            FCC   "LSHIFT"
+            FDB   H_RSHIFT
+            FDB   LSHIFTW
+
+H_INVERT:
+            FCB   $06
+            FCC   "INVERT"
+            FDB   H_LSHIFT
+            FDB   INVERTW
+
+H_XOR:
+            FCB   $03
+            FCC   "XOR"
+            FDB   H_INVERT
+            FDB   XORW
+
+H_OR:
+            FCB   $02
+            FCC   "OR"
+            FDB   H_XOR
+            FDB   ORW
+
+H_AND:
+            FCB   $03
+            FCC   "AND"
+            FDB   H_OR
+            FDB   ANDW
+
+H_ENDCASE:
+            FCB   $87
+            FCC   "ENDCASE"
+            FDB   H_AND
+            FDB   ENDCASEW
+
+H_ENDOF:
+            FCB   $85
+            FCC   "ENDOF"
+            FDB   H_ENDCASE
+            FDB   ENDOFW
+
+H_OF:
+            FCB   $82
+            FCC   "OF"
+            FDB   H_ENDOF
+            FDB   OFW
+
+H_CASE:
+            FCB   $84
+            FCC   "CASE"
+            FDB   H_OF
+            FDB   CASEW
+
+H_EXIT:
+            FCB   $84
+            FCC   "EXIT"
+            FDB   H_CASE
+            FDB   EXITW
+
+H_UNLOOP:
+            FCB   $06
+            FCC   "UNLOOP"
+            FDB   H_EXIT
+            FDB   UNLOOPW
+
+H_LEAVE:
+            FCB   $05
+            FCC   "LEAVE"
+            FDB   H_UNLOOP
+            FDB   LEAVEW
+
+H_J:
+            FCB   $01
+            FCC   "J"
+            FDB   H_LEAVE
+            FDB   JW
+
+H_I:
+            FCB   $01
+            FCC   "I"
+            FDB   H_J
+            FDB   IW
+
+H_PLUSLOOP:
+            FCB   $85
+            FCC   "+LOOP"
+            FDB   H_I
+            FDB   PLUSLOOPW
+
+H_LOOP:
+            FCB   $84
+            FCC   "LOOP"
+            FDB   H_PLUSLOOP
+            FDB   LOOPW
+
+H_QDO:
+            FCB   $83
+            FCC   "?DO"
+            FDB   H_LOOP
+            FDB   QDOW
+
+H_DO:
+            FCB   $82
+            FCC   "DO"
+            FDB   H_QDO
+            FDB   DOW
+
+H_RECURSE:
+            FCB   $87
+            FCC   "RECURSE"
+            FDB   H_DO
+            FDB   RECURSEW
+
+H_REPEAT:
+            FCB   $86
+            FCC   "REPEAT"
+            FDB   H_RECURSE
+            FDB   REPEATW
+
+H_WHILE:
+            FCB   $85
+            FCC   "WHILE"
+            FDB   H_REPEAT
+            FDB   WHILEW
+
+H_AGAIN:
+            FCB   $85
+            FCC   "AGAIN"
+            FDB   H_WHILE
+            FDB   AGAINW
+
+H_UNTIL:
+            FCB   $85
+            FCC   "UNTIL"
+            FDB   H_AGAIN
+            FDB   UNTILW
+
+H_BEGIN:
+            FCB   $85
+            FCC   "BEGIN"
+            FDB   H_UNTIL
+            FDB   BEGINW
+
+H_ELSE:
+            FCB   $84
+            FCC   "ELSE"
+            FDB   H_BEGIN
+            FDB   ELSEW
+
+H_THEN:
+            FCB   $84
+            FCC   "THEN"
+            FDB   H_ELSE
+            FDB   THENW
+
+H_IF:
+            FCB   $82
+            FCC   "IF"
+            FDB   H_THEN
+            FDB   IFW
+
+H_FALSE:
+            FCB   $05
+            FCC   "FALSE"
+            FDB   H_IF
+            FDB   FALSEW
+
+H_TRUE:
+            FCB   $04
+            FCC   "TRUE"
+            FDB   H_FALSE
+            FDB   TRUEW
+
+H_DULESS:
+            FCB   $03
+            FCC   "DU<"
+            FDB   H_TRUE
+            FDB   DULESSW
+
+H_DLESS:
+            FCB   $02
+            FCC   "D<"
+            FDB   H_DULESS
+            FDB   DLESSW
+
+H_DEQUAL:
+            FCB   $02
+            FCC   "D="
+            FDB   H_DLESS
+            FDB   DEQUALW
+
+H_WITHIN:
+            FCB   $06
+            FCC   "WITHIN"
+            FDB   H_DEQUAL
+            FDB   WITHINW
+
+H_UGREATER:
+            FCB   $02
+            FCC   "U>"
+            FDB   H_WITHIN
+            FDB   UGREATERW
+
+H_ZEROGT:
+            FCB   $02
+            FCC   "0>"
+            FDB   H_UGREATER
+            FDB   ZEROGTW
+
+H_ZERONE:
+            FCB   $03
+            FCC   "0<>"
+            FDB   H_ZEROGT
+            FDB   ZERONEW
+
+H_NOTEQUAL:
+            FCB   $02
+            FCC   "<>"
+            FDB   H_ZERONE
+            FDB   NOTEQUALW
+
+H_ULESS:
+            FCB   $02
+            FCC   "U<"
+            FDB   H_NOTEQUAL
+            FDB   ULESSW
+
+H_ZEROLT:
+            FCB   $02
+            FCC   "0<"
+            FDB   H_ULESS
+            FDB   ZEROLTW
+
+H_ZEROEQ:
+            FCB   $02
+            FCC   "0="
+            FDB   H_ZEROLT
+            FDB   ZEROEQW
+
+H_GREATER:
+            FCB   $01
+            FCC   ">"
+            FDB   H_ZEROEQ
+            FDB   GREATERW
+
+H_LESS:
+            FCB   $01
+            FCC   "<"
+            FDB   H_GREATER
+            FDB   LESSW
+
+H_EQUAL:
+            FCB   $01
+            FCC   "="
+            FDB   H_LESS
+            FDB   EQUALW
+
+H_STARSLASHMOD:
+            FCB   $05
+            FCC   "*/MOD"
+            FDB   H_EQUAL
+            FDB   STARSLASHMODW
+
+H_STARSLASH:
+            FCB   $02
+            FCC   "*/"
+            FDB   H_STARSLASHMOD
+            FDB   STARSLASHW
+
+H_TWOSLASH:
+            FCB   $02
+            FCC   "2/"
+            FDB   H_STARSLASH
+            FDB   TWOSLASHW
+
+H_TWOSTAR:
+            FCB   $02
+            FCC   "2*"
+            FDB   H_TWOSLASH
+            FDB   TWOSTARW
+
+H_TWOPLUS:
+            FCB   $02
+            FCC   "2+"
+            FDB   H_TWOSTAR
+            FDB   TWOPLUSW
+
+H_MAX:
+            FCB   $03
+            FCC   "MAX"
+            FDB   H_TWOPLUS
+            FDB   MAXW
+
+H_MIN:
+            FCB   $03
+            FCC   "MIN"
+            FDB   H_MAX
+            FDB   MINW
+
+H_ABS:
+            FCB   $03
+            FCC   "ABS"
+            FDB   H_MIN
+            FDB   ABSW
+
+H_NEGATE:
+            FCB   $06
+            FCC   "NEGATE"
+            FDB   H_ABS
+            FDB   NEGATEW
+
+H_SLASHMOD:
+            FCB   $04
+            FCC   "/MOD"
+            FDB   H_NEGATE
+            FDB   SLASHMODW
+
+H_MOD:
+            FCB   $03
+            FCC   "MOD"
+            FDB   H_SLASHMOD
+            FDB   MODW
+
+H_SLASH:
+            FCB   $01
+            FCC   "/"
+            FDB   H_MOD
+            FDB   SLASHW
+
+H_STAR:
+            FCB   $01
+            FCC   "*"
+            FDB   H_SLASH
+            FDB   STARW
+
+H_NEGTWO:   FCB   2
+            FCC   "-2"
+            FDB   H_STAR
+            FDB   NEGTWOW
 
 H_NEGONE:   FCB   2
             FCC   "-1"
-            FDB   H_POSONE
+            FDB   H_NEGTWO
             FDB   NEGONEW
 
 H_POSTWO:   FCB   1
@@ -1471,94 +1637,149 @@ H_POSTWO:   FCB   1
             FDB   H_NEGONE
             FDB   POSTWOW
 
-H_NEGTWO:   FCB   2
-            FCC   "-2"
+H_POSONE:   FCB   1
+            FCC   "1"
             FDB   H_POSTWO
-            FDB   NEGTWOW
+            FDB   POSONEW
 
-H_DZEROEQ:  FCB   3
-            FCC   "D0="
-            FDB   H_NEGTWO
-            FDB   DZEROEQW
+H_ONEMINUS:
+            FCB   $02
+            FCC   "1-"
+            FDB   H_POSONE
+            FDB   ONEMINUSW
 
-H_DZEROLT:  FCB   3
-            FCC   "D0<"
-            FDB   H_DZEROEQ
-            FDB   DZEROLTW
+H_ONEPLUS:
+            FCB   $02
+            FCC   "1+"
+            FDB   H_ONEMINUS
+            FDB   ONEPLUSW
 
-H_DTWOSTAR: FCB   3
-            FCC   "D2*"
-            FDB   H_DZEROLT
-            FDB   DTWOSTARW
+H_MINUS:
+            FCB   $01
+            FCC   "-"
+            FDB   H_ONEPLUS
+            FDB   MINUSW
 
-H_DTWOSLASH: FCB  3
-            FCC   "D2/"
-            FDB   H_DTWOSTAR
-            FDB   DTWOSLASHW
+H_PLUS:
+            FCB   $01
+            FCC   "+"
+            FDB   H_MINUS
+            FDB   PLUSW
 
-H_MSTARSLASH: FCB 3
-            FCC   "M*/"
-            FDB   H_DTWOSLASH
-            FDB   MSTARSLASHW
+H_DROT:
+            FCB   $04
+            FCC   "2ROT"
+            FDB   H_PLUS
+            FDB   DROTW
 
-H_TWOLITERAL: FCB $88
-            FCC   "2LITERAL"
-            FDB   H_MSTARSLASH
-            FDB   TWOLITERALW
+H_ROLL:
+            FCB   $04
+            FCC   "ROLL"
+            FDB   H_DROT
+            FDB   ROLLW
 
-H_TWOVALUE: FCB   6
-            FCC   "2VALUE"
-            FDB   H_TWOLITERAL
-            FDB   TWOVALUEW
+H_PICK:
+            FCB   $04
+            FCC   "PICK"
+            FDB   H_ROLL
+            FDB   PICKW
+
+H_TUCK:
+            FCB   $04
+            FCC   "TUCK"
+            FDB   H_PICK
+            FDB   TUCKW
+
+H_NIP:
+            FCB   $03
+            FCC   "NIP"
+            FDB   H_TUCK
+            FDB   NIPW
+
+H_DOVER:
+            FCB   $05
+            FCC   "2OVER"
+            FDB   H_NIP
+            FDB   DOVERW
+
+H_DSWAP:
+            FCB   $05
+            FCC   "2SWAP"
+            FDB   H_DOVER
+            FDB   DSWAPW
+
+H_DDROP:
+            FCB   $05
+            FCC   "2DROP"
+            FDB   H_DSWAP
+            FDB   DDROPW
+
+H_DDUP:
+            FCB   $04
+            FCC   "2DUP"
+            FDB   H_DDROP
+            FDB   DDUPW
+
+H_DEPTH:
+            FCB   $05
+            FCC   "DEPTH"
+            FDB   H_DDUP
+            FDB   DEPTHW
+
+H_ROT:
+            FCB   $03
+            FCC   "ROT"
+            FDB   H_DEPTH
+            FDB   ROTW
+
+H_QDUP:
+            FCB   $04
+            FCC   "?DUP"
+            FDB   H_ROT
+            FDB   QDUPW
+
+H_OVER:
+            FCB   $04
+            FCC   "OVER"
+            FDB   H_QDUP
+            FDB   OVERW
+
+H_SWAP:
+            FCB   $04
+            FCC   "SWAP"
+            FDB   H_OVER
+            FDB   SWAPW
+
+H_DROP:
+            FCB   $04
+            FCC   "DROP"
+            FDB   H_SWAP
+            FDB   DROPW
+
+H_DUP:
+            FCB   $03
+            FCC   "DUP"
+            FDB   H_DROP
+            FDB   DUPW
 
 H_DOTPAREN: FCB   $82
             FCC   ".("
-            FDB   H_TWOVALUE
+            FDB   H_DUP
             FDB   DOTPARENW
 
-H_CQUOTE:   FCB   $82
-            FCC   "C"
-            FCB   $22               ; '"' split out of the FCC string
+H_LPAREN:
+            FCB   $81
+            FCC   "("
             FDB   H_DOTPAREN
-            FDB   CQUOTEW
+            FDB   LPARENW
 
-H_SAVEINPUT: FCB  10
-            FCC   "SAVE-INPUT"
-            FDB   H_CQUOTE
-            FDB   SAVEINPUTW
+H_BACKSLASH:
+            FCB   $81
+            FCC   "\"
+            FDB   H_LPAREN
+            FDB   BACKSLASHW
 
-H_RESTOREINPUT: FCB 13
-            FCC   "RESTORE-INPUT"
-            FDB   H_SAVEINPUT
-            FDB   RESTOREINPUTW
-
-H_SQUOTEESC: FCB  $83
-            FCC   "S\"
-            FCB   $22               ; '"' split out of the FCC string
-            FDB   H_RESTOREINPUT
-            FDB   SQUOTEESCW
-
-H_CONVERT:  FCB   7
-            FCC   "CONVERT"
-            FDB   H_SQUOTEESC
-            FDB   CONVERTW
-
-H_BRIF:     FCB   $84
-            FCC   "[IF]"
-            FDB   H_CONVERT
-            FDB   BRIFW
-
-H_BRELSE:   FCB   $86
-            FCC   "[ELSE]"
-            FDB   H_BRIF
-            FDB   BRELSEW
-
-H_BRTHEN:   FCB   $86
-            FCC   "[THEN]"
-            FDB   H_BRELSE
-            FDB   BRTHENW
-
-BASELATEST  EQU   H_BRTHEN         ; head of the ROM dictionary (see COLD)
+BASELATEST  EQU   H_BACKSLASH         ; head of the ROM dictionary (see COLD)
 
 ; Verify no collision with base code.
 ; Value should match ORG BASECODE
