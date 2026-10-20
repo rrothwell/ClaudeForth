@@ -21,6 +21,7 @@ MARKER M12
 \ Reset the pass/fail counters, record the stack depth.
 TEST-BEGIN
 
+
 \ F.6.1.0140  +LOOP
 
 T{ : GD2 DO I -1 +LOOP ; -> }T
@@ -76,17 +77,22 @@ HEX
 \ F.6.1.0760  BEGIN
 \ See F.6.1.2430 WHILE, F.6.1.2390 UNTIL.
 
+
 \ F.6.1.1240  DO
 \ See F.6.1.1800 LOOP, F.6.1.0140 +LOOP, F.6.1.1730 J, F.6.1.1760 LEAVE, F.6.1.2380 UNLOOP.
+
 
 \ F.6.1.1310  ELSE
 \ See F.6.1.1700 IF.
 
+
 \ F.6.1.1380  EXIT
 \ See F.6.1.2380 UNLOOP.
 
+
 \ F.6.1.1680  I
 \ See F.6.1.1800 LOOP, F.6.1.0140 +LOOP, F.6.1.1730 J, F.6.1.1760 LEAVE, F.6.1.2380 UNLOOP.
+
 
 \ F.6.1.1700  IF
 
@@ -103,6 +109,7 @@ T{ -1 GI1 -> 123 }T
 T{ <FALSE> melse -> 2 4 }T
 T{ <TRUE> melse -> 1 3 5 }T
 
+
 \ F.6.1.1730  J
 
 T{ : GD3 DO 1 0 DO J LOOP LOOP ; -> }T
@@ -114,6 +121,7 @@ T{ 1 4 GD4 -> 4 3 2 1 }T
 T{ -1 2 GD4 -> 2 1 0 -1 }T
 T{ MID-UINT MID-UINT+1 GD4 -> MID-UINT+1 MID-UINT }T
 
+
 \ F.6.1.1760  LEAVE
 
 T{ : GD5 123 SWAP 0 DO
@@ -123,12 +131,14 @@ T{ 1 GD5 -> 123 }T
 T{ 5 GD5 -> 123 }T
 T{ 6 GD5 -> 234 }T
 
+
 \ F.6.1.1800  LOOP
 
 T{ : GD1 DO I LOOP ; -> }T
 T{ 4 1 GD1 -> 1 2 3 }T
 T{ 2 -1 GD1 -> -1 0 1 }T
 T{ MID-UINT+1 MID-UINT GD1 -> MID-UINT }T
+
 
 \ F.6.1.2120  RECURSE
 
@@ -176,11 +186,13 @@ T{ 2 rn2 EXECUTE -> 11 0 }T
 T{ 4 rn2 EXECUTE -> 33 22 11 0 }T
 T{ 25 rn2 EXECUTE -> 33 22 11 0 }T
 
+
 \ F.6.1.2140  REPEAT
 \ See F.6.1.2430 WHILE.
 
 \ F.6.1.2270  THEN
 \ See F.6.1.1700 IF.
+
 
 \ F.6.1.2380  UNLOOP
 
@@ -194,12 +206,14 @@ T{ 1 GD6 -> 1 }T
 T{ 2 GD6 -> 3 }T
 T{ 3 GD6 -> 4 1 2 }T
 
+
 \ F.6.1.2390  UNTIL
 
 T{ : GI4 BEGIN DUP 1+ DUP 5 > UNTIL ; -> }T
 T{ 3 GI4 -> 3 4 5 6 }T
 T{ 5 GI4 -> 5 6 }T
 T{ 6 GI4 -> 6 7 }T
+
 
 \ F.6.1.2430  WHILE
 
@@ -216,6 +230,7 @@ T{ 2 GI5 -> 2 345 }T
 T{ 3 GI5 -> 3 4 5 123 }T
 T{ 4 GI5 -> 4 5 123 }T
 T{ 5 GI5 -> 5 123 }T
+
 
 \ F.6.2.0620  ?DO (still under the DECIMAL saved above)
 
@@ -268,6 +283,7 @@ T{ -1 2 0 qd6 -> 2 2 2 2 2 2 6 }T
 T{ -1 2 1 qd6 -> 2 3 4 5 6 7 6 }T
 T{ 2 -1 1 qd6 -> -1 0 1 3 }T
 
+
 \ F.6.2.0873  CASE
 
 : cs1 CASE 1 OF 111 ENDOF
@@ -300,11 +316,14 @@ T{ -2 2 cs2 -> -199 }T
 T{ 0 2 cs2 -> 299 }T
 HEX
 
+
 \ F.6.2.1342  ENDCASE
 \ See F.6.2.0873 CASE.
 
+
 \ F.6.2.1343  ENDOF
 \ See F.6.2.0873 CASE.
+
 
 \ F.6.2.1950  OF
 \ See F.6.2.0873 CASE.

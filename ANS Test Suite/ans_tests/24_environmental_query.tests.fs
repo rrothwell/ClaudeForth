@@ -21,6 +21,7 @@ MARKER M24
 \ Reset the pass/fail counters, record the stack depth.
 TEST-BEGIN
 
+
 \ F.6.1.0560  >IN
 
 VARIABLE SCANS
@@ -78,6 +79,7 @@ T{ 14145 8115 ?DUP 0= 34 AND >IN +! TUCK MOD 14 >IN ! GCD calculation
 
 HEX
 
+
 \ F.6.1.0570  >NUMBER
 
 CREATE GN-BUF 0 C,
@@ -120,9 +122,11 @@ T{ 0 0 MAX-BASE GN1 -> 0 0 0 }T
 T{ MAX-UINT 0 MAX-BASE GN1 -> MAX-UINT 0 0 }T
 T{ MAX-UINT DUP MAX-BASE GN1 -> MAX-UINT DUP 0 }T
 
+
 \ F.6.1.0770  BL
 
 T{ BL -> 20 }T
+
 
 \ F.6.1.1345  ENVIRONMENT?
 
@@ -173,6 +177,7 @@ T{ S" CORE-EXTX" ENVIRONMENT? -> <FALSE> }T
 T{ S" DOUBL" ENVIRONMENT? -> <FALSE> }T
 T{ S" " ENVIRONMENT? -> <FALSE> }T
 
+
 \ F.6.1.1360  EVALUATE
 
 : GE1 S" 123" ; IMMEDIATE
@@ -187,6 +192,7 @@ T{ : GE6 GE1 GE5 ; -> }T
 T{ GE6 -> 123 }T
 T{ : GE7 GE2 GE5 ; -> }T
 T{ GE7 -> 124 }T
+
 
 \ F.6.1.2216  SOURCE
 

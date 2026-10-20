@@ -21,6 +21,7 @@ MARKER M09
 \ Reset the pass/fail counters, record the stack depth.
 TEST-BEGIN
 
+
 \ F.6.1.1550  FIND
 
 \ GT1/GT2 are normally defined by the '/['] tests in
@@ -38,6 +39,7 @@ HERE 3 C, CHAR G C, CHAR T C, CHAR 1 C, CONSTANT GT1STRING
 HERE 3 C, CHAR G C, CHAR T C, CHAR 2 C, CONSTANT GT2STRING 
 T{ GT1STRING FIND -> ' GT1 -1 }T
 T{ GT2STRING FIND -> ' GT2 1 }T
+
 
 \ Print this file's TEST SUMMARY and trim any stray stack cells.
 TEST-END

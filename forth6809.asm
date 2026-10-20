@@ -310,7 +310,7 @@ ROM:
 ; own code label (raw code entries, no trampoline), including TRUE
 ; and FALSE. DOES> is next to CREATE; its code label is DOESGTW
 ; because ">" is not valid in a label. ABORT and QUIT are
-; hand-built at the end of the section.
+; hand-built. Headers are in search order (shadow SECTION27.1).
 ;
 ; Names containing a double-quote (S", ." and ABORT") have it split
 ; out of the FCC into a separate FCB $22.
@@ -318,12 +318,9 @@ ROM:
 ; ============================================================
 
             ORG   BASEDICT
-; Dictionary order (head to tail, i.e. search order): see Dictionary_search_order.md.
-; Headers are laid out tail first, so the head (searched first) is the last
-; header below and BASELATEST names it. LINK always points to the header
-; immediately before it in memory (0 for the first).
-; H_ABORT and H_QUIT are hand-built (HEADER/CREATE could not be used for them).
-; Original comment: shadow H_ABORT.0.
+; Search order: head first, and so last in memory. See shadow SECTION27.1.
+; Headers are laid out tail first, so each LINK points back to the header
+; just before it in memory (0 for the first) and BASELATEST names the last.
 
 H_BRTHEN:   FCB   $86
             FCC   "[THEN]"
@@ -920,6 +917,8 @@ H_QUIT:     FCB   4
             FDB   H_CATCH
             FDB   QUITW
 
+; H_ABORT and H_QUIT are hand-built (HEADER/CREATE could not be used
+; for them). Original comment: shadow H_ABORT.0.
 H_ABORT:    FCB   5
             FCC   "ABORT"
             FDB   H_QUIT           ; previous newest entry
@@ -1779,7 +1778,7 @@ H_BACKSLASH:
             FDB   H_LPAREN
             FDB   BACKSLASHW
 
-BASELATEST  EQU   H_BACKSLASH         ; head of the ROM dictionary (see COLD)
+BASELATEST  EQU   H_BACKSLASH         ; head of the ROM dictionary (see COLD). See shadow BASELATEST.2
 
 ; Verify no collision with base code.
 ; Value should match ORG BASECODE

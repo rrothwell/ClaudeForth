@@ -21,6 +21,7 @@ MARKER M11
 \ Reset the pass/fail counters, record the stack depth.
 TEST-BEGIN
 
+
 \ F.9.6.1.0875  CATCH
 \ See F.9.6.1.2275 THROW.
 
@@ -58,7 +59,9 @@ T{ c4 -> 3 4 5 0 999 -111 }T
 : c5 1 2 3 4 ['] t5 CATCH DEPTH >R DROP 2DROP 2DROP R> ;
 T{ c5 -> 5 }T
 
+
 \ F.9.3.6  Exception handling 
+
 \ (general propagation test, not tied
 \ to a single word - included here since it exercises the same
 \ THROW/CATCH/EVALUATE machinery this section implements)

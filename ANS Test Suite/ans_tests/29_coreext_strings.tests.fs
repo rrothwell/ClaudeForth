@@ -32,6 +32,7 @@ T{ cq1 COUNT SWAP C@ -> 3 CHAR 1 }T
 T{ : cq2 C" " ; cq2 C@ -> 0 }T
 T{ : cq3 C" GLORP" ; cq3 COUNT NIP -> 5 }T
 
+
 \ F.6.2.2182 SAVE-INPUT 
 \ F.6.2.2148 RESTORE-INPUT 
 
@@ -60,7 +61,6 @@ T{ ri1 RESTORE-INPUT -> <TRUE> }T
 \ containing the escape characters:
 \      \a 7  \b 8  \e 1B  \f C  \l A  \m 0D 0A  \n A  \q 22
 \     \r D  \t 9  \v B  \z 0  \" 22  \\ 5C  \xhh
-
 
 : SQ1 S\" abc" ;
 T{ SQ1 NIP -> 3 }T
@@ -104,6 +104,7 @@ CREATE CVB 20 C, 31 C, 32 C, 33 C, 0 C,
 \ The test base is HEX, so "123" converts to 123 hex.
 T{ 0 0 CVB CONVERT CVB 4 + = -> 123 0 <TRUE> }T
 T{ 5 0 CVB CONVERT DROP -> 5123 0 }T
+
 
 TEST-END
 M29

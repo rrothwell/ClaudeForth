@@ -24,6 +24,7 @@ TEST-BEGIN
 \ Default base is HEX.
 DECIMAL
 
+
 \ String constant setup.
 
 : s1 S" abcdefghijklmnopqrstuvwxyz" ;

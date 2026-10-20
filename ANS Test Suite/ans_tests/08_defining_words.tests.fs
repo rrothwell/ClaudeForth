@@ -21,6 +21,7 @@ MARKER M08
 \ Reset the pass/fail counters, record the stack depth.
 TEST-BEGIN
 
+
 \ F.6.1.0450  : (COLON)
 
 T{ : NOP : POSTPONE ; ; -> }T
@@ -31,8 +32,10 @@ T{ NOP2 -> }T
 T{ : GDX 123 ; : GDX GDX 234 ; -> }T
 T{ GDX -> 123 234 }T
 
+
 \ F.6.1.0460  ;
 \ See F.6.1.0450 :.
+
 
 \ F.6.1.0950  CONSTANT
 
@@ -42,8 +45,10 @@ T{ : EQU CONSTANT ; -> }T
 T{ X123 EQU Y123 -> }T
 T{ Y123 -> 123 }T
 
+
 \ F.6.1.1000  CREATE
 \ See F.6.1.0550 >BODY and F.6.1.1250 DOES>.
+
 
 \ F.6.1.1250  DOES>
 
@@ -63,11 +68,13 @@ T{ ' W1 >BODY -> HERE }T
 T{ W1 -> HERE 1 + }T
 T{ W1 -> HERE 2 + }T
 
+
 \ F.6.1.2410  VARIABLE
 
 T{ VARIABLE V1 -> }T
 T{ 123 V1 ! -> }T
 T{ V1 @ -> 123 }T
+
 
 \ F.6.2.0455  :NONAME
 
@@ -77,6 +84,7 @@ T{ :NONAME 1234 ; nn1 ! -> }T
 T{ :NONAME 9876 ; nn2 ! -> }T
 T{ nn1 @ EXECUTE -> 1234 }T
 T{ nn2 @ EXECUTE -> 9876 }T
+
 
 \ F.6.2.0698  ACTION-OF
 
@@ -91,7 +99,9 @@ T{ 1 2 defer1 -> 3 }T
 T{ ACTION-OF defer1 -> ' + }T
 T{ action-defer1 -> ' + }T
 
-\ F.6.2.0825  BUFFER: - the "127" literals below need DECIMAL, but a
+\ F.6.2.0825  BUFFER:
+
+\ The "127" literals below need DECIMAL, but a
 \ bare DECIMAL with no restore leaks the base change forward into
 \ whatever section file loads next (MARKER only resets the
 \ dictionary/HERE, never BASE) - save/restore locally instead, so
@@ -140,6 +150,7 @@ T{ TBUF1 127 CHAR * TFULL? -> <TRUE> }T
 T{ TBUF1 127 0 FILL -> }T
 T{ TBUF1 127 0 TFULL? -> <TRUE> }T
 
+
 \ F.6.2.1173  DEFER
 
 T{ DEFER defer2 -> }T
@@ -148,6 +159,7 @@ T{ 2 3 defer2 -> 6 }T
 T{ ' + IS defer2 -> }T
 T{ 1 2 defer2 -> 3 }T
 
+
 \ F.6.2.1175  DEFER!
 
 T{ DEFER defer3 -> }T
@@ -155,6 +167,7 @@ T{ ' * ' defer3 DEFER! -> }T
 T{ 2 3 defer3 -> 6 }T
 T{ ' + ' defer3 DEFER! -> }T
 T{ 1 2 defer3 -> 3 }T
+
 
 \ F.6.2.1177  DEFER@
 
@@ -166,6 +179,7 @@ T{ ' + IS defer4 -> }T
 T{ 1 2 defer4 -> 3 }T
 T{ ' defer4 DEFER@ -> ' + }T
 
+
 \ F.6.2.1725  IS
 
 T{ DEFER defer5 -> }T
@@ -175,8 +189,10 @@ T{ 2 3 defer5 -> 6 }T
 T{ ' + is-defer5 -> }T
 T{ 1 2 defer5 -> 3 }T
 
+
 \ F.6.2.2295  TO
 \ See F.6.2.2405 VALUE.
+
 
 \ F.6.2.2405  VALUE
 
@@ -193,6 +209,8 @@ T{ v2 -> -999 }T
 T{ -333 vd2 -> }T
 T{ v2 -> -333 }T
 T{ v1 -> 222 }T
+
+
 \ Print this file's TEST SUMMARY and trim any stray stack cells.
 TEST-END
 \ ---- section-marker: undo everything above ----

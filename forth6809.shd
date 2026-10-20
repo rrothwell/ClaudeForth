@@ -744,10 +744,40 @@ SECTION27.0  [history]  (lines 428-468 of the stage-3q file)
 ; ============================================================
 
 ================================================================
+SECTION27.1  [history (stage 6e)]
+----------------------------------------------------------------
+Stage 6e reorders the ROM headers in search order, so the words used most are found
+after the fewest comparisons (FIND walks LATEST first). Head to tail the groups are:
+comments, data stack, single-cell arithmetic, comparison, control flow, logic/shifts/
+address, memory, numeric output, base, system I/O, exception, return stack, mixed/
+double, strings and parsing, compiling, defining, environmental, tools. Within a group
+the most used words come first (backslash, ( and .( ; DUP DROP SWAP OVER ?DUP ; + - 1+
+1- 1 2 -1 -2 ; @ ! ; the dot ; ." and SPACE). The order is in Dictionary_search_order.md.
+
+Headers are laid out tail first, so each LINK still points back to the header just
+before it in memory (0 for the first). Only the LINK fields and BASELATEST changed: no
+header was added, removed or resized, so BASEDICT ($D322-$DBEF), BASECODE and every
+code address are unchanged. Checked structurally (one chain of 245 headers, head
+H_BACKSLASH, tail H_BRTHEN, no duplicates); all tests pass in MAME. The comments in
+this section and at BASELATEST were reworded to match; no code changed.
+The old order placed H_FIND, >NUMBER and the number words 1/-1/2/-2 after H_QUIT, and
+H_ABORT/H_QUIT sat between them and the rest; see H_ABORT.0 for the earlier chain.
+
+================================================================
 H_NONAME.1  [explanatory]  (lines 1038-1039 of the stage-3q file)
 ----------------------------------------------------------------
             FCB   $07               ; not IMMEDIATE - ordinary word, same as
                                     ; COLON (only ever runs during INTERPRET)
+
+================================================================
+H_FIND.1  [history]  (lines 1606-1611 of the stage-3q file)
+----------------------------------------------------------------
+; FIND had no dictionary entry at all - confirmed by checking for
+; any H_FIND label or FCC "FIND" string anywhere in this file
+; before adding this. Its actual implementation (verified before
+; exposing it) already matches the standard stack effect exactly:
+; success pushes xt then 1 (immediate) or -1 (normal); failure
+; reconstructs and pushes the original c-addr, then 0.
 
 ================================================================
 H_TONUMBER.1  [history]  (lines 1422-1426 of the stage-3q file)
@@ -789,16 +819,6 @@ H_ABORT.2  [bugfix]  (lines 1597-1599 of the stage-3q file)
                                     ; label stays the unconditional reset.
 
 ================================================================
-H_FIND.1  [history]  (lines 1606-1611 of the stage-3q file)
-----------------------------------------------------------------
-; FIND had no dictionary entry at all - confirmed by checking for
-; any H_FIND label or FCC "FIND" string anywhere in this file
-; before adding this. Its actual implementation (verified before
-; exposing it) already matches the standard stack effect exactly:
-; success pushes xt then 1 (immediate) or -1 (normal); failure
-; reconstructs and pushes the original c-addr, then 0.
-
-================================================================
 BASELATEST.1  [history]  (lines 1637-1644 of the stage-3q file)
 ----------------------------------------------------------------
 BASELATEST  EQU   H_NEGTWO          ; the ROM dictionary's true head - referenced by
@@ -809,6 +829,13 @@ BASELATEST  EQU   H_NEGTWO          ; the ROM dictionary's true head - reference
                                     ; that, undefined entirely - a real bug, not
                                     ; a placeholder, found and fixed several turns
                                     ; before this one.
+
+================================================================
+BASELATEST.2  [history (stage 6e)]
+----------------------------------------------------------------
+BASELATEST was H_BRTHEN before stage 6e and is now H_BACKSLASH, the head of the
+search-order chain (see SECTION27.1). H_BRTHEN, the first header in memory, is now the
+tail.
 
 ================================================================
 BASECODE.1  [bugfix]  (stage-2 source lines 2115-2123)
@@ -1577,7 +1604,6 @@ code. The accumulator no longer sits in page zero:
   #, #S        UDDIGIT divides the ud on the data stack in place; the
                remainder is in RegA and the loop count in RegB.
   . .R D. D.R  the sign cell is held on S instead of SAVEN.
-
 
 ================================================================
 X_KEY.1  [unused routine removed]  (lines 3438-3467 of the stage-3r file)

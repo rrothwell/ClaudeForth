@@ -21,10 +21,14 @@ MARKER M18
 \ Reset the pass/fail counters, record the stack depth.
 TEST-BEGIN
 
+
 \ F.6.1.0010  !
 \ See F.6.1.0150 ,.
 
-\ F.6.1.0150  , - 1ST/2ND must exist before F.6.1.0130 +! below uses
+
+\ F.6.1.0150  , (COMMA)
+
+\ 1ST/2ND must exist before F.6.1.0130 +! below uses
 \ 1ST; this block was after +!'s test, a genuine forward reference
 \ (1ST used at the old line 26 before its own CONSTANT below defined
 \ it). Reordered to match the dependency.
@@ -51,6 +55,7 @@ T{ 1ST 2@ -> 2 1 }T
 \ CAN STORE CELL-WIDE VALUE
 T{ 1S 1ST ! 1ST @ -> 1S }T
 
+
 \ F.6.1.0130  +!
 
 T{ 0 1ST ! -> }T
@@ -58,14 +63,18 @@ T{ 1 1ST +! -> }T
 T{ 1ST @ -> 1 }T
 T{ -1 1ST +! 1ST @ -> 0 }T
 
+
 \ F.6.1.0310  2!
 \ See F.6.1.0150 ,.
+
 
 \ F.6.1.0350  2@
 \ See F.6.1.0150 ,.
 
+
 \ F.6.1.0650  @
 \ See F.6.1.0150 ,.
+
 
 \ F.6.1.0710  ALLOT
 
@@ -78,8 +87,10 @@ CONSTANT 1STA
 T{ 1STA 2NDA U< -> <TRUE> }T
 T{ 1STA 1+ -> 2NDA }T
 
+
 \ F.6.1.0850  C!
 \ See F.6.1.0860 C,.
+
 
 \ F.6.1.0860  C,
 
@@ -99,8 +110,10 @@ T{ 1STC C@ 2NDC C@ -> 3 2 }T
 T{ 4 2NDC C! -> }T
 T{ 1STC C@ 2NDC C@ -> 3 4 }T
 
+
 \ F.6.1.0870  C@
 \ See F.6.1.0860 C,.
+
 
 \ F.6.1.1540  FILL
 
@@ -111,8 +124,10 @@ T{ SEEBUF -> 20 00 00 }T
 T{ FBUF 3 20 FILL -> }T
 T{ SEEBUF -> 20 20 20 }T
 
+
 \ F.6.1.1650  HERE
 \ See F.6.1.0150 ,, F.6.1.0710 ALLOT, F.6.1.0860 C,.
+
 
 \ F.6.1.1900  MOVE
 

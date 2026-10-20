@@ -62,6 +62,8 @@ HEX
 \ README and the open-items checklist). Now resolved.
 T{ FALSE -> 0 }T
 T{ FALSE -> <FALSE> }T
+
+
 \ F.6.2.2298  TRUE
 
 T{ TRUE -> <TRUE> }T

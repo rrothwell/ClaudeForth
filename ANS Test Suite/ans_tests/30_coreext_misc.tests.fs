@@ -193,7 +193,7 @@ T{ RJOutput -> }T
 
 \ ============ Group 2: ClaudeForth extensions ============
 
-\ CF 2+
+\ ClaudeForth 2+
 
 T{        0 2+ -> 2 }T
 T{        1 2+ -> 3 }T
@@ -203,7 +203,7 @@ T{  MAX-INT 2+ -> MIN-INT 1+ }T
 T{ MAX-UINT 2+ -> 1 }T
 
 
-\ CF BINARY
+\ ClaudeForth BINARY
 
 : bn1 BASE @ BINARY BASE @ SWAP BASE ! ;
 T{ bn1 BASE @ 10 = -> 2 <TRUE> }T
@@ -213,7 +213,7 @@ T{ BINARY 1111 1111 HEX -> F F }T
 T{ BASE @ -> 10 }T
 
 
-\ CF SNAME
+\ ClaudeForth SNAME
 
 T{ ' DUP SNAME S" DUP" S= -> <TRUE> }T
 T{ ' SWAP SNAME S" SWAP" S= -> <TRUE> }T
@@ -226,9 +226,9 @@ T{ ' SN2 SNAME S" SN2" S= -> <TRUE> }T
 T{ 1 SNAME NIP -> 0 }T
 
 
-\ CF VHERE
-\ CF V,
-\ CF VC,
+\ ClaudeForth VHERE
+\ ClaudeForth V,
+\ ClaudeForth VC,
 
 \ VSTART remembers where the variable region stood, so that the
 \ tests below can hand back everything they allocate.
@@ -238,7 +238,7 @@ T{ VHERE 1 V, VHERE SWAP - -> 2 }T
 T{ VHERE 1234 V, @ -> 1234 }T
 T{ VHERE 5A VC, VHERE OVER - SWAP C@ -> 1 5A }T
 
-\ CF VALLOT
+\ ClaudeForth VALLOT
 
 T{ VHERE 10 VALLOT VHERE SWAP - -> 10 }T
 \ A negative count gives the space back.
@@ -249,13 +249,13 @@ vrestore
 T{ VHERE VSTART @ = -> <TRUE> }T
 
 
-\ CF UNUSED
+\ ClaudeForth UNUSED
 
 \ UNUSED shrinks by the amount ALLOTted, VUNUSED by the amount VALLOTted.
 T{ UNUSED 0<> -> <TRUE> }T
 T{ UNUSED 10 ALLOT UNUSED - -10 ALLOT -> 10 }T
 
-\ CF VUNUSED
+\ ClaudeForth VUNUSED
 
 
 T{ VUNUSED 0<> -> <TRUE> }T

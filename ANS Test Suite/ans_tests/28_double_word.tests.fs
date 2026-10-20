@@ -27,7 +27,10 @@ TEST-BEGIN
 \ Default base is HEX.
 DECIMAL
 
-\ ---- ENVIRONMENT? queries for the double word sets ----
+
+\ F.6.1.1345 ENVIRONMENT?
+\ Queries for the double word sets
+
 \ ENVIRONMENT? takes a counted-string pair, so each query is
 \ wrapped in a definition (S" is compile-only here).
 : ENV-DOUBLE     S" DOUBLE"     ENVIRONMENT? ;
@@ -42,7 +45,7 @@ T{ ENV-DOUBLE     -> <TRUE> <TRUE> }T
 T{ ENV-DOUBLE-EXT -> <TRUE> <TRUE> }T
 T{ ENV-NOSUCH     -> <FALSE> }T
 
-\ ---- Double-Number constant setup ----
+\ Double-Number constant setup
 \ MAX-INT and MIN-INT come from the prelude. The double-cell
 \ limits are built from them and from D2/, so they do not
 \ depend on the cell size. 2CONSTANT takes ( lo hi -- ).
@@ -75,6 +78,7 @@ T{ ENV-MAX-D -> MAX-2INT <TRUE> }T
 
 DECIMAL
 
+
 \ F.8.6.1.0360 2CONSTANT
 
 T{ 1 2 2CONSTANT 2c1 -> }T
@@ -89,6 +93,7 @@ T{ 2c2 -> -1 -2 }T
 T{ 4 5 2CONSTANT 2c3 IMMEDIATE 2c3 -> 4 5 }T
 T{ : cd6 2c3 2LITERAL ; cd6 -> 4 5 }T
 
+
 \ F.8.6.1.0390 2LITERAL
 
 T{ : cd1 [ MAX-2INT ] 2LITERAL ; -> }T
@@ -96,6 +101,7 @@ T{ cd1 -> MAX-2INT }T
 T{ 2VARIABLE 2v4 IMMEDIATE 5 6 2v4 2! -> }T
 T{ : cd7 2v4 [ 2@ ] 2LITERAL ; cd7 -> 5 6 }T
 T{ : cd8 [ 6 7 ] 2v4 [ 2! ] ; 2v4 2@ -> 6 7 }T
+
 
 \ F.8.6.1.0440 2VARIABLE
 
@@ -112,6 +118,7 @@ T{ 2v2 2@ -> -2 -1 }T
 
 T{ 2VARIABLE 2v3 IMMEDIATE 5 6 2v3 2! -> }T
 T{ 2v3 2@ -> 5 6 }T
+
 
 \ F.8.6.1.1040 D+
 
@@ -174,6 +181,7 @@ T{ MIN-2INT  lo-2INT D- -> lo-2INT }T
 
 
 \ F.8.6.1.1060 D. and F.8.6.1.1070 D.R
+
 \ These produce display output, so the test is visual: the
 \ lines shown must come out in identical pairs. dbl1 and dbl2
 \ are built with M*/ (decimal 71/73 and 73/79 scaling).
@@ -242,6 +250,7 @@ T{ MAX-2INT D2/ -> HI-2INT   }T
 T{      -1. D2/ -> -1.       }T
 T{ MIN-2INT D2/ -> LO-2INT   }T
 
+
 \ F.8.6.1.1110 D<
 
 T{       0.       1. D< -> <TRUE>  }T
@@ -289,6 +298,7 @@ T{ MIN-2INT MIN-2INT D= -> <TRUE>  }T
 T{ MIN-2INT LO-2INT  D= -> <FALSE> }T
 T{ MIN-2INT MAX-2INT D= -> <FALSE> }T
 
+
 \ F.8.6.1.1140 D>S
 
 T{    1234  0 D>S ->  1234   }T
@@ -324,6 +334,7 @@ T{ MAX-2INT       1. DMAX -> MAX-2INT }T
 T{ MAX-2INT      -1. DMAX -> MAX-2INT }T
 T{ MIN-2INT       1. DMAX ->  1.      }T
 T{ MIN-2INT      -1. DMAX -> -1.      }T
+
 
 \ F.8.6.1.1220 DMIN
 
@@ -386,6 +397,7 @@ T{ LO-2INT  -1 M+ -> LO-2INT  -1. D+ }T
 
 \ ---- 8.6.2 Double-Number extension words ----
 
+
 \ F.8.6.2.0420 2ROT
 
 T{       1.       2. 3. 2ROT ->       2. 3.       1. }T
@@ -401,6 +413,7 @@ T{ t2val -> 3 4 }T
 : sett2val t2val 2SWAP TO t2val ;
 T{ 5 6 sett2val t2val -> 3 4 5 6 }T
 
+
 \ F.8.6.2.1270 DU<
 
 T{       1.       1. DU< -> <FALSE> }T
@@ -412,7 +425,6 @@ T{  HI-2INT MAX-2INT DU< -> <TRUE>  }T
 T{ MAX-2INT MIN-2INT DU< -> <TRUE>  }T
 T{ MIN-2INT MAX-2INT DU< -> <FALSE> }T
 T{ MIN-2INT  LO-2INT DU< -> <TRUE>  }T
-
 
 
 \ Restore default base.

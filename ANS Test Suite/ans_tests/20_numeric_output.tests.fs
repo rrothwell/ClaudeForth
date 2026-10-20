@@ -26,31 +26,39 @@ TEST-BEGIN
 : GP3  <# 1 0 # # #> S" 01" S= ;   
 T{ GP3 -> <TRUE> }T
 
+
 \ F.6.1.0040  #>
 \ See F.6.1.0030 #, F.6.1.0050 #S, F.6.1.1670 HOLD and F.6.1.2210 SIGN.
+
 
 \ F.6.1.0050  #S
 
 : GP4  <# 1 0 #S #> S" 1" S= ;   
 T{ GP4 -> <TRUE> }T
 
+
 \ F.6.1.0180  .
 \ See F.6.1.1320 EMIT.
+
 
 \ F.6.1.0490  <#
 \ See F.6.1.0030 #, F.6.1.0050 #S, F.6.1.1670 HOLD, F.6.1.2210 SIGN.
 
+
 \ F.6.1.1670  HOLD
 : GP1 <# 41 HOLD 42 HOLD 0 0 #> S" BA" S= ;   
 T{ GP1 -> <TRUE> }T
+
 
 \ F.6.1.2210  SIGN
 
 : GP2 <# -1 SIGN 0 SIGN -1 SIGN 0 0 #> S" --" S= ;   
 T{ GP2 -> <TRUE> }T
 
+
 \ F.6.1.2320  U.
 \ See F.6.1.1320 EMIT.
+
 
 \ F.6.2.1675  HOLDS
 

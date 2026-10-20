@@ -21,6 +21,7 @@ MARKER M15
 \ Reset the pass/fail counters, record the stack depth.
 TEST-BEGIN
 
+
 \ F.6.1.0090  *
 
 T{ 0 0 * -> 0 }T
@@ -36,7 +37,11 @@ T{ MID-UINT+1 1 RSHIFT 2 * -> MID-UINT+1 }T
 T{ MID-UINT+1 2 RSHIFT 4 * -> MID-UINT+1 }T
 T{ MID-UINT+1 1 RSHIFT MID-UINT+1 OR 2 * -> MID-UINT+1 }T
 
-\ F.6.1.0100  */ and F.6.1.0110  */MOD - */MOD's helper must be defined
+
+\ F.6.1.0100  */
+\ F.6.1.0110  */MOD
+
+\ */MOD's helper must be defined
 \ before */'s (T*/ is defined in terms of T*/MOD), so */MOD's IFFLOORED/
 \ IFSYM lines come first here, matching the authoritative Annex F
 \ source order; this was previously reversed, a genuine forward-
@@ -85,6 +90,7 @@ T{ -7 2 -3 */MOD -> -7 2 -3 T*/MOD }T
 T{ MAX-INT 2 MAX-INT */MOD -> MAX-INT 2 MAX-INT T*/MOD }T
 T{ MIN-INT 2 MIN-INT */MOD -> MIN-INT 2 MIN-INT T*/MOD }T
 
+
 \ F.6.1.0120  +
 
 T{ 0 5 + -> 5 }T
@@ -97,6 +103,7 @@ T{ -1 2 + -> 1 }T
 T{ -1 -2 + -> -3 }T
 T{ -1 1 + -> 0 }T
 T{ MID-UINT 1 + -> MID-UINT+1 }T
+
 
 \ F.6.1.0160  -
 
@@ -111,7 +118,11 @@ T{ -1 -2 - -> 1 }T
 T{ 0 1 - -> -1 }T
 T{ MID-UINT+1 1 - -> MID-UINT }T
 
-\ F.6.1.0230  / and F.6.1.0240  /MOD - same ordering fix as */ / */MOD
+
+\ F.6.1.0230  / 
+\ F.6.1.0240  /MOD 
+
+\ Same ordering fix as */ / */MOD
 \ above: /'s helper (T/) is defined in terms of T/MOD, so T/MOD's
 \ IFFLOORED/IFSYM lines must come first.
 
@@ -162,12 +173,14 @@ T{ MIN-INT 1 /MOD -> MIN-INT 1 T/MOD }T
 T{ MAX-INT MAX-INT /MOD -> MAX-INT MAX-INT T/MOD }T
 T{ MIN-INT MIN-INT /MOD -> MIN-INT MIN-INT T/MOD }T
 
+
 \ F.6.1.0290  1+
 
 T{ 0 1+ -> 1 }T
 T{ -1 1+ -> 0 }T
 T{ 1 1+ -> 2 }T
 T{ MID-UINT 1+ -> MID-UINT+1 }T
+
 
 \ F.6.1.0300  1-
 
@@ -176,6 +189,7 @@ T{ 1 1- -> 0 }T
 T{ 0 1- -> -1 }T
 T{ MID-UINT+1 1- -> MID-UINT }T
 
+
 \ F.6.1.0320  2*
 
 T{ 0S 2* -> 0S }T
@@ -183,6 +197,7 @@ T{ 1 2* -> 2 }T
 T{ 4000 2* -> 8000 }T
 T{ 1S 2* 1 XOR -> 1S }T
 T{ MSB 2* -> 0S }T
+
 
 \ F.6.1.0330  2/
 
@@ -195,12 +210,14 @@ T{ 1S 2/ -> 1S }T
 T{ 1S 1 XOR 2/ -> 1S }T
 T{ MSB 2/ MSB AND -> MSB }T
 
+
 \ F.6.1.0690  ABS
 
 T{ 0 ABS -> 0 }T
 T{ 1 ABS -> 1 }T
 T{ -1 ABS -> 1 }T
 T{ MIN-INT ABS -> MID-UINT+1 }T
+
 
 \ F.6.1.1561  FM/MOD
 
@@ -239,6 +256,7 @@ T{ MIN-INT MAX-INT M* MIN-INT FM/MOD -> 0 MAX-INT }T
 T{ MIN-INT MAX-INT M* MAX-INT FM/MOD -> 0 MIN-INT }T
 T{ MAX-INT MAX-INT M* MAX-INT FM/MOD -> 0 MAX-INT }T
 
+
 \ F.6.1.1810  M*
 
 T{ 0 0 M* -> 0 S>D }T
@@ -260,6 +278,7 @@ T{ MIN-INT MIN-INT M* -> 0 MSB 1 RSHIFT }T
 T{ MAX-INT MIN-INT M* -> MSB MSB 2/ }T
 T{ MAX-INT MAX-INT M* -> 1 MSB 2/ INVERT }T
 
+
 \ F.6.1.1870  MAX
 
 T{ 0 1 MAX -> 1 }T
@@ -275,6 +294,7 @@ T{ 0 -1 MAX -> 0 }T   T{ 1 -1 MAX -> 1 }T
 T{ 0 MIN-INT MAX -> 0 }T
 T{ MAX-INT MIN-INT MAX -> MAX-INT }T
 T{ MAX-INT 0 MAX -> MAX-INT }T
+
 
 \ F.6.1.1880  MIN
 
@@ -294,6 +314,7 @@ T{ 1 -1 MIN -> -1 }T
 T{ 0 MIN-INT MIN -> MIN-INT }T
 T{ MAX-INT MIN-INT MIN -> MIN-INT }T
 T{ MAX-INT 0 MIN -> 0 }T
+
 
 \ F.6.1.1890  MOD
 
@@ -321,6 +342,7 @@ T{ MIN-INT 1 MOD -> MIN-INT 1 TMOD }T
 T{ MAX-INT MAX-INT MOD -> MAX-INT MAX-INT TMOD }T
 T{ MIN-INT MIN-INT MOD -> MIN-INT MIN-INT TMOD }T
 
+
 \ F.6.1.1910  NEGATE
 
 T{ 0 NEGATE -> 0 }T
@@ -328,6 +350,7 @@ T{ 1 NEGATE -> -1 }T
 T{ -1 NEGATE -> 1 }T
 T{ 2 NEGATE -> -2 }T
 T{ -2 NEGATE -> 2 }T
+
 
 \ F.6.1.2170  S>D
 
@@ -339,7 +362,9 @@ T{ -2 S>D -> -2 -1 }T
 T{ MIN-INT S>D -> MIN-INT -1 }T
 T{ MAX-INT S>D -> MAX-INT 0 }T
 
+
 \ F.6.1.2214  SM/REM
+
 T{ 0 S>D 1 SM/REM -> 0 0 }T
 T{ 1 S>D 1 SM/REM -> 0 1 }T
 T{ 2 S>D 1 SM/REM -> 0 2 }T
@@ -378,6 +403,7 @@ T{ MIN-INT MAX-INT M* MIN-INT SM/REM -> 0 MAX-INT }T
 T{ MIN-INT MAX-INT M* MAX-INT SM/REM -> 0 MIN-INT }T
 T{ MAX-INT MAX-INT M* MAX-INT SM/REM -> 0 MAX-INT }T
 
+
 \ F.6.1.2360  UM*
 
 T{ 0 0 UM* -> 0 0 }T
@@ -392,6 +418,7 @@ T{ MID-UINT+1 4 UM* -> 0 2 }T
 T{ 1S 2 UM* -> 1S 1 LSHIFT 1 }T
 T{ MAX-UINT MAX-UINT UM* -> 1 1 INVERT }T
 
+
 \ F.6.1.2370  UM/MOD
 
 T{ 0 0 1 UM/MOD -> 0 0 }T
@@ -401,6 +428,7 @@ T{ 3 0 2 UM/MOD -> 1 1 }T
 T{ MAX-UINT 2 UM* 2 UM/MOD -> 0 MAX-UINT }T
 T{ MAX-UINT 2 UM* MAX-UINT UM/MOD -> 0 2 }T
 T{ MAX-UINT MAX-UINT UM* MAX-UINT UM/MOD -> 0 MAX-UINT }T
+
 
 \ Print this file's TEST SUMMARY and trim any stray stack cells.
 TEST-END

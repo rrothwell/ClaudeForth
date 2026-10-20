@@ -26,10 +26,12 @@ TEST-BEGIN
 T{ : GT1 123 ; -> }T
 T{ ' GT1 EXECUTE -> 123 }T
 
+
 \ F.6.1.2510  [']
 
 T{ : GT2 ['] GT1 ; IMMEDIATE -> }T
 T{ GT2 EXECUTE -> 123 }T
+
 
 \ F.6.1.0190  ."
 
@@ -37,13 +39,16 @@ T{ : pb1 CR ." You should see 2345: " 2345 . ; pb1 -> }T
 
 \ See F.6.1.1320 EMIT.
 
+
 \ F.6.1.0550  >BODY
 
 T{ CREATE CR0 -> }T
 T{ ' CR0 >BODY -> HERE }T
 
+
 \ F.6.1.1370  EXECUTE
 \ See F.6.1.0070 ' and F.6.1.2510 '].
+
 
 \ F.6.1.1710  IMMEDIATE
 
@@ -65,10 +70,12 @@ T{ 222 iw9 iw10 find-iw iw10 -> -1 }T
 \ iw10 becomes immediate
 T{ iw10 find-iw iw10 -> 224 1 }T
 
+
 \ F.6.1.1780  LITERAL
 
 T{ : GT3 GT2 LITERAL ; -> }T
 T{ GT3 -> ' GT1 }T
+
 
 \ F.6.1.2033  POSTPONE
 
@@ -79,6 +86,7 @@ T{ : GT6 345 ; IMMEDIATE -> }T
 T{ : GT7 POSTPONE GT6 ; -> }T
 T{ GT7 -> 345 }T
 
+
 \ F.6.1.2165  S"
 
 T{ : GC4 S" XY" ; -> }T
@@ -87,12 +95,14 @@ T{ GC4 DROP DUP C@ SWAP CHAR+ C@ -> 58 59 }T
 : GC5 S" A String"2DROP ;
 T{ GC5 -> }T
 
+
 \ F.6.1.2250  STATE
 
 T{ : GT8 STATE @ ; IMMEDIATE -> }T
 T{ GT8 -> 0 }T
 T{ : GT9 GT8 LITERAL ; -> }T
 T{ GT9 0= -> <FALSE> }T
+
 
 \ F.6.1.2500  [
 
@@ -106,6 +116,7 @@ T{ : GC1 [CHAR] X ; -> }T
 T{ : GC3 [ GC1 ] LITERAL ; -> }T
 T{ GC3 -> 58 }T
 
+
 \ F.6.1.2540  ]
 \ See F.6.1.2500 [.
 
@@ -117,6 +128,7 @@ T{ : q dup+ COMPILE, ; -> }T
 T{ : as [ q ] ; -> }T
 T{ 123 as -> 246 }T
 
+
 \ F.6.2.2530  [COMPILE]
 
 T{ : [c1] [COMPILE] DUP ; IMMEDIATE -> }T
@@ -126,6 +138,7 @@ T{ 234 [c2] -> 234 234 }T
 T{ : [cif] [COMPILE] IF ; IMMEDIATE -> }T
 T{ : [c3] [cif] 111 ELSE 222 THEN ; -> }T
 T{ -1 [c3] -> 111 }T   T{ 0 [c3] -> 222 }T
+
 
 \ Print this file's TEST SUMMARY and trim any stray stack cells.
 TEST-END

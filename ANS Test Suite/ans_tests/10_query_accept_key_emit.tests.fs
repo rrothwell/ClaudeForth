@@ -21,6 +21,7 @@ MARKER M10
 \ Reset the pass/fail counters, record the stack depth.
 TEST-BEGIN
 
+
 \ F.6.1.0695  ACCEPT
 
 CREATE ABUF 80 CHARS ALLOT
@@ -32,8 +33,10 @@ ABUF SWAP TYPE [CHAR] " EMIT CR
 ;
 T{ ACCEPT-TEST -> }T
 
+
 \ F.6.1.0990  CR
 \ See F.6.1.1320 EMIT.
+
 
 \ F.6.1.1320  EMIT
 
@@ -58,11 +61,14 @@ S" LINE 1" TYPE CR S" LINE 2" TYPE CR
 ;
 T{ OUTPUT-TEST -> }T
 
+
 \ F.6.1.2220  SPACE
 \ See F.6.1.1320 EMIT.
 
+
 \ F.6.1.2230  SPACES
 \ See F.6.1.1320 EMIT.
+
 
 \ Print this file's TEST SUMMARY and trim any stray stack cells.
 TEST-END

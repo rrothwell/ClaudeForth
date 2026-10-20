@@ -55,12 +55,12 @@ brew install binutils
 
 ## Progress
 
-* ~~Warning: not functional at this time.~~*
-* ~~Warning: all words tested as functional, but with limited test coverage of edge cases. Tagged as version 1.00.~~*
-* ~~Warning: all words tested as functional, with extensive automated tests. Tagged as version 1.10.~~*
-* ~~Warning: most words tested as functional, complying with the ANS Forth Test Suite. Tagged as version 1.20.~~*
-* ~~Usable: all words tested as functional & performant, nearly all complying with the ANS Forth Test Suite. Tagged as version 1.30.~~*
-* Trustworthy: all words tested as functional & performant, with complete test coverage, complying with the ANS Forth Test Suite. Tagged as version 1.40. *
+* ~~Warning: not functional at this time.~~
+* ~~Warning: all words tested as functional, but with limited test coverage of edge cases. Tagged as version 1.00.~~
+* ~~Warning: all words tested as functional, with extensive automated tests. Tagged as version 1.10.~~
+* ~~Warning: most words tested as functional, complying with the ANS Forth Test Suite. Tagged as version 1.20.~~
+* ~~Usable: all words tested as functional & performant, nearly all complying with the ANS Forth Test Suite. Tagged as version 1.30.~~
+* Trustworthy: all words tested as functional & performant, with complete test coverage, complying with the ANS Forth Test Suite. Tagged as version 1.40. 
 
 | Item             | Version   | Completed   |
 |:-----------------|----------:|------------:|
@@ -76,7 +76,7 @@ brew install binutils
 |Automated assembler unit tests and identified bug fixes.  | 1.10|:white_check_mark:|
 |Adapted the MAME mecb6809 driver for interrupt driven hardware handshaking.  | 1.10|:white_check_mark:|
 |Optimised MAME emulated 6850 ACIA serial communications, with interrupt driven hardware handshaking | 1.10|:white_check_mark:|
-|Solved reliability issues with MAME emulated 6850 ACIA serial communications, by using XON/XOFF software handshaking | 1.10|:white_check_mark:|
+|Solved reliability issues with MAME emulated 6850 ACIA serial communications, by using simplified XON/XOFF software handshaking, a lower 57600 baud rate and a 20ms character delay. | 1.10|:white_check_mark:|
 |Tests against ANS test suite, identifying, diagnosing and correcting bugs.  | 1.20|:white_check_mark:|
 |Update documentation for ANS test suite| 1.20|:white_check_mark:|
 |Retest with assembler test suite and adjust expectations.| 1.20|:white_check_mark:|
@@ -84,7 +84,7 @@ brew install binutils
 |Optimisation for space & application performance| 1.30|:white_check_mark:|
 |Test coverage audit and completions| 1.30|:white_check_mark:|
 |Optimisation for compiler performance| 1.40|:white_check_mark:|
-|Update documentation| 1.40| |
+|Update documentation| 1.40|:white_check_mark:|
 |Burn ROM and install onto real MECB 6809 hardware. | 1.40| |
 |Develop a simple forth application| 1.40| |
 |Refine the documentation| 1.40| |
