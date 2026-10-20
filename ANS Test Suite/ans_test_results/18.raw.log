@@ -21,7 +21,8 @@
   okTEST-BEGIN
   ok\ F.6.1.0010  !
   ok\ See F.6.1.0150 ,.
-  ok\ F.6.1.0150  , - 1ST/2ND must exist before F.6.1.0130 +! below uses
+  ok\ F.6.1.0150  , (COMMA)
+  ok\ 1ST/2ND must exist before F.6.1.0130 +! below uses
   ok\ 1ST; this block was after +!'s test, a genuine forward reference
   ok\ (1ST used at the old line 26 before its own CONSTANT below defined
   ok\ it). Reordered to match the dependency.

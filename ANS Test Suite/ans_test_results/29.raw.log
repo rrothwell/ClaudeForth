@@ -1,40 +1,29 @@
-ok\ ============================================================
+\ ============================================================
   ok\ ANS test suite - CORE-EXT words added in stage 6b:
   ok\ .(  C"  SAVE-INPUT  RESTORE-INPUT  and ENVIRONMENT? CORE-EXT
   ok\ Requires ttester.fs then 00_test_prelude.fs first.
   ok\ ============================================================
   okMARKER M29
   okTEST-BEGIN
-  ok
   okHEX
-  ok
   ok\ F.6.1.1345  ENVIRONMENT? CORE-EXT
-  ok
   ok: ENV-COREEXT S" CORE-EXT" ENVIRONMENT? ;
   ok\ Returns the value flag, then the "recognised" flag, 
   okT{ ENV-COREEXT -> <TRUE> <TRUE> }T  Actual:Expected -1 =?= -1 -1 =?= -1 
-  ok
-  ok
   ok\ F.6.2.0200 .(  
-  ok
   ok\ Display is visual: a line saying "visible-1" must appear. 
   okT{ .( visible-1) -> }T  \ --> visible-1
   ok\ Display is visual: a line saying "visible-2" 
   ok\ must appear at compile time, not when run. 
   okT{ : dp1 .( visible-2) ; -> }T   \ --> visible-2
   okT{ dp1 -> }T  \ --> ____ 
-  ok
-  ok
   ok\ F.6.2.0855  C"
-  ok
   okT{ : cq1 C" 123" ; -> }T
   okT{ cq1 COUNT SWAP C@ -> 3 CHAR 1 }T  Actual:Expected 31 =?= 31 3 =?= 3 
   okT{ : cq2 C" " ; cq2 C@ -> 0 }T  Actual:Expected 0 =?= 0 
   okT{ : cq3 C" GLORP" ; cq3 COUNT NIP -> 5 }T  Actual:Expected 5 =?= 5 
-  ok
   ok\ F.6.2.2182 SAVE-INPUT 
   ok\ F.6.2.2148 RESTORE-INPUT 
-  ok
   ok\ For SAVE-INPUT 3 cells are returned with a count of 3.
   ok\ >R and R> are used inside a definition: 
   ok\ because their interpretation semantics are undefined.
@@ -42,7 +31,6 @@ ok\ ============================================================
   ok\ under the interpreter's own return address - bad!.
   ok: SI-SHAPE SAVE-INPUT 3 = >R 2DROP DROP R> ;
   okT{ SI-SHAPE -> <TRUE> }T  Actual:Expected -1 =?= -1 
-  ok
   ok\ For RESTORE-INPUT a count other than 3 cannot be restored:
   ok\ the cells are dropped
   ok\ and true (failure) is returned.
@@ -52,16 +40,11 @@ ok\ ============================================================
   ok\ since the EVALUATEd string has another address and length.
   ok: ri1 S" SAVE-INPUT" EVALUATE ;
   okT{ ri1 RESTORE-INPUT -> <TRUE> }T  Actual:Expected -1 =?= -1 
-  ok
-  ok
   ok\ F.6.2.2266 S\" 
-  ok
   ok\ Build a string from a quoted string 
   ok\ containing the escape characters:
   ok\      \a 7  \b 8  \e 1B  \f C  \l A  \m 0D 0A  \n A  \q 22
   ok\     \r D  \t 9  \v B  \z 0  \" 22  \\ 5C  \xhh
-  ok
-  ok
   ok: SQ1 S\" abc" ;
   okT{ SQ1 NIP -> 3 }T  Actual:Expected 3 =?= 3 
   okT{ SQ1 DROP C@ -> 61 }T  Actual:Expected 61 =?= 61 
@@ -94,17 +77,13 @@ ok\ ============================================================
   okT{ S\" a\tb" DROP 1+ C@ -> 9 }T  Actual:Expected 9 =?= 9 
   ok\ The text after the closing quote is still interpreted
   okT{ S\" \q" NIP 5 -> 1 5 }T  Actual:Expected 5 =?= 5 1 =?= 1 
-  ok
-  ok
   ok\ F.0000 CONVERT
   ok\ Obsolescent, removed from ANS Forth 2012.
   ok\ Use >NUMBER instead.
-  ok
   okCREATE CVB 20 C, 31 C, 32 C, 33 C, 0 C,
   ok\ The test base is HEX, so "123" converts to 123 hex.
   okT{ 0 0 CVB CONVERT CVB 4 + = -> 123 0 <TRUE> }T  Actual:Expected -1 =?= -1 0 =?= 0 123 =?= 123 
   okT{ 5 0 CVB CONVERT DROP -> 5123 0 }T  Actual:Expected 0 =?= 0 5123 =?= 5123 
-  ok
   okTEST-END
 TEST SUMMARY: 36 run, 0 failed
 

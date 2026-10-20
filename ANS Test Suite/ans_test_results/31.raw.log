@@ -1,4 +1,4 @@
-ok\ ============================================================
+\ ============================================================
   ok\ ANS test suite - Programming-Tools words [IF] [ELSE] [THEN]
   ok\ (native since stage 6d; before that they were loaded from
   ok\ 00a_tool_ext_conditionals.fs).
@@ -9,13 +9,10 @@ ok\ ============================================================
   ok\ ============================================================
   okMARKER M31
   okTEST-BEGIN
-  ok
   okHEX
-  ok
   ok\ F.15.6.2.2532 [IF] 
   ok\ F.15.6.2.2531 [ELSE]
   ok\ F.15.6.2.2533 [THEN]
-  ok
   ok\ [IF] [ELSE] [THEN], from the standard.
   okT{ TRUE  [IF] 111 [ELSE] 222 [THEN] -> 111 }T  Actual:Expected 111 =?= 111 
   okT{ FALSE [IF] 111 [ELSE] 222 [THEN] -> 222 }T  Actual:Expected 222 =?= 222 
@@ -25,13 +22,11 @@ ok\ ============================================================
   okT{ FALSE [IF] 1 TRUE  [IF] 2 [ELSE] 3 [THEN] [ELSE] 4 [THEN] -> 4 }T  Actual:Expected 4 =?= 4 
   okT{ FALSE [IF] 1 FALSE [IF] 2 [ELSE] 3 [THEN] [ELSE] 4 [THEN] -> 4 }T  Actual:Expected 4 =?= 4 
   okT{ TRUE  [IF] 1 FALSE [IF] 2 [ELSE] 3 [THEN] [ELSE] 4 [THEN] -> 1 3 }T  Actual:Expected 3 =?= 3 1 =?= 1 
-  ok
   ok\ Without an [ELSE].
   okT{ TRUE  [IF] 5 [THEN] -> 5 }T  Actual:Expected 5 =?= 5 
   okT{ FALSE [IF] 5 [THEN] -> }T
   okT{ FALSE [IF] 1 TRUE [IF] 2 [THEN] [ELSE] 3 [THEN] -> 3 }T  Actual:Expected 3 =?= 3 
   okT{ FALSE [IF] 1 FALSE [IF] 2 [THEN] [THEN] 6 -> 6 }T  Actual:Expected 6 =?= 6 
-  ok
   ok\ The flag is consumed, anything under it is untouched.
   okT{ 7 TRUE  [IF] [THEN] -> 7 }T  Actual:Expected 7 =?= 7 
   okT{ 7 FALSE [IF] [THEN] -> 7 }T  Actual:Expected 7 =?= 7 
@@ -39,18 +34,15 @@ ok\ ============================================================
   okT{ -1 [IF] 1 [ELSE] 2 [THEN] -> 1 }T  Actual:Expected 1 =?= 1 
   okT{ MIN-INT [IF] 1 [ELSE] 2 [THEN] -> 1 }T  Actual:Expected 1 =?= 1 
   okT{ 0 [IF] 1 [ELSE] 2 [THEN] -> 2 }T  Actual:Expected 2 =?= 2 
-  ok
   ok\ [ELSE] and [THEN] on their own.
   ok\ [ELSE] reached in the true branch skips to its [THEN].
   okT{ 1 [ELSE] 2 [THEN] 3 -> 1 3 }T  Actual:Expected 3 =?= 3 1 =?= 1 
   okT{ 1 [THEN] 2 -> 1 2 }T  Actual:Expected 2 =?= 2 1 =?= 1 
   okT{ 1 [ELSE] 2 [IF] 3 [ELSE] 4 [THEN] [THEN] 5 -> 1 5 }T  Actual:Expected 5 =?= 5 1 =?= 1 
-  ok
   ok\ The skipped text is never executed or looked up.
   okT{ FALSE [IF] no-such-word-1 [ELSE] 8 [THEN] -> 8 }T  Actual:Expected 8 =?= 8 
   okT{ TRUE [IF] 9 [ELSE] no-such-word-2 [THEN] -> 9 }T  Actual:Expected 9 =?= 9 
   okT{ FALSE [IF] 1 2 3 4 5 DROP DROP DROP [ELSE] 0 [THEN] -> 0 }T  Actual:Expected 0 =?= 0 
-  ok
   ok\ While compiling: the flag is computed with [ ... ].
   okT{ : cc1 [ TRUE  ] [IF] 111 [ELSE] 222 [THEN] ; cc1 -> 111 }T  Actual:Expected 111 =?= 111 
   okT{ : cc2 [ FALSE ] [IF] 111 [ELSE] 222 [THEN] ; cc2 -> 222 }T  Actual:Expected 222 =?= 222 
@@ -58,19 +50,16 @@ ok\ ============================================================
   ok\ A definition inside the skipped part is not compiled.
   okT{ FALSE [IF] : cc4 4 ; [ELSE] : cc4 44 ; [THEN] cc4 -> 44 }T  Actual:Expected 44 =?= 44 
   okT{ TRUE  [IF] : cc5 5 ; [ELSE] : cc5 55 ; [THEN] cc5 -> 5 }T  Actual:Expected 5 =?= 5 
-  ok
   ok\ Case matters, as it does for every name in the system.
   ok\ Lower and mixed case spellings inside skipped text are ordinary
   ok\ words, not markers: only the exact upper-case names count.
   okT{ FALSE [IF] [else] [then] [If] [ELSE] 3 [THEN] -> 3 }T  Actual:Expected 3 =?= 3 
   okT{ TRUE  [IF] 1 [ELSE] [then] [if] 2 [THEN] -> 1 }T  Actual:Expected 1 =?= 1 
   okT{ FALSE [IF] 1 [Else] 2 [ELSE] 4 [THEN] -> 4 }T  Actual:Expected 4 =?= 4 
-  ok
   ok\ Names that only look like the markers are skipped over.
   okT{ FALSE [IF] [IFX] [ELS] [THE] [ELSEY] [THENS] [ELSE] 1 [THEN] -> 1 }T  Actual:Expected 1 =?= 1 
   okT{ FALSE [IF] [IX] [ELSX] [THEX] [ELSE] 7 [THEN] -> 7 }T  Actual:Expected 7 =?= 7 
   okT{ FALSE [IF] [] [IF [IF]] [ELSE] 2 [THEN] -> 2 }T  Actual:Expected 2 =?= 2 
-  ok
   ok\ At the end of the input (EVALUATE): the skip just ends.
   ok: ev1 S" FALSE [IF] 1 2" EVALUATE ;
   okT{ ev1 -> }T
@@ -80,7 +69,6 @@ ok\ ============================================================
   okT{ ev3 -> 5 4 6 }T  Actual:Expected 6 =?= 6 4 =?= 4 5 =?= 5 
   ok: ev4 S" TRUE [IF] 7 [ELSE] 8 [THEN]" EVALUATE ;
   okT{ ev4 -> 7 }T  Actual:Expected 7 =?= 7 
-  ok
   ok\ Spread over more than one line (the skip refills the input).
   okT{ TRUE  [IF] 1
   ok             2
@@ -89,8 +77,6 @@ ok\ ============================================================
   ok             3
   ok             4
   ok          [THEN] -> 3 4 }T  Actual:Expected 4 =?= 4 3 =?= 3 
-  ok
-  ok
   ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
   okTEST-END
 TEST SUMMARY: 41 run, 0 failed

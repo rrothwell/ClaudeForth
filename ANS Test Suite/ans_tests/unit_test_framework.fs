@@ -50,14 +50,14 @@ VARIABLE FAILCOUNT
 
 VARIABLE START-DEPTH
 VARIABLE XCURSOR
-VARIABLE ERROR-XT
+VARIABLE ERR-MSG-XT
 
 VARIABLE ACTUAL-DEPTH \ stack record
 CREATE ACTUAL-RESULTS 20 CELLS ALLOT
 VARIABLE START-DEPTH
 
 \ For vectoring of error reporting
-: ERROR ERROR-XT @ EXECUTE ; 
+: ERR-MSG ERR-MSG-XT @ EXECUTE ; 
 
 
 \ Empty the stack; handles underflowed stack too.
@@ -78,13 +78,14 @@ VARIABLE START-DEPTH
     THEN
 ;
 
-: ERROR1 \ ( C-ADDR U -- ) display an error message
-\ followed by the line that had the error.
-TYPE SOURCE TYPE CR \ display line corresponding to error
-EMPTY-STACK \ throw away everything else
+\ Display an error message
+\ on the line that had the error.
+\ and clear the stack.
+: ERR-MSG-1 \ ( C-ADDR U -- ) 
+    TYPE EMPTY-STACK
 ;
 
-' ERROR1 ERROR-XT !
+' ERR-MSG-1 ERR-MSG-XT !
 
 
 \ Record the pre-test depth.
@@ -121,14 +122,14 @@ EMPTY-STACK \ throw away everything else
                 <> 
                 IF 
                     1 FAILCOUNT +! 
-                    S" INCORRECT RESULT: " ERROR 
+                    S" INCORRECT RESULT: " ERR-MSG 
                     LEAVE 
                 THEN
             LOOP
         THEN
     ELSE \ depth mismatch
         1 FAILCOUNT +!
-        S" WRONG NUMBER OF RESULTS: " ERROR
+        S" WRONG NUMBER OF RESULTS: " ERR-MSG
     THEN
 ;
 

@@ -162,6 +162,7 @@ brew install binutils
 | Complete ANS string implementation with tests  | |:white_check_mark:|.
 | Development support words such as [IF], [ELSE], [THEN], .(), etc..  | |:white_check_mark:|
 | Reorganise dictionary ordering to improved compilation speed.  | |:white_check_mark:|
+| Run some benchmarks.  | ||
 | Forth decompiler.  | | |
 | Reorganise memory map so that the stacks are below $8000. Move the in-RAM code and dictionary up to fill the gap below $C000. | | |
 | Adjust DICT:CODE ratio to 1:4| | |

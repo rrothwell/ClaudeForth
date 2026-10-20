@@ -1,4 +1,4 @@
-  ok\ ============================================================
+\ ============================================================
   ok\ ANS test suite - words that had no test in sections 08 to 29:
   ok\   Group 1 (standard words): PICK ROLL 2R@ <> 0<> U> WITHIN
   ok\     AGAIN ERASE PARSE SOURCE-ID REFILL TIB #TIB .R U.R
@@ -11,28 +11,18 @@
   ok\ ============================================================
   okMARKER M30
   okTEST-BEGIN
-  ok
   okHEX
-  ok
   ok\ ============ Group 1: standard words ============
-  ok
   ok\ F.6.2.2030 PICK
-  ok
   okT{ 1 2 3 0 PICK -> 1 2 3 3 }T  Actual:Expected 3 =?= 3 3 =?= 3 2 =?= 2 1 =?= 1 
   okT{ 1 2 3 1 PICK -> 1 2 3 2 }T  Actual:Expected 2 =?= 2 3 =?= 3 2 =?= 2 1 =?= 1 
   okT{ 1 2 3 2 PICK -> 1 2 3 1 }T  Actual:Expected 1 =?= 1 3 =?= 3 2 =?= 2 1 =?= 1 
-  ok
-  ok
   ok\ F.6.2.2150 ROLL
-  ok
   okT{ 1 2 3 0 ROLL -> 1 2 3 }T  Actual:Expected 3 =?= 3 2 =?= 2 1 =?= 1 
   okT{ 1 2 3 1 ROLL -> 1 3 2 }T  Actual:Expected 2 =?= 2 3 =?= 3 1 =?= 1 
   okT{ 1 2 3 2 ROLL -> 2 3 1 }T  Actual:Expected 1 =?= 1 3 =?= 3 2 =?= 2 
   okT{ 1 2 3 4 3 ROLL -> 2 3 4 1 }T  Actual:Expected 1 =?= 1 4 =?= 4 3 =?= 3 2 =?= 2 
-  ok
-  ok
   ok\ F.6.2.0415 2R@ 
-  ok
   ok\ Return-stack words can only be used inside definitions.
   ok: g2r1 2>R 2R@ 2R> ;
   okT{ 1 2 g2r1 -> 1 2 1 2 }T  Actual:Expected 2 =?= 2 1 =?= 1 2 =?= 2 1 =?= 1 
@@ -40,10 +30,7 @@
   okT{ 3 4 g2r2 -> 3 4 }T  Actual:Expected 4 =?= 4 3 =?= 3 
   okT{ : g2r3 2>R 2R@ R> R> ; -> }T
   okT{ 5 6 g2r3 -> 5 6 6 5 }T  Actual:Expected 5 =?= 5 6 =?= 6 6 =?= 6 5 =?= 5 
-  ok
-  ok
   ok\ F.6.2.0500 <>
-  ok
   okT{  0  0 <> -> <FALSE> }T  Actual:Expected 0 =?= 0 
   okT{  1  1 <> -> <FALSE> }T  Actual:Expected 0 =?= 0 
   okT{ -1 -1 <> -> <FALSE> }T  Actual:Expected 0 =?= 0 
@@ -52,10 +39,7 @@
   okT{  0  1 <> -> <TRUE>  }T  Actual:Expected -1 =?= -1 
   okT{  0 -1 <> -> <TRUE>  }T  Actual:Expected -1 =?= -1 
   okT{ MIN-INT MAX-INT <> -> <TRUE> }T  Actual:Expected -1 =?= -1 
-  ok
-  ok
   ok\ F.6.2.0260 0<>
-  ok
   okT{        0 0<> -> <FALSE> }T  Actual:Expected 0 =?= 0 
   okT{        1 0<> -> <TRUE>  }T  Actual:Expected -1 =?= -1 
   okT{        2 0<> -> <TRUE>  }T  Actual:Expected -1 =?= -1 
@@ -63,10 +47,7 @@
   okT{ MAX-UINT 0<> -> <TRUE>  }T  Actual:Expected -1 =?= -1 
   okT{  MIN-INT 0<> -> <TRUE>  }T  Actual:Expected -1 =?= -1 
   okT{  MAX-INT 0<> -> <TRUE>  }T  Actual:Expected -1 =?= -1 
-  ok
-  ok
   ok\ F.6.2.2350 U>
-  ok
   okT{        0        1 U> -> <FALSE> }T  Actual:Expected 0 =?= 0 
   okT{        1        2 U> -> <FALSE> }T  Actual:Expected 0 =?= 0 
   okT{        0 MID-UINT U> -> <FALSE> }T  Actual:Expected 0 =?= 0 
@@ -80,10 +61,7 @@
   okT{ MAX-UINT        0 U> -> <TRUE>  }T  Actual:Expected -1 =?= -1 
   okT{ MAX-UINT MID-UINT U> -> <TRUE>  }T  Actual:Expected -1 =?= -1 
   okT{ MID-UINT+1 MID-UINT U> -> <TRUE> }T  Actual:Expected -1 =?= -1 
-  ok
-  ok
   ok\ F.6.2.2440 WITHIN
-  ok
   ok\ n1 is in the range n2 <= n1 < n3, and the range may wrap.
   okT{ 0 0 0 WITHIN -> <FALSE> }T  Actual:Expected 0 =?= 0 
   okT{ 0 0 1 WITHIN -> <TRUE>  }T  Actual:Expected -1 =?= -1 
@@ -108,10 +86,7 @@
   okT{  1 3 1 WITHIN -> <FALSE> }T  Actual:Expected 0 =?= 0 
   okT{  2 3 1 WITHIN -> <FALSE> }T  Actual:Expected 0 =?= 0 
   okT{  3 3 1 WITHIN -> <TRUE>  }T  Actual:Expected -1 =?= -1 
-  ok
-  ok
   ok\ F.6.2.0700 AGAIN
-  ok
   okT{ : gi4 BEGIN DUP 1+ DUP 5 > IF EXIT THEN AGAIN ; -> }T
   okT{ 1 gi4 -> 1 2 3 4 5 6 }T  Actual:Expected 6 =?= 6 5 =?= 5 4 =?= 4 3 =?= 3 2 =?= 2 1 =?= 1 
   okT{ 4 gi4 -> 4 5 6 }T  Actual:Expected 6 =?= 6 5 =?= 5 4 =?= 4 
@@ -119,10 +94,7 @@
   ok\ Counting up on the data stack until the loop leaves.
   okT{ : gi5 0 BEGIN 1+ DUP 7 = IF EXIT THEN AGAIN ; -> }T
   okT{ gi5 -> 7 }T  Actual:Expected 7 =?= 7 
-  ok
-  ok
   ok\ F.6.2.1350 ERASE
-  ok
   okCREATE eb 4 ALLOT
   ok: ebfill eb 4 FF FILL ;
   ok: ebsee eb C@ eb 1+ C@ eb 2 + C@ eb 3 + C@ ;
@@ -132,10 +104,7 @@
   okT{ ebfill eb 4 ERASE ebsee -> 0 0 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 0 =?= 0 0 =?= 0 
   ok\ A count of zero changes nothing.
   okT{ ebfill eb 0 ERASE ebsee -> FF FF FF FF }T  Actual:Expected FF =?= FF FF =?= FF FF =?= FF FF =?= FF 
-  ok
-  ok
   ok\ F.6.2.2008 PARSE
-  ok
   ok\ The delimiter is not skipped at the start, so an empty string is
   ok\ possible; the length comes back with the address.
   okT{ CHAR | PARSE 1234| DUP ROT ROT EVALUATE -> 4 1234 }T  Actual:Expected 1234 =?= 1234 4 =?= 4 
@@ -143,11 +112,8 @@
   okT{ CHAR | PARSE |  NIP -> 0 }T  Actual:Expected 0 =?= 0 
   okT{ CHAR , PARSE abc, NIP -> 3 }T  Actual:Expected 3 =?= 3 
   okT{ BL PARSE xyz  NIP -> 3 }T  Actual:Expected 3 =?= 3 
-  ok
-  ok
   ok\ F.6.2.2218 SOURCE-ID
   ok\ F.6.2.2125 REFILL
-  ok
   ok\ Both tests run from the terminal, which is source 0; an EVALUATEd
   ok\ string is source -1 and cannot be refilled.
   okT{ SOURCE-ID -> 0 }T  Actual:Expected 0 =?= 0 
@@ -155,12 +121,9 @@
   okT{ sid1 -> -1 }T  Actual:Expected -1 =?= -1 
   ok: rf1 S" REFILL" EVALUATE ;
   okT{ rf1 -> <FALSE> }T  Actual:Expected 0 =?= 0 
-  ok
-  ok
   ok\ F.XXXX TIB
   ok\ F.XXXX #TIB
   ok\ Removed from ANS Forth.
-  ok
   ok\ TIB is the fixed terminal buffer ($0106, TIBBUF), #TIB its character
   ok\ count. 0106 is hex, so the base must be HEX here.
   okT{ TIB 0106 = -> <TRUE> }T  Actual:Expected -1 =?= -1 
@@ -169,11 +132,8 @@
   okT{ tb1 TIB = -> <TRUE> }T  Actual:Expected -1 =?= -1 
   okT{ #TIB @ SOURCE NIP = -> <TRUE> }T  Actual:Expected -1 =?= -1 
   okT{ #TIB @ >IN @ U> -> <TRUE> }T  Actual:Expected -1 =?= -1 
-  ok
-  ok
   ok\ F.6.2.0210 .R
   ok\ F.6.2.2330 U.R 
-  ok
   ok\ Visual test.
   ok\ The two lines of each pair must be identical. The values are
   ok\ shown in hex (the base here): 123 is $123 and so on.
@@ -207,32 +167,22 @@ You should see lines duplicated:
 12345
 2345
 
-  ok
-  ok
   ok\ ============ Group 2: ClaudeForth extensions ============
-  ok
-  ok\ CF 2+
-  ok
+  ok\ ClaudeForth 2+
   okT{        0 2+ -> 2 }T  Actual:Expected 2 =?= 2 
   okT{        1 2+ -> 3 }T  Actual:Expected 3 =?= 3 
   okT{       -2 2+ -> 0 }T  Actual:Expected 0 =?= 0 
   okT{       -3 2+ -> -1 }T  Actual:Expected -1 =?= -1 
   okT{  MAX-INT 2+ -> MIN-INT 1+ }T  Actual:Expected -7FFF =?= -7FFF 
   okT{ MAX-UINT 2+ -> 1 }T  Actual:Expected 1 =?= 1 
-  ok
-  ok
-  ok\ CF BINARY
-  ok
+  ok\ ClaudeForth BINARY
   ok: bn1 BASE @ BINARY BASE @ SWAP BASE ! ;
   okT{ bn1 BASE @ 10 = -> 2 <TRUE> }T  Actual:Expected -1 =?= -1 2 =?= 2 
   ok\ The digits after BINARY are read in base 2 and HEX restores base 16.
   okT{ BINARY 101 HEX -> 5 }T  Actual:Expected 5 =?= 5 
   okT{ BINARY 1111 1111 HEX -> F F }T  Actual:Expected F =?= F F =?= F 
   okT{ BASE @ -> 10 }T  Actual:Expected 10 =?= 10 
-  ok
-  ok
-  ok\ CF SNAME
-  ok
+  ok\ ClaudeForth SNAME
   okT{ ' DUP SNAME S" DUP" S= -> <TRUE> }T  Actual:Expected -1 =?= -1 
   okT{ ' SWAP SNAME S" SWAP" S= -> <TRUE> }T  Actual:Expected -1 =?= -1 
   okT{ ' SNAME SNAME S" SNAME" S= -> <TRUE> }T  Actual:Expected -1 =?= -1 
@@ -242,12 +192,9 @@ You should see lines duplicated:
   okT{ ' SN2 SNAME S" SN2" S= -> <TRUE> }T  Actual:Expected -1 =?= -1 
   ok\ An address that is not an execution token gives a zero length.
   okT{ 1 SNAME NIP -> 0 }T  Actual:Expected 0 =?= 0 
-  ok
-  ok
-  ok\ CF VHERE
-  ok\ CF V,
-  ok\ CF VC,
-  ok
+  ok\ ClaudeForth VHERE
+  ok\ ClaudeForth V,
+  ok\ ClaudeForth VC,
   ok\ VSTART remembers where the variable region stood, so that the
   ok\ tests below can hand back everything they allocate.
   okCREATE VSTART VHERE ,
@@ -255,9 +202,7 @@ You should see lines duplicated:
   okT{ VHERE 1 V, VHERE SWAP - -> 2 }T  Actual:Expected 2 =?= 2 
   okT{ VHERE 1234 V, @ -> 1234 }T  Actual:Expected 1234 =?= 1234 
   okT{ VHERE 5A VC, VHERE OVER - SWAP C@ -> 1 5A }T  Actual:Expected 5A =?= 5A 1 =?= 1 
-  ok
-  ok\ CF VALLOT
-  ok
+  ok\ ClaudeForth VALLOT
   okT{ VHERE 10 VALLOT VHERE SWAP - -> 10 }T  Actual:Expected 10 =?= 10 
   ok\ A negative count gives the space back.
   okT{ VHERE 8 VALLOT -8 VALLOT VHERE = -> <TRUE> }T  Actual:Expected -1 =?= -1 
@@ -265,22 +210,14 @@ You should see lines duplicated:
   ok: vrestore VHERE VSTART @ - NEGATE VALLOT ;
   okvrestore
   okT{ VHERE VSTART @ = -> <TRUE> }T  Actual:Expected -1 =?= -1 
-  ok
-  ok
-  ok\ CF UNUSED
-  ok
+  ok\ ClaudeForth UNUSED
   ok\ UNUSED shrinks by the amount ALLOTted, VUNUSED by the amount VALLOTted.
   okT{ UNUSED 0<> -> <TRUE> }T  Actual:Expected -1 =?= -1 
   okT{ UNUSED 10 ALLOT UNUSED - -10 ALLOT -> 10 }T  Actual:Expected 10 =?= 10 
-  ok
-  ok\ CF VUNUSED
-  ok
-  ok
+  ok\ ClaudeForth VUNUSED
   okT{ VUNUSED 0<> -> <TRUE> }T  Actual:Expected -1 =?= -1 
   okT{ VUNUSED 8 VALLOT VUNUSED - -8 VALLOT -> 8 }T  Actual:Expected 8 =?= 8 
   okT{ VHERE VSTART @ = -> <TRUE> }T  Actual:Expected -1 =?= -1 
-  ok
-  ok
   ok\ Print this file's TEST SUMMARY and trim any stray stack cells.
   okTEST-END
 TEST SUMMARY: 113 run, 0 failed
