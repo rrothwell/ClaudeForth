@@ -8,6 +8,13 @@ and to target the Minimalist Eurocard Board (MECB) 6809 computer,
 with the MECB IO card providing an
 MC6850 ACIA for serial IO.
 
+The forth words are case sensitive with inbuilt words in upper
+case by convention.
+
+This forth keeps top-of-stack in memory, not in a register.
+Other simplifications include a lack of optimisations 
+such as in-lining and peephole optimisation.
+
 ## Scope
 
 The objective is to refamiliarise myself with the Forth language and the MC6809 microprocessor.
