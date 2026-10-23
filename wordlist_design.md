@@ -131,17 +131,20 @@ The search order array is not allowed to contain duplicate WID's.
 #### Create a Wordlist
 
 WORDLIST
+
     Increment the #HEAD-PTR and return the address it points to.
 
 #### Return the WID of the Principal Wordlist
 
 FORTH-WORDLIST
+
     Place constant value of WID on stack.
     This would be the second WID address location after ROOT.
     
 #### Return the WID of the ROOT Wordlist.
 
-ROOT    
+ROOT  
+  
     ROOT simply adds this item to the search list.
     It does not return the WID on the stack.
     It also ensures that there is only one entry of this kind in the search order.
@@ -154,6 +157,7 @@ ROOT
 #### Manipulate the Search Order
 
 GET-ORDER/SET-ORDER
+
     Get order retrieves the WID's from the search order array
     and places them on the stack with the count.
     Manipulating the items on the stack produces a new search order.
@@ -162,6 +166,7 @@ GET-ORDER/SET-ORDER
 #### Search for Word Definitions, Often During Compilation.    
 
 FIND/SEARCH-WORDLIST
+
     The existing FIND that searches the entire dictionary can be refactored
     to search just the wordlists added to the search order array. 
     Find then iterates over the search order array calling SEARCH-WORDLIST
@@ -178,6 +183,7 @@ FIND/SEARCH-WORDLIST
 #### Set the Wordlist to which New Words will be Added.
 
 GET-CURRENT/SET-CURRENT/DEFINITIONS
+
     These words manipulate the value of the variable CURRENT,
     thus controlling the target wordlist for new words.
     CURRENT contains a WID and is used as follows.
@@ -202,36 +208,41 @@ GET-CURRENT/SET-CURRENT/DEFINITIONS
 Using only words define above if possible.
 
 ONLY
-    > Retrieve the search order using GET-ORDER, 
+
+    Retrieve the search order using GET-ORDER, 
     use stack operations to remove every WID except for ROOT,
     then update the search order using SET-ORDER
 
 PREVIOUS
-    > Retrieve the search order using GET-ORDER, 
+
+    Retrieve the search order using GET-ORDER, 
     use stack operations to remove only the top WID, except for ROOT,
     then update the search order using SET-ORDER
 
 ALSO 
-    > Setup is to place a WID on the stack.   
+
+    Setup is to place a WID on the stack.   
     Retrieve the search order using GET-ORDER, 
     use stack operations to add the WID to the stack,
     then update the search order using SET-ORDER
     
 FORTH
-    > Retrieve the search order using GET-ORDER, 
+
+    Retrieve the search order using GET-ORDER, 
     retrieve the FORTH-WORDLIST 
     use stack operations to replace the top WID 
     then update the search order using SET-ORDER
     
 ORDER
-    > Use GET-ORDER to obtain the list of WID's on the stack.
+
+    Use GET-ORDER to obtain the list of WID's on the stack.
     Iterate over the WID's to look up the names,
     print out the names, drop the WID's from the stack.
     Also use GET-CURRENT to retrieve the WID,
     look up its name, print it 
     and drop the WID.
     
-    > This process assumes there is a reverse look up from 
+    This process assumes there is a reverse look up from 
     WID to name. The only sensible implementation I can think of is
     a parallel 8 cell array that contains a link to the header of the
     word assigning a name. 
@@ -239,12 +250,13 @@ ORDER
 ### Compatibility
 
 VOCABULARY
-    > The quick and dirty approach is:
+
+    The quick and dirty approach is:
         WORDLIST CONSTANT CVOC1
         : VOCAB1 ( -- )
             GET-ORDER SWAP DROP CVOC1 SWAP SET-ORDER ;
 
-    > Using a defining word:
+    Using a defining word:
     : VOCABULARY ( "name" -- )
 		WORDLIST CREATE , 
 		DOES> 
