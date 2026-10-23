@@ -43,7 +43,7 @@ for compatibility with existing code. This includes;
 
 | Wordlist Words | Description | Addressed? |
 | -------------- | ----------- |---------- | 
-| VOCABULARY | Creates a named word list and replaces the wordlist at the start of the search order. | |
+| VOCABULARY | Creates a named word list and replaces the wordlist at the start of the search order. |:white_check_mark:|
 | ROOT       | The special wordlist that is always visible. It contains the wordlist words. |:white_check_mark:|
 
 There is also an ENVIRONMENT? query to establish the existence of these words.
