@@ -70,7 +70,7 @@ by using the VOCABULARY defining word.
 
 A scheme compatible with the use of WID's, has a WID
 defined as the address of the memory location in global memory RAM. 
-This addressed location contains the wordlist's head pointer.
+This addressed location contains the pointer to the wordlist's latest word.
 
 An array of 8 cells (HEAD-PTRS) plus a byte count cell (#HEAD-PTR)
 provides for 8 wordlists. The initial contents 
@@ -78,7 +78,7 @@ will be initialised from the wordlist information stored
 in the ROM wordlist. 
 
 Creating a new word list (WID)is just a matter 
-of incrementing the count and zeroing the new location. 
+of incrementing the count and zeroing the newly addressed location. 
 When adding a new word to this new wordlist in the dictionary,
 the first new word becomes a fence word with zero signifying 
 the last link for SEARCH-WORDLIST.
@@ -89,7 +89,7 @@ The contents of the array are the WID's.
 Managing the search order via GET-ORDER/SET-ORDER then becomes a 
 matter of copying this array to the stack and back.
 The WID's point back to the corresponding memory location 
-containing the head pointer.
+containing the latest pointer.
 
 The first cell location can be the WID of the ROOT wordlist.
 The GET-ORDER/SET-ORDER implementation ignores this first location.
@@ -202,36 +202,36 @@ GET-CURRENT/SET-CURRENT/DEFINITIONS
 Using only words define above if possible.
 
 ONLY
-    Retrieve the search order using GET-ORDER, 
+    > Retrieve the search order using GET-ORDER, 
     use stack operations to remove every WID except for ROOT,
     then update the search order using SET-ORDER
 
 PREVIOUS
-    Retrieve the search order using GET-ORDER, 
+    > Retrieve the search order using GET-ORDER, 
     use stack operations to remove only the top WID, except for ROOT,
     then update the search order using SET-ORDER
 
 ALSO 
-    Setup is to place a WID on the stack.   
+    > Setup is to place a WID on the stack.   
     Retrieve the search order using GET-ORDER, 
     use stack operations to add the WID to the stack,
     then update the search order using SET-ORDER
     
 FORTH
-    Retrieve the search order using GET-ORDER, 
+    > Retrieve the search order using GET-ORDER, 
     retrieve the FORTH-WORDLIST 
     use stack operations to replace the top WID 
     then update the search order using SET-ORDER
     
 ORDER
-    Use GET-ORDER to obtain the list of WID's on the stack.
+    > Use GET-ORDER to obtain the list of WID's on the stack.
     Iterate over the WID's to look up the names,
     print out the names, drop the WID's from the stack.
     Also use GET-CURRENT to retrieve the WID,
     look up its name, print it 
     and drop the WID.
     
-    This process assumes there is a reverse look up from 
+    > This process assumes there is a reverse look up from 
     WID to name. The only sensible implementation I can think of is
     a parallel 8 cell array that contains a link to the header of the
     word assigning a name. 
@@ -239,12 +239,12 @@ ORDER
 ### Compatibility
 
 VOCABULARY
-    The quick and dirty approach is:
+    > The quick and dirty approach is:
         WORDLIST CONSTANT CVOC1
         : VOCAB1 ( -- )
             GET-ORDER SWAP DROP CVOC1 SWAP SET-ORDER ;
 
-    Using a defining word:
+    > Using a defining word:
     : VOCABULARY ( "name" -- )
 		WORDLIST CREATE , 
 		DOES> 
