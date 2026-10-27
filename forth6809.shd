@@ -651,6 +651,23 @@ GLOBALS.1  [history]  (lines 769-770 of the stage-3p file)
                                     ; fully packed bar 1: 255 of 256 bytes used, 1 free.
 
 ================================================================
+WLHEADS.1  [design (stage 6f)]
+----------------------------------------------------------------
+Search-Order state in page zero (38 bytes, $45-$6A; GLOBALS_USED 69 -> 107):
+  WLEND    $45  address just past the last WLHEADS cell in use
+  CURRENT  $47  WID that receives new definitions (HEADER links into it)
+  ORDEND   $49  address just past the last ORDER cell in use
+  ORDER    $4B  up to 8 WIDs, first searched at the lowest address ($4B-$5A)
+  WLHEADS  $5B  up to 8 cells, each the newest header of one wordlist ($5B-$6A)
+A WID is the address of its WLHEADS cell, so FORTH-WORDLIST is $5B (91). ROOT is not
+in ORDER: it is always searched last. WLEND, CURRENT, ORDEND and ORDER are adjacent
+so MARKER can save and restore them as one block of SRCHSAVESZ (22) bytes. Pointers
+(WLEND, ORDEND) are kept instead of counts, which saves the scaling by two in every
+loop. WLINIT sets WLHEADS(0) = BASELATEST, WLEND = WLHEADS+2, CURRENT = FORTH and the
+order to FORTH only. LATEST is unchanged in meaning: the newest header of any
+wordlist. IMMEDIATE, SETDOES and the smudge clear in ; use it.
+
+================================================================
 MVSCRATCH.1  [history]  (lines 792-794 of the stage-3p file)
 ----------------------------------------------------------------
 ; FILLCNT/FILLADDR (formerly aliasing MVCNT/MVDST) were removed once
@@ -762,6 +779,21 @@ H_BACKSLASH, tail H_BRTHEN, no duplicates); all tests pass in MAME. The comments
 this section and at BASELATEST were reworded to match; no code changed.
 The old order placed H_FIND, >NUMBER and the number words 1/-1/2/-2 after H_QUIT, and
 H_ABORT/H_QUIT sat between them and the rest; see H_ABORT.0 for the earlier chain.
+
+================================================================
+BASEROOTLATEST.1  [design (stage 6f)]
+----------------------------------------------------------------
+The ROOT wordlist is the eight Search-Order words WORDLIST, FORTH-WORDLIST, GET-ORDER,
+SET-ORDER, SEARCH-WORDLIST, GET-CURRENT, SET-CURRENT and DEFINITIONS. Their headers
+come first in BASEDICT, with LINK 0 for the first and BASEROOTLATEST naming the last.
+The first FORTH header (H_BRTHEN) links to BASEROOTLATEST, so the FORTH chain ends in
+the ROOT words and FORTH-WORDLIST contains them, as the standard requires. ROOT is
+also searched last for every search order (SRCHORD), so the words stay reachable
+after 0 SET-ORDER. ROOT is read only and has no WID: nothing can add to it, and
+FORTH-WORDLIST SEARCH-WORDLIST finds the ROOT words through the FORTH chain. A
+consequence is that a name looked up in a list that does not end in ROOT takes one
+extra pass over eight headers when it is not found.
+FIND stays in the FORTH chain, not in ROOT, so after 0 SET-ORDER it is not available.
 
 ================================================================
 H_NONAME.1  [explanatory]  (lines 1038-1039 of the stage-3q file)
@@ -1511,6 +1543,35 @@ holds real state (the xt being compiled, for RECURSE). S frames survive THROW
 because CATCH and THROW restore S.
 
 ================================================================
+SEARCHORDER.1  [design (stage 6f)]
+----------------------------------------------------------------
+Phase 1 of the Search-Order word set (wordlist_design.md). Changes from stage 6e:
+  FIND         now FDSEARCH over each wordlist of ORDER (SRCHORD), then ROOT. The
+               counted-string interface and results are unchanged.
+  HEADER       the LINK is the head of the CURRENT wordlist, which then points at the
+               new header; LATEST also names it.
+  QUIT         after an error, PRUNE unlinks every RAM header at or above the saved
+               DPHERE from every wordlist (headers of the failed line). The 10 byte
+               checkpoint frame is unchanged.
+  MARKER       saves SRCHSAVESZ bytes (WLEND, CURRENT, ORDEND, ORDER) after its four
+               cells; DOMARKER restores them, then PRUNEs, so wordlists created after
+               the marker disappear and words defined after it are unlinked from
+               every older wordlist. A marker is now 8 + 22 + the usual bytes.
+  SNAME, WORDS SNAME walks every wordlist. WORDS lists the first wordlist of the
+               order (ROOT if the order is empty).
+  ENVIRONMENT? WORDLISTS is 8.
+  COLDSTRT, COLD both call WLINIT. COLDSTRT must, so FIND works for the unit tests.
+Exceptions: -49 SET-ORDER with n > 8; -50 SET-ORDER with n < -1, or DEFINITIONS when
+the order is empty; -11 for a WID that is not a wordlist in use (SET-ORDER,
+SET-CURRENT, SEARCH-WORDLIST); -8 from WORDLIST when 8 exist.
+Not standard: 0 SET-ORDER leaves an empty order in which ROOT is still searched.
+SEARCH-WORDLIST returns 0 for u > 31.
+Memory: BASEDICT grew 2254 -> 2382 bytes, BASECODE 8803 -> 9266 (polled) and
+9122 -> 9585 (interrupt), INITCODE 72 -> 75. BASECODE is $DA30 and BASEDICT $D0E2, so the
+unit-test region is $C100-$D0E2 (3,938 bytes, was 4,642). Interrupt build: BASECODE
+ends $FFA1, 3 bytes below INITCODE.
+
+================================================================
 FINDW.1  [history (stage 5l)]
 ----------------------------------------------------------------
 Stage 5l removed SLEN, SNAMEP, FNDPTR, HDRPTR and HDRFLAGS from page zero (96 ->
@@ -1519,6 +1580,8 @@ reloads it into Y for each comparison, the header pointer is X, and the header
 is held on S only while its name is being compared. The result replaces the
 c-addr in place. SETDOES, the other user of HDRFLAGS, now reads the length
 byte straight into B.
+Stage 6f rewrote FIND around FDSEARCH and SRCHORD (SEARCHORDER.1); FINDW itself now
+holds no frame and only the c-addr at ,U.
 
 ================================================================
 NUMBERQ.1  [explanatory]  (lines 3875-3887 of the stage-3e file)

@@ -96,24 +96,24 @@
   okT{ s11 s12 COMPARE ->  1 }T  Actual:Expected 1 =?= 1 
   okT{ s12 s11 COMPARE -> -1 }T  Actual:Expected -1 =?= -1 
   ok\ F.17.6.1.0245 /STRING
-  okT{ s1  5 /STRING -> s1 SWAP 5 + SWAP 5 - }T  Actual:Expected 21 =?= 21 30488 =?= 30488 
-  okT{ s1 10 /STRING -4 /STRING -> s1 6 /STRING }T  Actual:Expected 20 =?= 20 30489 =?= 30489 
-  okT{ s1  0 /STRING -> s1 }T  Actual:Expected 26 =?= 26 30483 =?= 30483 
+  okT{ s1  5 /STRING -> s1 SWAP 5 + SWAP 5 - }T  Actual:Expected 21 =?= 21 30554 =?= 30554 
+  okT{ s1 10 /STRING -4 /STRING -> s1 6 /STRING }T  Actual:Expected 20 =?= 20 30555 =?= 30555 
+  okT{ s1  0 /STRING -> s1 }T  Actual:Expected 26 =?= 26 30549 =?= 30549 
   ok\ F.17.6.1.0170 -TRAILING
-  okT{  s1 -TRAILING -> s1 }T               \ "abcdefghijklmnopqrstuvwxyz"  Actual:Expected 26 =?= 26 30483 =?= 30483 
-  okT{  s8 -TRAILING -> s8 2 - }T           \ "abc "  Actual:Expected 3 =?= 3 30562 =?= 30562 
-  okT{  s7 -TRAILING -> s7 }T               \ " "  Actual:Expected 0 =?= 0 30557 =?= 30557 
-  okT{  s9 -TRAILING -> s9 DROP 0 }T        \ " "  Actual:Expected 0 =?= 0 30572 =?= 30572 
-  okT{ s10 -TRAILING -> s10 1- }T           \ " a "  Actual:Expected 4 =?= 4 30582 =?= 30582 
+  okT{  s1 -TRAILING -> s1 }T               \ "abcdefghijklmnopqrstuvwxyz"  Actual:Expected 26 =?= 26 30549 =?= 30549 
+  okT{  s8 -TRAILING -> s8 2 - }T           \ "abc "  Actual:Expected 3 =?= 3 30628 =?= 30628 
+  okT{  s7 -TRAILING -> s7 }T               \ " "  Actual:Expected 0 =?= 0 30623 =?= 30623 
+  okT{  s9 -TRAILING -> s9 DROP 0 }T        \ " "  Actual:Expected 0 =?= 0 30638 =?= 30638 
+  okT{ s10 -TRAILING -> s10 1- }T           \ " a "  Actual:Expected 4 =?= 4 30648 =?= 30648 
   ok\ F.17.6.2.2141 REPLACES
   ok\ See F.17.6.2.2255 SUBSTITUTE
   ok\ F.17.6.1.2191 SEARCH
-  okT{ s1 s2 SEARCH -> s1 <TRUE>  }T  Actual:Expected -1 =?= -1 26 =?= 26 30483 =?= 30483 
-  okT{ s1 s3 SEARCH -> s1  9 /STRING <TRUE>  }T  Actual:Expected -1 =?= -1 17 =?= 17 30492 =?= 30492 
-  okT{ s1 s4 SEARCH -> s1 25 /STRING <TRUE>  }T  Actual:Expected -1 =?= -1 1 =?= 1 30508 =?= 30508 
-  okT{ s1 s5 SEARCH -> s1 <FALSE> }T  Actual:Expected 0 =?= 0 26 =?= 26 30483 =?= 30483 
-  okT{ s1 s6 SEARCH -> s1 <FALSE> }T  Actual:Expected 0 =?= 0 26 =?= 26 30483 =?= 30483 
-  okT{ s1 s7 SEARCH -> s1 <TRUE>  }T  Actual:Expected -1 =?= -1 26 =?= 26 30483 =?= 30483 
+  okT{ s1 s2 SEARCH -> s1 <TRUE>  }T  Actual:Expected -1 =?= -1 26 =?= 26 30549 =?= 30549 
+  okT{ s1 s3 SEARCH -> s1  9 /STRING <TRUE>  }T  Actual:Expected -1 =?= -1 17 =?= 17 30558 =?= 30558 
+  okT{ s1 s4 SEARCH -> s1 25 /STRING <TRUE>  }T  Actual:Expected -1 =?= -1 1 =?= 1 30574 =?= 30574 
+  okT{ s1 s5 SEARCH -> s1 <FALSE> }T  Actual:Expected 0 =?= 0 26 =?= 26 30549 =?= 30549 
+  okT{ s1 s6 SEARCH -> s1 <FALSE> }T  Actual:Expected 0 =?= 0 26 =?= 26 30549 =?= 30549 
+  okT{ s1 s7 SEARCH -> s1 <TRUE>  }T  Actual:Expected -1 =?= -1 26 =?= 26 30549 =?= 30549 
   ok\ u3 is the length remaining from the match, not the needle's length
   okT{ s1 s3 SEARCH ROT DROP -> 17 <TRUE> }T  Actual:Expected -1 =?= -1 17 =?= 17 
   okT{ s1 s4 SEARCH ROT DROP ->  1 <TRUE> }T  Actual:Expected -1 =?= -1 1 =?= 1 

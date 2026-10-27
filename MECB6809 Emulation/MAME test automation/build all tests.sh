@@ -77,7 +77,7 @@ for ((n=0; n<19; n++)); do
 
   # Step 1: assemble this specific test group into the ROM image
   "$LWASM_BIN" --6809 --format=raw --output=forth6809."$n".bin \
-    --list=forth6809.lst \
+    --list=forth6809."$n".lst \
     --define=SERIALPOLL="$SERIALPOLL" \
     --define=UNITTESTS=1 --define=TSTSELECTOR="$n" \
     "$ASM_SOURCE"

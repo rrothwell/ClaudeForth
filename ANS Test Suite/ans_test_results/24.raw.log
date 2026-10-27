@@ -74,9 +74,9 @@
   ok: GN-STRING GN-BUF 1 ;
   ok: GN-CONSUMED GN-BUF CHAR+ 0 ;
   ok: GN' [CHAR] ' WORD CHAR+ C@ GN-BUF C! GN-STRING ;
-  okT{ 0 0 GN' 0' >NUMBER -> 0 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 775C =?= 775C 0 =?= 0 0 =?= 0 
-  okT{ 0 0 GN' 1' >NUMBER -> 1 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 775C =?= 775C 0 =?= 0 1 =?= 1 
-  okT{ 1 0 GN' 1' >NUMBER -> BASE @ 1+ 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 775C =?= 775C 0 =?= 0 11 =?= 11 
+  okT{ 0 0 GN' 0' >NUMBER -> 0 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 779E =?= 779E 0 =?= 0 0 =?= 0 
+  okT{ 0 0 GN' 1' >NUMBER -> 1 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 779E =?= 779E 0 =?= 0 1 =?= 1 
+  okT{ 1 0 GN' 1' >NUMBER -> BASE @ 1+ 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 779E =?= 779E 0 =?= 0 11 =?= 11 
   ok\ FOLLOWING SHOULD FAIL TO CONVERT
   ok\ BUG FIX: these three tests used to be glued onto the end of this
   ok\ comment's own line - the same "comment swallows the rest of the
@@ -84,16 +84,16 @@
   ok\ 23_comment_words.tests.fs, 08_defining_words.tests.fs, and
   ok\ 19_string_words.tests.fs - so none of them ever ran. Split onto
   ok\ their own line below.
-  okT{ 0 0 GN' -' >NUMBER -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 775B =?= 775B 0 =?= 0 0 =?= 0 
-  okT{ 0 0 GN' +' >NUMBER -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 775B =?= 775B 0 =?= 0 0 =?= 0 
-  okT{ 0 0 GN' .' >NUMBER -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 775B =?= 775B 0 =?= 0 0 =?= 0 
+  okT{ 0 0 GN' -' >NUMBER -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 779D =?= 779D 0 =?= 0 0 =?= 0 
+  okT{ 0 0 GN' +' >NUMBER -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 779D =?= 779D 0 =?= 0 0 =?= 0 
+  okT{ 0 0 GN' .' >NUMBER -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 779D =?= 779D 0 =?= 0 0 =?= 0 
   ok: >NUMBER-BASED BASE @ >R BASE ! >NUMBER R> BASE ! ;
-  okT{ 0 0 GN' 2' 10 >NUMBER-BASED -> 2 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 775C =?= 775C 0 =?= 0 2 =?= 2 
-  okT{ 0 0 GN' 2' 2 >NUMBER-BASED -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 775B =?= 775B 0 =?= 0 0 =?= 0 
-  okT{ 0 0 GN' F' 10 >NUMBER-BASED -> F 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 775C =?= 775C 0 =?= 0 F =?= F 
-  okT{ 0 0 GN' G' 10 >NUMBER-BASED -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 775B =?= 775B 0 =?= 0 0 =?= 0 
-  okT{ 0 0 GN' G' MAX-BASE >NUMBER-BASED -> 10 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 775C =?= 775C 0 =?= 0 10 =?= 10 
-  okT{ 0 0 GN' Z' MAX-BASE >NUMBER-BASED -> 23 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 775C =?= 775C 0 =?= 0 23 =?= 23 
+  okT{ 0 0 GN' 2' 10 >NUMBER-BASED -> 2 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 779E =?= 779E 0 =?= 0 2 =?= 2 
+  okT{ 0 0 GN' 2' 2 >NUMBER-BASED -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 779D =?= 779D 0 =?= 0 0 =?= 0 
+  okT{ 0 0 GN' F' 10 >NUMBER-BASED -> F 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 779E =?= 779E 0 =?= 0 F =?= F 
+  okT{ 0 0 GN' G' 10 >NUMBER-BASED -> 0 0 GN-STRING }T  Actual:Expected 1 =?= 1 779D =?= 779D 0 =?= 0 0 =?= 0 
+  okT{ 0 0 GN' G' MAX-BASE >NUMBER-BASED -> 10 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 779E =?= 779E 0 =?= 0 10 =?= 10 
+  okT{ 0 0 GN' Z' MAX-BASE >NUMBER-BASED -> 23 0 GN-CONSUMED }T  Actual:Expected 0 =?= 0 779E =?= 779E 0 =?= 0 23 =?= 23 
   ok: GN1 ( UD BASE -- UD' LEN )
 BASE @ >R BASE !
 <# #S #> 0 0 2SWAP >NUMBER SWAP DROP

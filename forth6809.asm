@@ -22,9 +22,9 @@ USROMEND    EQU   VECTORS-1         ; usable ROM end (VECTORS-1)
 VECTORS     EQU   $FFF0
 INITCODE    EQU   $FFA4             ; start of the init code (COLDSTRT)
             ; Commented-out code moved to shadow: MEMMAP.5
-BASECODE    EQU   $DBF0             ; base code. See shadow MEMMAP.6
+BASECODE    EQU   $DA30             ; base code. See shadow MEMMAP.6
             ; Commented-out code moved to shadow: MEMMAP.7
-BASEDICT    EQU   $D322             ; base dictionary. See shadow MEMMAP.8
+BASEDICT    EQU   $D0E2             ; base dictionary. See shadow MEMMAP.8
 INOUT       EQU   $C000             ; I/O block (ACIA), 256 bytes
 INOUTEND    EQU   INOUT+$FF
 RSTACK      EQU   $BFFF             ; return stack top
@@ -186,7 +186,7 @@ TAGQDO      EQU   7                 ; ?DO marker. See bugfix: TAGQDO.1
 
 ; ============================================================
 ; GLOBALS - scratch and state cells in page zero (DP = $00, set in
-; COLDSTRT), laid out in RMB order. 69 of 256 bytes are used
+; COLDSTRT), laid out in RMB order. 107 of 256 bytes are used
 ; (GLOBALS_USED). Original comment: shadow GLOBALS.0.
 ; ============================================================
             ORG   $0000             ; GLOBALS page (DP = $00)
@@ -235,7 +235,24 @@ SPAN        RMB   2                 ; offset $3F
 SUBHEAD     RMB   2                 ; offset $41: newest REPLACES entry, 0 = none
 SUBFREE     RMB   2                 ; offset $43: next free byte of SUBPOOL, 0 = empty
 
-GLOBALS_USED EQU   69               ; bytes used, of 256 available
+; Search-Order word set. A WID is the address of a cell in WLHEADS that
+; holds the newest header of that wordlist (0 = empty). WLEND is the
+; address just past the last WLHEADS cell in use. ORDER holds the
+; WIDs of the search order, first searched at the lowest address, and
+; ORDEND is the address just past the last one in use. ROOT is not
+; held here: it is always searched, last. WLEND, CURRENT, ORDEND and
+; ORDER are adjacent because MARKER saves and restores them together
+; (SRCHSAVE, SRCHSAVESZ). See shadow WLHEADS.1
+SRCHSAVE
+WLEND       RMB   2                 ; offset $45
+CURRENT     RMB   2                 ; offset $47: WID that receives new words
+ORDEND      RMB   2                 ; offset $49
+ORDER       RMB   16                ; offset $4B-$5A: up to 8 WIDs
+SRCHSAVESZ  EQU   *-SRCHSAVE
+WLHEADS     RMB   16                ; offset $5B-$6A: up to 8 wordlists
+WLMAX       EQU   8
+
+GLOBALS_USED EQU   107              ; bytes used, of 256 available
 
 ; $0100-$0105 is unclaimed (was MVSCRATCH). See shadow MVSCRATCH.1
 
@@ -299,6 +316,8 @@ TSTSELECTOR SET   2                 ; default if -D not passed
 
             ENDC                    ; <<<<<<<<<<
 
+TSTEND     EQU *                   ; Mark where tests end to size spare space.
+
 ROM:
             FILL  $FF,BASEDICT-ROM
 
@@ -318,13 +337,60 @@ ROM:
 ; ============================================================
 
             ORG   BASEDICT
+; ROOT wordlist: the Search-Order words. It is always searched, last,
+; and FORTH continues into it (the link of the first FORTH header names
+; BASEROOTLATEST), so FORTH-WORDLIST also contains these words.
+; See shadow BASEROOTLATEST.1
+H_WORDLIST: FCB   8
+            FCC   "WORDLIST"
+            FDB   0
+            FDB   WORDLISTW
+
+H_FORTHWL:  FCB   14
+            FCC   "FORTH-WORDLIST"
+            FDB   H_WORDLIST
+            FDB   FORTHWLW
+
+H_GETORDER: FCB   9
+            FCC   "GET-ORDER"
+            FDB   H_FORTHWL
+            FDB   GETORDERW
+
+H_SETORDER: FCB   9
+            FCC   "SET-ORDER"
+            FDB   H_GETORDER
+            FDB   SETORDERW
+
+H_SEARCHWL: FCB   15
+            FCC   "SEARCH-WORDLIST"
+            FDB   H_SETORDER
+            FDB   SEARCHWLW
+
+H_GETCUR:   FCB   11
+            FCC   "GET-CURRENT"
+            FDB   H_SEARCHWL
+            FDB   GETCURW
+
+H_SETCUR:   FCB   11
+            FCC   "SET-CURRENT"
+            FDB   H_GETCUR
+            FDB   SETCURW
+
+H_DEFINITIONS:
+            FCB   11
+            FCC   "DEFINITIONS"
+            FDB   H_SETCUR
+            FDB   DEFINITIONSW
+
+BASEROOTLATEST EQU H_DEFINITIONS
+
 ; Search order: head first, and so last in memory. See shadow SECTION27.1.
 ; Headers are laid out tail first, so each LINK points back to the header
 ; just before it in memory (0 for the first) and BASELATEST names the last.
 
 H_BRTHEN:   FCB   $86
             FCC   "[THEN]"
-            FDB   0
+            FDB   BASEROOTLATEST
             FDB   BRTHENW
 
 H_BRELSE:   FCB   $86
@@ -2258,6 +2324,7 @@ COLD:       LDD   #APPVARS
             STD   DPHERE
             LDD   #BASELATEST
             STD   LATEST
+            JSR   WLINIT            ; FORTH wordlist, search order and CURRENT
 
             LDD   #10
             STD   BASE
@@ -2327,6 +2394,7 @@ QLOOP:      JSR   QUERYW
 
             LDD   8,S
             STD   DPHERE
+            JSR   PRUNE             ; unlink headers newer than DPHERE
             LDD   6,S
             STD   CODEHERE
             LDD   4,S
@@ -2530,13 +2598,16 @@ DOABORTUNDEF:
 
 ; ------------------------------------------------------------
 ; BEHAVIOR of a MARKER word: restore the dictionary, code and variable
-; pointers and LATEST from the four cells saved when it was defined.
+; pointers and LATEST from the four cells saved when it was defined,
+; then the search order state (SRCHSAVESZ bytes after them), then
+; unlink every RAM header newer than DPHERE from every wordlist.
 ; DOMARKER   ( pfa -- )
 ;    Inputs:
-;        pfa on the data stack (the four saved cells)
+;        pfa on the data stack (the saved cells)
 ;    Outputs:
-;        pfa removed; DPHERE, CODEHERE, VARHERE and LATEST restored
-;    Registers: RegD, RegX and CC changed.
+;        pfa removed; DPHERE, CODEHERE, VARHERE, LATEST, WLEND, CURRENT
+;        and the search order restored; wordlists pruned
+;    Registers: RegA, RegB, RegX, RegY and CC changed.
 ; ------------------------------------------------------------
 DOMARKER:   PULU  X                 ; pfa
             LDD   ,X
@@ -2547,7 +2618,15 @@ DOMARKER:   PULU  X                 ; pfa
             STD   VARHERE
             LDD   6,X
             STD   LATEST
-            RTS
+            LEAX  8,X               ; the saved search-order state follows
+            LDY   #SRCHSAVE
+            LDB   #SRCHSAVESZ
+DMCOPY:     LDA   ,X+
+            STA   ,Y+
+            DECB
+            BNE   DMCOPY
+            LDD   DPHERE
+            JMP   PRUNE             ; unlink headers newer than DPHERE
 
 ; ------------------------------------------------------------
 ; EXECUTE  ( i*x xt -- j*x )
@@ -2706,13 +2785,15 @@ VUNUSEDW:   LDD   #APPVARSEND       ; See bugfix: VUNUSEDW.1
 ; Build a dictionary header for the next name in the input: parse the
 ; name, then lay down the length byte (with the smudge bit set if
 ; requested), the name, the link to the previous header and the code
-; field address (CODEHERE). LATEST and DPHERE are updated.
+; field address (CODEHERE). LATEST, DPHERE and the head of the CURRENT
+; wordlist are updated.
 ; HEADER   ( smudge-flag "name" -- )
 ;    Inputs:
 ;        smudge-flag on the data stack (non-zero hides the new word)
 ;        name parsed from the input stream
 ;    Outputs:
-;        header built at DPHERE; LATEST = address of the new header
+;        header built at DPHERE, linked into the CURRENT wordlist;
+;        LATEST = address of the new header
 ;    Registers: RegA, RegB, RegX, RegY and CC changed.
 ; ------------------------------------------------------------
 HEADER:     LDD   #32
@@ -2734,13 +2815,15 @@ HDCPY:      LDA   ,X+
             STA   ,Y+
             DECB
             BNE   HDCPY
-HDNONM:     LDD   LATEST
-            STD   ,Y++
+HDNONM:     LDX   CURRENT           ; X = WID of the wordlist receiving the word
+            LDD   ,X
+            STD   ,Y++              ; LINK = old head of that wordlist
             LDD   CODEHERE
             STD   ,Y++
             STY   DPHERE
             PULS  D
-            STD   LATEST
+            STD   LATEST            ; LATEST = newest header of any wordlist
+            STD   ,X                ; and the new head of the CURRENT wordlist
             LEAS  1,S
             RTS
 
@@ -3155,8 +3238,9 @@ AOIMMED:    PSHU  X
 
 ; ------------------------------------------------------------
 ; MARKER  ( "name" -- )
-; Save DPHERE, CODEHERE, VARHERE and LATEST in a new word, which when
-; executed restores them (forgetting everything defined since).
+; Save DPHERE, CODEHERE, VARHERE, LATEST and the search order state in
+; a new word, which when executed restores them (forgetting everything
+; defined since, in every wordlist).
 ; ------------------------------------------------------------
 MARKERW:    LDD   DPHERE
             PSHS  D                 ; 6,S
@@ -3180,6 +3264,14 @@ MARKERW:    LDD   DPHERE
             LDD   ,S
             PSHU  D
             JSR   COMMAW
+            LDX   CODEHERE          ; then the search order state
+            LDY   #SRCHSAVE
+            LDB   #SRCHSAVESZ
+MKCOPY:     LDA   ,Y+
+            STA   ,X+
+            DECB
+            BNE   MKCOPY
+            STX   CODEHERE
             LEAS  8,S
             RTS
 
@@ -3338,62 +3430,356 @@ EMPTY:      LEAS  3,S               ; drop the frame
             RTS
 
 ; ------------------------------------------------------------
-; FIND  ( c-addr -- c-addr 0 | xt 1 | xt -1 )
-; Look up the counted string in the dictionary, newest first, ignoring
-; smudged entries. Returns the xt and 1 if the word is immediate, or
-; -1 if not. If not found, returns c-addr and 0.
-; Holds no scratch cells; see shadow FINDW.1.
+; Search one chain of headers for a name, ignoring smudged entries.
+; Case matters. A zero-length name matches a zero-length header.
+; The Search-Order design is in shadow SEARCHORDER.1.
+; FDSEARCH
+;    Inputs:
+;        RegX = first header of the chain (0 = empty chain)
+;        RegY = address of the name text
+;        RegB = name length
+;    Outputs:
+;        RegX = the matching header, or 0 if there is none
+;    Registers: RegA, RegB, RegX, RegY and CC changed.
 ; ------------------------------------------------------------
-FINDW:      LDX   LATEST            ; c-addr stays at ,U until the result
-FFLOOP:     CMPX  #0                ; (5l: no scratch cells)
-            BEQ   NOTFOUND
+FDSEARCH:   PSHS  Y,B               ; 0,S = length, 1,S = name text
+FDLOOP:     CMPX  #0
+            BEQ   FDRET
             LDA   ,X
             BITA  #$40
-            BNE   FNEXT             ; smudged
+            BNE   FDNEXT            ; smudged
             ANDA  #$1F
-            LDY   ,U                ; counted string
-            CMPA  ,Y+
-            BNE   FNEXT
+            CMPA  ,S
+            BNE   FDNEXT
             PSHS  X                 ; header, kept across the compare
             LEAX  1,X
-            TFR   A,B
-            BEQ   FMATCH
-CMPLP:      LDA   ,X+
+            LDY   3,S               ; name text
+            LDB   2,S               ; length
+            BEQ   FDHIT
+FDCMP:      LDA   ,X+
             CMPA  ,Y+
-            BNE   FMISS
+            BNE   FDMISS
             DECB
-            BNE   CMPLP
-
-FMATCH:     PULS  X                 ; header
-            LDB   ,X
-            PSHS  B                 ; length|flags
+            BNE   FDCMP
+FDHIT:      PULS  X                 ; header
+            BRA   FDRET
+FDMISS:     PULS  X
+FDNEXT:     LDB   ,X
             ANDB  #$1F
             CLRA
             LEAX  1,X
             LEAX  D,X
-            LDD   2,X               ; CFA field
-            STD   ,U                ; xt replaces c-addr
-            PULS  A
-            BITA  #$80
-            BEQ   FISNORM
+            LDX   ,X                ; LINK field
+            BRA   FDLOOP
+FDRET:      LEAS  3,S
+            RTS
+
+; ------------------------------------------------------------
+; Search every wordlist of the search order, first to last, and then
+; ROOT, for a name.
+; SRCHORD
+;    Inputs:
+;        RegY = address of the name text
+;        RegB = name length
+;    Outputs:
+;        RegX = the matching header, or 0 if there is none
+;    Registers: RegA, RegB, RegX, RegY and CC changed.
+; ------------------------------------------------------------
+SRCHORD:    PSHS  Y,B               ; 0,S = length, 1,S = name text
+            LDX   #ORDER
+            PSHS  X                 ; 0,S = next ORDER cell (length is now 2,S)
+SOLOOP:     LDX   ,S
+            CMPX  ORDEND
+            BHS   SOROOT
+            LDY   ,X++              ; WID
+            STX   ,S
+            LDX   ,Y                ; newest header of that wordlist
+            LDY   3,S
+            LDB   2,S
+            BSR   FDSEARCH
+            CMPX  #0
+            BEQ   SOLOOP
+            BRA   SORDONE
+SOROOT:     LDX   #BASEROOTLATEST
+            LDY   3,S
+            LDB   2,S
+            BSR   FDSEARCH
+SORDONE:     LEAS  5,S
+            RTS
+
+; ------------------------------------------------------------
+; Split a header into its xt and its immediate flag.
+; HDRXT
+;    Inputs:
+;        RegX = header
+;    Outputs:
+;        RegX = xt (the CFA field), RegA = length|flags byte
+;    Registers: RegA, RegB, RegX and CC changed.
+; ------------------------------------------------------------
+HDRXT:      LDA   ,X
+            TFR   A,B
+            ANDB  #$1F
+            LEAX  1,X
+            ABX
+            LDX   2,X               ; CFA field
+            RTS
+
+; ------------------------------------------------------------
+; FIND  ( c-addr -- c-addr 0 | xt 1 | xt -1 )
+; Look up the counted string in the search order, then in ROOT, ignoring
+; smudged entries. Returns the xt and 1 if the word is immediate, or
+; -1 if not. If not found, returns c-addr and 0.
+; Holds no scratch cells; see shadow FINDW.1 and SEARCHORDER.1.
+; ------------------------------------------------------------
+FINDW:      LDY   ,U                ; counted string
+            LDB   ,Y+
+            BSR   SRCHORD
+            CMPX  #0
+            BEQ   NOTFOUND
+            BSR   HDRXT
+            STX   ,U                ; xt replaces c-addr
+            TSTA
+            BPL   FISNORM
             LDD   #1
             BRA   FPUSH
 FISNORM:    LDD   #-1
 FPUSH:      PSHU  D                 ; 1 = immediate, -1 = normal
             RTS
 
-FMISS:      PULS  X
-FNEXT:      LDB   ,X
-            ANDB  #$1F
-            CLRA
-            LEAX  1,X
-            LEAX  D,X
-            LDX   ,X                ; LINK field
-            BRA   FFLOOP
-
 NOTFOUND:   LDD   #0
             PSHU  D                 ; 0 = not found, c-addr still beneath
             RTS
+
+; ------------------------------------------------------------
+; SEARCH-WORDLIST  ( c-addr u wid -- 0 | xt 1 | xt -1 )
+; Search the one wordlist wid for the name c-addr u. Returns 0 if it is
+; not found, else its xt and 1 if the word is immediate or -1 if not.
+; Throws -11 for an invalid wid.
+; ------------------------------------------------------------
+SEARCHWLW:  PULU  X                 ; wid
+            BSR   WIDCHK
+            LDX   ,X                ; newest header of the wordlist
+            PULU  D                 ; u
+            PULU  Y                 ; c-addr
+            TSTA
+            BNE   SWNOT             ; longer than any name
+            CMPB  #31
+            BHI   SWNOT
+            JSR   FDSEARCH
+            CMPX  #0
+            BEQ   SWNOT
+            BSR   HDRXT
+            PSHU  X                 ; xt
+            TSTA
+            BPL   SWNORM
+            LDD   #1
+            BRA   SWPUSH
+SWNORM:     LDD   #-1
+SWPUSH:     PSHU  D
+            RTS
+SWNOT:      LDD   #0
+            PSHU  D
+            RTS
+
+; ------------------------------------------------------------
+; Throw -11 unless RegX is the address of a wordlist cell in use.
+; WIDCHK
+;    Inputs:
+;        RegX = candidate WID
+;    Outputs:
+;        none if valid (RegX and RegY unchanged); THROW -11 if not
+;    Registers: RegD and CC changed.
+; ------------------------------------------------------------
+WIDCHK:     TFR   X,D
+            SUBD  #WLHEADS
+            BCS   WIDBAD
+            BITB  #1
+            BNE   WIDBAD
+            CMPX  WLEND
+            BHS   WIDBAD
+            RTS
+WIDBAD:     LDD   #-11
+            PSHU  D
+            JMP   THROWW
+
+; ------------------------------------------------------------
+; Set the Search-Order state to its initial value: one wordlist
+; (FORTH, holding the ROM dictionary), the search order FORTH, and
+; CURRENT = FORTH.
+; WLINIT
+;    Inputs:
+;        none
+;    Outputs:
+;        WLHEADS(0), WLEND, CURRENT, ORDER, ORDEND set
+;    Registers: RegD and CC changed.
+; ------------------------------------------------------------
+WLINIT:     LDD   #BASELATEST
+            STD   WLHEADS
+            LDD   #WLHEADS+2
+            STD   WLEND
+            LDD   #WLHEADS
+            STD   CURRENT
+            STD   ORDER
+            LDD   #ORDER+2
+            STD   ORDEND
+            RTS
+
+; ------------------------------------------------------------
+; Remove from every wordlist the RAM headers that are at or above a
+; mark. Headers are allocated upwards from DPHERE, so these are the
+; newest ones of each chain. ROM headers are never touched.
+; PRUNE
+;    Inputs:
+;        RegD = mark (a DPHERE value)
+;    Outputs:
+;        the head of every wordlist in use points below the mark or
+;        into ROM
+;    Registers: RegD, RegX, RegY and CC changed.
+; ------------------------------------------------------------
+PRUNE:      PSHS  D                 ; 0,S = mark
+            LDX   #WLHEADS
+PRLOOP:     CMPX  WLEND
+            BHS   PRNDONE
+            LDY   ,X                ; newest header of this wordlist
+PRWALK:     CMPY  #ROMSTRT
+            BHS   PRSTORE           ; ROM header: keep
+            CMPY  ,S
+            BLO   PRSTORE           ; below the mark (or empty): keep
+            LDB   ,Y
+            ANDB  #$1F
+            CLRA
+            LEAY  1,Y
+            LEAY  D,Y
+            LDY   ,Y                ; follow the LINK
+            BRA   PRWALK
+PRSTORE:    STY   ,X++
+            BRA   PRLOOP
+PRNDONE:     LEAS  2,S
+            RTS
+
+; ============================================================
+; SECTION 9A: SEARCH-ORDER WORD SET
+; ============================================================
+; ------------------------------------------------------------
+; WORDLIST  ( -- wid )
+; Create a new, empty wordlist. Throws -8 when all WLMAX are in use.
+; ------------------------------------------------------------
+WORDLISTW:  LDX   WLEND
+            CMPX  #WLHEADS+2*WLMAX
+            BHS   WLFULL
+            LDD   #0
+            STD   ,X
+            PSHU  X
+            LEAX  2,X
+            STX   WLEND
+            RTS
+WLFULL:     LDD   #-8
+            PSHU  D
+            JMP   THROWW
+
+; ------------------------------------------------------------
+; FORTH-WORDLIST  ( -- wid )
+; Push the WID of the wordlist holding the standard words.
+; ------------------------------------------------------------
+FORTHWLW:   LDD   #WLHEADS
+            PSHU  D
+            RTS
+
+; ------------------------------------------------------------
+; GET-ORDER  ( -- widn ... wid1 n )
+; Return the search order: wid1 is searched first. ROOT is not part of
+; it, as it is always searched last.
+; ------------------------------------------------------------
+GETORDERW:  LDX   ORDEND
+GOLOOP:     CMPX  #ORDER
+            BLS   GODONE
+            LDD   ,--X
+            PSHU  D
+            BRA   GOLOOP
+GODONE:     LDD   ORDEND
+            SUBD  #ORDER
+            LSRA
+            RORB
+            PSHU  D                 ; n
+            RTS
+
+; ------------------------------------------------------------
+; SET-ORDER  ( widn ... wid1 n -- )
+; Set the search order. n = -1 selects the minimum order (FORTH only).
+; n = 0 empties it (ROOT can still be searched). Throws -49 when n is
+; more than 8, -50 when n is less than -1 and -11 for an invalid wid.
+; ------------------------------------------------------------
+SETORDERW:  PULU  D                 ; n
+            CMPD  #-1
+            BNE   SO1
+            LDD   #WLHEADS
+            STD   ORDER
+            LDD   #ORDER+2
+            STD   ORDEND
+            RTS
+SO1:        TSTA
+            BMI   SOUNDER
+            BNE   SOOVER
+            CMPB  #WLMAX
+            BHI   SOOVER
+            PSHS  B                 ; 1,S = n
+            PSHS  B                 ; 0,S = count down
+            TFR   U,Y
+SOCHK:      TST   ,S
+            BEQ   SOCOPY
+            LDX   ,Y++
+            JSR   WIDCHK            ; keeps Y
+            DEC   ,S
+            BRA   SOCHK
+SOCOPY:     PULS  A,B               ; B = n
+            LDX   #ORDER
+SOCP2:      TSTB
+            BEQ   SOCPEND
+            PULU  Y
+            STY   ,X++
+            DECB
+            BRA   SOCP2
+SOCPEND:    STX   ORDEND
+            RTS
+SOOVER:     LDD   #-49
+            BRA   SOTHROW
+SOUNDER:    LDD   #-50
+SOTHROW:    PSHU  D
+            JMP   THROWW
+
+; ------------------------------------------------------------
+; GET-CURRENT  ( -- wid )
+; Return the WID of the wordlist that receives new definitions.
+; ------------------------------------------------------------
+GETCURW:    LDD   CURRENT
+            PSHU  D
+            RTS
+
+; ------------------------------------------------------------
+; SET-CURRENT  ( wid -- )
+; Make wid the wordlist that receives new definitions. Throws -11 for
+; an invalid wid.
+; ------------------------------------------------------------
+SETCURW:    PULU  X
+            JSR   WIDCHK
+            STX   CURRENT
+            RTS
+
+; ------------------------------------------------------------
+; DEFINITIONS  ( -- )
+; Make the first wordlist of the search order the one that receives new
+; definitions. Throws -50 when the search order is empty.
+; ------------------------------------------------------------
+DEFINITIONSW:
+            LDX   #ORDER
+            CMPX  ORDEND
+            BHS   DFUNDER
+            LDD   ,X
+            STD   CURRENT
+            RTS
+DFUNDER:    LDD   #-50
+            PSHU  D
+            JMP   THROWW
 
 ; ------------------------------------------------------------
 ; Multiply the unsigned double ud on the data stack by BASE and add a
@@ -7299,13 +7685,20 @@ SNOMATCH:   LDX   ,U
 
 ; ------------------------------------------------------------
 ; SNAME  ( xt -- c-addr u | 0 0 )
-; Find the name of the word whose xt is given by searching the
-; dictionary from LATEST. Return the name or two zeros if not found.
+; Find the name of the word whose xt is given by searching every
+; wordlist. Return the name or two zeros if not found.
 ; ------------------------------------------------------------
 SNAMEW:     PULU  Y                 ; xt (5k: Y = target, X = header, no scratch)
-            LDX   LATEST
+            LDX   #WLHEADS
+            PSHS  X                 ; 0,S = next wordlist cell
+SNWL:       LDX   ,S
+            CMPX  WLEND
+            BHS   SNNOTFOUND
+            LEAX  2,X
+            STX   ,S
+            LDX   -2,X              ; newest header of this wordlist
 SNLOOP:     CMPX  #0
-            BEQ   SNNOTFOUND
+            BEQ   SNWL
             LDB   ,X
             ANDB  #$1F              ; name length
             CLRA
@@ -7314,7 +7707,8 @@ SNLOOP:     CMPX  #0
             BEQ   SNFOUND
             LDX   1,X               ; LINK field
             BRA   SNLOOP
-SNFOUND:    TFR   D,Y               ; Y = length
+SNFOUND:    LEAS  2,S
+            TFR   D,Y               ; Y = length
             TFR   X,D
             PSHS  Y
             SUBD  ,S++              ; header
@@ -7322,7 +7716,8 @@ SNFOUND:    TFR   D,Y               ; Y = length
             PSHU  D
             PSHU  Y
             RTS
-SNNOTFOUND: LDD   #0
+SNNOTFOUND: LEAS  2,S
+            LDD   #0
             PSHU  D
             PSHU  D
             RTS
@@ -8173,9 +8568,8 @@ EVALUATEW:  LDD   SRCADDR           ; save the input source on S
 ; ENVIRONMENT?  ( c-addr u -- false | i*x true )
 ; Look up the attribute name c-addr u first in ENVTABLE (single-cell
 ; values), then in ENVTABLE2 (double-cell values). If found, return
-; the value and true; otherwise return false. WORDLISTS is
-; deliberately absent because the Search-Order word set is not
-; implemented. FLOORED is false because /, MOD and /MOD use symmetric
+; the value and true; otherwise return false. WORDLISTS is 8, the
+; number of wordlists that can exist. FLOORED is false because /, MOD and /MOD use symmetric
 ; division.
 ; Original comment: shadow ENVQW.0.
 ; ------------------------------------------------------------
@@ -8283,6 +8677,7 @@ ENVTABLE:
             FDB   EN16,EN16L,TRUEV  ; DOUBLE (complete)
             FDB   EN17,EN17L,TRUEV  ; DOUBLE-EXT (complete)
             FDB   EN18,EN18L,TRUEV  ; CORE-EXT (complete)
+            FDB   EN19,EN19L,WLMAX  ; WORDLISTS
             FDB   0
 EN1:        FCC   "/COUNTED-STRING"
 EN1L        EQU   *-EN1
@@ -8312,6 +8707,8 @@ EN17:       FCC   "DOUBLE-EXT"
 EN17L       EQU   *-EN17
 EN18:       FCC   "CORE-EXT"
 EN18L       EQU   *-EN18
+EN19:       FCC   "WORDLISTS"
+EN19L       EQU   *-EN19
 
 ; ============================================================
 ; SECTION 25: TOOLS WORD SET (.S / WORDS / DUMP)
@@ -8335,11 +8732,17 @@ DSDONE:     LEAS  2,S
 
 ; ------------------------------------------------------------
 ; WORDS  ( -- )
-; Display the names of all dictionary words, newest first, then a
-; carriage return.
+; Display the names of the words of the first wordlist of the search
+; order (ROOT if the order is empty), newest first, then a carriage
+; return.
 ; ------------------------------------------------------------
-WORDSW:     LDD   LATEST
-            PSHS  D                 ; header being shown, on the return stack
+WORDSW:     LDD   #BASEROOTLATEST
+            LDX   #ORDER
+            CMPX  ORDEND
+            BHS   WW0
+            LDX   ORDER             ; WID of the first wordlist
+            LDD   ,X
+WW0:        PSHS  D                 ; header being shown, on the return stack
 WWLOOP:     LDX   ,S
             BEQ   WWDONE
             LDB   ,X
@@ -8670,6 +9073,8 @@ COLDSTRT:
 CLRGLOB:    CLR   ,X+
             DECB
             BNE   CLRGLOB
+
+            JSR   WLINIT            ; FIND must work for the unit tests too
 
             JSR   INITSERIAL
 

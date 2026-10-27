@@ -1,0 +1,102 @@
+\ ============================================================
+  ok\ ANS test suite - Search-Order word set (Phase 1)
+  ok\ WORDLIST FORTH-WORDLIST GET-ORDER SET-ORDER FIND
+  ok\ SEARCH-WORDLIST GET-CURRENT SET-CURRENT DEFINITIONS
+  ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded first.
+  ok\ Written for this project (forth6809_stage_6f and later); the
+  ok\ ANS Annex F search-order tests need ONLY/ALSO (Phase 2).
+  ok\ MARKER restores the search order too, so the system is left as
+  ok\ it was found, including the wordlists created here.
+  ok\ ============================================================
+  okMARKER M33
+  okTEST-BEGIN
+  okDECIMAL
+  ok\ ---- initial state
+  okT{ GET-ORDER -> FORTH-WORDLIST 1 }T  Actual:Expected 1 =?= 1 91 =?= 91 
+  okT{ GET-CURRENT -> FORTH-WORDLIST }T  Actual:Expected 91 =?= 91 
+  ok\ ---- WORDLIST gives distinct wids
+  okWORDLIST CONSTANT WL1
+  okWORDLIST CONSTANT WL2
+  okT{ WL1 WL2 = -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ WL1 FORTH-WORDLIST = -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ WORDLIST WL1 = -> 0 }T  Actual:Expected 0 =?= 0 
+  ok\ ---- SEARCH-WORDLIST
+  okT{ S" DUP" FORTH-WORDLIST SEARCH-WORDLIST SWAP ' DUP = -> -1 -1 }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{ S" IF" FORTH-WORDLIST SEARCH-WORDLIST NIP -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ S" NOSUCHWORD" FORTH-WORDLIST SEARCH-WORDLIST -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ S" DUP" WL1 SEARCH-WORDLIST -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ S" GET-ORDER" FORTH-WORDLIST SEARCH-WORDLIST NIP -> -1 }T  Actual:Expected -1 =?= -1 
+  ok\ ---- SET-CURRENT: new words go into the current wordlist
+  okT{ WL1 SET-CURRENT : TW1 123 ; GET-CURRENT -> WL1 }T  Actual:Expected 93 =?= 93 
+  okT{ FORTH-WORDLIST SET-CURRENT : TW2 234 ; GET-CURRENT -> FORTH-WORDLIST }T  Actual:Expected 91 =?= 91 
+  okT{ S" TW1" WL1 SEARCH-WORDLIST NIP -> -1 }T  Actual:Expected -1 =?= -1 
+  okT{ S" TW1" FORTH-WORDLIST SEARCH-WORDLIST -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ S" TW2" FORTH-WORDLIST SEARCH-WORDLIST NIP -> -1 }T  Actual:Expected -1 =?= -1 
+  okT{ S" TW2" WL1 SEARCH-WORDLIST -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ TW2 -> 234 }T  Actual:Expected 234 =?= 234 
+  okT{ WL2 SET-CURRENT : TW3 1 ; IMMEDIATE FORTH-WORDLIST SET-CURRENT -> }T
+  okT{ S" TW3" WL2 SEARCH-WORDLIST NIP -> 1 }T  Actual:Expected 1 =?= 1 
+  ok\ ---- SET-ORDER / GET-ORDER
+  okT{ FORTH-WORDLIST WL1 2 SET-ORDER GET-ORDER -> FORTH-WORDLIST WL1 2 }T  Actual:Expected 2 =?= 2 93 =?= 93 91 =?= 91 
+  okT{ TW1 -> 123 }T  Actual:Expected 123 =?= 123 
+  ok: TC1 TW1 ;
+  okT{ FORTH-WORDLIST 1 SET-ORDER GET-ORDER -> FORTH-WORDLIST 1 }T  Actual:Expected 1 =?= 1 91 =?= 91 
+  ok\ TW1 is no longer visible, but TC1 compiled earlier still runs
+  okT{ TC1 -> 123 }T  Actual:Expected 123 =?= 123 
+  okT{ -1 SET-ORDER GET-ORDER -> FORTH-WORDLIST 1 }T  Actual:Expected 1 =?= 1 91 =?= 91 
+  ok\ ---- the first wordlist in the order is searched first
+  okT{ WL1 SET-CURRENT : TX 1 ; WL2 SET-CURRENT : TX 2 ; -> }T
+  okT{ FORTH-WORDLIST SET-CURRENT -> }T
+  okT{ FORTH-WORDLIST WL1 WL2 3 SET-ORDER TX -> 2 }T  Actual:Expected 2 =?= 2 
+  okT{ FORTH-WORDLIST WL2 WL1 3 SET-ORDER TX -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ FORTH-WORDLIST WL1 WL1 3 SET-ORDER TX -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ -1 SET-ORDER -> }T
+  ok\ ---- DEFINITIONS
+  okT{ FORTH-WORDLIST WL1 2 SET-ORDER DEFINITIONS GET-CURRENT -> WL1 }T  Actual:Expected 93 =?= 93 
+  okT{ WL1 FORTH-WORDLIST 2 SET-ORDER DEFINITIONS GET-CURRENT -> FORTH-WORDLIST }T  Actual:Expected 91 =?= 91 
+  okT{ -1 SET-ORDER DEFINITIONS GET-CURRENT -> FORTH-WORDLIST }T  Actual:Expected 91 =?= 91 
+  ok\ ---- the empty order leaves nothing but ROOT: restore through
+  ok\ ---- words compiled earlier
+  ok: TZ GET-ORDER 0 SET-ORDER GET-ORDER >R SET-ORDER R> ;
+  okT{ TZ -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ GET-ORDER -> FORTH-WORDLIST 1 }T  Actual:Expected 1 =?= 1 91 =?= 91 
+  ok\ ---- maximum order (8) accepts duplicates
+  ok: TD8 FORTH-WORDLIST 7 0 DO DUP LOOP 8 SET-ORDER
+   GET-ORDER 8 0 DO NIP LOOP ;
+  okT{ TD8 -> 8 }T  Actual:Expected 8 =?= 8 
+  okT{ -1 SET-ORDER -> }T
+  ok\ ---- errors
+  ok: TE1 FORTH-WORDLIST 9 SET-ORDER ;
+  ok: TE2 -2 SET-ORDER ;
+  ok: TE3 1234 SET-CURRENT ;
+  ok: TE4 1234 1 SET-ORDER ;
+  ok: TE5 1 SET-CURRENT ;
+  okT{ ' TE1 CATCH -> -49 }T  Actual:Expected -49 =?= -49 
+  okT{ ' TE2 CATCH -> -50 }T  Actual:Expected -50 =?= -50 
+  okT{ ' TE3 CATCH -> -11 }T  Actual:Expected -11 =?= -11 
+  okT{ ' TE4 CATCH -> -11 }T  Actual:Expected -11 =?= -11 
+  okT{ ' TE5 CATCH -> -11 }T  Actual:Expected -11 =?= -11 
+  okT{ GET-ORDER -> FORTH-WORDLIST 1 }T  Actual:Expected 1 =?= 1 91 =?= 91 
+  ok\ ---- ENVIRONMENT?
+  okT{ S" WORDLISTS" ENVIRONMENT? -> 8 TRUE }T  Actual:Expected -1 =?= -1 8 =?= 8 
+  ok\ ---- MARKER restores wordlists, search order and CURRENT
+  okFORTH-WORDLIST WL1 2 SET-ORDER
+  okMARKER MK1
+  okWL1 SET-CURRENT : TM1 1 ; FORTH-WORDLIST SET-CURRENT : TM2 2 ;
+  okWORDLIST CONSTANT WLX
+  okWLX SET-CURRENT : TM3 3 ; FORTH-WORDLIST SET-CURRENT
+  okWLX FORTH-WORDLIST 2 SET-ORDER
+  okMK1
+  okT{ GET-ORDER -> FORTH-WORDLIST WL1 2 }T  Actual:Expected 2 =?= 2 93 =?= 93 91 =?= 91 
+  okT{ GET-CURRENT -> FORTH-WORDLIST }T  Actual:Expected 91 =?= 91 
+  okT{ S" TM1" WL1 SEARCH-WORDLIST -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ S" TM2" FORTH-WORDLIST SEARCH-WORDLIST -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ S" MK1" FORTH-WORDLIST SEARCH-WORDLIST -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ S" TW1" WL1 SEARCH-WORDLIST NIP -> -1 }T  Actual:Expected -1 =?= -1 
+  okT{ -1 SET-ORDER -> }T
+  okHEX
+  okTEST-END
+TEST SUMMARY: 51 run, 0 failed
+
+  okM33
+  ok

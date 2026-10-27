@@ -14,7 +14,7 @@
   okCREATE ACTUAL-RESULTS 20 CELLS ALLOT
   okVARIABLE START-DEPTH
   okVARIABLE XCURSOR \ for ...}T
-  okVARIABLE ERROR-XT
+  okVARIABLE ERR-MSG-XT
   ok\ TESTCOUNT/FAILCOUNT: a Forth-computed, authoritative pass/fail
   ok\ tally, read by TEST-END (defined in 00_test_prelude.fs). Added
   ok\ because the serial test runner's line-by-line "ok" wait can't
@@ -30,7 +30,7 @@
   okVARIABLE FAILCOUNT
   ok0 TESTCOUNT !
   ok0 FAILCOUNT !
-  ok: ERROR ERROR-XT @ EXECUTE ; \ for vectoring of error reporting
+  ok: ERR-MSG ERR-MSG-XT @ EXECUTE ; \ for vectoring of error reporting
   ok: "FLOATING" S" FLOATING" ; \ only compiled S" in CORE
   ok: "FLOATING-STACK" S" FLOATING-STACK" ;
   ok"FLOATING" ENVIRONMENT? [IF][IF]TRUE[ELSE]FALSE[THEN][ELSE]
@@ -52,12 +52,12 @@ DEPTH START-DEPTH @ > IF
 DEPTH START-DEPTH @ DO DROP LOOP
 THEN
 EMPTY-FSTACK ;
-  ok: ERROR1 \ ( C-ADDR U -- ) display an error message
+  ok: ERR-MSG-1 \ ( C-ADDR U -- ) display an error message
 \ followed by the line that had the error.
 TYPE SOURCE TYPE CR \ display line corresponding to error
 EMPTY-STACK \ throw away everything else
 ;
-  ok' ERROR1 ERROR-XT !
+  ok' ERR-MSG-1 ERR-MSG-XT !
   ok: T{ \ ( -- ) record the pre-test depth.
 DEPTH START-DEPTH ! 0 XCURSOR ! F{ ;
   ok: -> \ ( ... -- ) record depth and contents of stack.
@@ -71,7 +71,7 @@ F-> ;
   ok: }T \ ( ... -- ) compare stack (expected) contents with saved
 \ (actual) contents.
 \ BUG FIX / ENHANCEMENT: tallies TESTCOUNT (every call) and
-\ FAILCOUNT (only the two branches below that call ERROR) for
+\ FAILCOUNT (only the two branches below that call ERR-MSG) for
 \ TEST-END (00_test_prelude.fs) - see TESTCOUNT's comment above.
 \ Also moved the "Actual:Expected " heading to print ONCE per
 \ }T, right before the per-item loop, instead of once per item -
@@ -85,32 +85,32 @@ DEPTH START-DEPTH @ > IF \ if something on the stack
 DEPTH START-DEPTH @ - 0 DO \ for each stack item
 ACTUAL-RESULTS I CELLS + @ \ compare actual with expected
 2DUP . ." =?= " .
-<> IF 1 FAILCOUNT +! S" INCORRECT RESULT: " ERROR LEAVE THEN
+<> IF 1 FAILCOUNT +! S" INCORRECT RESULT: " ERR-MSG LEAVE THEN
 LOOP
 THEN
 ELSE \ depth mismatch
 1 FAILCOUNT +!
-S" WRONG NUMBER OF RESULTS: " ERROR
+S" WRONG NUMBER OF RESULTS: " ERR-MSG
 THEN
 F} ;
   ok\ TEST-BEGIN / TEST-END (the per-file report that reads TESTCOUNT
   ok\ and FAILCOUNT) are defined in 00_test_prelude.fs.
-  ok' }T ." XT for }T" .7182 
+  ok' }T ." XT for }T" .7198 
   ok: ...}T ( -- )
 XCURSOR @ START-DEPTH @ + ACTUAL-DEPTH @ <> IF
 S" NUMBER OF CELL RESULTS BEFORE '->' DOES NOT MATCH ...}T "
-S" SPECIFICATION: " ERROR
+S" SPECIFICATION: " ERR-MSG
 ELSE DEPTH START-DEPTH @ = 0= IF
 S" NUMBER OF CELL RESULTS BEFORE AND AFTER '->' DOES NOT MATCH: "
-ERROR
+ERR-MSG
 THEN THEN
 F...}T ;
   ok: XTESTER ( X -- )
 DEPTH 0= ACTUAL-DEPTH @ XCURSOR @ START-DEPTH @ + 1+ < OR IF
 S" NUMBER OF CELL RESULTS AFTER '->' BELOW ...}T SPECIFICATION: "
-ERROR EXIT
+ERR-MSG EXIT
 ELSE ACTUAL-RESULTS XCURSOR @ CELLS + @ <> IF
-S" INCORRECT CELL RESULT: " ERROR
+S" INCORRECT CELL RESULT: " ERR-MSG
 THEN THEN
 1 XCURSOR +! ;
   ok: X}T XTESTER ...}T ;
