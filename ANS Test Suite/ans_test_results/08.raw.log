@@ -69,12 +69,12 @@
   okT{ : action-defer1 ACTION-OF defer1 ; -> }T
   okT{ ' * ' defer1 DEFER! -> }T
   okT{ 2 3 defer1 -> 6 }T  Actual:Expected 6 =?= 6 
-  okT{ ACTION-OF defer1 -> ' * }T  Actual:Expected -13FA =?= -13FA 
-  okT{ action-defer1 -> ' * }T  Actual:Expected -13FA =?= -13FA 
+  okT{ ACTION-OF defer1 -> ' * }T  Actual:Expected -1405 =?= -1405 
+  okT{ action-defer1 -> ' * }T  Actual:Expected -1405 =?= -1405 
   okT{ ' + IS defer1 -> }T
   okT{ 1 2 defer1 -> 3 }T  Actual:Expected 3 =?= 3 
-  okT{ ACTION-OF defer1 -> ' + }T  Actual:Expected -1450 =?= -1450 
-  okT{ action-defer1 -> ' + }T  Actual:Expected -1450 =?= -1450 
+  okT{ ACTION-OF defer1 -> ' + }T  Actual:Expected -145B =?= -145B 
+  okT{ action-defer1 -> ' + }T  Actual:Expected -145B =?= -145B 
   ok\ F.6.2.0825  BUFFER:
   ok\ The "127" literals below need DECIMAL, but a
   ok\ bare DECIMAL with no restore leaks the base change forward into
@@ -138,10 +138,10 @@ OVER I C@ = AND
   okT{ DEFER defer4 -> }T
   okT{ ' * ' defer4 DEFER! -> }T
   okT{ 2 3 defer4 -> 6 }T  Actual:Expected 6 =?= 6 
-  okT{ ' defer4 DEFER@ -> ' * }T  Actual:Expected -13FA =?= -13FA 
+  okT{ ' defer4 DEFER@ -> ' * }T  Actual:Expected -1405 =?= -1405 
   okT{ ' + IS defer4 -> }T
   okT{ 1 2 defer4 -> 3 }T  Actual:Expected 3 =?= 3 
-  okT{ ' defer4 DEFER@ -> ' + }T  Actual:Expected -1450 =?= -1450 
+  okT{ ' defer4 DEFER@ -> ' + }T  Actual:Expected -145B =?= -145B 
   ok\ F.6.2.1725  IS
   okT{ DEFER defer5 -> }T
   okT{ : is-defer5 IS defer5 ; -> }T

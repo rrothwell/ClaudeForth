@@ -22,9 +22,9 @@ USROMEND    EQU   VECTORS-1         ; usable ROM end (VECTORS-1)
 VECTORS     EQU   $FFF0
 INITCODE    EQU   $FFA4             ; start of the init code (COLDSTRT)
             ; Commented-out code moved to shadow: MEMMAP.5
-BASECODE    EQU   $DA30             ; base code. See shadow MEMMAP.6
+BASECODE    EQU   $D95C             ; base code. See shadow MEMMAP.6
             ; Commented-out code moved to shadow: MEMMAP.7
-BASEDICT    EQU   $D0E2             ; base dictionary. See shadow MEMMAP.8
+BASEDICT    EQU   $CFC3             ; base dictionary. See shadow MEMMAP.8
 INOUT       EQU   $C000             ; I/O block (ACIA), 256 bytes
 INOUTEND    EQU   INOUT+$FF
 RSTACK      EQU   $BFFF             ; return stack top
@@ -186,7 +186,7 @@ TAGQDO      EQU   7                 ; ?DO marker. See bugfix: TAGQDO.1
 
 ; ============================================================
 ; GLOBALS - scratch and state cells in page zero (DP = $00, set in
-; COLDSTRT), laid out in RMB order. 107 of 256 bytes are used
+; COLDSTRT), laid out in RMB order. 131 of 256 bytes are used
 ; (GLOBALS_USED). Original comment: shadow GLOBALS.0.
 ; ============================================================
             ORG   $0000             ; GLOBALS page (DP = $00)
@@ -239,8 +239,8 @@ SUBFREE     RMB   2                 ; offset $43: next free byte of SUBPOOL, 0 =
 ; holds the newest header of that wordlist (0 = empty). WLEND is the
 ; address just past the last WLHEADS cell in use. ORDER holds the
 ; WIDs of the search order, first searched at the lowest address, and
-; ORDEND is the address just past the last one in use. ROOT is not
-; held here: it is always searched, last. WLEND, CURRENT, ORDEND and
+; ORDEND is the address just past the last one in use. The second
+; wordlist is ROOT, which is also always searched, last. WLEND, CURRENT, ORDEND and
 ; ORDER are adjacent because MARKER saves and restores them together
 ; (SRCHSAVE, SRCHSAVESZ). See shadow WLHEADS.1
 SRCHSAVE
@@ -249,10 +249,14 @@ CURRENT     RMB   2                 ; offset $47: WID that receives new words
 ORDEND      RMB   2                 ; offset $49
 ORDER       RMB   16                ; offset $4B-$5A: up to 8 WIDs
 SRCHSAVESZ  EQU   *-SRCHSAVE
-WLHEADS     RMB   16                ; offset $5B-$6A: up to 8 wordlists
-WLMAX       EQU   8
+WLHEADS     RMB   20                ; offset $5B-$6E: FORTH, ROOT, 8 more
+WLNAMES     RMB   20                ; offset $6F-$82: for each wordlist the header
+                                    ; of the word that names it (0 = none)
+WLNOFF      EQU   WLNAMES-WLHEADS   ; from a WID to its WLNAMES cell
+WLCELLS     EQU   10                ; wordlists, including FORTH and ROOT
+WLMAX       EQU   8                 ; WIDs in the search order
 
-GLOBALS_USED EQU   107              ; bytes used, of 256 available
+GLOBALS_USED EQU   131              ; bytes used, of 256 available
 
 ; $0100-$0105 is unclaimed (was MVSCRATCH). See shadow MVSCRATCH.1
 
@@ -382,7 +386,43 @@ H_DEFINITIONS:
             FDB   H_SETCUR
             FDB   DEFINITIONSW
 
-BASEROOTLATEST EQU H_DEFINITIONS
+H_ONLY:     FCB   4
+            FCC   "ONLY"
+            FDB   H_DEFINITIONS
+            FDB   ONLYW
+
+H_ALSO:     FCB   4
+            FCC   "ALSO"
+            FDB   H_ONLY
+            FDB   ALSOW
+
+H_PREVIOUS: FCB   8
+            FCC   "PREVIOUS"
+            FDB   H_ALSO
+            FDB   PREVIOUSW
+
+H_ORDER:    FCB   5
+            FCC   "ORDER"
+            FDB   H_PREVIOUS
+            FDB   ORDERW
+
+H_VOCABULARY:
+            FCB   10
+            FCC   "VOCABULARY"
+            FDB   H_ORDER
+            FDB   VOCABULARYW
+
+H_ROOT:     FCB   4
+            FCC   "ROOT"
+            FDB   H_VOCABULARY
+            FDB   ROOTW
+
+H_FORTH:    FCB   5
+            FCC   "FORTH"
+            FDB   H_ROOT
+            FDB   FORTHW
+
+BASEROOTLATEST EQU H_FORTH
 
 ; Search order: head first, and so last in memory. See shadow SECTION27.1.
 ; Headers are laid out tail first, so each LINK points back to the header
@@ -3500,11 +3540,11 @@ SOLOOP:     LDX   ,S
             CMPX  #0
             BEQ   SOLOOP
             BRA   SORDONE
-SOROOT:     LDX   #BASEROOTLATEST
+SOROOT:     LDX   WLHEADS+2         ; ROOT
             LDY   3,S
             LDB   2,S
             BSR   FDSEARCH
-SORDONE:     LEAS  5,S
+SORDONE:    LEAS  5,S
             RTS
 
 ; ------------------------------------------------------------
@@ -3603,26 +3643,29 @@ WIDBAD:     LDD   #-11
             JMP   THROWW
 
 ; ------------------------------------------------------------
-; Set the Search-Order state to its initial value: one wordlist
-; (FORTH, holding the ROM dictionary), the search order FORTH, and
-; CURRENT = FORTH.
+; Set the Search-Order state to its initial value: two wordlists
+; (FORTH, holding the ROM dictionary, and ROOT), the search order
+; FORTH, and CURRENT = FORTH.
 ; WLINIT
 ;    Inputs:
 ;        none
 ;    Outputs:
-;        WLHEADS(0), WLEND, CURRENT, ORDER, ORDEND set
+;        WLHEADS, WLNAMES (FORTH, ROOT), WLEND, CURRENT, ORDER, ORDEND set
 ;    Registers: RegD and CC changed.
 ; ------------------------------------------------------------
 WLINIT:     LDD   #BASELATEST
             STD   WLHEADS
-            LDD   #WLHEADS+2
+            LDD   #BASEROOTLATEST
+            STD   WLHEADS+2
+            LDD   #H_FORTH
+            STD   WLNAMES
+            LDD   #H_ROOT
+            STD   WLNAMES+2
+            LDD   #WLHEADS+4
             STD   WLEND
             LDD   #WLHEADS
             STD   CURRENT
-            STD   ORDER
-            LDD   #ORDER+2
-            STD   ORDEND
-            RTS
+            JMP   ONLYW             ; the order is FORTH only
 
 ; ------------------------------------------------------------
 ; Remove from every wordlist the RAM headers that are at or above a
@@ -3662,13 +3705,14 @@ PRNDONE:     LEAS  2,S
 ; ============================================================
 ; ------------------------------------------------------------
 ; WORDLIST  ( -- wid )
-; Create a new, empty wordlist. Throws -8 when all WLMAX are in use.
+; Create a new, empty wordlist. Throws -8 when all WLCELLS are in use.
 ; ------------------------------------------------------------
 WORDLISTW:  LDX   WLEND
-            CMPX  #WLHEADS+2*WLMAX
+            CMPX  #WLHEADS+2*WLCELLS
             BHS   WLFULL
             LDD   #0
             STD   ,X
+            STD   WLNOFF,X
             PSHU  X
             LEAX  2,X
             STX   WLEND
@@ -3711,12 +3755,7 @@ GODONE:     LDD   ORDEND
 ; ------------------------------------------------------------
 SETORDERW:  PULU  D                 ; n
             CMPD  #-1
-            BNE   SO1
-            LDD   #WLHEADS
-            STD   ORDER
-            LDD   #ORDER+2
-            STD   ORDEND
-            RTS
+            BEQ   ONLYW             ; the minimum order
 SO1:        TSTA
             BMI   SOUNDER
             BNE   SOOVER
@@ -3780,6 +3819,167 @@ DEFINITIONSW:
 DFUNDER:    LDD   #-50
             PSHU  D
             JMP   THROWW
+
+; ------------------------------------------------------------
+; ONLY  ( -- )
+; Set the minimum search order: FORTH only (ROOT is still searched).
+; ------------------------------------------------------------
+ONLYW:      LDD   #WLHEADS
+            STD   ORDER
+            LDD   #ORDER+2
+            STD   ORDEND
+            RTS
+
+; ------------------------------------------------------------
+; Replace the first wordlist of the search order with the WID in RegX,
+; or make it the only one if the order is empty.
+; SETTOP
+;    Inputs:
+;        RegX = WID
+;    Outputs:
+;        ORDER(0) = WID; ORDEND at least ORDER+2
+;    Registers: RegD and CC changed.
+; ------------------------------------------------------------
+SETTOP:     STX   ORDER
+            LDD   ORDEND
+            CMPD  #ORDER+2
+            BHS   STDONE
+            LDD   #ORDER+2
+            STD   ORDEND
+STDONE:     RTS
+
+; ------------------------------------------------------------
+; FORTH  ( -- )
+; Replace the first wordlist of the search order with FORTH-WORDLIST.
+; ------------------------------------------------------------
+FORTHW:     LDX   #WLHEADS
+            BRA   SETTOP
+
+; ------------------------------------------------------------
+; ROOT  ( -- )
+; Replace the first wordlist of the search order with ROOT.
+; ------------------------------------------------------------
+ROOTW:      LDX   #WLHEADS+2
+            BRA   SETTOP
+
+; ------------------------------------------------------------
+; PREVIOUS  ( -- )
+; Remove the first wordlist from the search order. Throws -50 if the
+; order is empty.
+; ------------------------------------------------------------
+PREVIOUSW:  LDX   ORDEND
+            CMPX  #ORDER
+            BLS   DFUNDER
+            LEAX  -2,X
+            STX   ORDEND
+            LDX   #ORDER            ; close the gap at the front
+PVLOOP:     CMPX  ORDEND
+            BHS   PVDONE
+            LDD   2,X
+            STD   ,X++
+            BRA   PVLOOP
+PVDONE:     RTS
+
+; ------------------------------------------------------------
+; ALSO  ( -- )
+; Duplicate the first wordlist of the search order. Throws -50 if the
+; order is empty and -49 if it is full.
+; ------------------------------------------------------------
+ALSOW:      LDX   ORDEND
+            CMPX  #ORDER
+            BLS   DFUNDER
+            CMPX  #ORDER+2*WLMAX
+            BHS   SOOVER
+            LEAX  2,X
+            STX   ORDEND
+ALLOOP:     LDD   -4,X              ; open a gap at the front
+            STD   -2,X
+            LEAX  -2,X
+            CMPX  #ORDER+2
+            BHI   ALLOOP
+            RTS
+
+; ------------------------------------------------------------
+; The behaviour of a word made by VOCABULARY: replace the first
+; wordlist of the search order with the wordlist whose WID is in the
+; word's data field.
+; DOVOCAB   ( pfa -- )
+; ------------------------------------------------------------
+DOVOCAB:    PULU  X
+            LDX   ,X
+            BRA   SETTOP
+
+; ------------------------------------------------------------
+; VOCABULARY  ( "name" -- )
+; Create a new wordlist and a word that makes it the first wordlist of
+; the search order. The word's header is recorded for ORDER.
+; Throws -8 when all the wordlists are in use.
+; ------------------------------------------------------------
+VOCABULARYW:
+            JSR   WORDLISTW
+            LDD   #DOVOCAB
+            JSR   BLDSELF
+            LDX   ,U                ; WID
+            LDD   LATEST
+            STD   WLNOFF,X          ; the header of the naming word
+            JMP   COMMAW
+
+; ------------------------------------------------------------
+; Display a wordlist: its name if it has one, else its WID, then a space.
+; PRWID
+;    Inputs:
+;        RegD = WID
+;    Outputs:
+;        text sent with TYPE and SPACE or "."
+;    Registers: RegD, RegX, RegY and CC changed.
+; ------------------------------------------------------------
+PRWID:      PSHS  D
+            TFR   D,X
+            LDX   WLNOFF,X
+            BEQ   PRNUM
+            CMPX  #ROMSTRT
+            BHS   PRNAME
+            CMPX  DPHERE
+            BHS   PRNUM             ; a name that has been forgotten
+PRNAME:     LDB   ,X
+            ANDB  #$1F
+            CLRA
+            LEAX  1,X
+            PSHU  X
+            PSHU  D
+            JSR   TYPEW
+            JSR   SPACEW
+            LEAS  2,S
+            RTS
+PRNUM:      PULS  D
+            PSHU  D
+            JMP   DOTW
+
+; ------------------------------------------------------------
+; ORDER  ( -- )
+; Display the search order, first wordlist first, then the wordlist
+; that receives new definitions.
+; ------------------------------------------------------------
+ORDERW:     LDX   #ORDER
+            PSHS  X                 ; next ORDER cell
+OLOOP:      LDX   ,S
+            CMPX  ORDEND
+            BHS   ODONE
+            LDD   ,X++
+            STX   ,S
+            BSR   PRWID
+            BRA   OLOOP
+ODONE:      LEAS  2,S
+            LDX   #CURMSG
+            PSHU  X
+            LDD   #CURMSGL
+            PSHU  D
+            JSR   TYPEW
+            LDD   CURRENT
+            BSR   PRWID
+            JMP   CRW
+CURMSG:     FCC   " Current: "
+CURMSGL     EQU   *-CURMSG
 
 ; ------------------------------------------------------------
 ; Multiply the unsigned double ud on the data stack by BASE and add a

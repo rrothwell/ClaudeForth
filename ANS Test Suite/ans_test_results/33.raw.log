@@ -2,9 +2,10 @@
   ok\ ANS test suite - Search-Order word set (Phase 1)
   ok\ WORDLIST FORTH-WORDLIST GET-ORDER SET-ORDER FIND
   ok\ SEARCH-WORDLIST GET-CURRENT SET-CURRENT DEFINITIONS
+  ok\ ONLY ALSO PREVIOUS FORTH ROOT VOCABULARY
   ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded first.
-  ok\ Written for this project (forth6809_stage_6f and later); the
-  ok\ ANS Annex F search-order tests need ONLY/ALSO (Phase 2).
+  ok\ Written for this project (forth6809_stage_6g and later; the
+  ok\ first part also runs on 6f).
   ok\ MARKER restores the search order too, so the system is left as
   ok\ it was found, including the wordlists created here.
   ok\ ============================================================
@@ -27,7 +28,7 @@
   okT{ S" DUP" WL1 SEARCH-WORDLIST -> 0 }T  Actual:Expected 0 =?= 0 
   okT{ S" GET-ORDER" FORTH-WORDLIST SEARCH-WORDLIST NIP -> -1 }T  Actual:Expected -1 =?= -1 
   ok\ ---- SET-CURRENT: new words go into the current wordlist
-  okT{ WL1 SET-CURRENT : TW1 123 ; GET-CURRENT -> WL1 }T  Actual:Expected 93 =?= 93 
+  okT{ WL1 SET-CURRENT : TW1 123 ; GET-CURRENT -> WL1 }T  Actual:Expected 95 =?= 95 
   okT{ FORTH-WORDLIST SET-CURRENT : TW2 234 ; GET-CURRENT -> FORTH-WORDLIST }T  Actual:Expected 91 =?= 91 
   okT{ S" TW1" WL1 SEARCH-WORDLIST NIP -> -1 }T  Actual:Expected -1 =?= -1 
   okT{ S" TW1" FORTH-WORDLIST SEARCH-WORDLIST -> 0 }T  Actual:Expected 0 =?= 0 
@@ -37,7 +38,7 @@
   okT{ WL2 SET-CURRENT : TW3 1 ; IMMEDIATE FORTH-WORDLIST SET-CURRENT -> }T
   okT{ S" TW3" WL2 SEARCH-WORDLIST NIP -> 1 }T  Actual:Expected 1 =?= 1 
   ok\ ---- SET-ORDER / GET-ORDER
-  okT{ FORTH-WORDLIST WL1 2 SET-ORDER GET-ORDER -> FORTH-WORDLIST WL1 2 }T  Actual:Expected 2 =?= 2 93 =?= 93 91 =?= 91 
+  okT{ FORTH-WORDLIST WL1 2 SET-ORDER GET-ORDER -> FORTH-WORDLIST WL1 2 }T  Actual:Expected 2 =?= 2 95 =?= 95 91 =?= 91 
   okT{ TW1 -> 123 }T  Actual:Expected 123 =?= 123 
   ok: TC1 TW1 ;
   okT{ FORTH-WORDLIST 1 SET-ORDER GET-ORDER -> FORTH-WORDLIST 1 }T  Actual:Expected 1 =?= 1 91 =?= 91 
@@ -52,7 +53,7 @@
   okT{ FORTH-WORDLIST WL1 WL1 3 SET-ORDER TX -> 1 }T  Actual:Expected 1 =?= 1 
   okT{ -1 SET-ORDER -> }T
   ok\ ---- DEFINITIONS
-  okT{ FORTH-WORDLIST WL1 2 SET-ORDER DEFINITIONS GET-CURRENT -> WL1 }T  Actual:Expected 93 =?= 93 
+  okT{ FORTH-WORDLIST WL1 2 SET-ORDER DEFINITIONS GET-CURRENT -> WL1 }T  Actual:Expected 95 =?= 95 
   okT{ WL1 FORTH-WORDLIST 2 SET-ORDER DEFINITIONS GET-CURRENT -> FORTH-WORDLIST }T  Actual:Expected 91 =?= 91 
   okT{ -1 SET-ORDER DEFINITIONS GET-CURRENT -> FORTH-WORDLIST }T  Actual:Expected 91 =?= 91 
   ok\ ---- the empty order leaves nothing but ROOT: restore through
@@ -87,16 +88,48 @@
   okWLX SET-CURRENT : TM3 3 ; FORTH-WORDLIST SET-CURRENT
   okWLX FORTH-WORDLIST 2 SET-ORDER
   okMK1
-  okT{ GET-ORDER -> FORTH-WORDLIST WL1 2 }T  Actual:Expected 2 =?= 2 93 =?= 93 91 =?= 91 
+  okT{ GET-ORDER -> FORTH-WORDLIST WL1 2 }T  Actual:Expected 2 =?= 2 95 =?= 95 91 =?= 91 
   okT{ GET-CURRENT -> FORTH-WORDLIST }T  Actual:Expected 91 =?= 91 
   okT{ S" TM1" WL1 SEARCH-WORDLIST -> 0 }T  Actual:Expected 0 =?= 0 
   okT{ S" TM2" FORTH-WORDLIST SEARCH-WORDLIST -> 0 }T  Actual:Expected 0 =?= 0 
   okT{ S" MK1" FORTH-WORDLIST SEARCH-WORDLIST -> 0 }T  Actual:Expected 0 =?= 0 
   okT{ S" TW1" WL1 SEARCH-WORDLIST NIP -> -1 }T  Actual:Expected -1 =?= -1 
   okT{ -1 SET-ORDER -> }T
+  ok\ ---- Phase 2: ONLY ALSO PREVIOUS FORTH ROOT VOCABULARY
+  okT{ ONLY GET-ORDER -> FORTH-WORDLIST 1 }T  Actual:Expected 1 =?= 1 91 =?= 91 
+  okT{ ALSO GET-ORDER -> FORTH-WORDLIST FORTH-WORDLIST 2 }T  Actual:Expected 2 =?= 2 91 =?= 91 91 =?= 91 
+  okT{ PREVIOUS GET-ORDER -> FORTH-WORDLIST 1 }T  Actual:Expected 1 =?= 1 91 =?= 91 
+  okT{ FORTH-WORDLIST WL1 2 SET-ORDER FORTH GET-ORDER -> FORTH-WORDLIST FORTH-WORDLIFORTH-WORDLI
+  ERROR -13 T{ ONLY -> }T
+  ok: TDEPTH GET-ORDER DUP >R 0 DO DROP LOOP R> ;
+  okVOCABULARY VOC1
+  okVOCABULARY VOC2
+  okT{ ALSO VOC1 DEFINITIONS : VW1 11 ; VW1 -> 11 }T  Actual:Expected 11 =?= 11 
+  okT{ GET-ORDER DROP GET-CURRENT = -> FORTH-WORDLIST TRUE }T  Actual:Expected -1 =?= -1 91 =?= 91 
+  okT{ ONLY FORTH DEFINITIONS -> }T
+  okT{ S" VW1" FORTH-WORDLIST SEARCH-WORDLIST -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ ALSO VOC1 VW1 -> 11 }T  Actual:Expected 11 =?= 11 
+  okT{ PREVIOUS TDEPTH -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ ONLY FORTH ALSO VOC2 ALSO VOC1 TDEPTH -> 3 }T  Actual:Expected 3 =?= 3 
+  okT{ VOC2 TDEPTH -> 3 }T  Actual:Expected 3 =?= 3 
+  okT{ ONLY -> }T
+  okALSO VOC1 GET-ORDER DROP CONSTANT V1WID DROP PREVIOUS
+  okT{ GET-ORDER -> FORTH-WORDLIST 1 }T  Actual:Expected 1 =?= 1 91 =?= 91 
+  okT{ ALSO VOC1 ALSO GET-ORDER -> FORTH-WORDLIST V1WID V1WID 3 }T  Actual:Expected 3 =?= 3 101 =?= 101 101 =?= 101 91 =?= 91 
+  okT{ PREVIOUS GET-ORDER -> FORTH-WORDLIST V1WID 2 }T  Actual:Expected 2 =?= 2 101 =?= 101 91 =?= 91 
+  okT{ PREVIOUS GET-ORDER -> FORTH-WORDLIST 1 }T  Actual:Expected 1 =?= 1 91 =?= 91 
+  okT{ ONLY -> }T
+  okALSO ROOT GET-ORDER DROP CONSTANT ROOTWID DROP PREVIOUS
+  okT{ S" ONLY" ROOTWID SEARCH-WORDLIST NIP -> -1 }T  Actual:Expected -1 =?= -1 
+  okT{ S" DUP" ROOTWID SEARCH-WORDLIST -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ ROOTWID FORTH-WORDLIST = -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ ROOTWID WL1 = -> 0 }T  Actual:Expected 0 =?= 0 
+  ok: TF2 ONLY 7 0 DO ALSO LOOP ALSO ;
+  okT{ ' TF2 CATCH -> -49 }T  Actual:Expected -49 =?= -49 
+  okT{ ONLY TDEPTH -> 1 }T  Actual:Expected 1 =?= 1 
   okHEX
   okTEST-END
-TEST SUMMARY: 51 run, 0 failed
+TEST SUMMARY: 75 run, 0 failed
 
   okM33
   ok

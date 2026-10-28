@@ -97,7 +97,9 @@ TSTDSLO     EQU   $01F4             ; in a single cell, for D>S
 ;    Registers: all changed.
 ; Original comment: shadow TSTREPORT.0.
 ; ------------------------------------------------------------
-TSTREPORT:  PULU  D
+TSTREPORT:  JSR   WLINIT            ; tests that build headers leave FORTH's head
+                                    ; pointing into scratch: reset the wordlists
+            PULU  D
             STD   TSTFLAG
             JSR   COUNTW
             JSR   TYPEW
@@ -7957,7 +7959,9 @@ TSTENDFZNAME:
 ; ------------------------------------------------------------
 ; defining-words tests (glossary section 3.9, 17 words, 12
 ; tests since VALUE/TO and IS/ACTION-OF are each combined
-; into one test).
+; into one test). TSTSELECTOR 8 runs VARIABLE, CONSTANT, :,
+; CREATE/DOES>, 2VARIABLE and 2CONSTANT; TSTSELECTOR 19 runs
+; BUFFER:, VALUE/TO, DEFER, DEFER@/DEFER!, IS/ACTION-OF and MARKER.
 ; TSTDEFWORDS
 ;    Inputs:
 ;        none
@@ -7983,6 +7987,11 @@ TSTDEFWORDS:
             JSR   TSTCRDOES
             JSR   TST2VAR
             JSR   TST2CONST
+
+            ENDC                    ; <<<<
+
+            IFEQ  TSTSELECTOR-19    ; >>>>
+
             JSR   TSTBUFC
             JSR   TSTVALTO
             JSR   TSTDEFER1
@@ -8735,6 +8744,13 @@ T2CDONE:    LDX   #TST2CONSTNAME
 TST2CONSTNAME:
             FCB   9
             FCC   "TST2CONST"
+
+            ENDC                    ; <<<<
+
+; Group 19: the Core Extension defining words (BUFFER:, VALUE/TO,
+; DEFER, DEFER@/DEFER!, IS/ACTION-OF, MARKER), split from group 8
+; (TSTSELECTOR 8) to keep each group within the unused ROM.
+            IFEQ  TSTSELECTOR-19    ; >>>>
 
 ; ------------------------------------------------------------
 ; unit test for BUFFER:.
@@ -9519,6 +9535,7 @@ TSTMARKER:  LDD   CODEHERE
             STD   VARHERE
             LDD   #TSTFHDR
             STD   LATEST
+            STD   WLHEADS          ; FIND searches the wordlist, not LATEST
 
             LDX   TSTWCFA
             JSR   ,X
@@ -9682,6 +9699,7 @@ TSTIMMED:   LDD   LATEST
 
             LDD   #TSTFHDR
             STD   LATEST
+            STD   WLHEADS          ; FIND searches the wordlist, not LATEST
 
             STU   TSTU0
 
@@ -9879,6 +9897,7 @@ TSTTICK1:   LDD   CODEHERE
             STD   CODEHERE
             LDD   #TSTFHDR
             STD   LATEST
+            STD   WLHEADS          ; FIND searches the wordlist, not LATEST
             LDD   #TSTNAMEB
             STD   SRCADDR
             LDD   #3
@@ -10212,6 +10231,7 @@ TSTBRACKTICK1:
             STD   CODEHERE
             LDD   #TSTFHDR
             STD   LATEST
+            STD   WLHEADS          ; FIND searches the wordlist, not LATEST
             LDD   #TSTNAMEB
             STD   SRCADDR
             LDD   #3
@@ -10312,6 +10332,7 @@ TSTBRACKTICK2:
             STD   CODEHERE
             LDD   #TSTFHDR
             STD   LATEST
+            STD   WLHEADS          ; FIND searches the wordlist, not LATEST
             LDD   #TSTNAMEB
             STD   SRCADDR
             LDD   #3
@@ -10415,6 +10436,7 @@ TSTPOSTPONE1:
             STD   CODEHERE
             LDD   #TSTFHDR
             STD   LATEST
+            STD   WLHEADS          ; FIND searches the wordlist, not LATEST
             LDD   #TSTNAMEB
             STD   SRCADDR
             LDD   #3
@@ -10536,6 +10558,7 @@ TSTPOSTPONE2:
             STD   CODEHERE
             LDD   #TSTFHDR
             STD   LATEST
+            STD   WLHEADS          ; FIND searches the wordlist, not LATEST
             LDD   #TSTNAMEB
             STD   SRCADDR
             LDD   #3
@@ -10648,6 +10671,7 @@ TSTXCOMPILE1:
             STD   CODEHERE
             LDD   #TSTFHDR
             STD   LATEST
+            STD   WLHEADS          ; FIND searches the wordlist, not LATEST
             LDD   #TSTNAMEB
             STD   SRCADDR
             LDD   #3
@@ -10764,6 +10788,7 @@ TSTXCOMPILE2:
             STD   CODEHERE
             LDD   #TSTFHDR
             STD   LATEST
+            STD   WLHEADS          ; FIND searches the wordlist, not LATEST
             LDD   #TSTNAMEB
             STD   SRCADDR
             LDD   #3
@@ -17792,6 +17817,9 @@ TSTDSNAME:  FCB   7
 ; ------------------------------------------------------------
 TSTWORDS:   LDD   LATEST
             STD   TSTLSAV
+            LDD   WLHEADS           ; WORDS lists the first wordlist of the
+            STD   TSTLSAV2          ; search order (FORTH): point it at the
+                                    ; fake chain too
 
             LDA   #2
             STA   TSTCBUF
@@ -17817,6 +17845,7 @@ TSTWORDS:   LDD   LATEST
 
             LDD   #TSTCBUF+10
             STD   LATEST
+            STD   WLHEADS
 
             IFEQ  SERIALPOLL        ; >>>>
             LDA   OUTHEAD
@@ -17832,6 +17861,8 @@ TSTWORDS:   LDD   LATEST
 
             LDD   TSTLSAV
             STD   LATEST
+            LDD   TSTLSAV2
+            STD   WLHEADS
 
             IFEQ  SERIALPOLL        ; >>>>
             LDA   TSTOHSAV

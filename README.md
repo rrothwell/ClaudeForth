@@ -169,12 +169,12 @@ brew install binutils
 | Complete ANS string implementation with tests  | |:white_check_mark:|.
 | Development support words such as [IF], [ELSE], [THEN], .(), etc..  | |:white_check_mark:|
 | Reorganise dictionary ordering to improved compilation speed.  | |:white_check_mark:|
+| Dictionary vocabulary support. | | |
 | Run some benchmarks.  | ||
 | Forth decompiler.  | | |
 | Reorganise memory map so that the stacks are below $8000. Move the in-RAM code and dictionary up to fill the gap below $C000. | | |
 | Adjust DICT:CODE ratio to 1:4| | |
 | Vectored I/O. In particular the ability to programatically change the behavior of EMIT, etc..  | | |
-| Dictionary vocabulary support. | | |
 | Format the output of WORDS to 10 forth words per line. Possibly pad each word to 8 character width and if longer to 16 character width.  | | |
 | Format the output of DUMP to show an address per line. | | |
 | Inbuilt assembler.  | | |
@@ -188,5 +188,6 @@ brew install binutils
 | Improve the number parser to recognise binary and hexadecimal numbers.  | | |
 | Move the serial communications code to an include file.  | | |
 | Debugging support. | | |
+| Tandy CoCo. Port | | |
 
 

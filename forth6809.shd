@@ -651,22 +651,23 @@ GLOBALS.1  [history]  (lines 769-770 of the stage-3p file)
                                     ; fully packed bar 1: 255 of 256 bytes used, 1 free.
 
 ================================================================
-WLHEADS.1  [design (stage 6f)]
+WLHEADS.1  [design (stages 6f, 6g)]
 ----------------------------------------------------------------
-Search-Order state in page zero (38 bytes, $45-$6A; GLOBALS_USED 69 -> 107):
+Search-Order state in page zero (62 bytes, $45-$82; GLOBALS_USED 69 -> 131):
   WLEND    $45  address just past the last WLHEADS cell in use
   CURRENT  $47  WID that receives new definitions (HEADER links into it)
   ORDEND   $49  address just past the last ORDER cell in use
   ORDER    $4B  up to 8 WIDs, first searched at the lowest address ($4B-$5A)
-  WLHEADS  $5B  up to 8 cells, each the newest header of one wordlist ($5B-$6A)
-A WID is the address of its WLHEADS cell, so FORTH-WORDLIST is $5B (91). ROOT is not
-in ORDER: it is always searched last. WLEND, CURRENT, ORDEND and ORDER are adjacent
-so MARKER can save and restore them as one block of SRCHSAVESZ (22) bytes. Pointers
-(WLEND, ORDEND) are kept instead of counts, which saves the scaling by two in every
-loop. WLINIT sets WLHEADS(0) = BASELATEST, WLEND = WLHEADS+2, CURRENT = FORTH and the
-order to FORTH only. LATEST is unchanged in meaning: the newest header of any
-wordlist. IMMEDIATE, SETDOES and the smudge clear in ; use it.
-
+  WLHEADS  $5B  10 cells, each the newest header of one wordlist ($5B-$6E)
+  WLNAMES  $6F  10 cells, the header of the word that names each wordlist, or 0
+A WID is the address of its WLHEADS cell. Cell 0 is FORTH ($5B, 91) and cell 1 is ROOT
+($5D, 93); WORDLIST and VOCABULARY hand out cells 2 to 9. The WLNAMES cell of a WID is
+at WID+WLNOFF. ORDER, WLEND, ORDEND and CURRENT are adjacent so MARKER can save and
+restore them as one block of SRCHSAVESZ (22) bytes. Pointers (WLEND, ORDEND) are kept
+instead of counts, which saves the scaling by two in every loop. WLINIT sets both
+predefined wordlists, their names (H_FORTH, H_ROOT), CURRENT = FORTH and the order to
+FORTH only. LATEST is unchanged in meaning: the newest header of any wordlist.
+IMMEDIATE, SETDOES and the smudge clear in ; use it.
 ================================================================
 MVSCRATCH.1  [history]  (lines 792-794 of the stage-3p file)
 ----------------------------------------------------------------
@@ -781,20 +782,19 @@ The old order placed H_FIND, >NUMBER and the number words 1/-1/2/-2 after H_QUIT
 H_ABORT/H_QUIT sat between them and the rest; see H_ABORT.0 for the earlier chain.
 
 ================================================================
-BASEROOTLATEST.1  [design (stage 6f)]
+BASEROOTLATEST.1  [design (stages 6f, 6g)]
 ----------------------------------------------------------------
-The ROOT wordlist is the eight Search-Order words WORDLIST, FORTH-WORDLIST, GET-ORDER,
-SET-ORDER, SEARCH-WORDLIST, GET-CURRENT, SET-CURRENT and DEFINITIONS. Their headers
-come first in BASEDICT, with LINK 0 for the first and BASEROOTLATEST naming the last.
-The first FORTH header (H_BRTHEN) links to BASEROOTLATEST, so the FORTH chain ends in
-the ROOT words and FORTH-WORDLIST contains them, as the standard requires. ROOT is
-also searched last for every search order (SRCHORD), so the words stay reachable
-after 0 SET-ORDER. ROOT is read only and has no WID: nothing can add to it, and
-FORTH-WORDLIST SEARCH-WORDLIST finds the ROOT words through the FORTH chain. A
-consequence is that a name looked up in a list that does not end in ROOT takes one
-extra pass over eight headers when it is not found.
-FIND stays in the FORTH chain, not in ROOT, so after 0 SET-ORDER it is not available.
-
+The ROOT wordlist is the Search-Order words: WORDLIST, FORTH-WORDLIST, GET-ORDER,
+SET-ORDER, SEARCH-WORDLIST, GET-CURRENT, SET-CURRENT, DEFINITIONS, ONLY, ALSO,
+PREVIOUS, ORDER, VOCABULARY, ROOT and FORTH. Their headers come first in BASEDICT, with
+LINK 0 for the first and BASEROOTLATEST (H_FORTH) naming the last. The first FORTH
+header (H_BRTHEN) links to BASEROOTLATEST, so the FORTH chain ends in the ROOT words and
+FORTH-WORDLIST contains them, as the standard requires. ROOT is searched last for every
+search order (SRCHORD), through its WLHEADS cell, so the words stay reachable after
+0 SET-ORDER and words added with ROOT DEFINITIONS are found too. A name looked up in a
+list that does not end in ROOT takes one extra pass over fifteen headers when it is
+not found. FIND stays in the FORTH chain, not in ROOT, so after 0 SET-ORDER it is not
+available.
 ================================================================
 H_NONAME.1  [explanatory]  (lines 1038-1039 of the stage-3q file)
 ----------------------------------------------------------------
@@ -1543,9 +1543,9 @@ holds real state (the xt being compiled, for RECURSE). S frames survive THROW
 because CATCH and THROW restore S.
 
 ================================================================
-SEARCHORDER.1  [design (stage 6f)]
+SEARCHORDER.1  [design (stages 6f, 6g)]
 ----------------------------------------------------------------
-Phase 1 of the Search-Order word set (wordlist_design.md). Changes from stage 6e:
+The Search-Order word set (wordlist_design.md). Changes from stage 6e:
   FIND         now FDSEARCH over each wordlist of ORDER (SRCHORD), then ROOT. The
                counted-string interface and results are unchanged.
   HEADER       the LINK is the head of the CURRENT wordlist, which then points at the
@@ -1559,17 +1559,30 @@ Phase 1 of the Search-Order word set (wordlist_design.md). Changes from stage 6e
                every older wordlist. A marker is now 8 + 22 + the usual bytes.
   SNAME, WORDS SNAME walks every wordlist. WORDS lists the first wordlist of the
                order (ROOT if the order is empty).
-  ENVIRONMENT? WORDLISTS is 8.
+  ENVIRONMENT? WORDLISTS is 8, the depth of the search order.
   COLDSTRT, COLD both call WLINIT. COLDSTRT must, so FIND works for the unit tests.
-Exceptions: -49 SET-ORDER with n > 8; -50 SET-ORDER with n < -1, or DEFINITIONS when
-the order is empty; -11 for a WID that is not a wordlist in use (SET-ORDER,
-SET-CURRENT, SEARCH-WORDLIST); -8 from WORDLIST when 8 exist.
+Stage 6g adds ONLY (= -1 SET-ORDER), ALSO (copy the first WID to the front), PREVIOUS
+(remove the first WID), FORTH and ROOT (replace the first WID, or set it if the order
+is empty), VOCABULARY (a WORDLIST plus a word, built like CONSTANT with the behaviour
+DOVOCAB, that replaces the first WID) and ORDER (names or numbers, then Current:). The
+first WID is the lowest ORDER cell, so ALSO and PREVIOUS move the whole array. ORDER finds
+names through WLNAMES and shows the WID as a number when there is no name or the naming
+header has been forgotten.
+Exceptions: -49 SET-ORDER with n > 8, or ALSO with a full order; -50 SET-ORDER with
+n < -1, or DEFINITIONS, ALSO or PREVIOUS with an empty order; -11 for a WID that is not
+a wordlist in use (SET-ORDER, SET-CURRENT, SEARCH-WORDLIST); -8 from WORDLIST and
+VOCABULARY when 10 wordlists exist.
 Not standard: 0 SET-ORDER leaves an empty order in which ROOT is still searched.
 SEARCH-WORDLIST returns 0 for u > 31.
-Memory: BASEDICT grew 2254 -> 2382 bytes, BASECODE 8803 -> 9266 (polled) and
-9122 -> 9585 (interrupt), INITCODE 72 -> 75. BASECODE is $DA30 and BASEDICT $D0E2, so the
-unit-test region is $C100-$D0E2 (3,938 bytes, was 4,642). Interrupt build: BASECODE
-ends $FFA1, 3 bytes below INITCODE.
+Memory, stage 6h: BASEDICT 2254 -> 2457 bytes, BASECODE 8803 -> 9478 (polled) and
+9122 -> 9797 (interrupt), INITCODE 72 -> 75. BASECODE is $D95C and BASEDICT $CFC3, so
+the unit-test region is $C100-$CFC3 (3,779 bytes, was 4,642). Interrupt build: BASECODE
+ends $FFA1, 3 bytes below INITCODE. Unit-test group 8 was split: group 8 keeps VARIABLE,
+CONSTANT, :, CREATE/DOES>, 2VARIABLE, 2CONSTANT and group 19 has the Core Extension
+defining words. Group 9 is the tightest, ending $CFBD.
+Unit tests and the search order: FIND, SNAME and WORDS use the wordlists, not LATEST. Tests
+that fake a header chain set WLHEADS as well as LATEST, and TSTREPORT calls WLINIT so a
+test that builds real headers cannot leave FORTH's head pointing into scratch.
 
 ================================================================
 FINDW.1  [history (stage 5l)]
