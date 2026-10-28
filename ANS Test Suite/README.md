@@ -93,7 +93,7 @@ python3 ans_test_runner.py \
     --retrigger-cmd $HOME/git/ClaudeForth/ANS\ Test\ Suite/retrigger.cmd \
     --skip-assemble \
     --ans-dir $HOME/git/ClaudeForth/ANS\ Test\ Suite/ans_tests \
-    --sections 08 09 10 11 12 13 14 15 16 17 18 19 20 21 23 24 26 27 28 29 30 31 \
+    --sections 08 09 10 11 12 13 14 15 16 17 18 19 20 21 23 24 26 27 28 29 30 31 33\
     --char-delay 0.05 \
     --retries 0 \
     --log-dir $HOME/git/ClaudeForth/ANS\ Test\ Suite/ans_test_results
@@ -339,7 +339,19 @@ are aligned with one file per forth6809.asm section
 (matching the exact same numbering and filenames as `forth6809_split/`).
 These contain every ANS test block for the words that each section implements.
 
-There are 153 test blocks placed across 17 section files. 
+`33_search_order.tests.fs` covers the Search-Order word set: `WORDLIST`,
+`FORTH-WORDLIST`, `GET-ORDER`, `SET-ORDER`, `SEARCH-WORDLIST`, `GET-CURRENT`,
+`SET-CURRENT`, `DEFINITIONS`, `ONLY`, `ALSO`, `PREVIOUS`, `FORTH`, `ROOT`,
+`VOCABULARY` and `ORDER`, and the `FIND`, `WORDS` and `MARKER` behaviour that
+depends on them (76 tests). Unlike the other section files it is not taken
+from Annex F, which has no Search-Order tests; it was written for this
+project. It covers the exceptions -8, -11, -49 and -50, an empty order (where
+ROOT is still searched), a full order of 8, and what `MARKER` does to
+wordlists, `CURRENT` and the order. Like the other files it begins with
+`MARKER M33` and `TEST-BEGIN` and ends with `TEST-END` and `M33`, so it
+leaves the system as it found it, including the wordlists it creates.
+
+There are 153 test blocks placed across 23 section files. 
 Sections that implement no words with an official ANS test 
 have no corresponding file.
 For example: section 5's inner-interpreter primitives like LIT/BRANCH, 
@@ -378,11 +390,13 @@ number of times, from a single shared harness+prelude load:
 - Every section file opens with `MARKER Mnn` (nn = the section
   number, e.g. `M08`) right after its header comment, and closes with a
   bare invocation of `Mnn` as its last line. `MARKER` snapshots
-  `DPHERE`/`CODEHERE`/`VARHERE`/`LATEST` when created and restores all
-  four when invoked (confirmed directly against forth6809.asm's
-  `MARKERW`/`DOMARKER`), so running a section file and then letting it
-  invoke its own marker leaves the dictionary, value-space and search
-  chain exactly as they were right after `ttester.fs` +
+`DPHERE`/`CODEHERE`/`VARHERE`/`LATEST` and the search-order state
+(`WLEND`, `CURRENT`, `ORDEND`, `ORDER`) when created, and restores all
+of them when invoked, then unlinks every header newer than the marker from
+every wordlist (confirmed directly against forth6809.asm's
+`MARKERW`/`DOMARKER`/`PRUNE`), so running a section file and then letting it
+invoke its own marker leaves the dictionary, value-space, wordlists and search
+order exactly as they were right after `ttester.fs` +
   `00_test_prelude.fs` were loaded — no leftover state for the next
   section file to trip over, whatever order they run in. 
   (`BASE` is not part of that snapshot, see *Editing Test Files*.)
@@ -457,8 +471,9 @@ Defects in `forth6809.asm` that these tests exposed are recorded in `bug_fixes.m
   compliance. Many Annex F tests are adapted for a 16-bit cell and the
   suite excludes the word sets listed below.
 - **`ENVIRONMENT?` coverage.** `X:deferred` is not in the query table, so it answers false. 
-  The test accepts either answer. `WORDLISTS` is deliberately absent 
-  (no Search-Order word set).
+  The test accepts either answer. `WORDLISTS` answers 8, the depth of the search order. 
+  The word-set queries `SEARCH-ORDER` and `SEARCH-ORDER-EXT` are not in the query table, 
+  so they answer false, although the word set is implemented.
 - **`RESTORE-INPUT` is only partly tested.** It cannot restore across `REFILL` or
   into a different source, and the success path needs a multi-line source.
 - **`ABORT` is silent.** It prints nothing and returns to the prompt, 
@@ -480,10 +495,10 @@ is not implemented or is implemented only in part:
 1. File-Access.
 1. Floating-Point.
 1. Memory-Allocation.
-1. Search-Order. 
 
-Search-Order's absence is documented explicitly
-in the ClaudeForth documentation, Section 4.5.
+The Search-Order word set is implemented and tested by
+`33_search_order.tests.fs`; see the ClaudeForth documentation, Sections 3.19,
+4.4 and 4.5.
 
 Most of the Programming-Tools word set is also omitted
 (AHEAD, CS-PICK, CS-ROLL, N>R, [THEN] etc.).
