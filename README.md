@@ -67,7 +67,8 @@ brew install binutils
 * ~~Warning: all words tested as functional, with extensive automated tests. Tagged as version 1.10.~~
 * ~~Warning: most words tested as functional, complying with the ANS Forth Test Suite. Tagged as version 1.20.~~
 * ~~Usable: all words tested as functional & performant, nearly all complying with the ANS Forth Test Suite. Tagged as version 1.30.~~
-* Trustworthy: all words tested as functional & performant, with complete test coverage, complying with the ANS Forth Test Suite. Tagged as version 1.40. 
+* ~~Trustworthy: all words tested as functional & performant, with complete test coverage, complying with the ANS Forth Test Suite. Tagged as version 1.40.~~ 
+* Developer ready: Word Lists added, complying with the ANS Forth Test Suite. Tagged as version 1.50. 
 
 | Item             | Version   | Completed   |
 |:-----------------|----------:|------------:|
@@ -92,9 +93,11 @@ brew install binutils
 |Test coverage audit and completions| 1.30|:white_check_mark:|
 |Optimisation for compiler performance| 1.40|:white_check_mark:|
 |Update documentation| 1.40|:white_check_mark:|
-|Burn ROM and install onto real MECB 6809 hardware. | 1.40| |
-|Develop a simple forth application| 1.40| |
-|Refine the documentation| 1.40| |
+|Word Lists added| 1.50|:white_check_mark:|
+|Update documentation| 1.50|:white_check_mark:|
+|Burn ROM and install onto real MECB 6809 hardware. | 1.50| |
+|Develop a simple forth application| 1.50| |
+|Refine the documentation| 1.50| |
 
 ## Assets
 ### Manifest
@@ -169,7 +172,7 @@ brew install binutils
 | Complete ANS string implementation with tests  | |:white_check_mark:|.
 | Development support words such as [IF], [ELSE], [THEN], .(), etc..  | |:white_check_mark:|
 | Reorganise dictionary ordering to improved compilation speed.  | |:white_check_mark:|
-| Dictionary vocabulary support. | | |
+| Dictionary vocabulary support. |1.50|:white_check_mark:|
 | Run some benchmarks.  | ||
 | Forth decompiler.  | | |
 | Reorganise memory map so that the stacks are below $8000. Move the in-RAM code and dictionary up to fill the gap below $C000. | | |
