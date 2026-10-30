@@ -7961,7 +7961,8 @@ TSTENDFZNAME:
 ; tests since VALUE/TO and IS/ACTION-OF are each combined
 ; into one test). TSTSELECTOR 8 runs VARIABLE, CONSTANT, :,
 ; CREATE/DOES>, 2VARIABLE and 2CONSTANT; TSTSELECTOR 19 runs
-; BUFFER:, VALUE/TO, DEFER, DEFER@/DEFER!, IS/ACTION-OF and MARKER.
+; BUFFER:, VALUE/TO, DEFER, DEFER@/DEFER!, IS/ACTION-OF, MARKER,
+; HEADER and SMUDGE.
 ; TSTDEFWORDS
 ;    Inputs:
 ;        none
@@ -7998,6 +7999,8 @@ TSTDEFWORDS:
             JSR   TSTDEFER2
             JSR   TSTISOF
             JSR   TSTMARKER
+            JSR   TSTHEADER
+            JSR   TSTSMUDGE
 
             ENDC                    ; <<<<
 
@@ -9606,6 +9609,237 @@ TSTMARKERNAME:
             FCB   9
             FCC   "TSTMARKER"
 
+; ------------------------------------------------------------
+; unit test for HEADER. Builds two headers in the scratch buffer from
+; the names "ABCDEF" and "GHIJKL", the first smudged (flag true) and
+; the second not (flag 0), and checks both headers, the links, the
+; code field addresses, DPHERE, LATEST and the head of the FORTH
+; wordlist.
+; TSTHEADER
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTHEADER OK" or "TSTHEADER FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTHEADER:  LDD   CODEHERE
+            STD   TSTCSAV
+            LDD   DPHERE
+            STD   TSTDSAV
+            LDD   SRCADDR
+            STD   TSTSASAV
+            LDD   SRCLEN
+            STD   TSTSLSAV
+            LDD   TOIN
+            STD   TSTTISAV
+            LDD   LATEST
+            STD   TSTLSAV
+            LDD   WLHEADS
+            STD   TSTSCR            ; the old head of FORTH
+
+            LDX   #TSTHDRSRC
+            LDY   #TSTNAMEB
+            JSR   TSTLOADSTR
+
+            LDD   #TSTCBUF
+            STD   CODEHERE
+            LDD   #TSTDBUF
+            STD   DPHERE
+            LDD   #TSTNAMEB
+            STD   SRCADDR
+            LDD   #13
+            STD   SRCLEN
+            LDD   #0
+            STD   TOIN
+
+            STU   TSTU0
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
+            LDD   #TRUEV
+            PSHU  D
+            JSR   HEADER
+            LDD   #0
+            PSHU  D
+            JSR   HEADER
+            STU   TSTUAF
+
+            LDD   CODEHERE
+            STD   TSTCSAV2
+            LDD   DPHERE
+            STD   TSTDSAV2
+            LDD   LATEST
+            STD   TSTLSAV2
+            LDD   WLHEADS
+            STD   TSTVSAV2
+
+            LDD   TSTCSAV
+            STD   CODEHERE
+            LDD   TSTDSAV
+            STD   DPHERE
+            LDD   TSTSASAV
+            STD   SRCADDR
+            LDD   TSTSLSAV
+            STD   SRCLEN
+            LDD   TSTTISAV
+            STD   TOIN
+            LDD   TSTLSAV
+            STD   LATEST
+            LDD   TSTSCR
+            STD   WLHEADS
+
+            PULU  D
+            CMPD  #TSTGUARD
+            LBNE  TSTHDRFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            LBNE  TSTHDRFAIL
+
+            LDA   TSTDBUF
+            CMPA  #$46              ; length 6, smudge bit set
+            LBNE  TSTHDRFAIL
+            LDA   TSTDBUF+1
+            CMPA  #'A'
+            LBNE  TSTHDRFAIL
+            LDA   TSTDBUF+6
+            CMPA  #'F'
+            LBNE  TSTHDRFAIL
+            LDD   TSTDBUF+7         ; LINK = the old head of FORTH
+            CMPD  TSTSCR
+            LBNE  TSTHDRFAIL
+            LDD   TSTDBUF+9         ; CFA = CODEHERE
+            CMPD  #TSTCBUF
+            LBNE  TSTHDRFAIL
+
+            LDA   TSTDBUF+11
+            CMPA  #6                ; length 6, not smudged
+            LBNE  TSTHDRFAIL
+            LDA   TSTDBUF+12
+            CMPA  #'G'
+            LBNE  TSTHDRFAIL
+            LDA   TSTDBUF+17
+            CMPA  #'L'
+            LBNE  TSTHDRFAIL
+            LDD   TSTDBUF+18        ; LINK = the first new header
+            CMPD  #TSTDBUF
+            LBNE  TSTHDRFAIL
+            LDD   TSTDBUF+20
+            CMPD  #TSTCBUF
+            LBNE  TSTHDRFAIL
+
+            LDD   TSTCSAV2          ; HEADER does not move CODEHERE
+            CMPD  #TSTCBUF
+            LBNE  TSTHDRFAIL
+            LDD   TSTDSAV2
+            CMPD  #TSTDBUF+22
+            LBNE  TSTHDRFAIL
+            LDD   TSTLSAV2
+            CMPD  #TSTDBUF+11
+            LBNE  TSTHDRFAIL
+            LDD   TSTVSAV2          ; the new head of FORTH
+            CMPD  #TSTDBUF+11
+            LBNE  TSTHDRFAIL
+
+            LDD   #TRUEV
+            BRA   TSTHDRDONE
+TSTHDRFAIL: LDD   #FALSEV
+TSTHDRDONE: LDX   #TSTHEADERNAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTHDRSRC:  FCB   13
+            FCC   "ABCDEF GHIJKL"
+
+TSTHEADERNAME:
+            FCB   9
+            FCC   "TSTHEADER"
+
+; ------------------------------------------------------------
+; unit test for SMUDGE. Points LATEST at a fake header, toggles the
+; smudge bit twice, and checks that bit 6 is set and then clear, that
+; the rest of the header and the data stack are untouched.
+; TSTSMUDGE
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTSMUDGE OK" or "TSTSMUDGE FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTSMUDGE:  LDD   LATEST
+            STD   TSTLSAV
+
+            LDA   #3
+            STA   TSTFHDR
+            LDA   #'F'
+            STA   TSTFHDR+1
+            LDA   #'O'
+            STA   TSTFHDR+2
+            LDA   #'O'
+            STA   TSTFHDR+3
+            LDD   #0
+            STD   TSTFHDR+4
+            LDD   #DUPW
+            STD   TSTFHDR+6
+
+            LDD   #TSTFHDR
+            STD   LATEST
+
+            STU   TSTU0
+            LDD   #TSTGUARD
+            PSHU  D
+            STU   TSTUB4
+
+            JSR   SMUDGEW
+            LDA   TSTFHDR
+            STA   TSTSMFLG          ; after the first toggle
+            JSR   SMUDGEW
+
+            STU   TSTUAF
+
+            LDD   TSTLSAV
+            STD   LATEST
+
+            LDA   TSTSMFLG
+            CMPA  #$43              ; length 3, smudge bit set
+            BNE   TSTSMUFAIL
+            LDA   TSTFHDR
+            CMPA  #3                ; and clear again
+            BNE   TSTSMUFAIL
+            LDA   TSTFHDR+1
+            CMPA  #'F'
+            BNE   TSTSMUFAIL
+            LDD   TSTFHDR+6
+            CMPD  #DUPW
+            BNE   TSTSMUFAIL
+
+            PULU  D
+            CMPD  #TSTGUARD
+            BNE   TSTSMUFAIL
+            LDD   TSTUB4
+            SUBD  TSTUAF
+            CMPD  #0
+            BNE   TSTSMUFAIL
+
+            LDD   #TRUEV
+            BRA   TSTSMUDONE
+TSTSMUFAIL: LDD   #FALSEV
+TSTSMUDONE: LDX   #TSTSMUDGENAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+
+            LDU   TSTU0
+            RTS
+
+TSTSMUDGENAME:
+            FCB   9
+            FCC   "TSTSMUDGE"
+
             ENDC                    ; <<<<
 
 ; ------------------------------------------------------------
@@ -9645,6 +9879,11 @@ TSTCOMPWORDS:
             JSR   TSTBRACKTICK2
             JSR   TSTPOSTPONE1
             JSR   TSTPOSTPONE2
+
+            ENDC                    ; <<<<
+
+            IFEQ  TSTSELECTOR-20    ; >>>>
+
             JSR   TSTXCOMPILE1
             JSR   TSTXCOMPILE2
             JSR   TSTTOBODY
@@ -10622,6 +10861,13 @@ PP2DONE:    LDX   #TSTPP2NAME
 
 TSTPP2NAME: FCB   12
             FCC   "TSTPOSTPONE2"
+
+            ENDC                    ; <<<<
+
+; Group 20: the second half of the compiling-words tests ([COMPILE],
+; >BODY, EXECUTE, SLITERAL and ABORT"), split from group 9
+; (TSTSELECTOR 9) so that each group fits the unused ROM.
+            IFEQ  TSTSELECTOR-20    ; >>>>
 
 ; ------------------------------------------------------------
 ; unit test for [COMPILE], normal (non-immediate) word case.

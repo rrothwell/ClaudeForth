@@ -22,9 +22,9 @@ USROMEND    EQU   VECTORS-1         ; usable ROM end (VECTORS-1)
 VECTORS     EQU   $FFF0
 INITCODE    EQU   $FFA4             ; start of the init code (COLDSTRT)
             ; Commented-out code moved to shadow: MEMMAP.5
-BASECODE    EQU   $D95C             ; base code. See shadow MEMMAP.6
+BASECODE    EQU   $D952             ; base code. See shadow MEMMAP.6
             ; Commented-out code moved to shadow: MEMMAP.7
-BASEDICT    EQU   $CFC3             ; base dictionary. See shadow MEMMAP.8
+BASEDICT    EQU   $CFA3             ; base dictionary. See shadow MEMMAP.8
 INOUT       EQU   $C000             ; I/O block (ACIA), 256 bytes
 INOUTEND    EQU   INOUT+$FF
 RSTACK      EQU   $BFFF             ; return stack top
@@ -428,9 +428,19 @@ BASEROOTLATEST EQU H_FORTH
 ; Headers are laid out tail first, so each LINK points back to the header
 ; just before it in memory (0 for the first) and BASELATEST names the last.
 
+H_HEADER:   FCB   6
+            FCC   "HEADER"
+            FDB   BASEROOTLATEST
+            FDB   HEADER
+
+H_SMUDGE:   FCB   6
+            FCC   "SMUDGE"
+            FDB   H_HEADER
+            FDB   SMUDGEW
+
 H_BRTHEN:   FCB   $86
             FCC   "[THEN]"
-            FDB   BASEROOTLATEST
+            FDB   H_SMUDGE
             FDB   BRTHENW
 
 H_BRELSE:   FCB   $86
@@ -2865,6 +2875,24 @@ HDNONM:     LDX   CURRENT           ; X = WID of the wordlist receiving the word
             STD   LATEST            ; LATEST = newest header of any wordlist
             STD   ,X                ; and the new head of the CURRENT wordlist
             LEAS  1,S
+            RTS
+
+; ------------------------------------------------------------
+; Toggle the smudge bit (bit 6 of the length|flags byte) of the newest
+; header, the one LATEST names. A smudged word is hidden from FIND, so
+; HEADER with a true flag, then SMUDGE once the word is complete,
+; brackets the definition of a word such as CODE ... END-CODE.
+; SMUDGE   ( -- )
+;    Inputs:
+;        none
+;    Outputs:
+;        bit 6 of the length|flags byte at LATEST inverted
+;    Registers: RegA, RegX and CC changed.
+; ------------------------------------------------------------
+SMUDGEW:    LDX   LATEST
+            LDA   ,X
+            EORA  #$40
+            STA   ,X
             RTS
 
 ; ============================================================

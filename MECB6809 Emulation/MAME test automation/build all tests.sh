@@ -57,7 +57,7 @@ SECTION_NAMES=(
   "3.6_Logic" "3.7_Compare" "3.8_CtrlFlow" "3.9_DefWords" "3.10_CompWords"
   "3.11_Memory" "3.12_StrParse" "3.13_NumOut" "3.14_BaseRadix"
   "3.15_Exception" "3.16_Comments" "3.17_EnvSys" "3.18_Tools"
-  "3.12_StrParse2" "3.9_DefWords2"
+  "3.12_StrParse2" "3.9_DefWords2" "3.10_CompWords2"
 )
 
 echo "SERIALPOLL=$SERIALPOLL"
@@ -67,7 +67,7 @@ echo "SERIALPOLL=$SERIALPOLL"
 # ------------------------------------------------------------------
 declare -a RESULTS
 
-for ((n=0; n<20; n++)); do
+for ((n=0; n<21; n++)); do
 
   name="${SECTION_NAMES[$n]}"
 
