@@ -1,0 +1,94 @@
+\ ============================================================
+  ok\ ANS-style test suite - disassembler words DASM and DIS
+  ok\ (DISASM=1 builds only). DASM sends the text of one instruction
+  ok\ and returns the next address, so these tests check the length the
+  ok\ decoder gives each encoding, including prefix pages, indexed modes
+  ok\ and bytes that are not instructions (length 1). The text itself is
+  ok\ sent to the terminal while the tests run; the displayed lines are
+  ok\ the disassembly of each test sequence.
+  ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded first,
+  ok\ in that order.
+  ok\ ============================================================
+  okMARKER M37
+  okTEST-BEGIN
+  okHEX
+  okCREATE BUF 8 ALLOT
+  ok\ SEQ ( c1 .. cn n -- )  store the bytes at BUF, c1 first.
+  ok: SEQ BEGIN DUP WHILE 1- TUCK BUF + C! REPEAT DROP ;
+  ok\ LEN ( -- n )  disassemble BUF and return its length.
+  ok: LEN BUF DUP DASM SWAP - ;
+  okT{ 12 1 SEQ LEN -> 1 }TNOP  Actual:Expected 1 =?= 1 
+  okT{ 4F 1 SEQ LEN -> 1 }TCLRA  Actual:Expected 1 =?= 1 
+  okT{ 86 A5 2 SEQ LEN -> 2 }TLDA #$A5  Actual:Expected 2 =?= 2 
+  okT{ C3 12 34 3 SEQ LEN -> 3 }TADDD #$1234  Actual:Expected 3 =?= 3 
+  okT{ 10 83 12 34 4 SEQ LEN -> 4 }TCMPD #$1234  Actual:Expected 4 =?= 4 
+  okT{ 11 8C 12 34 4 SEQ LEN -> 4 }TCMPS #$1234  Actual:Expected 4 =?= 4 
+  okT{ 8E 12 34 3 SEQ LEN -> 3 }TLDX #$1234  Actual:Expected 3 =?= 3 
+  okT{ CE 12 34 3 SEQ LEN -> 3 }TLDU #$1234  Actual:Expected 3 =?= 3 
+  okT{ 10 CE 12 34 4 SEQ LEN -> 4 }TLDS #$1234  Actual:Expected 4 =?= 4 
+  okT{ 96 12 2 SEQ LEN -> 2 }TLDA <$12  Actual:Expected 2 =?= 2 
+  okT{ B6 12 34 3 SEQ LEN -> 3 }TLDA $1234  Actual:Expected 3 =?= 3 
+  okT{ 7E 12 34 3 SEQ LEN -> 3 }TJMP $1234  Actual:Expected 3 =?= 3 
+  okT{ 7F 12 34 3 SEQ LEN -> 3 }TCLR $1234  Actual:Expected 3 =?= 3 
+  okT{ 0F 12 2 SEQ LEN -> 2 }TCLR <$12  Actual:Expected 2 =?= 2 
+  okT{ 20 05 2 SEQ LEN -> 2 }TBRA $775F  Actual:Expected 2 =?= 2 
+  okT{ 10 27 01 00 4 SEQ LEN -> 4 }TLBEQ $785C  Actual:Expected 4 =?= 4 
+  okT{ 16 01 00 3 SEQ LEN -> 3 }TLBRA $785B  Actual:Expected 3 =?= 3 
+  okT{ 17 01 00 3 SEQ LEN -> 3 }TLBSR $785B  Actual:Expected 3 =?= 3 
+  okT{ 8D 05 2 SEQ LEN -> 2 }TBSR $775F  Actual:Expected 2 =?= 2 
+  okT{ 1F 01 2 SEQ LEN -> 2 }TTFR D,X  Actual:Expected 2 =?= 2 
+  okT{ 1E 89 2 SEQ LEN -> 2 }TEXG A,B  Actual:Expected 2 =?= 2 
+  okT{ 34 FF 2 SEQ LEN -> 2 }TPSHS CC,A,B,DP,X,Y,U,PC  Actual:Expected 2 =?= 2 
+  okT{ 36 01 2 SEQ LEN -> 2 }TPSHU CC  Actual:Expected 2 =?= 2 
+  okT{ 3C 01 2 SEQ LEN -> 2 }TCWAI #$01  Actual:Expected 2 =?= 2 
+  okT{ 1A 01 2 SEQ LEN -> 2 }TORCC #$01  Actual:Expected 2 =?= 2 
+  okT{ 1C EF 2 SEQ LEN -> 2 }TANDCC #$EF  Actual:Expected 2 =?= 2 
+  okT{ A6 84 2 SEQ LEN -> 2 }TLDA ,X  Actual:Expected 2 =?= 2 
+  okT{ A6 0A 2 SEQ LEN -> 2 }TLDA $0A,X  Actual:Expected 2 =?= 2 
+  okT{ A6 88 10 3 SEQ LEN -> 3 }TLDA $10,X  Actual:Expected 3 =?= 3 
+  okT{ A6 89 12 34 4 SEQ LEN -> 4 }TLDA $1234,X  Actual:Expected 4 =?= 4 
+  okT{ A6 8C 10 3 SEQ LEN -> 3 }TLDA $776B,PCR  Actual:Expected 3 =?= 3 
+  okT{ A6 8D 12 34 4 SEQ LEN -> 4 }TLDA $8990,PCR  Actual:Expected 4 =?= 4 
+  okT{ A6 9F 12 34 4 SEQ LEN -> 4 }TLDA [$1234]  Actual:Expected 4 =?= 4 
+  okT{ A6 9D 12 34 4 SEQ LEN -> 4 }TLDA [$8990,PCR]  Actual:Expected 4 =?= 4 
+  okT{ 10 AE 89 12 34 5 SEQ LEN -> 5 }TLDY $1234,X  Actual:Expected 5 =?= 5 
+  okT{ 30 8B 2 SEQ LEN -> 2 }TLEAX D,X  Actual:Expected 2 =?= 2 
+  okT{ A6 85 2 SEQ LEN -> 2 }TLDA B,X  Actual:Expected 2 =?= 2 
+  okT{ A6 80 2 SEQ LEN -> 2 }TLDA ,X+  Actual:Expected 2 =?= 2 
+  okT{ A6 81 2 SEQ LEN -> 2 }TLDA ,X++  Actual:Expected 2 =?= 2 
+  okT{ A6 82 2 SEQ LEN -> 2 }TLDA ,-X  Actual:Expected 2 =?= 2 
+  okT{ A6 83 2 SEQ LEN -> 2 }TLDA ,--X  Actual:Expected 2 =?= 2 
+  okT{ 3F 1 SEQ LEN -> 1 }TSWI  Actual:Expected 1 =?= 1 
+  okT{ 10 3F 2 SEQ LEN -> 2 }TSWI2  Actual:Expected 2 =?= 2 
+  okT{ 11 3F 2 SEQ LEN -> 2 }TSWI3  Actual:Expected 2 =?= 2 
+  okT{ 39 1 SEQ LEN -> 1 }TRTS  Actual:Expected 1 =?= 1 
+  okT{ 3B 1 SEQ LEN -> 1 }TRTI  Actual:Expected 1 =?= 1 
+  okT{ 3D 1 SEQ LEN -> 1 }TMUL  Actual:Expected 1 =?= 1 
+  okT{ 01 1 SEQ LEN -> 1 }TFCB $01  Actual:Expected 1 =?= 1 
+  okT{ 02 1 SEQ LEN -> 1 }TFCB $02  Actual:Expected 1 =?= 1 
+  okT{ 10 10 2 SEQ LEN -> 1 }TFCB $10  Actual:Expected 1 =?= 1 
+  okT{ 10 12 2 SEQ LEN -> 1 }TFCB $10  Actual:Expected 1 =?= 1 
+  okT{ 11 21 2 SEQ LEN -> 1 }TFCB $11  Actual:Expected 1 =?= 1 
+  okT{ 87 12 2 SEQ LEN -> 1 }TFCB $87  Actual:Expected 1 =?= 1 
+  okT{ 8F 12 34 3 SEQ LEN -> 1 }TFCB $8F  Actual:Expected 1 =?= 1 
+  okT{ CD 12 34 3 SEQ LEN -> 1 }TFCB $CD  Actual:Expected 1 =?= 1 
+  okT{ 3E 1 SEQ LEN -> 1 }TFCB $3E  Actual:Expected 1 =?= 1 
+  okT{ 38 1 SEQ LEN -> 1 }TFCB $38  Actual:Expected 1 =?= 1 
+  okT{ 1B 1 SEQ LEN -> 1 }TFCB $1B  Actual:Expected 1 =?= 1 
+  okT{ A6 87 2 SEQ LEN -> 1 }TFCB $A6  Actual:Expected 1 =?= 1 
+  okT{ A6 90 2 SEQ LEN -> 1 }TFCB $A6  Actual:Expected 1 =?= 1 
+  okT{ 1E 6F 2 SEQ LEN -> 1 }TFCB $1E  Actual:Expected 1 =?= 1 
+  okT{ 4E 1 SEQ LEN -> 1 }TFCB $4E  Actual:Expected 1 =?= 1 
+  okT{ 5E 1 SEQ LEN -> 1 }TFCB $5E  Actual:Expected 1 =?= 1 
+  okT{ 0B 1 SEQ LEN -> 1 }TFCB $0B  Actual:Expected 1 =?= 1 
+  ok\ DIS lists whole instructions in a range.
+  ok: DEMO BUF 3 DIS ;
+  ok86 A5 2 SEQ 12 BUF 2 + C! DEMO
+7758 86 A5           LDA #$A5
+775A 12              NOP
+
+  okTEST-END
+TEST SUMMARY: 64 run, 0 failed
+
+  okM37
+  ok

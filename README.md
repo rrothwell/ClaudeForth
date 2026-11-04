@@ -8,10 +8,11 @@ and to target the Minimalist Eurocard Board (MECB) 6809 computer,
 with the MECB IO card providing an
 MC6850 ACIA for serial IO.
 
-The forth words are case sensitive with inbuilt words in upper
-case by convention.
+The forth words are case sensitive with inbuilt words 
+named in upper case by convention.
 
-This forth keeps top-of-stack in memory, not in a register.
+This forth is heavy with 6809 assembly language. 
+It keeps top-of-stack in memory, not in a register.
 Other simplifications include a lack of optimisations 
 such as in-lining and peephole optimisation.
 
@@ -173,21 +174,23 @@ brew install binutils
 | Development support words such as [IF], [ELSE], [THEN], .(), etc..  | |:white_check_mark:|
 | Reorganise dictionary ordering to improved compilation speed.  | |:white_check_mark:|
 | Dictionary vocabulary support. |1.50|:white_check_mark:|
+| External assembler.  |1.50|:white_check_mark:|
+| Inbuilt assembler.  | | |
+| Treat both space and tab as white space.  | ||
+| Change formatting of ok line output to match GForth.  | | |
+| Format the output of WORDS to 10 forth words per line. Possibly pad each word to 8 character width and if longer to 16 character width.  | | |
+| Format the output of DUMP to show an address per line. | | |
 | Run some benchmarks.  | ||
 | Forth decompiler.  | | |
 | Reorganise memory map so that the stacks are below $8000. Move the in-RAM code and dictionary up to fill the gap below $C000. | | |
 | Adjust DICT:CODE ratio to 1:4| | |
 | Vectored I/O. In particular the ability to programatically change the behavior of EMIT, etc..  | | |
-| Format the output of WORDS to 10 forth words per line. Possibly pad each word to 8 character width and if longer to 16 character width.  | | |
-| Format the output of DUMP to show an address per line. | | |
-| Inbuilt assembler.  | | |
 | Interrupt chaining to call forth words.  | | |
 | Cooperative multitasking.  | | |
 | Mass storage support - SD Card or Flash.  | | |
 | Application compilation to the ROM area via ROM emulation.  | | |
 | Hardware/software floating point support.  | | |
 | Buffered serial communications with software XON/XOFF handshaking.  | | |
-| Change formatting of ok line output to match GForth.  | | |
 | Improve the number parser to recognise binary and hexadecimal numbers.  | | |
 | Move the serial communications code to an include file.  | | |
 | Debugging support. | | |

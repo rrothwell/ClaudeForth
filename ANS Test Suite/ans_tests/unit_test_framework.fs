@@ -1,6 +1,8 @@
 \ Defining some constants  
 \ as I wish to run the tests without the prelude.
 
+ONLY FORTH DEFINITIONS
+
 0 CONSTANT 0S
 0 INVERT CONSTANT 1S
 
@@ -160,3 +162,5 @@ VARIABLE TEST-DEPTH
     THEN
     R> BASE ! 
 ;
+
+ONLY FORTH DEFINITIONS

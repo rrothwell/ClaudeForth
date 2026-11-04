@@ -93,7 +93,7 @@ python3 ans_test_runner.py \
     --retrigger-cmd $HOME/git/ClaudeForth/ANS\ Test\ Suite/retrigger.cmd \
     --skip-assemble \
     --ans-dir $HOME/git/ClaudeForth/ANS\ Test\ Suite/ans_tests \
-    --sections 08 09 10 11 12 13 14 15 16 17 18 19 20 21 23 24 26 27 28 29 30 31 33\
+    --sections 08 09 10 11 12 13 14 15 16 17 18 19 20 21 23 24 26 27 28 29 30 31 33 34  36 37 \
     --char-delay 0.05 \
     --retries 0 \
     --log-dir $HOME/git/ClaudeForth/ANS\ Test\ Suite/ans_test_results
@@ -499,6 +499,10 @@ is not implemented or is implemented only in part:
 The Search-Order word set is implemented and tested by
 `33_search_order.tests.fs`; see the ClaudeForth documentation, Sections 3.19,
 4.4 and 4.5.
+
+The HEADER and SMUDGE word set is implemented and tested by
+`34_header_smudge.tests.fs`; see the ClaudeForth documentation, Sections 3.9,
+and 4.7.
 
 Most of the Programming-Tools word set is also omitted
 (AHEAD, CS-PICK, CS-ROLL, N>R, [THEN] etc.).

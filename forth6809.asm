@@ -22,9 +22,25 @@ USROMEND    EQU   VECTORS-1         ; usable ROM end (VECTORS-1)
 VECTORS     EQU   $FFF0
 INITCODE    EQU   $FFA4             ; start of the init code (COLDSTRT)
             ; Commented-out code moved to shadow: MEMMAP.5
-BASECODE    EQU   $D952             ; base code. See shadow MEMMAP.6
+            IFNDEF DISASM
+            IFDEF UNITTESTS
+            IFNE  UNITTESTS
+DISASM      SET   0                 ; the unit tests need the room
+            ELSE
+DISASM      SET   1
+            ENDC
+            ELSE
+DISASM      SET   1                 ; default if -D not passed
+            ENDC
+            ENDC
+            IFNE  DISASM
+BASECODE    EQU   $D240             ; base code (with DISASM). See shadow MEMMAP.6
             ; Commented-out code moved to shadow: MEMMAP.7
-BASEDICT    EQU   $CFA3             ; base dictionary. See shadow MEMMAP.8
+BASEDICT    EQU   $C880             ; base dictionary (with DISASM). See shadow MEMMAP.8
+            ELSE
+BASECODE    EQU   $D936             ; base code (without DISASM)
+BASEDICT    EQU   $CF87             ; base dictionary (without DISASM)
+            ENDC
 INOUT       EQU   $C000             ; I/O block (ACIA), 256 bytes
 INOUTEND    EQU   INOUT+$FF
 RSTACK      EQU   $BFFF             ; return stack top
@@ -256,7 +272,22 @@ WLNOFF      EQU   WLNAMES-WLHEADS   ; from a WID to its WLNAMES cell
 WLCELLS     EQU   10                ; wordlists, including FORTH and ROOT
 WLMAX       EQU   8                 ; WIDs in the search order
 
-GLOBALS_USED EQU   131              ; bytes used, of 256 available
+            IFNE  DISASM
+DISSTART    RMB   2                 ; start of the instruction being decoded
+DISPC       RMB   2                 ; next byte to fetch
+DISTMP      RMB   2                 ; scratch
+DISTMP2     RMB   2                 ; scratch
+DISEND      RMB   2                 ; DIS: end address
+DISNXT      RMB   2                 ; DIS: address after this instruction
+DISOP       RMB   1                 ; opcode (after any prefix)
+DISPG       RMB   1                 ; 0, or 1 for prefix $10, 2 for $11
+DISMN       RMB   1                 ; mnemonic number in DNAMES
+DISMD       RMB   1                 ; operand mode D_xxx
+DISLEAD     RMB   1                 ; "L" of a long branch, or 0
+DISSUF      RMB   1                 ; "A" or "B" of an inherent op, or 0
+DISMUTE     RMB   1                 ; non-zero: DCH sends nothing
+            ENDC
+GLOBALS_USED EQU   131+19*DISASM    ; bytes used, of 256 available
 
 ; $0100-$0105 is unclaimed (was MVSCRATCH). See shadow MVSCRATCH.1
 
@@ -297,6 +328,30 @@ OUTBUF      RMB   OUTBUFSZ          ; Transmit circular queue buffer
 ; ------------------------------------------------------------
             ORG   USROMSTRT
 
+; ------------------------------------------------------------
+; Optional word sets, to recover ROM when the board does not need
+; them. Each switch removes both the dictionary headers and the code
+; of its words; the headers and code are two contiguous blocks.
+; STRINGSET: String word set: /STRING -TRAILING SEARCH BLANK SLITERAL
+;            and the headers of CMOVE CMOVE> COMPARE (their code is
+;            always kept because MOVE and ENVIRONMENT? use it).
+; STRINGEXT: String extension: UNESCAPE REPLACES CLR-REPLACES
+;            SUBSTITUTE. Set with lwasm -DSTRINGSET=0 -DSTRINGEXT=0.
+; SNAME (xt to name, all wordlists) is not a string word; it is
+; always kept for the disassembler/decompiler.
+; DISASM:    Disassembler words DASM and DIS (about 1.2 KB of ROM). The
+;            constants BASECODE and BASEDICT above depend on it. Set
+;            with lwasm -DDISASM=0. The larger unit test groups do
+;            not fit below the dictionary when DISASM is 1.
+; The unit tests need both set to 1.
+; ------------------------------------------------------------
+            IFNDEF STRINGSET
+STRINGSET   SET   1                 ; default if -D not passed
+            ENDC
+            IFNDEF STRINGEXT
+STRINGEXT   SET   1                 ; default if -D not passed
+            ENDC
+
             IFNDEF UNITTESTS
 UNITTESTS   SET   0                 ; default if -D not passed
             ; Default 0: unit tests excluded; -DUNITTESTS=1 includes them.
@@ -316,6 +371,9 @@ TSTSELECTOR SET   2                 ; default if -D not passed
 ; the full framework description, or OPEN_ITEMS_CHECKLIST_
 ; part1.md/part2.md for its own development history.
 ; ------------------------------------------------------------
+            IFEQ  STRINGSET*STRINGEXT
+            ERROR "UNITTESTS=1 needs STRINGSET=1 and STRINGEXT=1"
+            ENDC
             INCLUDE unit_tests.asm
 
             ENDC                    ; <<<<<<<<<<
@@ -459,10 +517,24 @@ H_DUMP:
             FDB   H_BRIF
             FDB   DUMPW
 
+            IFNE  DISASM
+H_DASM:     FCB   $04
+            FCC   "DASM"
+            FDB   H_DUMP
+            FDB   DASMENT
+H_DIS:      FCB   $03
+            FCC   "DIS"
+            FDB   H_DASM
+            FDB   DISW
+H_DISLINK   EQU   H_DIS
+            ELSE
+H_DISLINK   EQU   H_DUMP
+            ENDC
+
 H_WORDS:
             FCB   $05
             FCC   "WORDS"
-            FDB   H_DUMP
+            FDB   H_DISLINK
             FDB   WORDSW
 
 H_DOTS:
@@ -656,16 +728,10 @@ H_ABORTQUOTE:
             FDB   H_TWOLITERAL
             FDB   ABORTQUOTEW
 
-H_SLITERAL:
-            FCB   $88
-            FCC   "SLITERAL"
-            FDB   H_ABORTQUOTE
-            FDB   SLITERALW
-
 H_EXECUTE:
             FCB   $07
             FCC   "EXECUTE"
-            FDB   H_SLITERAL
+            FDB   H_ABORTQUOTE
             FDB   EXECUTEW
 
 H_TOBODY:
@@ -774,22 +840,23 @@ H_TONUMBER:
             FDB   H_FIND
             FDB   TONUMBERW
 
-H_UNESCAPE:
-            FCB   $08
-            FCC   "UNESCAPE"
-            FDB   H_TONUMBER
-            FDB   UNESCAPEW
-
 H_SNAME:
             FCB   $05
             FCC   "SNAME"
-            FDB   H_UNESCAPE
+            FDB   H_TONUMBER
             FDB   SNAMEW
+
+            IFNE  STRINGEXT         ; >>>>>>>>>> String extension headers
+H_UNESCAPE:
+            FCB   $08
+            FCC   "UNESCAPE"
+            FDB   H_SNAME
+            FDB   UNESCAPEW
 
 H_SUBSTITUTE:
             FCB   $0A
             FCC   "SUBSTITUTE"
-            FDB   H_SNAME
+            FDB   H_UNESCAPE
             FDB   SUBSTITUTEW
 
 H_CLRREPLACES:
@@ -804,10 +871,19 @@ H_REPLACES:
             FDB   H_CLRREPLACES
             FDB   REPLACESW
 
+            ENDC                    ; <<<<<<<<<<
+
+            IFEQ  STRINGEXT
+H_STRLINK1  EQU   H_SNAME
+            ELSE
+H_STRLINK1  EQU   H_REPLACES
+            ENDC
+
+            IFNE  STRINGSET         ; >>>>>>>>>> String word set headers
 H_SLASHSTRING:
             FCB   $07
             FCC   "/STRING"
-            FDB   H_REPLACES
+            FDB   H_STRLINK1
             FDB   SLASHSTRINGW
 
 H_DASHTRAILING:
@@ -828,11 +904,43 @@ H_COMPARE:
             FDB   H_SEARCH
             FDB   COMPAREW
 
+H_CMOVEGT:
+            FCB   $06
+            FCC   "CMOVE>"
+            FDB   H_COMPARE
+            FDB   CMOVEGTW
+
+H_CMOVE:
+            FCB   $05
+            FCC   "CMOVE"
+            FDB   H_CMOVEGT
+            FDB   CMOVEW
+
+H_BLANK:
+            FCB   $05
+            FCC   "BLANK"
+            FDB   H_CMOVE
+            FDB   BLANKW
+
+H_SLITERAL:
+            FCB   $88
+            FCC   "SLITERAL"
+            FDB   H_BLANK
+            FDB   SLITERALW
+
+            ENDC                    ; <<<<<<<<<<
+
+            IFEQ  STRINGSET
+H_STRLINK2  EQU   H_STRLINK1
+            ELSE
+H_STRLINK2  EQU   H_SLITERAL
+            ENDC
+
 H_SQUOTE:
             FCB   $82
             FCC   "S"
             FCB   $22               ; '"' split out of the FCC string
-            FDB   H_COMPARE
+            FDB   H_STRLINK2
             FDB   SQUOTEW
 
 H_PARSENAME:
@@ -1215,28 +1323,10 @@ H_DOT:
             FDB   H_LTNUM
             FDB   DOTW
 
-H_CMOVEGT:
-            FCB   $06
-            FCC   "CMOVE>"
-            FDB   H_DOT
-            FDB   CMOVEGTW
-
-H_CMOVE:
-            FCB   $05
-            FCC   "CMOVE"
-            FDB   H_CMOVEGT
-            FDB   CMOVEW
-
-H_BLANK:
-            FCB   $05
-            FCC   "BLANK"
-            FDB   H_CMOVE
-            FDB   BLANKW
-
 H_ERASE:
             FCB   $05
             FCC   "ERASE"
-            FDB   H_BLANK
+            FDB   H_DOT
             FDB   ERASEW
 
 H_FILL:
@@ -5422,19 +5512,6 @@ TOBODYW:    PULU  D                 ; xt
             RTS
 
 ; ------------------------------------------------------------
-; SLITERAL  ( c-addr u -- )
-; Compile DOSTR followed by a count byte and a copy of the string.
-; THROW -14 if not compiling.
-; ------------------------------------------------------------
-SLITERALW:  LDD   STATE
-            BNE   SLSTOK
-            LDD   #-14
-            PSHU  D
-            JSR   THROWW
-SLSTOK:     LDD   #DOSTR
-            JMP   CSTRCOMP          ; compile DOSTR and the counted string
-
-; ------------------------------------------------------------
 ; Run-time part of ABORT". The counted string follows the call. If
 ; flag is non-zero, TYPE the string and THROW -2; otherwise skip over
 ; the string.
@@ -7318,14 +7395,6 @@ ERASEW:     LDD   #0
             PSHU  D
             JMP   FILLW
 
-; ------------------------------------------------------------
-; BLANK  ( c-addr u -- )
-; Store a space in each of u bytes starting at c-addr.
-; ------------------------------------------------------------
-BLANKW:     LDD   #32
-            PSHU  D
-            JMP   FILLW
-
 ; ============================================================
 ; SECTION 19: STRING WORDS
 ; ============================================================
@@ -7788,42 +7857,6 @@ PNEMPTY:    LDD   SRCLEN
             RTS
 
 ; ------------------------------------------------------------
-; /STRING  ( c-addr1 u1 n -- c-addr2 u2 )
-; Remove n characters from the start of the string.
-; ------------------------------------------------------------
-SLASHSTRINGW:
-            PULU  D                 ; n
-            STD   MSCR
-            PULU  D
-            SUBD  MSCR
-            STD   MSCR2
-            PULU  D
-            ADDD  MSCR
-            PSHU  D
-            LDD   MSCR2
-            PSHU  D
-            RTS
-
-; ------------------------------------------------------------
-; -TRAILING  ( c-addr u1 -- c-addr u2 )
-; Reduce the length to exclude trailing blanks.
-; ------------------------------------------------------------
-DASHTRAILINGW:
-            LDY   ,U
-            LDX   2,U
-            TFR   Y,D
-            LEAX  D,X               ; X = end of the string
-DTLOOP:     CMPY  #0
-            BEQ   DTDONE
-            LDA   ,-X
-            CMPA  #32
-            BNE   DTDONE
-            LEAY  -1,Y
-            BRA   DTLOOP
-DTDONE:     STY   ,U
-            RTS
-
-; ------------------------------------------------------------
 ; COMPARE  ( c-addr1 u1 c-addr2 u2 -- n )
 ; Compare two strings byte by byte. n is -1, 0 or 1 as the first
 ; string is less than, equal to or greater than the second; if one is
@@ -7857,6 +7890,88 @@ CMLT:       LDD   #-1
 CMGT:       LDD   #1
 CMOUT:      STD   6,U               ; result replaces c-addr1
             LEAU  6,U               ; drop the other three cells
+            RTS
+
+; ------------------------------------------------------------
+; SNAME  ( xt -- c-addr u | 0 0 )
+; Find the name of the word whose xt is given by searching every
+; wordlist. Return the name or two zeros if not found.
+; ------------------------------------------------------------
+SNAMEW:     PULU  Y                 ; xt (5k: Y = target, X = header, no scratch)
+            LDX   #WLHEADS
+            PSHS  X                 ; 0,S = next wordlist cell
+SNWL:       LDX   ,S
+            CMPX  WLEND
+            BHS   SNNOTFOUND
+            LEAX  2,X
+            STX   ,S
+            LDX   -2,X              ; newest header of this wordlist
+SNLOOP:     CMPX  #0
+            BEQ   SNWL
+            LDB   ,X
+            ANDB  #$1F              ; name length
+            CLRA
+            LEAX  D,X               ; X = header + length
+            CMPY  3,X               ; CFA field follows the name and link
+            BEQ   SNFOUND
+            LDX   1,X               ; LINK field
+            BRA   SNLOOP
+SNFOUND:    LEAS  2,S
+            TFR   D,Y               ; Y = length
+            TFR   X,D
+            PSHS  Y
+            SUBD  ,S++              ; header
+            ADDD  #1                ; name address
+            PSHU  D
+            PSHU  Y
+            RTS
+SNNOTFOUND: LEAS  2,S
+            LDD   #0
+            PSHU  D
+            PSHU  D
+            RTS
+
+; ------------------------------------------------------------
+; String word set (STRINGSET) code: /STRING -TRAILING SEARCH BLANK
+; SLITERAL. CMOVE, CMOVE> and COMPARE are always assembled because
+; MOVE and ENVIRONMENT? call them; only their headers are optional.
+; ------------------------------------------------------------
+            IFNE  STRINGSET         ; >>>>>>>>>>
+
+; ------------------------------------------------------------
+; /STRING  ( c-addr1 u1 n -- c-addr2 u2 )
+; Remove n characters from the start of the string.
+; ------------------------------------------------------------
+SLASHSTRINGW:
+            PULU  D                 ; n
+            STD   MSCR
+            PULU  D
+            SUBD  MSCR
+            STD   MSCR2
+            PULU  D
+            ADDD  MSCR
+            PSHU  D
+            LDD   MSCR2
+            PSHU  D
+            RTS
+
+; ------------------------------------------------------------
+; -TRAILING  ( c-addr u1 -- c-addr u2 )
+; Reduce the length to exclude trailing blanks.
+; ------------------------------------------------------------
+DASHTRAILINGW:
+            LDY   ,U
+            LDX   2,U
+            TFR   Y,D
+            LEAX  D,X               ; X = end of the string
+DTLOOP:     CMPY  #0
+            BEQ   DTDONE
+            LDA   ,-X
+            CMPA  #32
+            BNE   DTDONE
+            LEAY  -1,Y
+            BRA   DTLOOP
+DTDONE:     STY   ,U
             RTS
 
 ; ------------------------------------------------------------
@@ -7912,43 +8027,34 @@ SNOMATCH:   LDX   ,U
             BRA   SPOSLOOP
 
 ; ------------------------------------------------------------
-; SNAME  ( xt -- c-addr u | 0 0 )
-; Find the name of the word whose xt is given by searching every
-; wordlist. Return the name or two zeros if not found.
+; BLANK  ( c-addr u -- )
+; Store a space in each of u bytes starting at c-addr.
 ; ------------------------------------------------------------
-SNAMEW:     PULU  Y                 ; xt (5k: Y = target, X = header, no scratch)
-            LDX   #WLHEADS
-            PSHS  X                 ; 0,S = next wordlist cell
-SNWL:       LDX   ,S
-            CMPX  WLEND
-            BHS   SNNOTFOUND
-            LEAX  2,X
-            STX   ,S
-            LDX   -2,X              ; newest header of this wordlist
-SNLOOP:     CMPX  #0
-            BEQ   SNWL
-            LDB   ,X
-            ANDB  #$1F              ; name length
-            CLRA
-            LEAX  D,X               ; X = header + length
-            CMPY  3,X               ; CFA field follows the name and link
-            BEQ   SNFOUND
-            LDX   1,X               ; LINK field
-            BRA   SNLOOP
-SNFOUND:    LEAS  2,S
-            TFR   D,Y               ; Y = length
-            TFR   X,D
-            PSHS  Y
-            SUBD  ,S++              ; header
-            ADDD  #1                ; name address
+BLANKW:     LDD   #32
             PSHU  D
-            PSHU  Y
-            RTS
-SNNOTFOUND: LEAS  2,S
-            LDD   #0
+            JMP   FILLW
+
+; ------------------------------------------------------------
+; SLITERAL  ( c-addr u -- )
+; Compile DOSTR followed by a count byte and a copy of the string.
+; THROW -14 if not compiling.
+; ------------------------------------------------------------
+SLITERALW:  LDD   STATE
+            BNE   SLSTOK
+            LDD   #-14
             PSHU  D
-            PSHU  D
-            RTS
+            JSR   THROWW
+SLSTOK:     LDD   #DOSTR
+            JMP   CSTRCOMP          ; compile DOSTR and the counted string
+
+            ENDC                    ; <<<<<<<<<<
+
+; ------------------------------------------------------------
+; String extension (STRINGEXT) code: UNESCAPE REPLACES CLR-REPLACES
+; SUBSTITUTE. Nothing else calls these. (SNAME is not a string word;
+; it is always assembled, ahead of this block.)
+; ------------------------------------------------------------
+            IFNE  STRINGEXT         ; >>>>>>>>>>
 
 ; ------------------------------------------------------------
 ; UNESCAPE  ( c-addr1 u1 c-addr2 -- c-addr2 u2 )
@@ -8293,6 +8399,8 @@ SUBFAIL:    TFR   D,X               ; error result c-addr2 0 n. See shadow
             STX   12,U
             LEAU  12,U
             RTS
+
+            ENDC                    ; <<<<<<<<<<
 
 ; ============================================================
 ; SECTION 20: NUMERIC OUTPUT (pictured + direct)
@@ -8906,6 +9014,12 @@ ENVTABLE:
             FDB   EN17,EN17L,TRUEV  ; DOUBLE-EXT (complete)
             FDB   EN18,EN18L,TRUEV  ; CORE-EXT (complete)
             FDB   EN19,EN19L,WLMAX  ; WORDLISTS
+            IFNE  STRINGSET         ; absent entry = false, as required
+            FDB   EN20,EN20L,TRUEV  ; STRING
+            ENDC
+            IFNE  STRINGEXT
+            FDB   EN21,EN21L,TRUEV  ; STRING-EXT
+            ENDC
             FDB   0
 EN1:        FCC   "/COUNTED-STRING"
 EN1L        EQU   *-EN1
@@ -8937,6 +9051,14 @@ EN18:       FCC   "CORE-EXT"
 EN18L       EQU   *-EN18
 EN19:       FCC   "WORDLISTS"
 EN19L       EQU   *-EN19
+            IFNE  STRINGSET
+EN20:       FCC   "STRING"
+EN20L       EQU   *-EN20
+            ENDC
+            IFNE  STRINGEXT
+EN21:       FCC   "STRING-EXT"
+EN21L       EQU   *-EN21
+            ENDC
 
 ; ============================================================
 ; SECTION 25: TOOLS WORD SET (.S / WORDS / DUMP)
@@ -9260,6 +9382,917 @@ POSTWOW:    LDD   #2
 NEGTWOW:    LDD   #-2
             PSHU  D
             RTS
+
+            IFNE  DISASM
+; ------------------------------------------------------------
+; DISASM: 6809 disassembler (hexadecimal, lwasm style).
+;
+; DASM  ( addr -- addr' )   Send one instruction as text, for example
+;       LDA #$A5  or  LDX <$7B  or  STA $0A,X  or  BRA $4010, and return
+;       the address of the next instruction. Branch and PC-relative
+;       operands show the absolute target address. A byte that is not
+;       a legal instruction shows as FCB $xx and is one byte long.
+; DIS   ( addr u -- )       List the instructions that start in
+;       addr .. addr+u-1, one per line: address, bytes, text.
+;
+; The decoder is table driven: the name pool and the tables follow the
+; code. Every character goes out through DCH, which is silenced while
+; DISMUTE is non-zero so that DIS can measure an instruction first.
+; ------------------------------------------------------------
+DCH:        TST   DISMUTE
+            BNE   DCHX
+            TFR   A,B
+            CLRA
+            PSHU  D
+            JMP   EMITW             ; EMITW returns to our caller
+DCHX:       RTS
+
+DNIB:       ADDA  #'0'              ; A = 0..15 -> one hex digit
+            CMPA  #'9'
+            BLS   DCH
+            ADDA  #7
+            BRA   DCH
+
+DHEXA:      PSHS  A                 ; A as two hex digits
+            LSRA
+            LSRA
+            LSRA
+            LSRA
+            BSR   DNIB
+            PULS  A
+            ANDA  #$0F
+            BRA   DNIB
+
+DHEXD:      PSHS  B                 ; D as four hex digits
+            BSR   DHEXA
+            PULS  A
+            BRA   DHEXA
+
+DDOLLAR:    LDA   #'$'
+            BRA   DCH
+
+DVAL8:      PSHS  A                 ; "$" and A
+            BSR   DDOLLAR
+            PULS  A
+            BRA   DHEXA
+
+DVAL:       PSHS  D                 ; "$" and D
+            BSR   DDOLLAR
+            PULS  D
+            BRA   DHEXD
+
+DFETCH:     LDX   DISPC             ; A = next byte
+            LDA   ,X+
+            STX   DISPC
+            RTS
+
+DFETCH16:   JSR   DFETCH            ; D = next two bytes
+            PSHS  A
+            JSR   DFETCH
+            TFR   A,B
+            PULS  A
+            RTS
+
+DREPCH:     PSHS  A,B               ; send char B, A times
+DRP1:       TST   ,S
+            BEQ   DRP9
+            LDA   1,S
+            JSR   DCH
+            DEC   ,S
+            BRA   DRP1
+DRP9:       PULS  A,B,PC
+
+DNAME:      LDX   #DNAMES           ; send name number B
+DNM1:       TSTB
+            BEQ   DNM3
+DNM2:       LDA   ,X+
+            BPL   DNM2
+            DECB
+            BRA   DNM1
+DNM3:       PSHS  X
+            LDA   ,X
+            ANDA  #$7F
+            JSR   DCH
+            PULS  X
+            TST   ,X+
+            BPL   DNM3
+            RTS
+
+DREGN:      ASLA                    ; send register name for code A
+            LDX   #DREGT
+            LEAX  A,X
+            LDA   ,X
+            PSHS  X
+            JSR   DCH
+            PULS  X
+            LDA   1,X
+            CMPA  #' '
+            LBNE  DCH
+            RTS
+
+DNEG:       PSHS  D                 ; send "-" and negate D
+            LDA   #'-'
+            JSR   DCH
+            PULS  D
+            COMA
+            COMB
+            ADDD  #1
+            RTS
+
+; ---- the decoder ----
+DILL:       LDX   DISSTART          ; not an instruction: FCB $xx
+            LEAX  1,X
+            STX   DISPC
+            CLR   DISLEAD
+            CLR   DISSUF
+            LDA   #N_FCB
+            STA   DISMN
+            LDA   #D_FCB
+            STA   DISMD
+            LBRA   DPOUT
+
+DASMW:      PULU  X
+            STX   DISSTART
+            STX   DISPC
+            CLR   DISPG
+            CLR   DISLEAD
+            CLR   DISSUF
+            JSR   DFETCH
+            CMPA  #$10
+            BEQ   DPFX
+            CMPA  #$11
+            BNE   DOP
+DPFX:       ANDA  #1
+            INCA
+            STA   DISPG             ; page 1 or 2
+            JSR   DFETCH
+            CMPA  #$10
+            LBEQ   DILL
+            CMPA  #$11
+            LBEQ   DILL
+DOP:        STA   DISOP
+            LDB   DISPG
+            BEQ   DOP0
+            CMPA  #$3F              ; SWI2, SWI3
+            BNE   DP2
+            TFR   B,A
+            ADDA  #N_SWI2-1
+            STA   DISMN
+            CLR   DISMD
+            LBRA   DPRINT
+DP2:        CMPA  #$80
+            LBHS   DCOL
+            CMPA  #$21              ; long branches, page 1 only
+            LBLO   DILL
+            CMPA  #$2F
+            LBHI   DILL
+            DECB
+            LBNE   DILL
+            LDA   #'L'
+            STA   DISLEAD
+            LDA   DISOP
+            ANDA  #$0F
+            ADDA  #N_BRA
+            STA   DISMN
+            LDA   #D_REL16
+            LBRA   DSETMD
+
+DOP0:       CMPA  #$80
+            LBHS   DCOL
+            LDB   DISOP
+            ANDB  #$0F              ; B = low nibble
+            LSRA
+            LSRA
+            LSRA
+            LSRA                    ; A = high nibble
+            CMPA  #2
+            BEQ   DH2
+            LDX   #DTAB1
+            CMPA  #1
+            BEQ   DLK2
+            LDX   #DTAB3
+            CMPA  #3
+            BEQ   DLK2
+            LDX   #DRMW             ; read-modify-write column
+            LDB   B,X
+            LBMI   DILL
+            STB   DISMN
+            LDX   #DRMWMD
+            LDA   A,X
+            STA   DISMD
+            LBNE   DPRINT
+            CMPB  #N_JMP            ; no JMP A or JMP B
+            LBEQ   DILL
+            LDA   DISOP
+            LSRA
+            LSRA
+            LSRA
+            LSRA
+            ANDA  #1
+            ADDA  #'A'
+            STA   DISSUF
+            LBRA   DPRINT
+DH2:        TFR   B,A
+            ADDA  #N_BRA
+            STA   DISMN
+            LDA   #D_REL8
+            LBRA   DSETMD
+DLK2:       ASLB
+            ABX
+            LDA   ,X
+            LBMI   DILL
+            STA   DISMN
+            LDA   1,X
+DSETMD:     STA   DISMD
+            LBRA   DPRINT
+
+DCOL:       LDA   DISOP             ; $80-$FF
+            LSRA
+            LSRA
+            ANDA  #$10              ; B side
+            STA   DISTMP
+            LDB   DISOP
+            ANDB  #$0F
+            ORB   DISTMP            ; B = side*16 + column
+            LDA   DISPG
+            LBNE   DPGX
+            LDX   #DCOLS
+            LDB   B,X
+            LBRA   DCOLM
+DPGX:       PSHS  B
+            LDB   #64
+            MUL                     ; B = page*64
+            ORB   ,S+
+            LDX   #DOVR
+DOVL:       TST   ,X
+            LBEQ   DILL
+            CMPB  ,X++
+            BNE   DOVL
+            LDB   -1,X
+DCOLM:      STB   DISMN
+            LDA   DISOP
+            LSRA
+            LSRA
+            LSRA
+            LSRA
+            ANDA  #3
+            BNE   DCM2              ; not immediate
+            LDB   DISOP
+            CMPB  #$8D
+            BNE   DCIMM
+            LDA   #N_BSR            ; BSR is JSR's immediate slot
+            STA   DISMN
+            LDA   #D_REL8
+            LBRA   DSETMD
+DCIMM:      ANDB  #$0F
+            LDX   #DIMMT
+            LDA   B,X
+            LBMI   DILL
+            LBRA   DSETMD
+DCM2:       LDX   #DCMODE
+            LDA   A,X
+            LBRA   DSETMD
+
+; Check operands that can be illegal before anything is sent.
+DPRINT:     LDX   DISPC
+            LDA   DISMD
+            CMPA  #D_IDX
+            BEQ   DPVI
+            CMPA  #D_REG
+            LBNE   DPOUT
+            LDA   ,X                ; TFR/EXG: both register codes valid
+            JSR   DREGOK
+            LBCC   DILL
+            LDA   ,X
+            LSRA
+            LSRA
+            LSRA
+            LSRA
+            JSR   DREGOK
+            LBCC   DILL
+            LBRA   DPOUT
+DPVI:       LDA   ,X                ; indexed postbyte legal?
+            TSTA
+            LBPL   DPOUT
+            TFR   A,B
+            ANDB  #$0F              ; mode
+            LDX   #$3B7F            ; modes legal without [ ]
+            BITA  #$10
+            BEQ   DPV1
+            LDX   #$BB7A            ; modes legal with [ ]
+DPV1:       STX   DISTMP
+            INCB
+DPV2:       LSR   DISTMP
+            ROR   DISTMP+1
+            DECB
+            BNE   DPV2
+            LBCC   DILL
+            LBRA   DPOUT
+
+DREGOK:     ANDA  #$0F              ; C set if register code A is valid
+            CMPA  #6
+            BLO   DRG1
+            CMPA  #8
+            BLO   DRG0
+            CMPA  #11
+            BHI   DRG0
+DRG1:       ORCC  #1
+            RTS
+DRG0:       ANDCC #$FE
+            RTS
+
+DPOUT:      LDA   DISLEAD
+            BEQ   DPO1
+            JSR   DCH
+DPO1:       LDB   DISMN
+            JSR   DNAME
+            LDA   DISSUF
+            BEQ   DPO2
+            JSR   DCH
+DPO2:       LDA   DISMD
+            BEQ   DPO3              ; inherent: no operand
+            LDA   #' '
+            JSR   DCH
+            LDA   DISMD
+            ASLA
+            LDX   #DJT-2
+            LDX   A,X
+            JSR   ,X
+DPO3:       LDX   DISPC
+            PSHU  X
+            RTS
+
+DJT:        FDB   DOIMM8,DOIMM16,DODIR,DOIDX,DOEXT,DOREL8,DOREL16
+            FDB   DOREG,DOSTKS,DOSTKU,DOFCB
+
+; ---- operand printers ----
+DOIMM8:     LDA   #'#'
+            JSR   DCH
+            JSR   DFETCH
+            LBRA   DVAL8
+DOIMM16:    LDA   #'#'
+            JSR   DCH
+            JSR   DFETCH16
+            LBRA   DVAL
+DODIR:      LDA   #'<'
+            JSR   DCH
+            JSR   DFETCH
+            LBRA   DVAL8
+DOEXT:      JSR   DFETCH16
+            TSTA
+            LBNE   DVAL
+            PSHS  D                 ; high byte 0: show > so it stays extended
+            LDA   #'>'
+            JSR   DCH
+            PULS  D
+            LBRA   DVAL
+DOFCB:      LDX   DISSTART
+            LDA   ,X
+            LBRA   DVAL8
+DOREL8:     JSR   DFETCH
+            TFR   A,B
+            SEX
+            LBRA   DREL
+DOREL16:    JSR   DFETCH16
+DREL:       ADDD  DISPC             ; target = next instruction + offset
+            LBRA   DVAL
+
+DOREG:      JSR   DFETCH            ; TFR/EXG
+            PSHS  A
+            LSRA
+            LSRA
+            LSRA
+            LSRA
+            JSR   DREGN
+            LDA   #','
+            JSR   DCH
+            PULS  A
+            ANDA  #$0F
+            LBRA   DREGN
+
+DOSTKS:     LDA   #3                ; PSHS/PULS: bit 6 is U
+            LBRA   DOSTK
+DOSTKU:     LDA   #4                ; PSHU/PULU: bit 6 is S
+DOSTK:      STA   DISTMP2
+            JSR   DFETCH
+            STA   DISTMP            ; register mask, shifted right
+            BNE   DOSM
+            LDA   #'#'              ; empty list: #$00
+            JSR   DCH
+            CLRA
+            LBRA  DVAL8
+DOSM:
+            CLR   DISTMP+1          ; non-zero once a name was sent
+            CLR   DISTMP2+1         ; bit number
+DOSL:       LSR   DISTMP
+            BCC   DOSN
+            TST   DISTMP+1
+            LBEQ   DOS1
+            LDA   #','
+            JSR   DCH
+DOS1:       INC   DISTMP+1
+            LDB   DISTMP2+1
+            LDX   #DSTKR
+            LDA   B,X
+            CMPB  #6
+            BNE   DOS2
+            LDA   DISTMP2
+DOS2:       JSR   DREGN
+DOSN:       INC   DISTMP2+1
+            LDA   DISTMP2+1
+            CMPA  #8
+            BLO   DOSL
+            RTS
+
+; Indexed operand. DISTMP = postbyte, DISTMP+1 = descriptor.
+DOIDX:      JSR   DFETCH
+            STA   DISTMP
+            TSTA
+            BMI   DIX1
+            ANDA  #$1F              ; 5-bit offset
+            BITA  #$10
+            BEQ   DIX0
+            ORA   #$E0
+DIX0:       TFR   A,B
+            SEX
+            JSR   DSGN8
+DIXCR:      LDA   #','
+            JSR   DCH
+DIXREG:     LDA   DISTMP            ; register letter from bits 5-6
+            LSRA
+            LSRA
+            LSRA
+            LSRA
+            LSRA
+            ANDA  #3
+            LDX   #DREGL
+            LDA   A,X
+            JMP   DCH
+DIX1:       BITA  #$10
+            BEQ   DIX2
+            LDA   #'['
+            JSR   DCH
+DIX2:       LDA   DISTMP
+            ANDA  #$0F
+            LDX   #DIXT
+            LDB   A,X
+            BMI   DIXSP
+            STB   DISTMP+1
+            LSRB
+            LSRB
+            LSRB
+            LSRB
+            ANDB  #3
+            BEQ   DIXA0
+            LDX   #DACC
+            LDA   B,X
+            JSR   DCH
+DIXA0:      LDA   #','
+            JSR   DCH
+            LDA   DISTMP+1
+            ANDA  #3
+            LDB   #'-'
+            JSR   DREPCH
+            JSR   DIXREG
+            LDA   DISTMP+1
+            LSRA
+            LSRA
+            ANDA  #3
+            LDB   #'+'
+            JSR   DREPCH
+            LBRA   DIXEND
+DIXSP:      LDA   DISTMP
+            ANDA  #$0F
+            CMPA  #8
+            BEQ   DIXO8
+            CMPA  #9
+            BEQ   DIXO16
+            CMPA  #$0F
+            BEQ   DIXEXT
+            CMPA  #$0C
+            BEQ   DIXP8
+            JSR   DFETCH16          ; 16-bit PC relative
+            PSHS  D
+            ADDD  #128
+            TSTA
+            BNE   DIXPN
+            LDA   #'>'              ; offset would fit 8 bits: force 16
+            JSR   DCH
+DIXPN:      PULS  D
+            BRA   DIXPC
+DIXP8:      JSR   DFETCH            ; 8-bit PC relative
+            TFR   A,B
+            SEX
+DIXPC:      ADDD  DISPC
+            JSR   DVAL
+            LDX   #DPCR
+            LDA   #4
+DIXPL:      PSHS  A,X               ; ",PCR"
+            LDA   ,X
+            JSR   DCH
+            PULS  A,X
+            LEAX  1,X
+            DECA
+            BNE   DIXPL
+            LBRA   DIXEND
+DIXEXT:     JSR   DFETCH16          ; [$xxxx]
+            JSR   DVAL
+            LBRA   DIXEND
+DIXO8:      JSR   DFETCH            ; 8-bit offset
+            TFR   A,B
+            SEX
+            PSHS  D
+            ADDD  #16
+            CMPD  #32
+            BHS   DIXO8N
+            LDA   #'<'              ; would fit 5 bits: force 8
+            JSR   DCH
+DIXO8N:     PULS  D
+            JSR   DSGN8
+            BRA   DIXOR
+DIXO16:     JSR   DFETCH16          ; 16-bit offset
+            PSHS  D
+            ADDD  #128
+            TSTA
+            BNE   DIXO6N
+            LDA   #'>'              ; would fit 8 bits: force 16
+            JSR   DCH
+DIXO6N:     PULS  D
+            JSR   DSGN16
+DIXOR:      LDA   #','
+            JSR   DCH
+            JSR   DIXREG
+DIXEND:     LDA   DISTMP
+            BITA  #$10
+            BEQ   DIXRTS
+            LDA   #']'
+            JMP   DCH
+DIXRTS:     RTS
+
+DSGN8:      TSTA                    ; D = signed offset, shown as one byte
+            BPL   DSG8P
+            JSR   DNEG
+DSG8P:      TFR   B,A
+            JMP   DVAL8
+DSGN16:     TSTA
+            BPL   DSG16P
+            JSR   DNEG
+DSG16P:     JMP   DVAL
+
+DPCR:       FCC   ",PCR"
+
+; ---- DASM and DIS entry points ----
+DASMENT:    CLR   DISMUTE           ; DASM  ( addr -- addr' )
+            LBRA   DASMW
+
+DISW:       PULU  D                 ; DIS  ( addr u -- )
+            ADDD  ,U
+            STD   DISEND
+            JSR   CRW
+DISL:       LDD   ,U
+            CMPD  DISEND
+            BHS   DISX
+            LDA   #1
+            STA   DISMUTE           ; first pass finds the length
+            LDD   ,U
+            PSHU  D
+            JSR   DASMW
+            PULU  D
+            STD   DISNXT
+            CLR   DISMUTE
+            LDD   ,U
+            JSR   DHEXD             ; address
+            LDA   #' '
+            JSR   DCH
+            LDX   ,U
+            STX   DISTMP
+            LDA   #15               ; room for five bytes
+            STA   DISTMP2
+DISB:       LDX   DISTMP
+            CMPX  DISNXT
+            BEQ   DISP
+            LDA   ,X+
+            STX   DISTMP
+            JSR   DHEXA
+            LDA   #' '
+            JSR   DCH
+            LDA   DISTMP2
+            SUBA  #3
+            STA   DISTMP2
+            BRA   DISB
+DISP:       LDA   DISTMP2           ; pad to the text column
+            INCA
+            LDB   #' '
+            JSR   DREPCH
+            LDD   ,U
+            PSHU  D
+            JSR   DASMW             ; second pass sends the text
+            LEAU  2,U
+            LDD   DISNXT
+            STD   ,U
+            JSR   CRW
+            BRA   DISL
+DISX:       LEAU  2,U
+            RTS
+
+; Name index constants (positions in DNAMES)
+N_BRA    EQU   12
+N_SWI2   EQU   52
+N_BSR    EQU   86
+N_JMP    EQU   10
+N_FCB    EQU   95
+D_INH    EQU   0
+D_IMM8   EQU   1
+D_IMM16  EQU   2
+D_DIR    EQU   3
+D_IDX    EQU   4
+D_EXT    EQU   5
+D_REL8   EQU   6
+D_REL16  EQU   7
+D_REG    EQU   8
+D_STKS   EQU   9
+D_STKU   EQU   10
+D_FCB    EQU   11
+
+; DNAMES: every mnemonic once, bit 7 set on the last character.
+DNAMES:
+            FCC   "NE"
+            FCB   $C7               ; NEG = 0
+            FCC   "CO"
+            FCB   $CD               ; COM = 1
+            FCC   "LS"
+            FCB   $D2               ; LSR = 2
+            FCC   "RO"
+            FCB   $D2               ; ROR = 3
+            FCC   "AS"
+            FCB   $D2               ; ASR = 4
+            FCC   "AS"
+            FCB   $CC               ; ASL = 5
+            FCC   "RO"
+            FCB   $CC               ; ROL = 6
+            FCC   "DE"
+            FCB   $C3               ; DEC = 7
+            FCC   "IN"
+            FCB   $C3               ; INC = 8
+            FCC   "TS"
+            FCB   $D4               ; TST = 9
+            FCC   "JM"
+            FCB   $D0               ; JMP = 10
+            FCC   "CL"
+            FCB   $D2               ; CLR = 11
+            FCC   "BR"
+            FCB   $C1               ; BRA = 12
+            FCC   "BR"
+            FCB   $CE               ; BRN = 13
+            FCC   "BH"
+            FCB   $C9               ; BHI = 14
+            FCC   "BL"
+            FCB   $D3               ; BLS = 15
+            FCC   "BC"
+            FCB   $C3               ; BCC = 16
+            FCC   "BC"
+            FCB   $D3               ; BCS = 17
+            FCC   "BN"
+            FCB   $C5               ; BNE = 18
+            FCC   "BE"
+            FCB   $D1               ; BEQ = 19
+            FCC   "BV"
+            FCB   $C3               ; BVC = 20
+            FCC   "BV"
+            FCB   $D3               ; BVS = 21
+            FCC   "BP"
+            FCB   $CC               ; BPL = 22
+            FCC   "BM"
+            FCB   $C9               ; BMI = 23
+            FCC   "BG"
+            FCB   $C5               ; BGE = 24
+            FCC   "BL"
+            FCB   $D4               ; BLT = 25
+            FCC   "BG"
+            FCB   $D4               ; BGT = 26
+            FCC   "BL"
+            FCB   $C5               ; BLE = 27
+            FCC   "NO"
+            FCB   $D0               ; NOP = 28
+            FCC   "SYN"
+            FCB   $C3               ; SYNC = 29
+            FCC   "LBR"
+            FCB   $C1               ; LBRA = 30
+            FCC   "LBS"
+            FCB   $D2               ; LBSR = 31
+            FCC   "DA"
+            FCB   $C1               ; DAA = 32
+            FCC   "ORC"
+            FCB   $C3               ; ORCC = 33
+            FCC   "ANDC"
+            FCB   $C3               ; ANDCC = 34
+            FCC   "SE"
+            FCB   $D8               ; SEX = 35
+            FCC   "EX"
+            FCB   $C7               ; EXG = 36
+            FCC   "TF"
+            FCB   $D2               ; TFR = 37
+            FCC   "LEA"
+            FCB   $D8               ; LEAX = 38
+            FCC   "LEA"
+            FCB   $D9               ; LEAY = 39
+            FCC   "LEA"
+            FCB   $D3               ; LEAS = 40
+            FCC   "LEA"
+            FCB   $D5               ; LEAU = 41
+            FCC   "PSH"
+            FCB   $D3               ; PSHS = 42
+            FCC   "PUL"
+            FCB   $D3               ; PULS = 43
+            FCC   "PSH"
+            FCB   $D5               ; PSHU = 44
+            FCC   "PUL"
+            FCB   $D5               ; PULU = 45
+            FCC   "RT"
+            FCB   $D3               ; RTS = 46
+            FCC   "AB"
+            FCB   $D8               ; ABX = 47
+            FCC   "RT"
+            FCB   $C9               ; RTI = 48
+            FCC   "CWA"
+            FCB   $C9               ; CWAI = 49
+            FCC   "MU"
+            FCB   $CC               ; MUL = 50
+            FCC   "SW"
+            FCB   $C9               ; SWI = 51
+            FCC   "SWI"
+            FCB   $B2               ; SWI2 = 52
+            FCC   "SWI"
+            FCB   $B3               ; SWI3 = 53
+            FCC   "SUB"
+            FCB   $C1               ; SUBA = 54
+            FCC   "CMP"
+            FCB   $C1               ; CMPA = 55
+            FCC   "SBC"
+            FCB   $C1               ; SBCA = 56
+            FCC   "SUB"
+            FCB   $C4               ; SUBD = 57
+            FCC   "AND"
+            FCB   $C1               ; ANDA = 58
+            FCC   "BIT"
+            FCB   $C1               ; BITA = 59
+            FCC   "LD"
+            FCB   $C1               ; LDA = 60
+            FCC   "ST"
+            FCB   $C1               ; STA = 61
+            FCC   "EOR"
+            FCB   $C1               ; EORA = 62
+            FCC   "ADC"
+            FCB   $C1               ; ADCA = 63
+            FCC   "OR"
+            FCB   $C1               ; ORA = 64
+            FCC   "ADD"
+            FCB   $C1               ; ADDA = 65
+            FCC   "CMP"
+            FCB   $D8               ; CMPX = 66
+            FCC   "JS"
+            FCB   $D2               ; JSR = 67
+            FCC   "LD"
+            FCB   $D8               ; LDX = 68
+            FCC   "ST"
+            FCB   $D8               ; STX = 69
+            FCC   "SUB"
+            FCB   $C2               ; SUBB = 70
+            FCC   "CMP"
+            FCB   $C2               ; CMPB = 71
+            FCC   "SBC"
+            FCB   $C2               ; SBCB = 72
+            FCC   "ADD"
+            FCB   $C4               ; ADDD = 73
+            FCC   "AND"
+            FCB   $C2               ; ANDB = 74
+            FCC   "BIT"
+            FCB   $C2               ; BITB = 75
+            FCC   "LD"
+            FCB   $C2               ; LDB = 76
+            FCC   "ST"
+            FCB   $C2               ; STB = 77
+            FCC   "EOR"
+            FCB   $C2               ; EORB = 78
+            FCC   "ADC"
+            FCB   $C2               ; ADCB = 79
+            FCC   "OR"
+            FCB   $C2               ; ORB = 80
+            FCC   "ADD"
+            FCB   $C2               ; ADDB = 81
+            FCC   "LD"
+            FCB   $C4               ; LDD = 82
+            FCC   "ST"
+            FCB   $C4               ; STD = 83
+            FCC   "LD"
+            FCB   $D5               ; LDU = 84
+            FCC   "ST"
+            FCB   $D5               ; STU = 85
+            FCC   "BS"
+            FCB   $D2               ; BSR = 86
+            FCC   "CMP"
+            FCB   $C4               ; CMPD = 87
+            FCC   "CMP"
+            FCB   $D9               ; CMPY = 88
+            FCC   "LD"
+            FCB   $D9               ; LDY = 89
+            FCC   "ST"
+            FCB   $D9               ; STY = 90
+            FCC   "LD"
+            FCB   $D3               ; LDS = 91
+            FCC   "ST"
+            FCB   $D3               ; STS = 92
+            FCC   "CMP"
+            FCB   $D5               ; CMPU = 93
+            FCC   "CMP"
+            FCB   $D3               ; CMPS = 94
+            FCC   "FC"
+            FCB   $C2               ; FCB = 95
+
+; DRMW: low nibble of $0x,$4x-$7x -> name ($FF = illegal)
+DRMW:
+            FCB   0,$FF,$FF,1,2,$FF,3,4
+            FCB   5,6,7,$FF,8,9,10,11
+; DRMWMD: high nibble 0..7 -> mode (4,5 = inherent on A,B)
+DRMWMD:
+            FCB   D_DIR,D_INH,D_INH,D_INH,D_INH,D_INH,D_IDX,D_EXT
+
+; DTAB1: $1x -> (name, mode)
+DTAB1:
+            FCB   $FF,0
+            FCB   $FF,0
+            FCB   28,D_INH              ; NOP
+            FCB   29,D_INH              ; SYNC
+            FCB   $FF,0
+            FCB   $FF,0
+            FCB   30,D_REL16              ; LBRA
+            FCB   31,D_REL16              ; LBSR
+            FCB   $FF,0
+            FCB   32,D_INH              ; DAA
+            FCB   33,D_IMM8              ; ORCC
+            FCB   $FF,0
+            FCB   34,D_IMM8              ; ANDCC
+            FCB   35,D_INH              ; SEX
+            FCB   36,D_REG              ; EXG
+            FCB   37,D_REG              ; TFR
+
+; DTAB3: $3x -> (name, mode)
+DTAB3:
+            FCB   38,D_IDX              ; LEAX
+            FCB   39,D_IDX              ; LEAY
+            FCB   40,D_IDX              ; LEAS
+            FCB   41,D_IDX              ; LEAU
+            FCB   42,D_STKS              ; PSHS
+            FCB   43,D_STKS              ; PULS
+            FCB   44,D_STKU              ; PSHU
+            FCB   45,D_STKU              ; PULU
+            FCB   $FF,0
+            FCB   46,D_INH              ; RTS
+            FCB   47,D_INH              ; ABX
+            FCB   48,D_INH              ; RTI
+            FCB   49,D_IMM8              ; CWAI
+            FCB   50,D_INH              ; MUL
+            FCB   $FF,0
+            FCB   51,D_INH              ; SWI
+
+; DCOLS: $80-$FF columns, A side (bit 6 = 0) then B side
+DCOLS:
+            FCB   54,55,56,57,58,59,60,61
+            FCB   62,63,64,65,66,67,68,69
+            FCB   70,71,72,73,74,75,76,77
+            FCB   78,79,80,81,82,83,84,85
+
+; DOVR: page 1/2 column opcodes: key = page*64+side*16+column, name; 0 ends
+DOVR:
+            FCB   $43,87             ; CMPD
+            FCB   $4C,88             ; CMPY
+            FCB   $4E,89             ; LDY
+            FCB   $4F,90             ; STY
+            FCB   $5E,91             ; LDS
+            FCB   $5F,92             ; STS
+            FCB   $83,93             ; CMPU
+            FCB   $8C,94             ; CMPS
+            FCB   0
+
+; DIMMT: column -> immediate mode ($FF = no immediate form)
+DIMMT:
+            FCB   D_IMM8,D_IMM8,D_IMM8,D_IMM16,D_IMM8,D_IMM8,D_IMM8,$FF
+            FCB   D_IMM8,D_IMM8,D_IMM8,D_IMM8,D_IMM16,$FF,D_IMM16,$FF
+; DCMODE: bits 4-5 of the opcode -> mode
+DCMODE:     FCB   D_IMM8,D_DIR,D_IDX,D_EXT
+; DREGT: TFR/EXG register code -> two characters
+DREGT:      FCC   "D X Y U S PC????A B CCDP"
+; DSTKR: PSH/PUL bit -> register code (bit 6 is replaced by U or S)
+DSTKR:      FCB   10,8,9,11,1,2,3,5
+DREGL:      FCC   "XYUS"
+DACC:       FCC   "?BAD"
+; DIXT: indexed mode (low nibble of the postbyte) -> descriptor:
+; bits 0-1 minus signs before the register, bits 2-3 plus signs after,
+; bits 4-5 accumulator (1 B, 2 A, 3 D), bit 7 = needs its own code
+DIXT:
+            FCB   $04,$08,$01,$02,$00,$10,$20,$00
+            FCB   $88,$89,$00,$30,$8C,$8D,$00,$8F
+            ENDC
 
 ; Verify no collision with init code,
 ; value should match ORG INITCODE.

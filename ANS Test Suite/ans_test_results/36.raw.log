@@ -1,0 +1,61 @@
+\ ============================================================
+  ok\ ANS test suite - String extension words (STRINGEXT=1 builds
+  ok\ only): REPLACES SUBSTITUTE UNESCAPE (and CLR-REPLACES).
+  ok\ Independent of the String word set: it uses SCMP, a comparison
+  ok\ defined here, instead of COMPARE, so it also runs when
+  ok\ STRINGSET=0.
+  ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded
+  ok\ first, in that order. Extracted from the ANS Forth Standard,
+  ok\ Annex F (https://forth-standard.org/standard/testsuite).
+  ok\ ============================================================
+  okMARKER M36
+  okTEST-BEGIN
+  okDECIMAL
+  ok\ SCMP ( c-addr1 u1 c-addr2 u2 -- 0 | 1 )  0 if the strings are equal.
+  ok: SCMP
+  ROT OVER <> IF 2DROP DROP 1 EXIT THEN
+  0 ?DO
+    2DUP I + C@ SWAP I + C@ <> IF 2DROP UNLOOP 1 EXIT THEN
+  LOOP 2DROP 0 ;
+  ok: e1 S" abc" ;
+  ok: e2 S" abd" ;
+  ok: e3 S" ab" ;
+  okT{ e1 e1 SCMP -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ e1 e2 SCMP -> 1 }T  Actual:Expected 1 =?= 1 
+  okT{ e1 e3 SCMP -> 1 }T  Actual:Expected 1 =?= 1 
+  ok\ F.17.6.2.2141 REPLACES
+  ok\ See F.17.6.2.2255 SUBSTITUTE
+  ok\ F.17.6.2.2255 SUBSTITUTE
+  ok30 CHARS BUFFER: subbuff                \ Destination buffer
+  ok: "hi" S" hi" ;
+  ok: "wld" S" wld" ;
+  ok: "hello" S" hello" ;
+  ok: "world" S" world" ;
+  ok: sub1 S" Start: %hi%,%wld%! :End" ;    \ Original string
+  ok: sub2 S" Start: hello,world! :End" ;   \ First target string
+  ok: sub3 S" Start: world,hello! :End" ;   \ Second target string
+  okT{ "hello" "hi"  REPLACES -> }T
+  okT{ "world" "wld" REPLACES -> }T
+  okT{ sub1 subbuff 30 SUBSTITUTE ROT ROT sub2 SCMP -> 2 0 }T  Actual:Expected 0 =?= 0 2 =?= 2 
+  okT{ "world" "hi"  REPLACES -> }T
+  okT{ "hello" "wld" REPLACES -> }T
+  okT{ sub1 subbuff 30 SUBSTITUTE ROT ROT sub3 SCMP -> 2 0 }T  Actual:Expected 0 =?= 0 2 =?= 2 
+  ok\ Where the substitution name is not defined
+  ok: sub4 S" aaa%bbb%ccc" ;
+  okT{ sub4 subbuff 30 SUBSTITUTE ROT ROT sub4 SCMP -> 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  ok\ Finally the % character itself
+  ok: sub5 S" aaa%%bbb" ;
+  ok: sub6 S" aaa%bbb" ;
+  okT{ sub5 subbuff 30 SUBSTITUTE ROT ROT sub6 SCMP -> 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  ok\ F.17.6.2.2375 UNESCAPE
+  okT{ sub6 subbuff UNESCAPE sub5 SCMP -> 0 }T  Actual:Expected 0 =?= 0 
+  ok\ CLR-REPLACES empties the table: the names are no longer replaced.
+  okT{ CLR-REPLACES -> }T
+  okT{ sub1 subbuff 30 SUBSTITUTE ROT ROT sub1 SCMP -> 0 0 }T  Actual:Expected 0 =?= 0 0 =?= 0 
+  ok\ Restore default base.
+  okHEX
+  okTEST-END
+TEST SUMMARY: 14 run, 0 failed
+
+  okM36
+  ok

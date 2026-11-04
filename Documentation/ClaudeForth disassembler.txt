@@ -1,0 +1,862 @@
+
+In the Motorola MC6809 microprocessor, there isn't a single, 
+uniform bit mask layout for the primary opcode byte 
+because it employs a non-orthogonal instruction set 
+with a variable-length opcode architecture.[1, 2]
+However, the architecture relies heavily on postbytes 
+(bytes immediately following certain opcodes),
+ which use highly structured, rigid bit masks to encode registers, 
+ addressing modes, and stacking orders. [1, 2, 3]
+
+
+
+1. Indexed Addressing Postbyte Masks
+When an instruction uses Indexed Addressing Mode, 
+a postbyte specifies the variation (offsets, 
+auto-increment/decrement) and the pointer register used. [1]
+
+A. 5-bit Constant Offset Mode
+If Bit 7 is 0, the microprocessor automatically 
+knows the mode is a 5-bit signed constant offset: [1, 2]
+	•	Bit 7: 0 (Identifies 5-bit offset mode) [1, 2]
+	•	Bits 6–5 (RR): Target Pointer Register selection
+	•	00 = X
+	•	01 = Y
+	•	10 = U
+	•	11 = S [1, 2]
+	•	Bits 4–0 (ddddd): 5-bit signed offset value (ranging from -16 to +15) [1, 2]
+
+B. Advanced Indexing Modes
+If Bit 7 is 1, the remaining bits are masked to determine 
+advanced offsets and indirect addressing: [1, 2]
+	•	Bits 6–5 (RR): Target Pointer Register selection (00=X, 01=Y, 10=U, 11=S). [1, 2]
+	•	Bit 4 (I): Indirection bit.
+	•	0 = Direct addressing
+	•	1 = Indirect addressing (e.g., [,X]) [1, 2, 3, 4]
+	•	Bits 3–0: Mode Selector Mask:
+	•	0000 = Auto-increment by 1 (,R+)
+	•	0001 = Auto-increment by 2 (,R++)
+	•	0010 = Auto-decrement by 1 (,-R)
+	•	0011 = Auto-decrement by 2 (,--R)
+	•	0100 = Zero offset (,R)
+	•	0101 = Accumulator B offset (B,R)
+	•	0110 = Accumulator A offset (A,R)
+	•	1000 = 8-bit constant offset
+	•	1001 = 16-bit constant offset
+	•	1011 = Accumulator D offset (D,R) [1, 2]
+
+
+
+2. Push / Pull Register Masks
+For instructions that manipulate the stack (PSHS, PSHU, PULS, PULU), 
+a single postbyte acts as a bit mask where each bit 
+explicitly toggles a specific register: [1]
+
+Bit	Mask (Hex)	Register Controlled
+Bit 7	$80	Program Counter (PC)
+Bit 6	$40	Stack Pointer (U for S-stack instructions, or S for U-stack instructions)
+Bit 5	$20	Index Register Y
+Bit 4	$10	Index Register X
+Bit 3	$08	Direct Page Register (DP)
+Bit 2	$04	Accumulator B
+Bit 1	$02	Accumulator A
+Bit 0	$01	Condition Code Register (CC)
+Example: To push both accumulators (A and B) onto the hardware stack 
+(PSHS A,B), the postbyte combines bit 1 ($02) and bit 2 ($04), 
+resulting in a postbyte mask of $06.
+
+
+
+3. Register Transfer and Exchange Masks (TFR / EXG)
+For register-to-register copies or swaps, a postbyte is split evenly 
+down the middle to define the source and destination operands: [1]
+	•	Bits 7–4: Source Register mask field
+	•	Bits 3–0: Destination Register mask field [1]
+The 4-bit binary values mapped to the internal MC6809 registers are: [1]
+	•	0000 = D (16-bit)
+	•	0001 = X (16-bit)
+	•	0010 = Y (16-bit)
+	•	0011 = U (16-bit)
+	•	0100 = S (16-bit)
+	•	0101 = PC (16-bit)
+	•	1000 = A (8-bit)
+	•	1001 = B (8-bit)
+	•	1010 = CC (8-bit)
+	•	1011 = DP (8-bit)
+
+
+
+4. Opcode Page Prefixes
+Because the MC6809 supports over 1,400 instruction variations, 
+it utilizes Page Prefixes to expand its 8-bit instruction set space. 
+If the microprocessor encounters these specific bytes first, 
+it alters how it masks and interprets the following opcode byte: [1, 2]
+	•	$10: Switches interpretation to Page 2 instructions 
+	    (e.g., CMPY, long conditional branches).
+	•	$11: Switches interpretation to Page 3 instructions 
+	    (e.g., CMPU, CMPS). [1, 2]
+If you are writing a disassembler or emulator, 
+let me know if you need help implementing the 
+logic for a specific instruction or parsing two-byte opcodes.
+
+
+Yes, that is exactly correct. You have mapped out the core 
+fetch-and-decode loop for an MC6809 disassembler perfectly.
+Because the MC6809 uses variable-length instructions, checking 
+for those prefix bytes (often called Page Prefixes or Pre-bytes) 
+is your very first line of defense.
+
+The Standard Disassembler Logic Flow
+	1.	Read Byte 1: Fetch the byte at the current Program Counter (PC).
+	2.	Check for Page 2: Is the byte $10?
+	•	If Yes, increment the PC, read the next byte, and 
+	    look it up in your Page 2 Opcode Table.
+	3.	Check for Page 3: Is the byte $11?
+	•	If Yes, increment the PC, read the next byte, 
+	    and look it up in your Page 3 Opcode Table.
+	4.	Default to Page 1: If the byte is neither $10 nor $11, 
+	    look it up immediately in your primary Page 1 Opcode Table.
+
+Why This Matters for the MC6809
+Separating these pages keeps your look-up tables clean and fast. For example:
+	•	If you encounter the byte $9C on Page 1, 
+	    it decodes to CMPA (Direct addressing mode).
+	•	If you encounter $10 followed by $9C, 
+	    the prefix shifts you to Page 2, 
+	    where $9C decodes to CMPY (Direct addressing mode).
+
+Your Next Step: The Postbyte Check
+Once your routine identifies the instruction from Page 1, 2, or 3, 
+it will check that instruction's addressing mode. 
+If the table tells you the instruction uses Indexed Addressing 
+(like LDA ,X or STA 5,Y), your disassembler must then pull 
+another byte from the stream and apply the postbyte bit masks 
+discussed earlier to print out the correct register and offset format.
+
+Are you writing this disassembler in a specific language like 
+C, Python, or 6502/6809 assembly? If you'd like, we can sketch out 
+the basic switch-case or look-up table structure for this primary loop.
+
+
+To write this in 6809 assembly, we will implement a jump table for Page 
+1 and show how the pre-bytes route control to Page 2 and Page 3 routines.
+Because opcodes range from $00 to $FF, using a 256-entry pointer table 
+(512 bytes total) allows for an instant look-up. By loading the opcode 
+directly into an index register, you can jump straight to the 
+specific handler for that instruction.
+Here is the structural framework for the core fetch-and-decode 
+loop in 6809 assembly:
+
+assembly
+* =============================================================================
+* MC6809 Core Disassembler Loop
+* Inputs:  X = Pointer to the current byte stream being disassembled
+* Outputs: Disassembles one instruction, updates X to point to the next instruction
+* =============================================================================
+
+FETCH_LOOP
+        LDA   ,X+         ; Fetch the opcode byte, advance pointer to next byte
+        
+        CMPA  #$10        ; Is it the Page 2 prefix?
+        BEQ   DO_PAGE2    ; Yes -> jump to Page 2 handler
+        
+        CMPA  #$11        ; Is it the Page 3 prefix?
+        BEQ   DO_PAGE3    ; Yes -> jump to Page 3 handler
+
+* -----------------------------------------------------------------------------
+* PAGE 1 DECODER
+* -----------------------------------------------------------------------------
+DO_PAGE1
+        ; A holds a standard Page 1 opcode ($00-$FF). 
+        ; We use a 256-entry jump table to route to the correct routine.
+        LDB   #2          ; Each address entry in the table is 2 bytes long
+        MUL               ; Multiply Accumulator A by B -> result in D (16-bit)
+        
+        LDY   #PAGE1_MAP  ; Point Y to the start of our Page 1 address table
+        LDY   D,Y         ; Fetch the handler address from the table [PAGE1_MAP + D]
+        JMP   ,Y          ; Jump to the specific instruction handler
+
+* -----------------------------------------------------------------------------
+* PAGE 2 DECODER
+* -----------------------------------------------------------------------------
+DO_PAGE2
+        LDA   ,X+         ; Fetch the actual opcode following the $10 pre-byte
+        LDB   #2          ; Multiply opcode by 2 to align with 16-bit pointers
+        MUL               
+        LDY   #PAGE2_MAP  ; Point Y to the Page 2 address table
+        LDY   D,Y         ; Fetch handler address
+        JMP   ,Y          ; Jump to Page 2 instruction handler
+
+* -----------------------------------------------------------------------------
+* PAGE 3 DECODER
+* -----------------------------------------------------------------------------
+DO_PAGE3
+        LDA   ,X+         ; Fetch the actual opcode following the $11 pre-byte
+        LDB   #2          
+        MUL               
+        LDY   #PAGE3_MAP  ; Point Y to the Page 3 address table
+        LDY   D,Y         ; Fetch handler address
+        JMP   ,Y          ; Jump to Page 3 instruction handler
+
+
+* =============================================================================
+* JUMP TABLES (Stored in ROM/Data Section)
+* =============================================================================
+        ALIGN 2           ; Ensure table entries align to word boundaries
+PAGE1_MAP
+        FDB   HND_NEG_DIR ; Opcode $00: NEG (Direct)
+        FDB   HND_ILLEGAL ; Opcode $01: Illegal
+        FDB   HND_ILLEGAL ; Opcode $02: Illegal
+        FDB   HND_COM_DIR ; Opcode $03: COM (Direct)
+        ; ... [Entries $04 through $8F omitted for brevity] ...
+        FDB   HND_SUBA_IMM; Opcode $80: SUBA (Immediate)
+        FDB   HND_CMPA_IMM; Opcode $81: CMPA (Immediate)
+        FDB   HND_SBCA_IMM; Opcode $82: SBCA (Immediate)
+        FDB   HND_SUBD_IMM; Opcode $83: SUBD (Immediate)
+        FDB   HND_ANDA_IMM; Opcode $84: ANDA (Immediate)
+        FDB   HND_BITA_IMM; Opcode $85: BITA (Immediate)
+        FDB   HND_LDA_IMM ; Opcode $86: LDA (Immediate)
+        ; ... [Fill out all 256 words for a complete table] ...
+
+PAGE2_MAP
+        ; Fill with Page 2 handlers (mostly 16-bit compares and long branches)
+        ; Unused slots point to an HND_ILLEGAL routine.
+        FDB   HND_ILLEGAL ; Opcode $00
+        ; ...
+        FDB   HND_CMPY_DIR; Opcode $9C (If preceded by $10, this is CMPY Direct)
+
+PAGE3_MAP
+        ; Fill with Page 3 handlers (mostly CMPS and CMPU variants)
+        FDB   HND_ILLEGAL ; Opcode $00
+Use code with caution.
+
+
+Technical Detail: The 6809 MUL Advantage
+The 6809 makes jump tables incredibly efficient because of the MUL instruction. 
+When you execute MUL, it multiplies the unsigned 8-bit value in A 
+by the unsigned 8-bit value in B and leaves the 16-bit result 
+in the joint D register (A becomes the high byte, B becomes the low byte).
+By setting B to 2, MUL dynamically shifts your opcode into a 
+perfect 16-bit offset index. The command LDY D,Y then uses indexed accumulation 
+to pull the target memory address directly from your list.
+
+Would you like to look at how one of the individual instruction handlers 
+(like HND_LDA_IMM or an Indexed Addressing handler) parses its remaining bytes
+ and formats them for output?
+
+
+The HND_LDA_IMM routine handles the LDA Immediate (#$xx) instruction.
+Because the LDA immediate opcode ($86) is always exactly 2 bytes long 
+(the 1-byte opcode followed by a 1-byte immediate value), 
+this handler is straightforward. It fetches the raw data byte, 
+converts it into ASCII hex characters, and prints it out in the 
+standard assembly format: LDA #$xx.
+Here is how you implement HND_LDA_IMM in 6809 assembly, 
+assuming you have a couple of helper routines to handle character printing:
+
+assembly
+* =============================================================================
+* Instruction Handler: LDA #$xx (Opcode $86)
+* Inputs:  X = Points to the byte immediately *after* the opcode (the immediate value)
+* Outputs: X = Incremented past the immediate byte (ready for the next instruction)
+* =============================================================================
+
+HND_LDA_IMM
+        ; 1. Print the mnemonic string "LDA #"
+        PSHS  X           ; Save our instruction stream pointer
+        LDX   #STR_LDA_IMM; Point X to the string text
+        BSR   PRINT_STR   ; Print "LDA #" to output
+        PULS  X           ; Restore instruction stream pointer
+
+        ; 2. Fetch the immediate byte and format it as "$xx"
+        LDA   ,X+         ; Fetch immediate data value, advance X to next instruction
+        PSHS  X           ; Save X pointer again during formatting
+        
+        LDB   #'$         ; Load ASCII for '$'
+        BSR   PRINT_CHAR  ; Print '$'
+        
+        ; Accumulator A now contains the raw hex byte (e.g., $4F)
+        BSR   PRINT_HEX_BYTE ; Convert A to two ASCII hex characters and print them
+        
+        PULS  X           ; Restore X (now perfectly pointing to the next opcode)
+        JMP   FETCH_LOOP  ; Return to main fetch loop for next instruction
+
+
+* =============================================================================
+* SUPPORTING DATA & CONSTANTS
+* =============================================================================
+STR_LDA_IMM  FCC   "LDA #"
+             FCB   0       ; Null terminator for string end
+
+* =============================================================================
+* HELPER UTILITIES (Assumed present in your system framework)
+* =============================================================================
+
+* Prints a null-terminated string pointed to by X
+PRINT_STR
+        PSHS  A
+@loop   LDA   ,X+
+        BEQ   @done
+        BSR   PRINT_CHAR
+        BRA   @loop
+@done   PULS  A,PC
+
+* Prints the raw 8-bit hex byte in Accumulator A as two ASCII characters (e.g. "4F")
+PRINT_HEX_BYTE
+        PSHS  A           ; Save original byte
+        LSRA              ; Shift upper nibble into lower position
+        LSRA
+        LSRA
+        LSRA
+        BSR   CONV_NIBBLE ; Convert and print high nibble
+        PULS  A           ; Restore original byte
+        ANDA  #$0F        ; Mask out upper nibble
+* Fall through to convert and print low nibble
+
+CONV_NIBBLE
+        CMPA  #9
+        BLS   @is_num
+        ADDA  #7          ; Adjust for A-F ASCII offset
+@is_num  ADDA  #'0        ; Add ASCII '0' base
+* Fall through to PRINT_CHAR
+
+* Outputs a single ASCII character in Accumulator B (or A) to console/buffer
+PRINT_CHAR
+        ; [Your system's standard character output code goes here]
+        RTS
+Use code with caution.
+
+
+How the Stream Pointer (X) self-updates:
+	1.	When FETCH_LOOP first runs, it reads the opcode $86 
+	    using LDA ,X+. X is automatically bumped 
+	    to point directly at the immediate data value byte.
+	2.	Inside HND_LDA_IMM, executing LDA ,X+ reads that 
+	    data byte (for example, $4F) and bumps X again.
+	3.	X now points directly to the next opcode in memory. 
+	    When the routine jumps back to FETCH_LOOP, 
+	    the disassembler is perfectly aligned for 
+	    the next instruction without needing any manual math.
+
+Would you like to tackle Indexed Addressing next? 
+Handling an instruction like LDA ,X or LDA 5,Y 
+is where you have to pull the postbyte 
+and mask out the bits to decide exactly what text to print.
+
+
+Handling Indexed Addressing is the most complex part 
+of a 6809 disassembler because a single opcode 
+(like LDA Indexed, $A6) relies on a postbyte to 
+determine the offset size, formatting, and base register (X, Y, U, or S).
+Let's look at how to handle a LDA Indexed handler 
+(HND_LDA_IND). This routine reads the postbyte, 
+decodes it using the bit masks we discussed first, 
+and prints output formats like LDA 5,X, LDA ,Y++, or LDA [10,S].
+
+The Indexed Postbyte Decoder Implementation
+
+assembly
+* =============================================================================
+* Instruction Handler: LDA Indexed (Opcode $A6)
+* Inputs:  X = Points to the postbyte immediately following the opcode
+* Outputs: X = Incremented past all operand/offset bytes
+* =============================================================================
+
+HND_LDA_IND
+        ; 1. Print the base mnemonic
+        PSHS  X           ; Save stream pointer
+        LDX   #STR_LDA    ; Point to "LDA "
+        BSR   PRINT_STR
+        PULS  X
+
+        ; 2. Fetch the Postbyte
+        LDA   ,X+         ; A = Postbyte, X now points to any potential offset bytes
+        TFR   A,B         ; Keep a copy of the postbyte in B
+        
+        ; 3. Check Bit 7: 5-bit Constant Offset vs Advanced Modes
+        BITA  #$80        ; Is Bit 7 set?
+        BNE   INDEX_ADV   ; Yes -> Go to advanced modes ($80-$FF)
+
+* -----------------------------------------------------------------------------
+* 5-BIT SIGNED CONSTANT OFFSET MODE (Bit 7 = 0)
+* Postbyte Format: 0RRD DDDD
+* -----------------------------------------------------------------------------
+INDEX_5BIT
+        ; Extract the 5-bit signed displacement (Bits 4-0)
+        ANDA  #$1F        ; Mask out top 3 bits
+        BITA  #$10        ; Is the 5-bit number negative? (Check sign bit 4)
+        BEQ   @positive
+        ORA   #$E0        ; Sign-extend 5-bit to 8-bit negative number
+@positive
+        ; Accumulator A now holds a valid 8-bit signed integer (-16 to +15)
+        BSR   PRINT_SIGNED_BYTE ; Helper to print standard integer (e.g., "-5" or "12")
+        BRA   PRINT_COMMA_REG   ; Go print the ",X" part using the RR bits in B
+
+* -----------------------------------------------------------------------------
+* ADVANCED INDEXING MODES (Bit 7 = 1)
+* Postbyte Format: 1RR1 MMMM (where MMMM is the mode)
+* -----------------------------------------------------------------------------
+INDEX_ADV
+        BITB  #$10        ; Check Bit 4 (Indirection Bit)
+        BEQ   @direct     ; If 0, direct indexed mode
+        
+        ; It is indirect indexed! Print the opening bracket '['
+        PSHS  A,B
+        LDA   #'[
+        BSR   PRINT_CHAR
+        PULS  A,B
+
+@direct
+        ; Now isolate the lower 4 bits (Mode Selector Mask)
+        ANDA  #$0F        ; Mask out upper nibble
+        
+        ; Multiply mode by 2 to index into our local 16-entry mode jump table
+        ASLA              ; Shift Left = Multiply by 2
+        LDY   #MODE_TABLE ; Address of our mode handler table
+        LDY   A,Y         ; Fetch specific mode handler address
+        JSR   ,Y          ; Execute mode handler (updates X if it reads offsets)
+
+        ; Check if we need to print a closing bracket ']' for indirect modes
+        BITB  #$10        ; Look back at original postbyte indirection bit
+        BEQ   @done
+        LDA   #']
+        BSR   PRINT_CHAR
+
+@done   JMP   FETCH_LOOP  ; Finished disassembling this instruction!
+
+
+* =============================================================================
+* PARSING THE BASE REGISTER (RR Bits 6-5)
+* =============================================================================
+PRINT_COMMA_REG
+        ; B contains the original postbyte. We need bits 6 and 5.
+        LDA   #',         ; Print the comma divider
+        BSR   PRINT_CHAR
+        
+        TFR   B,A         ; Copy postbyte to A
+        LSRA              ; Shift right 5 times to isolate RR bits into positions 1-0
+        LSRA
+        LSRA
+        LSRA
+        LSRA
+        ANDA  #$03        ; Mask to get exactly 2 bits (00=X, 01=Y, 10=U, 11=S)
+        
+        ASLA              ; Multiply by 2 (registers are 2-character strings)
+        LDY   #REG_TABLE
+        LEAY  A,Y         ; Point Y to the ASCII characters for the register
+        
+        LDA   ,Y+         ; Fetch first char (e.g., 'X')
+        BSR   PRINT_CHAR
+        LDA   ,Y          ; Fetch second char (usually a space or null, if needed)
+        BEQ   @skip
+        BSR   PRINT_CHAR
+@skip   RTS
+
+
+* =============================================================================
+* SUB-HANDLERS FOR SUB-MODES (MMMM)
+* =============================================================================
+
+HND_ZERO_OFF              ; Mode 0100 (,R)
+        BRA   PRINT_COMMA_REG
+
+HND_ACC_B                 ; Mode 0101 (B,R)
+        PSHS  B
+        LDA   #'B
+        BSR   PRINT_CHAR
+        PULS  B
+        BRA   PRINT_COMMA_REG
+
+HND_POST_INC1             ; Mode 0000 (,R+)
+        BSR   PRINT_COMMA_REG
+        LDA   #'+
+        JMP   PRINT_CHAR
+
+HND_POST_INC2             ; Mode 0001 (,R++)
+        BSR   PRINT_COMMA_REG
+        LDA   #'+
+        BSR   PRINT_CHAR
+        LDA   #'+
+        JMP   PRINT_CHAR
+
+HND_OFF8                  ; Mode 1000 (8-bit constant offset)
+        LDA   ,X+         ; Read the 8-bit offset from the stream! (Advances X)
+        BSR   PRINT_SIGNED_BYTE
+        BRA   PRINT_COMMA_REG
+
+HND_OFF16                 ; Mode 1001 (16-bit constant offset)
+        LDA   ,X+         ; Read MSB of 16-bit offset
+        LDB   ,X+         ; Read LSB of 16-bit offset (Advances X twice)
+        ; [Call a routine to print D as a 16-bit signed integer or hex value]
+        BRA   PRINT_COMMA_REG
+
+
+* =============================================================================
+* DATA SECTIONS
+* =============================================================================
+STR_LDA     FCC   "LDA "
+            FCB   0
+
+REG_TABLE   FCC   "X "        ; 00
+            FCC   "Y "        ; 01
+            FCC   "U "        ; 10
+            FCC   "S "        ; 11
+
+            ALIGN 2
+MODE_TABLE
+            FDB   HND_POST_INC1 ; 0000 (,R+)
+            FDB   HND_POST_INC2 ; 0001 (,R++)
+            FDB   HND_ILLEGAL   ; 0010 (,-R handled via different formatting logic)
+            FDB   HND_ILLEGAL   ; 0011 (,--R)
+            FDB   HND_ZERO_OFF  ; 0100 (,R)
+            FDB   HND_ACC_B     ; 0101 (B,R)
+            FDB   HND_ILLEGAL   ; 0110 (A,R)
+            FDB   HND_ILLEGAL   ; 0111
+            FDB   HND_OFF8      ; 1000 (8-bit offset)
+            FDB   HND_OFF16     ; 1001 (16-bit offset)
+            ; ... populate remaining slots up to 1111 ...
+Use code with caution.
+
+
+Critical Architecture Breakdown
+	1.	Stream Control (X): Notice how HND_OFF8 and HND_OFF16 
+	    dynamically pull bytes out of the stream using ,X+. 
+	    Because the advanced mode decoder passes control down 
+	    to these handlers, X is stepped forward only if 
+	    the specific addressing mode dictates that 
+	    an extra 1 or 2 offset bytes exist in memory.
+	2.	Indirection Overlays [...]: Rather than writing 
+	    duplicate routines for normal indexed and indirect 
+	    indexed addressing, this structure exploits the 
+	    6809 design perfectly. It prints [ up front if bit 
+	    4 is set, handles the math/registers exactly the 
+	    same way, and wraps the final output in a ] right before returning.
+
+Would you like to look at the Pre-Decrement variations 
+(,-R or ,--R), or explore how to handle the Register 
+Stack bitmask parsing for instructions like PSHS?
+
+
+Let’s look at how to tackle the Register Stack Bitmask Parsing 
+used by instructions like PSHS (Push to Hardware Stack) 
+and PULS (Pull from Hardware Stack).
+This is an excellent showcase of using bitwise masking 
+logic in 6809 assembly. The instruction provides a single postbyte 
+where each bit represents an internal register. Your disassembler 
+needs to loop through all 8 bits, check if a bit is set, 
+print the matching register's name, and cleanly format 
+the output with commas (e.g., PSHS A,B,X,PC).
+
+The Stack Mask Decoder Implementation
+
+assembly
+* =============================================================================
+* Instruction Handler: PSHS (Opcode $34)
+* Inputs:  X = Points to the register mask postbyte
+* Outputs: X = Advanced past the postbyte (ready for the next instruction)
+* =============================================================================
+
+HND_PSHS
+        ; 1. Print the base mnemonic
+        PSHS  X           ; Save stream pointer
+        LDX   #STR_PSHS   ; Point to "PSHS "
+        BSR   PRINT_STR
+        PULS  X
+
+        ; 2. Fetch the Mask Postbyte
+        LDA   ,X+         ; A = Register mask byte, X now points to next instruction
+        BEQ   @empty_push ; Edge case: pushing nothing (rare but valid)
+        
+        ; 3. Setup Loop Variables
+        LDB   #$80        ; Start with Bit 7 (PC) as our bitwise sliding mask
+        CLR   <V_COMMA_FLG; Clear a flag tracking if we need to print a comma
+
+@mask_loop
+        TFR   A,B         ; Duplicate the original postbyte into B
+        ANDB  #$80        ; Is the highest bit of B set? (Applies the sliding mask)
+        BEQ   @next_bit   ; If 0, skip to the next register
+
+        ; --- We found a register to print! ---
+        TST   <V_COMMA_FLG; Do we need a comma separator?
+        BEQ   @print_reg  ; No, this is the first register listed
+        
+        PSHS  A           ; Save our working mask register
+        LDA   #',         ; Print a comma ','
+        BSR   PRINT_CHAR
+        PULS  A           ; Restore mask register
+
+@print_reg
+        INC   <V_COMMA_FLG; Set flag so all subsequent registers get a comma prefix
+        
+        ; Find the right ASCII string using the current index in A
+        PSHS  A           ; Save working mask register
+        BSR   PRINT_REG_NAME ; Match bit position to text string and print it
+        PULS  A
+
+@next_bit
+        ASLA              ; Shift A left by 1 bit. Bit 6 becomes the new Bit 7.
+        BNE   @mask_loop  ; Loop until our shifting mask runs out of bits (A becomes 0)
+
+@done   JMP   FETCH_LOOP  ; Disassembly complete for this instruction!
+
+@empty_push
+        ; Handle the weird edge case of a PSHS with a $00 mask byte
+        LDX   #STR_NONE
+        BSR   PRINT_STR
+        JMP   FETCH_LOOP
+
+
+* =============================================================================
+* REGISTER NAME LOOKUP SUBROUTINE
+* Uses the current position of the highest bit to find the correct string
+* =============================================================================
+PRINT_REG_NAME
+        ; We can check which register string to use based on how far we have shifted.
+        ; A simple lookup sequence or counting zeros works well here.
+        ; For simplicity, we can use a sequence of bit tests:
+        TSTA              ; Check where the bit landed
+        BPL   @not_pc     ; Bit 7 set?
+        LDX   #STR_PC
+        BRA   @do_print
+@not_pc
+        BITA  #$40        ; Bit 6 set?
+        BEQ   @not_u
+        LDX   #STR_U      ; Note: for PSHS this is U, for PSHU this is S!
+        BRA   @do_print
+@not_u
+        BITA  #$20        ; Bit 5 set?
+        BEQ   @not_y
+        LDX   #STR_Y
+        BRA   @do_print
+@not_y
+        BITA  #$10        ; Bit 4 set?
+        BEQ   @not_x
+        LDX   #STR_X
+        BRA   @do_print
+@not_x
+        BITA  #$08        ; Bit 3 set?
+        BEQ   @not_dp
+        LDX   #STR_DP
+        BRA   @do_print
+@not_dp
+        BITA  #$04        ; Bit 2 set?
+        BEQ   @not_b
+        LDX   #STR_B
+        BRA   @do_print
+@not_b
+        BITA  #$02        ; Bit 1 set?
+        BEQ   @not_a
+        LDX   #STR_A
+        BRA   @do_print
+@not_a
+        LDX   #STR_CC     ; Must be Bit 0
+
+@do_print
+        JMP   PRINT_STR   ; Tail-call optimization: jump to print and let it return for us
+
+
+* =============================================================================
+* VARIABLES & STRINGS
+* =============================================================================
+V_COMMA_FLG FCB   0       ; Direct Page variable: 0 = no comma needed, 1 = print comma
+
+STR_PSHS    FCC   "PSHS "
+            FCB   0
+STR_NONE    FCC   "none"
+            FCB   0
+
+; Register Mnemonic Strings
+STR_PC      FCC   "PC"
+            FCB   0
+STR_U       FCC   "U"
+            FCB   0
+STR_Y       FCC   "Y"
+            FCB   0
+STR_X       FCC   "X"
+            FCB   0
+STR_DP      FCC   "DP"
+            FCB   0
+STR_B       FCC   "B"
+            FCB   0
+STR_A       FCC   "A"
+            FCB   0
+STR_CC      FCC   "CC"
+            FCB   0
+Use code with caution.
+
+
+Smart Tricks in this Loop Design:
+	1.	The Dynamic ASLA Terminus: Instead of maintaining a separate 
+	    loop counter (1 to 8), the loop terminates naturally using 
+	    BNE @mask_loop. Because we push the bits leftward via ASLA, 
+	    once the last active register bit passes out through the top, 
+	    A naturally hits exactly #$00, cleanly ending the loop.
+	2.	The Smart Comma Toggle (V_COMMA_FLG): Handling delimiters 
+	    in loop joins can be messy. By using an explicit toggle flag 
+	    that hits 1 only after the first string prints, the 
+	    routine dynamically places commas between items without 
+	    accidentally trailing a sloppy comma at the end of the text line.
+
+With the core page structure, immediate values, complex advanced index bytes, 
+and register stacking masks completely mapped out, you now have the 
+blueprints for the most technically demanding parts of a 6809 disassembler!
+Would you like to explore Relative Addressing (calculating actual 8-bit/16-bit 
+hex branch target locations like BNE $E012) next?
+
+
+
+
+Handling Relative Addressing (used by branch instructions like 
+BNE, BEQ, or LBRA) is a critical feature for a good disassembler.
+Instead of just printing a raw offset like BNE $05 or BNE $F8, 
+a high-quality disassembler calculates the absolute target 
+destination address (e.g., BNE $2015). This makes the output human-readable.
+The math is simple but tricky in assembly: 
+Target Address = (Address of Next Instruction) + Signed Offset.
+The MC6809 supports two types of relative offsets:
+	1.	Short Branches: 1-byte signed offset (-128 to +127 bytes).
+	2.	Long Branches: 2-byte signed offset (-32768 to +32767 bytes).
+Here is how to implement both short and long relative address decoding in 6809 assembly.
+
+Short Branch Handler Implementation (8-bit Offset)
+
+assembly
+* =============================================================================
+* Instruction Handler: BNE Short Branch (Opcode $26)
+* Inputs:  X = Points to the 8-bit offset byte
+*          V_CURR_PC = Holds the absolute memory address of the instruction 
+*                      being disassembled (needed to compute the jump target)
+* Outputs: X = Advanced past the offset byte
+* =============================================================================
+
+HND_BNE_SHORT
+        ; 1. Print mnemonic
+        PSHS  X
+        LDX   #STR_BNE
+        BSR   PRINT_STR
+        PULS  X
+
+        ; 2. Fetch the signed 8-bit offset
+        LDA   ,X+         ; A = Offset, X now points to the *next* instruction
+        
+        ; 3. Calculate "Address of Next Instruction"
+        ; X currently points to the next instruction in our disassembler buffer.
+        ; We need to figure out its actual execution address in target memory.
+        ; Formula: Next_PC = V_CURR_PC + (Current_X - Start_X) 
+        ; For a short branch, Next_PC is always exactly V_CURR_PC + 2 bytes.
+        LDY   <V_CURR_PC
+        LEAY  2,Y         ; Y now holds the PC of the next instruction
+
+        ; 4. Sign-extend the 8-bit offset into 16-bits in Register D
+        TFR   A,B         ; Move offset into B
+        TSTA              ; Check sign bit of the offset
+        BPL   @positive   ; If positive, A should be $00
+        LDA   #$FF        ; If negative, sign-extend A to $FF
+        BRA   @calc_target
+@positive
+        CLRA              ; Clear A for positive 16-bit value
+
+@calc_target
+        ; D now holds the 16-bit signed offset, Y holds the Next PC
+        LEAY  D,Y         ; Y = Next PC + Signed Offset (The Absolute Target!)
+
+        ; 5. Print the target address as a 4-digit hex number
+        TFR   Y,D         ; Move target address to D
+        BSR   PRINT_HEX_WORD ; Custom helper to print D as 4 hex digits (e.g. "2015")
+
+        JMP   FETCH_LOOP
+
+
+* =============================================================================
+* Long Branch Handler Implementation (16-bit Offset)
+* Typically reached from Page 2 ($10) table, e.g., LBNE (Opcode $10 $26)
+* =============================================================================
+
+HND_LBNE_LONG
+        ; 1. Print mnemonic
+        PSHS  X
+        LDX   #STR_LBNE
+        BSR   PRINT_STR
+        PULS  X
+
+        ; 2. Fetch the 16-bit offset
+        LDA   ,X+         ; High byte of offset
+        LDB   ,X+         ; Low byte of offset. D now holds the 16-bit signed offset.
+                          ; X now points to the next instruction.
+
+        ; 3. Calculate "Address of Next Instruction"
+        ; A long branch with a Page prefix takes 4 bytes total ($10, $26, Offset_Hi, Offset_Lo).
+        LDY   <V_CURR_PC
+        LEAY  4,Y         ; Y now holds the PC of the next instruction
+
+        ; 4. Calculate Absolute Target
+        LEAY  D,Y         ; Y = Next PC + 16-bit Signed Offset
+
+        ; 5. Print target
+        TFR   Y,D
+        BSR   PRINT_HEX_WORD
+
+        JMP   FETCH_LOOP
+
+* =============================================================================
+* VARIABLES & STRINGS
+* =============================================================================
+V_CURR_PC   FDR   $0000   ; Tracks the original execution address of this opcode
+STR_BNE     FCC   "BNE $"
+            FCB   0
+STR_LBNE    FCC   "LBNE $"
+            FCB   0
+Use code with caution.
+
+
+Supporting Helper: Printing a 16-Bit Word
+To finish the job, your disassembler needs to output 
+the 16-bit calculated address in absolute hexadecimal format.
+
+assembly
+* =============================================================================
+* Helper: Print 16-bit Word in Hex
+* Inputs: D = 16-bit value to print
+* =============================================================================
+PRINT_HEX_WORD
+        PSHS  D           ; Save full word
+        BSR   PRINT_HEX_BYTE ; Print tracking High Byte (A)
+        PULS  D           ; Restore full word
+        TFR   B,A         ; Move Low Byte to A
+        JMP   PRINT_HEX_BYTE ; Print Low Byte and return
+Use code with caution.
+
+
+The LEAY D,Y Instruction Magic
+Once again, the MC6809 architectural design makes this logic 
+straightforward. The instruction LEAY D,Y(Load Effective Address into Y) 
+automatically handles signed 16-bit addition. Even if D contains 
+a negative offset (like $FFFA for -6), LEAY D,Y will successfully 
+subtract the bytes and update Y backward without 
+equiring separate addition, subtraction, or carry check routines.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
