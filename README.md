@@ -97,9 +97,11 @@ brew install binutils
 |Update documentation| 1.40|:white_check_mark:|
 |Word Lists added| 1.50|:white_check_mark:|
 |Update documentation| 1.50|:white_check_mark:|
-|Burn ROM and install onto real MECB 6809 hardware. | 1.50| |
-|Develop a simple forth application| 1.50| |
-|Refine the documentation| 1.50| |
+|Disassembler and Forth decompiler added| 1.60|:white_check_mark:|
+|Update documentation| 1.60|:white_check_mark:|
+|Burn ROM and install onto real MECB 6809 hardware. | 1.60| |
+|Develop a simple forth application| 1.60| |
+|Refine the documentation| 1.60| |
 
 ## Assets
 ### Manifest
@@ -177,7 +179,7 @@ brew install binutils
 | Dictionary vocabulary support. |1.50|:white_check_mark:|
 | External assembler.  |1.50|:white_check_mark:|
 | Forth disassembler.  |1.6|:white_check_mark:|
-| Inbuilt decompiler (forth word SEE).  |1.6| |
+| Inbuilt decompiler (forth word SEE).  |1.6|:white_check_mark:|
 | Inbuilt assembler.  | | |
 | Treat both space and tab as white space.  | ||
 | Change formatting of ok line output to match GForth.  | | |
