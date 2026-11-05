@@ -33,10 +33,23 @@ DISASM      SET   1
 DISASM      SET   1                 ; default if -D not passed
             ENDC
             ENDC
+            IFNDEF DECOMP
+DECOMP      SET   DISASM            ; default: with the disassembler
+            ENDC
+            IFNE  DECOMP
+            IFEQ  DISASM
+            ERROR "DECOMP=1 needs DISASM=1"
+            ENDC
+            ENDC
             IFNE  DISASM
+            IFNE  DECOMP
+BASECODE    EQU   $CEC0             ; base code (DISASM and DECOMP). See shadow MEMMAP.6
+BASEDICT    EQU   $C4F8             ; base dictionary (DISASM and DECOMP). See shadow MEMMAP.8
+            ELSE
 BASECODE    EQU   $D240             ; base code (with DISASM). See shadow MEMMAP.6
             ; Commented-out code moved to shadow: MEMMAP.7
 BASEDICT    EQU   $C880             ; base dictionary (with DISASM). See shadow MEMMAP.8
+            ENDC
             ELSE
 BASECODE    EQU   $D936             ; base code (without DISASM)
 BASEDICT    EQU   $CF87             ; base dictionary (without DISASM)
@@ -287,7 +300,24 @@ DISLEAD     RMB   1                 ; "L" of a long branch, or 0
 DISSUF      RMB   1                 ; "A" or "B" of an inherent op, or 0
 DISMUTE     RMB   1                 ; non-zero: DCH sends nothing
             ENDC
-GLOBALS_USED EQU   131+19*DISASM    ; bytes used, of 256 available
+            IFNE  DECOMP
+DSKIND      RMB   1                 ; kind of the instruction SEE just stepped over
+DSOPD       RMB   2                 ; its operand (target, literal, string)
+DSNXT       RMB   2                 ; address after it
+DSPOS       RMB   2                 ; address of the instruction being shown
+DSXT        RMB   2                 ; start of the definition
+DSPREV      RMB   1                 ; kind of the previous instruction
+DSMODE      RMB   1                 ; 0 colon definition, 1 machine code
+DSCNT       RMB   1                 ; instruction limit
+DSFIN       RMB   1                 ; non-zero when finished
+QK          RMB   1                 ; DQ search: kind, direction, target/end
+QD          RMB   1
+QW          RMB   1
+QV          RMB   2
+QL          RMB   2                 ; DQ: target must be below this (0 = any)
+QC          RMB   1                 ; DQ count
+            ENDC
+GLOBALS_USED EQU   131+19*DISASM+21*DECOMP    ; bytes used, of 256 available
 
 ; $0100-$0105 is unclaimed (was MVSCRATCH). See shadow MVSCRATCH.1
 
@@ -339,10 +369,12 @@ OUTBUF      RMB   OUTBUFSZ          ; Transmit circular queue buffer
 ;            SUBSTITUTE. Set with lwasm -DSTRINGSET=0 -DSTRINGEXT=0.
 ; SNAME (xt to name, all wordlists) is not a string word; it is
 ; always kept for the disassembler/decompiler.
-; DISASM:    Disassembler words DASM and DIS (about 1.2 KB of ROM). The
+; DISASM:    Disassembler words DASM and DIS (about 1.8 KB of ROM). The
 ;            constants BASECODE and BASEDICT above depend on it. Set
 ;            with lwasm -DDISASM=0. The larger unit test groups do
 ;            not fit below the dictionary when DISASM is 1.
+; DECOMP:    Decompiler word SEE (about 0.9 KB more; needs DISASM=1).
+;            Set with lwasm -DDECOMP=0. See SECTION 28.
 ; The unit tests need both set to 1.
 ; ------------------------------------------------------------
             IFNDEF STRINGSET
@@ -526,7 +558,15 @@ H_DIS:      FCB   $03
             FCC   "DIS"
             FDB   H_DASM
             FDB   DISW
+            IFNE  DECOMP
+H_SEE:      FCB   $03
+            FCC   "SEE"
+            FDB   H_DIS
+            FDB   SEEW
+H_DISLINK   EQU   H_SEE
+            ELSE
 H_DISLINK   EQU   H_DIS
+            ENDC
             ELSE
 H_DISLINK   EQU   H_DUMP
             ENDC
@@ -9383,6 +9423,11 @@ NEGTWOW:    LDD   #-2
             PSHU  D
             RTS
 
+; ============================================================
+; SECTION 28: DISASSEMBLER AND DECOMPILER (DASM, DIS, SEE)
+; ============================================================
+; Optional: DISASM adds DASM and DIS, DECOMP adds SEE (which needs
+; DISASM). Design notes: see shadow DISASM.1 and DECOMP.1.
             IFNE  DISASM
 ; ------------------------------------------------------------
 ; DISASM: 6809 disassembler (hexadecimal, lwasm style).
@@ -10292,6 +10337,475 @@ DACC:       FCC   "?BAD"
 DIXT:
             FCB   $04,$08,$01,$02,$00,$10,$20,$00
             FCB   $88,$89,$00,$30,$8C,$8D,$00,$8F
+            ENDC
+
+            IFNE  DECOMP
+; ------------------------------------------------------------
+; DECOMP: SEE ( "name" -- )  Show a definition as Forth source.
+;
+; Every word in a colon definition is compiled as JSR xt. A few
+; run-time words are followed by an inline cell (LIT, BRANCH, ZBRANCH,
+; DOTEST, DOPLUSTEST, QDOSETUP, EXITUNLOOP) or counted string (DOSTR,
+; DOTSTR, DOCSTR, DOABORTQUOTE); DKT lists them. IF ELSE THEN BEGIN
+; UNTIL AGAIN WHILE REPEAT are rebuilt from branch targets by scanning
+; the definition (DQ), so the shape is right but ENDOF and ENDCASE
+; show as ELSE and THEN. A word whose first byte is neither JSR nor RTS
+; is machine code: SEE lists it with DASM, up to its first RTS.
+; ------------------------------------------------------------
+K_PLAIN     EQU   1
+K_DOSET     EQU   2
+K_LIT       EQU   4
+K_ZBR       EQU   5
+K_BR        EQU   6
+K_DOTEST    EQU   7
+K_DOPLUS    EQU   8
+K_QDO       EQU   9
+K_EXIT      EQU   10
+K_SQ        EQU   11
+K_AQ        EQU   14
+K_RTS       EQU   15
+
+; DSTEP  X = instruction address -> X = next address. DSKIND is 0 when
+; the byte at X is not a JSR or RTS (X is then unchanged). DSOPD is the
+; JSR target, the literal, the absolute branch target, or the address
+; of a counted string.
+DSTEP:      LDA   ,X
+            CMPA  #$39
+            BNE   DST1
+            LEAX  1,X
+            LDA   #K_RTS
+            STA   DSKIND
+            RTS
+DST1:       CMPA  #$BD
+            BEQ   DST2
+            CLR   DSKIND
+            RTS
+DST2:       LDY   1,X
+            STY   DSOPD
+            LEAX  3,X
+            LDA   #K_PLAIN
+            STA   DSKIND
+            PSHS  X
+            LDX   #DKT
+DST3:       LDD   ,X
+            BEQ   DST5
+            CMPD  DSOPD
+            BEQ   DST4
+            LEAX  3,X
+            BRA   DST3
+DST4:       LDA   2,X
+            STA   DSKIND
+DST5:       PULS  X
+            LDA   DSKIND
+            CMPA  #K_LIT
+            BLO   DSTRET            ; no operand
+            CMPA  #K_SQ
+            BHS   DSTSTR
+            LDD   ,X                ; a cell follows
+            STD   DSOPD
+            LDA   DSKIND
+            CMPA  #K_LIT
+            BEQ   DSTC
+            CMPA  #K_EXIT
+            BEQ   DSTC
+            LDD   DSOPD
+            LEAY  D,X               ; branch: operand address + offset
+            STY   DSOPD
+DSTC:       LEAX  2,X
+DSTRET:     RTS
+DSTSTR:     STX   DSOPD             ; the count byte
+            LDB   ,X
+            LEAX  1,X
+            ABX
+            RTS
+
+; QL, when non-zero, also requires the target to be below it.
+; DQ  count instructions that are BRANCH or ZBRANCH in the definition.
+; In: A = kind to match (K_ZBR, K_BR, or 0 for either), B low nibble =
+; direction (1 forward, 2 back), B high nibble = 0 match the target, 1
+; match the end of the instruction, X = value to match.
+; Out: A = count. DSKIND, DSOPD and DSNXT are preserved.
+DQ:         STA   QK
+            STX   QV
+            TFR   B,A
+            LSRA
+            LSRA
+            LSRA
+            LSRA
+            STA   QW
+            ANDB  #$0F
+            STB   QD
+            LDD   DSOPD
+            PSHS  D
+            LDD   DSNXT
+            PSHS  D
+            LDA   DSKIND
+            PSHS  A
+            CLR   QC
+            LDX   DSXT
+DQL:        JSR   DSTEP
+            LDA   DSKIND
+            BEQ   DQEND
+            CMPA  #K_RTS
+            BEQ   DQEND
+            STX   DSNXT
+            CMPA  #K_ZBR
+            BEQ   DQ1
+            CMPA  #K_BR
+            BNE   DQNEXT
+DQ1:        LDB   QK
+            BEQ   DQ2
+            CMPA  QK
+            BNE   DQNEXT
+DQ2:        LDD   DSOPD
+            CMPD  DSNXT
+            BHS   DQF
+            LDA   #2                ; backward
+            BRA   DQD
+DQF:        LDA   #1                ; forward
+DQD:        CMPA  QD
+            BNE   DQNEXT
+            LDD   QL                ; if set, the target must be below QL
+            BEQ   DQ3
+            LDD   DSOPD
+            CMPD  QL
+            BHS   DQNEXT
+DQ3:        LDD   DSOPD
+            TST   QW
+            BEQ   DQV
+            LDD   DSNXT
+DQV:        CMPD  QV
+            BNE   DQNEXT
+            INC   QC
+DQNEXT:     LDX   DSNXT
+            BRA   DQL
+DQEND:      PULS  A
+            STA   DSKIND
+            PULS  D
+            STD   DSNXT
+            PULS  D
+            STD   DSOPD
+            LDD   #0
+            STD   QL
+            LDA   QC
+            RTS
+
+; DKEY  send word B of DKEYS and a space.
+DKEY:       LDX   #DKEYS
+            JSR   DNM1
+            LDA   #' '
+            JMP   DCH
+
+; DREPK  send word B of DKEYS A times.
+DREPK:      PSHS  A,B
+DRK1:       TST   ,S
+            BEQ   DRK2
+            LDB   1,S
+            JSR   DKEY
+            DEC   ,S
+            BRA   DRK1
+DRK2:       PULS  A,B,PC
+
+; DMARK  before the instruction at DSPOS send the THENs that end here
+; and the BEGINs that start here.
+DMARK:      TST   DSMODE
+            BNE   DMX
+            CLRA                    ; forward branches to here
+            LDB   #1
+            LDX   DSPOS
+            JSR   DQ
+            PSHS  A
+            LDA   DSPREV
+            CMPA  #K_BR
+            BNE   DM1
+            LDA   #K_ZBR            ; an ELSE or REPEAT just before used one
+            LDB   #1
+            LDX   DSPOS
+            JSR   DQ
+            TSTA
+            BEQ   DM1
+            DEC   ,S
+DM1:        PULS  A
+            LDB   #2                ; THEN
+            JSR   DREPK
+            CLRA                    ; backward branches to here
+            LDB   #2
+            LDX   DSPOS
+            JSR   DQ
+            LDB   #3                ; BEGIN
+            JSR   DREPK
+DMX:        RTS
+
+; ---- handlers, one per kind of instruction ----
+HND_ASM:      LDX   DSPOS
+            PSHU  X
+            JSR   DASMW
+            PULU  X
+            STX   DSNXT
+            TST   DSMODE
+            BEQ   HAS1
+            LDX   DSPOS
+            LDA   ,X
+            CMPA  #$39
+            BNE   HAS2
+            INC   DSFIN
+HAS2:       JMP   CRW
+HAS1:       LDA   #' '
+            JMP   DCH
+HND_PLAIN:    LDD   DSOPD
+            PSHU  D
+            JSR   SNAMEW
+            LDD   ,U
+            BEQ   HPL1
+            JSR   TYPEW
+            LDA   #' '
+            JMP   DCH
+HPL1:       LEAU  4,U
+            BRA   HND_ASM
+HND_DO:       LDB   #8
+            JMP   DKEY
+HND_DOES:     LDB   #22
+            JMP   DKEY
+HND_LOOP:     LDB   #10
+            JMP   DKEY
+HND_PLUS:     LDB   #11
+            JMP   DKEY
+HND_QDO:      LDB   #9
+            JMP   DKEY
+HND_EXIT:     LDB   #12
+            JMP   DKEY
+HND_LIT:      LDD   DSOPD
+            PSHU  D
+            JMP   DOTW
+HND_ZBR:      LDD   DSOPD
+            CMPD  DSNXT
+            BHS   HZ1
+            LDB   #4                ; UNTIL
+            JMP   DKEY
+HZ1:        LDD   DSNXT             ; WHILE if a REPEAT that loops back to
+            SUBD  #2                ; before this branch ends at the target
+            STD   QL
+            LDA   #K_BR
+            LDB   #$12
+            LDX   DSOPD
+            JSR   DQ
+            LDB   #0                ; IF
+            TSTA
+            BEQ   HZ2
+            LDB   #6                ; WHILE
+HZ2:        JMP   DKEY
+HND_BR:       LDD   DSOPD
+            CMPD  DSNXT
+            BHS   HB1
+            LDA   #K_ZBR            ; REPEAT if a WHILE branches past it
+            LDB   #1
+            LDX   DSNXT
+            JSR   DQ
+            LDB   #5                ; AGAIN
+            TSTA
+            BEQ   HB2
+            LDB   #7                ; REPEAT
+HB2:        JMP   DKEY
+HB1:        LDB   #1                ; ELSE
+            JMP   DKEY
+HND_STR:      LDA   DSKIND
+            ADDA  #2                ; S" ." C" ABORT" are words 13..16
+            TFR   A,B
+            JSR   DKEY
+            LDX   DSOPD
+            LDB   ,X+
+            STX   DSOPD
+HS1:        TSTB
+            BEQ   HS2
+            PSHS  B
+            LDX   DSOPD
+            LDA   ,X+
+            STX   DSOPD
+            JSR   DCH
+            PULS  B
+            DECB
+            BRA   HS1
+HS2:        LDA   #'"'
+            JSR   DCH
+            LDA   #' '
+            JMP   DCH
+HND_RTS:      INC   DSFIN
+            LDB   #17
+            JSR   DKEY
+            JMP   CRW
+
+DSKJT:      FDB   HND_ASM,HND_PLAIN,HND_DO,HND_DOES,HND_LIT,HND_ZBR,HND_BR,HND_LOOP
+            FDB   HND_PLUS,HND_QDO,HND_EXIT,HND_STR,HND_STR,HND_STR,HND_STR,HND_RTS
+
+; Run-time words that have operands: address, kind.
+DKT:        FDB   DOSETUP
+            FCB   K_DOSET
+            FDB   SETDOES
+            FCB   3
+            FDB   LIT
+            FCB   K_LIT
+            FDB   ZBRANCH
+            FCB   K_ZBR
+            FDB   BRANCH
+            FCB   K_BR
+            FDB   DOTEST
+            FCB   K_DOTEST
+            FDB   DOPLUSTEST
+            FCB   K_DOPLUS
+            FDB   QDOSETUP
+            FCB   K_QDO
+            FDB   EXITUNLOOP
+            FCB   K_EXIT
+            FDB   DOSTR
+            FCB   11
+            FDB   DOTSTR
+            FCB   12
+            FDB   DOCSTR
+            FCB   13
+            FDB   DOABORTQUOTE
+            FCB   14
+            FDB   0
+
+; SEE  ( "name" -- )
+SEEW:       JSR   TICKW
+DECOMPW:    PULU  X                 ; xt
+            STX   DSXT
+            STX   DSPOS
+            CLR   DISMUTE
+            CLR   DSPREV
+            CLR   DSFIN
+            LDA   #255
+            STA   DSCNT
+            CLR   DSMODE
+            LDA   ,X
+            CMPA  #$BD
+            BNE   DSE0
+            LDY   1,X
+            CMPY  #DODOES
+            BNE   DSE0
+            JSR   CRW               ; CREATE, VARIABLE, CONSTANT, DOES> word:
+            LDB   #20               ; JSR DODOES, behaviour, data address
+            JSR   DKEY
+            LDX   DSXT
+            PSHU  X
+            JSR   SNAMEW
+            JSR   TYPEW
+            LDA   #' '
+            JSR   DCH
+            LDB   #21
+            JSR   DKEY
+            LDX   DSXT
+            LDD   5,X
+            PSHU  D
+            JSR   DOTW
+            LDX   DSXT
+            LDD   3,X
+            CMPD  #DOESRT0
+            BEQ   DSE9
+            STD   DSXT              ; show the behaviour
+            STD   DSPOS
+            PSHU  D
+            JSR   SNAMEW
+            LDB   #22
+            JSR   DKEY
+            LDD   ,U
+            BEQ   DSE8
+            JSR   TYPEW
+DSE9:       JMP   CRW
+DSE8:       LEAU  4,U
+            JMP   DSL
+DSE0:       LDA   ,X
+            CMPA  #$BD
+            BEQ   DSE1
+            CMPA  #$39
+            BEQ   DSE1
+            INC   DSMODE            ; machine code
+DSE1:       JSR   CRW
+            LDB   #18               ; ":" or CODE
+            TST   DSMODE
+            BEQ   DSE2
+            LDB   #19
+DSE2:       JSR   DKEY
+            LDX   DSXT
+            PSHU  X
+            JSR   SNAMEW
+            JSR   TYPEW
+            TST   DSMODE
+            BNE   DSE3
+            LDA   #' '
+            JSR   DCH
+            BRA   DSL
+DSE3:       JSR   CRW
+DSL:        DEC   DSCNT
+            BEQ   DSEND
+            JSR   DMARK
+            LDX   DSPOS
+            TST   DSMODE
+            BNE   DSL1
+            JSR   DSTEP
+            STX   DSNXT
+            LDA   DSKIND
+            BRA   DSL2
+DSL1:       CLRA
+            STA   DSKIND
+DSL2:       ASLA
+            LDX   #DSKJT
+            LDX   A,X
+            JSR   ,X
+            LDX   DSNXT
+            STX   DSPOS
+            LDA   DSKIND
+            STA   DSPREV
+            TST   DSFIN
+            BEQ   DSL
+DSEND:      RTS
+
+; DKEYS: words SEE shows for structures; bit 7 set on the last character.
+DKEYS:
+            FCC   "I"
+            FCB   $C6               ; IF = 0
+            FCC   "ELS"
+            FCB   $C5               ; ELSE = 1
+            FCC   "THE"
+            FCB   $CE               ; THEN = 2
+            FCC   "BEGI"
+            FCB   $CE               ; BEGIN = 3
+            FCC   "UNTI"
+            FCB   $CC               ; UNTIL = 4
+            FCC   "AGAI"
+            FCB   $CE               ; AGAIN = 5
+            FCC   "WHIL"
+            FCB   $C5               ; WHILE = 6
+            FCC   "REPEA"
+            FCB   $D4               ; REPEAT = 7
+            FCC   "D"
+            FCB   $CF               ; DO = 8
+            FCC   "?D"
+            FCB   $CF               ; ?DO = 9
+            FCC   "LOO"
+            FCB   $D0               ; LOOP = 10
+            FCC   "+LOO"
+            FCB   $D0               ; +LOOP = 11
+            FCC   "EXI"
+            FCB   $D4               ; EXIT = 12
+            FCC   "S"
+            FCB   $A2               ; S" = 13
+            FCC   "."
+            FCB   $A2               ; ." = 14
+            FCC   "C"
+            FCB   $A2               ; C" = 15
+            FCC   "ABORT"
+            FCB   $A2               ; ABORT" = 16
+            FCB   $BB               ; ; = 17
+            FCB   $BA               ; : = 18
+            FCC   "COD"
+            FCB   $C5               ; CODE = 19
+            FCC   "CREAT"
+            FCB   $C5               ; CREATE = 20
+            FCC   "DAT"
+            FCB   $C1               ; DATA = 21
+            FCC   "DOES"
+            FCB   $BE               ; DOES> = 22
             ENDC
 
 ; Verify no collision with init code,

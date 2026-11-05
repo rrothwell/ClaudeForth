@@ -69,7 +69,8 @@ brew install binutils
 * ~~Warning: most words tested as functional, complying with the ANS Forth Test Suite. Tagged as version 1.20.~~
 * ~~Usable: all words tested as functional & performant, nearly all complying with the ANS Forth Test Suite. Tagged as version 1.30.~~
 * ~~Trustworthy: all words tested as functional & performant, with complete test coverage, complying with the ANS Forth Test Suite. Tagged as version 1.40.~~ 
-* Developer ready: Word Lists added, complying with the ANS Forth Test Suite. Tagged as version 1.50. 
+* ~~Developer ready: Word Lists added, complying with the ANS Forth Test Suite. Tagged as version 1.50.~~ 
+* Developer utilities: addition of disassembler and decompiler. Tagged as version 1.60. 
 
 | Item             | Version   | Completed   |
 |:-----------------|----------:|------------:|
@@ -175,13 +176,14 @@ brew install binutils
 | Reorganise dictionary ordering to improved compilation speed.  | |:white_check_mark:|
 | Dictionary vocabulary support. |1.50|:white_check_mark:|
 | External assembler.  |1.50|:white_check_mark:|
+| Forth disassembler.  |1.6|:white_check_mark:|
+| Inbuilt decompiler (forth word SEE).  |1.6| |
 | Inbuilt assembler.  | | |
 | Treat both space and tab as white space.  | ||
 | Change formatting of ok line output to match GForth.  | | |
 | Format the output of WORDS to 10 forth words per line. Possibly pad each word to 8 character width and if longer to 16 character width.  | | |
 | Format the output of DUMP to show an address per line. | | |
 | Run some benchmarks.  | ||
-| Forth decompiler.  | | |
 | Reorganise memory map so that the stacks are below $8000. Move the in-RAM code and dictionary up to fill the gap below $C000. | | |
 | Adjust DICT:CODE ratio to 1:4| | |
 | Vectored I/O. In particular the ability to programatically change the behavior of EMIT, etc..  | | |
@@ -195,5 +197,5 @@ brew install binutils
 | Move the serial communications code to an include file.  | | |
 | Debugging support. | | |
 | Tandy CoCo. Port | | |
-
+| Improve output formatting for SEE | | |
 

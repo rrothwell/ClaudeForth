@@ -205,7 +205,7 @@ R> BASE ! ;
   ok\ ---- F.3.10 Division - floored vs symmetric conditional compilation ----
   ok: IFFLOORED [ -3 2 / -2 = INVERT ] LITERAL IF POSTPONE \ THEN ;
   ok: IFSYM [ -3 2 / -1 = INVERT ] LITERAL IF POSTPONE \ THEN ;
-  ok\ ---- F.3.19 Number Patterns - string compare (String word set assumed absent) 
+  ok\ ---- F.3.19 Number Patterns - string compare (String word set assum•d absent) 
   ok: S= ( ADDR1 C1 ADDR2 C2 -- T/F ) \ Compare two strings.
 >R SWAP R@ = IF \ Make sure strings have same length
 R> ?DUP IF \ If non-empty strings

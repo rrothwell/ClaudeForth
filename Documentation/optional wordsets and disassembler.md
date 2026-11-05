@@ -1,4 +1,4 @@
-# Optional word sets (6j, 6k) and the disassembler (6l)
+# Optional word sets (6j, 6k), the disassembler (6l) and SEE (6m)
 
 ## 1. What stage 6j adds
 
@@ -17,7 +17,7 @@ and the code is one contiguous run in section 19. Each switch wraps its
 run in `IFNE`/`ENDC`. The link of the header after a removed run is set
 by `H_STRLINK1` and `H_STRLINK2` (`EQU` chosen by the switch), so the
 dictionary chain stays intact in all four combinations (checked by
-walking the chain: 262 headers on, 250 with both off).
+walking the chain: 265 headers on with everything, 253 with both string switches off; 262 and 250 before the DASM, DIS and SEE headers).
 
 ## 2. Dependencies found (the "assuming nothing depends on them" check)
 
@@ -41,9 +41,12 @@ renamed).
 
 | Setting | Headers | Code | Total saved |
 | --- | --- | --- | --- |
-| `STRINGEXT=0` | 58 | 583 | **641** |
-| `STRINGSET=0` | 93 | 169 | **262** |
-| both 0 | 151 | 752 | **903** |
+| `STRINGEXT=0` | 58 | 599 | **657** |
+| `STRINGSET=0` | 93 | 181 | **274** |
+| both 0 | 151 | 780 | **931** |
+
+(These are the final figures, including the `ENVIRONMENT?` entries added in
+6k. The first measurements in 6j were 641, 262 and 903.)
 
 `BASEDICT` and `BASECODE` are still fixed `EQU`s, so the saved bytes show
 up as a gap: below `BASECODE` (the dictionary ends early) and above
@@ -68,7 +71,7 @@ It could also be reclaimed when `STRINGEXT=0` (not done; RAM is not tight).
 ## 5. Verification of 6j and 6k
 
 - All four switch combinations assemble in both serial builds; 262 headers
-  with both on, 250 with both off.
+  with both on, 250 with both off (at 6k, before the 6l and 6m words).
 - All 19 unit-test groups pass (group 0 `TSTKEYQ` fails exactly as on 6i
   in my emulator, which has no pending key).
 - ANS 27: 50 run, 0 failed. ANS 36: 14 run, 0 failed (also with
@@ -184,11 +187,105 @@ and `DISASM` is not given, `DISASM` defaults to 0, so the usual
   `DISASM=1`. ANS files 27 (50/0), 33 (76/0), 34 (15/0), 36 (14/0) pass.
 - Not run: lwasm, MAME, hardware.
 
-## 7. Next: SEE (decompiler)
+## 7. SEE, the decompiler (stage 6m)
 
-`SEE ( "name" -- )` for colon definitions, behind `DECOMP`: step through
-the subroutine-threaded body, name each `JSR` target through `SNAME`, show
-inline literals, branches and strings. This needs a read of how `IF`,
-`DO`, literals and `S"` compile before it is written. Estimate 600-900
-bytes; the spare ROM above `BASECODE` and the interrupt build's 14 bytes
-mean `BASECODE`/`BASEDICT` move down again.
+The source has a SECTION 28 banner (disassembler and decompiler) ahead of
+the `DISASM` block. The main document lists it as Section 8.29.
+
+### Word (switch `DECOMP`, default follows `DISASM`)
+
+`SEE ( "name" -- )` shows a definition as Forth source. `DECOMP=1`
+needs `DISASM=1` (SEE sends machine code through `DASM` and its output
+through the same routine); `DECOMP=1` with `DISASM=0` stops with an
+`ERROR`. `--define=DECOMP=0` keeps the disassembler and drops SEE; the
+image is then byte for byte the 6l image.
+
+    : A2 DUP 0= IF DROP 1 ELSE DUP 1- A2 * THEN ;
+    : A4 BEGIN DUP 5 < WHILE 1+ REPEAT ;
+    : A7 ." hello" S" abc" TYPE ABORT" bad" ;
+    : B1 5 0 DO 3 0 DO I J + . LOOP LOOP ;
+    CREATE M7 DATA 28753 DOES> @ 1+ ;
+    CODE DROP
+    LEAU $02,U
+    RTS
+
+- **How:** a colon definition is a string of `JSR xt` instructions. A few
+  run-time words are followed by an inline cell (`LIT`, `BRANCH`,
+  `ZBRANCH`, `DOTEST`, `DOPLUSTEST`, `QDOSETUP`, `EXITUNLOOP`) or a counted
+  string (`DOSTR`, `DOTSTR`, `DOCSTR`, `DOABORTQUOTE`). SEE steps over
+  them using a table (`DKT`) and names every other `JSR` target with
+  `SNAME`.
+- **Control structures** come from the branch targets. Each time SEE
+  reaches an address it scans the definition for branches that end or
+  start there: `THEN` and `BEGIN` are printed before the instruction, and
+  `ZBRANCH`/`BRANCH` become `IF`, `ELSE`, `UNTIL`, `AGAIN`, `WHILE` or
+  `REPEAT` by direction and by what branches to what. `DO`, `?DO`, `LOOP`,
+  `+LOOP`, `EXIT`, strings and `DOES>` are direct.
+- **Literals** are shown in the current `BASE` (signed), so `HEX SEE x`
+  shows hex.
+- **Machine code words** (first byte is not a `JSR` or `RTS`) are shown as
+  `CODE name` and one `DASM` line per instruction, up to the first `RTS`.
+  A machine-code fragment inside a colon definition is also shown with
+  `DASM`.
+- **Words made by CREATE, VARIABLE, CONSTANT, 2VARIABLE, BUFFER:** shown
+  as `CREATE name DATA <address>`. If the behaviour is not the default, it
+  follows `DOES>`: its name if it has one (a CONSTANT shows `@`), or the
+  decompiled code of the `DOES>` part.
+
+### Known limits
+
+- `CASE` shows as the code it compiles: `OVER = IF DROP ... ELSE ... THEN`.
+  `OF`, `ENDOF` and `ENDCASE` are not rebuilt.
+- An `AGAIN` loop that sits at the end of an `IF` branch
+  (`x IF BEGIN y AGAIN THEN`) shows as `REPEAT`; the shape is otherwise
+  right. Loops at the end of an `IF` branch that end with `REPEAT`
+  (`x IF BEGIN y WHILE z REPEAT THEN`) show correctly.
+- A word with no header (`:NONAME`) that is called from a definition shows
+  as the `DASM` text `JSR $xxxx`.
+- SEE stops after 255 items.
+- Names are the dictionary names, so a word that was `RECURSE`d shows its
+  own name.
+- The output is the code, not the original source: comments, `[CHAR]`
+  and `[']` (shown as a number), `POSTPONE` and numbers typed in another
+  base are not recoverable.
+
+### ROM cost, measured
+
+| Part | Bytes |
+| --- | --- |
+| `DSTEP`, `DQ`, `DMARK`, handlers, `SEE` | 797 |
+| Kind table and word list (`DKT`, `DKEYS`) | 96 |
+| Header `SEE` | 8 |
+| 21 bytes of direct-page globals | 0 ROM |
+| **Total** | **901** |
+
+With both switches on, `BASECODE` is $CEC0 and `BASEDICT` is $C4F8 (was
+$D240 and $C880 with the disassembler alone). Spare ROM above the code:
+polled 336 bytes, interrupt 17 bytes. The region below `BASEDICT` is 1,016
+bytes, so with both on only unit-test groups 13 and 15 fit (both pass).
+With `DECOMP=0` the 6l list applies (groups 0, 2, 5, 13, 14, 15, 16, 17).
+The other groups need `DISASM=0`, which is the default whenever
+`UNITTESTS` is nonzero.
+
+| `DISASM` | `DECOMP` | `BASECODE` | `BASEDICT` | Added ROM |
+| --- | --- | --- | --- | --- |
+| 0 | 0 | $D936 | $CF87 | 0 (identical to 6k) |
+| 1 | 0 | $D240 | $C880 | 1,789 |
+| 1 | 1 | $CEC0 | $C4F8 | 2,690 |
+
+### Verification
+
+- `see_check.py` (in the project): defines 19 words, runs SEE and compares
+  the text exactly: nested IF/ELSE, BEGIN/UNTIL/WHILE/REPEAT/AGAIN,
+  DO/LOOP/?DO/+LOOP with I and J, strings, empty `S" "`, EXIT, CASE,
+  VARIABLE, CONSTANT and a DOES> word. 0 differences.
+- Also run and checked by eye: SEE of primitives (`DROP`, `1+`, `CELLS`,
+  `ABS`, `.`) and of SEE itself (a colon word with machine code in it).
+- Everything from 6l still passes on 6m: the 20,432-sequence round trip
+  (same 4 known cases), 64 DASM length tests, all 19 unit-test groups
+  (`DISASM=0` default), ANS 27, 33, 34, 36.
+- Both switch states give the images described above (`DISASM=0`
+  identical to 6k, `DECOMP=0` identical to 6l).
+- Not run: lwasm on 6m, MAME, hardware. The `ERROR` for `DECOMP=1` with
+  `DISASM=0` is the same directive lwasm already accepted for the string
+  guard.

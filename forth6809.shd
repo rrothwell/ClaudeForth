@@ -3212,3 +3212,89 @@ ROLLW.1  [bugfix]  (stage 6d)
 ; 1 2 3). The unit test passed by luck, because the STU before the call
 ; always leaves Z clear. Now LDD ,U++ (two bytes, like PULU D) sets the
 ; flags from u, and the unit test leaves Z set before calling ROLL.
+
+================================================================
+STRINGSET.1  [design (stages 6j, 6k)]
+----------------------------------------------------------------
+Two assembly switches make the string words optional. STRINGSET=1 (default)
+assembles the String word set (-TRAILING, /STRING, BLANK, CMOVE, CMOVE>, COMPARE,
+SEARCH, SLITERAL). STRINGEXT=1 (default) assembles the String extension
+(REPLACES, SUBSTITUTE, UNESCAPE, CLR-REPLACES and the SUBPOOL code). ENVIRONMENT?
+answers STRING and STRING-EXT true only when the matching switch is 1, and
+returns the ordinary false result for a feature that is not there.
+UNITTESTS=1 needs both switches at 1; the source stops with
+ERROR "UNITTESTS=1 needs STRINGSET=1 and STRINGEXT=1" otherwise.
+ANS test file 27 (String word set) was split: 27 keeps the word set, 36 holds
+the extension.
+ROM saved by switching off (dictionary + code): STRINGSET -274 bytes, STRINGEXT
+-657 bytes, both -931 bytes. Turning a string switch off leaves a gap below
+BASEDICT unless BASECODE and BASEDICT are both lowered by the same amount.
+
+================================================================
+DISASM.1  [design (stage 6l)]
+----------------------------------------------------------------
+DISASM=1 adds DASM ( addr -- addr' ) and DIS ( addr u -- ). The default is 1,
+but it defaults to 0 when UNITTESTS is defined and nonzero, because the unit
+tests then need the ROM space below BASEDICT. The disassembler is table driven:
+name pool DNAMES (96 names, bit 7 set on the last character), plus the tables
+DRMW, DRMWMD, DTAB1, DTAB3, DCOLS, DOVR, DIMMT, DCMODE, DREGT, DSTKR, DREGL,
+DACC and DIXT. Every character goes out through DCH, which DISMUTE silences so
+DIS can measure an instruction before printing it. Output is lwasm style and
+hexadecimal only: #$xx immediates, <$xx direct, >$xxxx extended, indexed forms
+in [...], <$05,X and >$0005,X where the offset size is forced, absolute targets
+for branches and ,PCR, and PSHS #$00 for an empty register list. An illegal
+opcode prints FCB $xx and consumes one byte.
+Verified by a round trip (assemble, disassemble, reassemble, compare): only the
+4 known PSHS #$00 differences and 1,083 non-canonical postbytes differ.
+Globals: 19 bytes (DISSTART $83 .. DISMUTE $95).
+
+================================================================
+DECOMP.1  [design (stage 6m)]
+----------------------------------------------------------------
+DECOMP=1 adds SEE ( "name" -- ) and needs DISASM=1 (DECOMP defaults to DISASM;
+DECOMP=1 with DISASM=0 stops with ERROR "DECOMP=1 needs DISASM=1").
+DSTEP decodes one JSR of a colon definition with the kind table DKT:
+1 plain word, 2 DO, 3 DOES>, 4 LIT, 5 ZBRANCH, 6 BRANCH, 7 DOTEST, 8 DOPLUSTEST,
+9 QDOSETUP, 10 EXITUNLOOP, 11-14 the four string words, 15 RTS. Inline operands
+follow LIT, BRANCH, ZBRANCH, DOTEST, DOPLUSTEST, QDOSETUP and EXITUNLOOP (a
+2-byte cell) and DOSTR, DOTSTR, DOCSTR, DOABORTQUOTE (a counted string).
+DQ scans the definition and counts branches by kind, direction and
+target-or-end; the optional QL condition (target below the branch) tells a
+WHILE from an IF at the head of a loop. DMARK prints THEN and BEGIN ahead of
+the instruction they mark; the HND_* handlers print the rest. (The handler
+prefix is HND_, not H_, which is the header prefix: H_DO and H_LOOP clashed.)
+A CODE word prints as CODE name followed by DASM lines. A CREATE, VARIABLE,
+CONSTANT or DOES> word prints CREATE name DATA <pfa>, then DOES>.
+Keyword pool DKEYS: IF ELSE THEN BEGIN UNTIL AGAIN WHILE REPEAT DO ?DO LOOP
++LOOP EXIT S" ." C" ABORT" ; : CODE CREATE DATA DOES>.
+Known limits: CASE/OF/ENDOF are not rebuilt; an AGAIN at the end of an IF
+branch shows as REPEAT; a headerless word shows as JSR $xxxx; output stops after
+255 items.
+Globals: 21 bytes (DSKIND, DSOPD, DSNXT, DSPOS, DSXT, DSPREV, DSMODE, DSCNT,
+DSFIN, QK, QD, QW, QV, QL, QC; last is QC at $AA).
+Verified: see_check.py (19 definitions, 0 differ); 37_disassembler.tests.fs
+(64 run, 0 failed).
+
+================================================================
+GLOBALS.2  [history]  (stages 6l, 6m)
+----------------------------------------------------------------
+GLOBALS_USED is now 131+19*DISASM+21*DECOMP = 171 bytes with both switches on
+(page zero $00-$AA). The disassembler block (DISSTART $83 to DISMUTE $95) and the
+decompiler block follow the unconditional globals. The earlier formula
+131+19*DISASM+20*DECOMP was one byte short; the 6m source corrects it.
+
+================================================================
+MEMMAP.20  [history]  (stages 6k, 6l, 6m)
+----------------------------------------------------------------
+BASECODE and BASEDICT now depend on the switches, set by conditional EQUs at the
+top of the source (newest state last):
+   DISASM DECOMP   BASECODE  BASEDICT
+     0      0       $D936     $CF87     (identical to stage 6k)
+     1      0       $D240     $C880     (identical to stage 6l)
+     1      1       $CEC0     $C4F8     (stage 6m default)
+Stage 6i had BASECODE $D952 and BASEDICT $CFA3; earlier values are in MEMMAP.6
+and MEMMAP.8.
+Default 6m build: 265 headers, BASEDICTSIZE 2504, BASECODESIZE 12180 polled
+(12499 interrupt), BASECODEEND $FE54 polled (336 spare) and $FF93 interrupt
+(17 spare). Unused ROM below BASEDICT: $C100-$C4F7 = 1016 bytes, so with
+DISASM=1 and DECOMP=1 only unit-test groups 13 and 15 fit.
