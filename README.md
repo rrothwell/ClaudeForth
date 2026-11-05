@@ -19,7 +19,7 @@ such as in-lining and peephole optimisation.
 ## Scope
 
 The objective is to refamiliarise myself with the Forth language and the MC6809 microprocessor.
-There will an assessment of the effectiveness of a mature AI system (circa mid-2026),
+There will be an assessment of the effectiveness of a mature AI system (circa mid-2026),
 for developing code with a moderately complex logical structure.
 
 ## Strategy
@@ -98,6 +98,7 @@ brew install binutils
 |Word Lists added| 1.50|:white_check_mark:|
 |Update documentation| 1.50|:white_check_mark:|
 |Disassembler and Forth decompiler added| 1.60|:white_check_mark:|
+|Feature flags for optional word sets and tools| 1.60|:white_check_mark:|
 |Update documentation| 1.60|:white_check_mark:|
 |Burn ROM and install onto real MECB 6809 hardware. | 1.60| |
 |Develop a simple forth application| 1.60| |
@@ -130,14 +131,14 @@ brew install binutils
 |.bin| 6809 raw binary opcodes as ROM content |
 |.svg| Scalable Vector Graphics text XML format |
 |.png| Portable Network Graphics raster image format |
-|.jpg/.jpeg| JEPEG compressed graphics format |
+|.jpg/.jpeg| JPEG compressed graphics format |
 |.pdf| Portable Document Format |
 |.docx| Microsoft Word XML format |
 |.mmd| [Mermaid](https://mermaid.js.org) graphics text format for UML |
 |.cmd| A command file for MAME startup |
 |.fs| Forth source code |
 |.py| Python source code |
-|.bs| Bash script file |
+|.sh| Bash script file |
 |.log| A logfile. Likely for accepting test results |
 |.shd| A shadow file with content corresponding to the same named assembler file[^1].|
 
@@ -145,7 +146,7 @@ brew install binutils
 [^1]: A shadow file is a text file with sections corresponding 
       to those of the same named assembler files.
       This lists expanded block comments, operating principles,
-      bug fixes explanations and obsolete asembler code.
+      bug fixes explanations and obsolete assembler code.
 
 
 ### Documentation
@@ -173,7 +174,7 @@ brew install binutils
 | Scan for refactoring opportunities, removing code duplication.  | |:white_check_mark:|
 | Optimised words for common constants.  | |:white_check_mark:|
 | Complete ANS double word implementation with tests.  | |:white_check_mark:|
-| Complete ANS string implementation with tests  | |:white_check_mark:|.
+| Complete ANS string implementation with tests  | |:white_check_mark:|
 | Development support words such as [IF], [ELSE], [THEN], .(), etc..  | |:white_check_mark:|
 | Reorganise dictionary ordering to improved compilation speed.  | |:white_check_mark:|
 | Dictionary vocabulary support. |1.50|:white_check_mark:|
@@ -183,7 +184,7 @@ brew install binutils
 | Vectored I/O. In particular the ability to programatically change the behavior of EMIT, etc..  | | |
 | Interrupt chaining to call forth words.  | | |
 | MC6840 Forth timer applied to measure execution duration.  | | |
-| Inbuilt assembler.  | | |
+| Inbuilt assembler. This would be developed in assembly langage and linked to the existing dictionary. | | |
 | Treat both space and tab as white space.  | ||
 | Change formatting of ok line output to match GForth.  | | |
 | Format the output of WORDS to 10 forth words per line. Possibly pad each word to 8 character width and if longer to 16 character width.  | | |

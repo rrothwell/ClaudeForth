@@ -65,12 +65,18 @@ Then in another terminal:
 cd ${HOME}/git/ClaudeForth
 lwasm --6809 --format=raw \
    --output=forth6809.bin --list=forth6809.lst \
-   --define=UNITTESTS=0 --define=TSTSELECTOR=15 \
+   --define=UNITTESTS=0  \
    --define=SERIALPOLL=1 \
    forth6809.asm
 mkdir "${HOME}/Library/Application Support/mame/roms/mecb6809"
 cp forth6809.bin "${HOME}/Library/Application Support/mame/roms/mecb6809/mecb6809.bin"
 ```
+
+> The default build includes everything the test files need. A build with
+> `--define=STRINGSET=0`, `--define=STRINGEXT=0` or `--define=DISASM=0` leaves
+> out the String words, the String extension or the disassembler (and the
+> decompiler), so test files 27, 36 and 37 will then fail by design. See the
+> Feature Flags section of the ClaudeForth documentation.
 
 ### Python Test Runner
 
@@ -93,7 +99,7 @@ python3 ans_test_runner.py \
     --retrigger-cmd $HOME/git/ClaudeForth/ANS\ Test\ Suite/retrigger.cmd \
     --skip-assemble \
     --ans-dir $HOME/git/ClaudeForth/ANS\ Test\ Suite/ans_tests \
-    --sections 08 09 10 11 12 13 14 15 16 17 18 19 20 21 23 24 26 27 28 29 30 31 33 34  36 37 \
+    --sections 08 09 10 11 12 13 14 15 16 17 18 19 20 21 23 24 26 27 28 29 30 31 33 34 36 37 \
     --char-delay 0.05 \
     --retries 0 \
     --log-dir $HOME/git/ClaudeForth/ANS\ Test\ Suite/ans_test_results
@@ -335,15 +341,16 @@ It provides shared section setup utilities with support for:
 ### ANS Forth Tests
 
 The ANS Forth test files, `NN_name.tests.fs`, 
-are aligned with one file per forth6809.asm section 
-(matching the exact same numbering and filenames as `forth6809_split/`).
+are aligned with one file per forth6809.asm section.
 These contain every ANS test block for the words that each section implements.
 
 `33_search_order.tests.fs` covers the Search-Order word set: `WORDLIST`,
 `FORTH-WORDLIST`, `GET-ORDER`, `SET-ORDER`, `SEARCH-WORDLIST`, `GET-CURRENT`,
 `SET-CURRENT`, `DEFINITIONS`, `ONLY`, `ALSO`, `PREVIOUS`, `FORTH`, `ROOT`,
-`VOCABULARY` and `ORDER`, and the `FIND`, `WORDS` and `MARKER` behaviour that
-depends on them (76 tests). Unlike the other section files it is not taken
+`VOCABULARY` and `ORDER`, the `FIND`, `WORDS` and `MARKER` behaviour that
+depends on them (78 tests) and the 
+`SEARCH-ORDER` and `SEARCH-ORDER-EXT` environment queries. 
+Unlike the other section files it is not taken
 from Annex F, which has no Search-Order tests; it was written for this
 project. It covers the exceptions -8, -11, -49 and -50, an empty order (where
 ROOT is still searched), a full order of 8, and what `MARKER` does to
@@ -359,10 +366,10 @@ have no directly-callable ANS name, so there are no tests.
 Everything else in Core (F.6.1) and the Core Extension subset this
 system implements (F.6.2) maps to exactly one section.
 
-Three files were added after that count was made, and sit outside the
+Further files were added after that count was made, and sit outside the
 one-file-per-assembler-section rule:
 
-1. `27_optional_strings.tests.fs`: the optional String words.
+1. `27_optional_strings.tests.fs`: is now only the String word set (50 tests).
 1. `28_double_word.tests.fs`: the Double-Number word set, core and extension,
    built from the tests at forth-standard.org/standard/double.
 1. `29_coreext_strings.tests.fs`: the Core Extension words that no other
@@ -373,6 +380,13 @@ one-file-per-assembler-section rule:
    `REFILL`, `TIB`, `#TIB`, `.R`, `U.R`) and the ClaudeForth extensions (`2+`,
    `BINARY`, `SNAME`, `VHERE`, `V,`, `VC,`, `VALLOT`, `UNUSED`, `VUNUSED`).
 1. `31_tools_conditionals.tests.fs`: `[IF]`, `[ELSE]`, `[THEN]`.
+1. `36_string_extension.tests.fs`: `REPLACES`, `SUBSTITUTE`, `UNESCAPE`,
+     `CLR-REPLACES` (14 tests). Needs `STRINGEXT=1`.
+1. `37_disassembler.tests.fs`: `DASM` and `DIS` (64 tests). Needs `DISASM=1`
+     (the default build).
+1. Also `34_header_smudge.tests.fs` (23 tests) is described only further down; it
+   now also checks that `HEADER` throws -16 for no name and -19 for a name over 31
+   characters.
 
 ## Differences from the Published Annex F Suite
 
@@ -463,8 +477,6 @@ Where the section files differ from the published test text:
 - **Reporting.** Each file starts with `TEST-BEGIN` and ends with `TEST-END`
   (see *Test Reporting*). `ttester.fs` has no `TEST-REPORT` word.
 
-Defects in `forth6809.asm` that these tests exposed are recorded in `bug_fixes.md`.
-
 ## Known Limitations and Open Items
 
 - **Compliance is not claimed.** Annex F is a necessary check, not proof of 
@@ -472,8 +484,9 @@ Defects in `forth6809.asm` that these tests exposed are recorded in `bug_fixes.m
   suite excludes the word sets listed below.
 - **`ENVIRONMENT?` coverage.** `X:deferred` is not in the query table, so it answers false. 
   The test accepts either answer. `WORDLISTS` answers 8, the depth of the search order. 
-  The word-set queries `SEARCH-ORDER` and `SEARCH-ORDER-EXT` are not in the query table, 
-  so they answer false, although the word set is implemented.
+  The word-set queries \`SEARCH-ORDER\` and \`SEARCH-ORDER-EXT\` answer true true.
+   `STRING` and `STRING-EXT` answer true true only in a build with `STRINGSET=1`
+   and `STRINGEXT=1` (the default); otherwise they answer false.
 - **`RESTORE-INPUT` is only partly tested.** It cannot restore across `REFILL` or
   into a different source, and the success path needs a multi-line source.
 - **`ABORT` is silent.** It prints nothing and returns to the prompt, 
@@ -502,7 +515,7 @@ The Search-Order word set is implemented and tested by
 
 The HEADER and SMUDGE word set is implemented and tested by
 `34_header_smudge.tests.fs`; see the ClaudeForth documentation, Sections 3.9,
-and 4.7.
+and 4.7. `HEADER` throws -16 for an empty name and -19 for a name over 31 characters.
 
 Most of the Programming-Tools word set is also omitted
 (AHEAD, CS-PICK, CS-ROLL, N>R, [THEN] etc.).
