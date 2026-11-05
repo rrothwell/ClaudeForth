@@ -49,7 +49,18 @@ GET-CURRENT TW SET-CURRENT 0 HEADER T6 SET-CURRENT
 T{ S" T6" TW SEARCH-WORDLIST NIP -> -1 }T
 T{ S" T6" FORTH-WORDLIST SEARCH-WORDLIST -> 0 }T
 
-\ ---- an empty name is not accepted by the system: nothing to test
+\ ---- the name length is checked: -16 for none, -19 over 31 characters
+: TRYEV ( c-addr u -- n ) ['] EVALUATE CATCH DUP IF NIP NIP THEN ;
+T{ S" :" TRYEV -> -16 }T
+T{ S" 0 HEADER" TRYEV -> -16 }T
+T{ S" : ABCDEFGHIJKLMNOPQRSTUVWXYZ12345 ;" TRYEV -> 0 }T
+T{ S" ABCDEFGHIJKLMNOPQRSTUVWXYZ12345" EVALUATE -> }T
+T{ S" : ABCDEFGHIJKLMNOPQRSTUVWXYZ123456 ;" TRYEV -> -19 }T
+T{ S" CREATE ABCDEFGHIJKLMNOPQRSTUVWXYZ123456" TRYEV -> -19 }T
+T{ S" 5 CONSTANT ABCDEFGHIJKLMNOPQRSTUVWXYZ123456" TRYEV -> -19 }T
+\ a failed header leaves the dictionary usable
+: T7 7 ;
+T{ T7 -> 7 }T
 
 HEX
 TEST-END

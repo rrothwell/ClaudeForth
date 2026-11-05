@@ -3298,3 +3298,34 @@ Default 6m build: 265 headers, BASEDICTSIZE 2504, BASECODESIZE 12180 polled
 (12499 interrupt), BASECODEEND $FE54 polled (336 spare) and $FF93 interrupt
 (17 spare). Unused ROM below BASEDICT: $C100-$C4F7 = 1016 bytes, so with
 DISASM=1 and DECOMP=1 only unit-test groups 13 and 15 fit.
+
+================================================================
+HEADER.2  [design (stage 6n)]
+----------------------------------------------------------------
+HEADER throws -16 (attempt to use zero-length string as a name) when WORD returns
+an empty name, and -19 (definition name too long) when the name is longer than 31
+characters, because the length byte holds the length in bits 0-4 and the flags
+(immediate, smudge) above them. The check comes before anything is written, so a
+failed header leaves DPHERE, LATEST and the wordlist head unchanged. : , CREATE,
+VARIABLE, CONSTANT and the other defining words all go through HEADER, so all are
+covered. The old test for a zero length (BEQ HDNONM) became unreachable and was
+removed. Cost: +17 bytes of code.
+
+================================================================
+ENVSEARCH.1  [design (stage 6n)]
+----------------------------------------------------------------
+ENVIRONMENT? answers SEARCH-ORDER and SEARCH-ORDER-EXT true true (two entries in
+ENVTABLE, always present). Cost: 12 bytes of table and 28 bytes of names.
+
+================================================================
+MEMMAP.21  [history]  (stage 6n)
+----------------------------------------------------------------
+HEADER's check and the two ENVIRONMENT? entries (57 bytes) used up the interrupt
+build's headroom, so BASECODE and BASEDICT were lowered by $40 in all three states:
+   DISASM DECOMP   BASECODE  BASEDICT   unit-test region
+     0      0       $D8F6     $CF47      (was $D936 / $CF87)
+     1      0       $D200     $C840      1856 bytes (was $D240 / $C880, 1920)
+     1      1       $CE80     $C4B8      952 bytes (was $CEC0 / $C4F8, 1016)
+Default build: BASECODESIZE 12237 polled (ends $FE4D, 343 spare) and 12556 interrupt
+(ends $FF8C, 24 spare). The same unit-test groups fit as before (DISASM=1 DECOMP=0:
+0, 2, 5, 13-17; both on: 13 and 15).

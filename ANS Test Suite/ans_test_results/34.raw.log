@@ -41,10 +41,21 @@
   okGET-CURRENT TW SET-CURRENT 0 HEADER T6 SET-CURRENT
   okT{ S" T6" TW SEARCH-WORDLIST NIP -> -1 }T  Actual:Expected -1 =?= -1 
   okT{ S" T6" FORTH-WORDLIST SEARCH-WORDLIST -> 0 }T  Actual:Expected 0 =?= 0 
-  ok\ ---- an empty name is not accepted by the system: nothing to test
+  ok\ ---- the name length is checked: -16 for none, -19 over 31 characters
+  ok: TRYEV ( c-addr u -- n ) ['] EVALUATE CATCH DUP IF NIP NIP THEN ;
+  okT{ S" :" TRYEV -> -16 }T  Actual:Expected -16 =?= -16 
+  okT{ S" 0 HEADER" TRYEV -> -16 }T  Actual:Expected -16 =?= -16 
+  okT{ S" : ABCDEFGHIJKLMNOPQRSTUVWXYZ12345 ;" TRYEV -> 0 }T  Actual:Expected 0 =?= 0 
+  okT{ S" ABCDEFGHIJKLMNOPQRSTUVWXYZ12345" EVALUATE -> }T
+  okT{ S" : ABCDEFGHIJKLMNOPQRSTUVWXYZ123456 ;" TRYEV -> -19 }T  Actual:Expected -19 =?= -19 
+  okT{ S" CREATE ABCDEFGHIJKLMNOPQRSTUVWXYZ123456" TRYEV -> -19 }T  Actual:Expected -19 =?= -19 
+  okT{ S" 5 CONSTANT ABCDEFGHIJKLMNOPQRSTUVWXYZ123456" TRYEV -> -19 }T  Actual:Expected -19 =?= -19 
+  ok\ a failed header leaves the dictionary usable
+  ok: T7 7 ;
+  okT{ T7 -> 7 }T  Actual:Expected 7 =?= 7 
   okHEX
   okTEST-END
-TEST SUMMARY: 15 run, 0 failed
+TEST SUMMARY: 23 run, 0 failed
 
   okM34
   ok

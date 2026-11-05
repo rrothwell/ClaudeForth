@@ -180,6 +180,9 @@ brew install binutils
 | External assembler.  |1.50|:white_check_mark:|
 | Forth disassembler.  |1.6|:white_check_mark:|
 | Inbuilt decompiler (forth word SEE).  |1.6|:white_check_mark:|
+| Vectored I/O. In particular the ability to programatically change the behavior of EMIT, etc..  | | |
+| Interrupt chaining to call forth words.  | | |
+| MC6840 Forth timer applied to measure execution duration.  | | |
 | Inbuilt assembler.  | | |
 | Treat both space and tab as white space.  | ||
 | Change formatting of ok line output to match GForth.  | | |
@@ -188,8 +191,6 @@ brew install binutils
 | Run some benchmarks.  | ||
 | Reorganise memory map so that the stacks are below $8000. Move the in-RAM code and dictionary up to fill the gap below $C000. | | |
 | Adjust DICT:CODE ratio to 1:4| | |
-| Vectored I/O. In particular the ability to programatically change the behavior of EMIT, etc..  | | |
-| Interrupt chaining to call forth words.  | | |
 | Cooperative multitasking.  | | |
 | Mass storage support - SD Card or Flash.  | | |
 | Application compilation to the ROM area via ROM emulation.  | | |
@@ -200,4 +201,5 @@ brew install binutils
 | Debugging support. | | |
 | Tandy CoCo. Port | | |
 | Improve output formatting for SEE | | |
+| Add Forth words like TOGGLE | | |
 

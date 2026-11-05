@@ -43,16 +43,16 @@ DECOMP      SET   DISASM            ; default: with the disassembler
             ENDC
             IFNE  DISASM
             IFNE  DECOMP
-BASECODE    EQU   $CEC0             ; base code (DISASM and DECOMP). See shadow MEMMAP.6
-BASEDICT    EQU   $C4F8             ; base dictionary (DISASM and DECOMP). See shadow MEMMAP.8
+BASECODE    EQU   $CE80             ; base code (DISASM and DECOMP). See shadow MEMMAP.6
+BASEDICT    EQU   $C4B8             ; base dictionary (DISASM and DECOMP). See shadow MEMMAP.8
             ELSE
-BASECODE    EQU   $D240             ; base code (with DISASM). See shadow MEMMAP.6
+BASECODE    EQU   $D200             ; base code (with DISASM). See shadow MEMMAP.6
             ; Commented-out code moved to shadow: MEMMAP.7
-BASEDICT    EQU   $C880             ; base dictionary (with DISASM). See shadow MEMMAP.8
+BASEDICT    EQU   $C840             ; base dictionary (with DISASM). See shadow MEMMAP.8
             ENDC
             ELSE
-BASECODE    EQU   $D936             ; base code (without DISASM)
-BASEDICT    EQU   $CF87             ; base dictionary (without DISASM)
+BASECODE    EQU   $D8F6             ; base code (without DISASM)
+BASEDICT    EQU   $CF47             ; base dictionary (without DISASM)
             ENDC
 INOUT       EQU   $C000             ; I/O block (ACIA), 256 bytes
 INOUTEND    EQU   INOUT+$FF
@@ -2967,7 +2967,9 @@ VUNUSEDW:   LDD   #APPVARSEND       ; See bugfix: VUNUSEDW.1
 ; requested), the name, the link to the previous header and the code
 ; field address (CODEHERE). LATEST, DPHERE and the head of the CURRENT
 ; wordlist are updated.
-; HEADER   ( smudge-flag "name" -- )
+; HEADER   ( smudge-flag "name" -- )   Throws -16 for an empty name and
+;    -19 for a name of more than 31 characters (the length byte holds the
+;    length in bits 0-4 and the flags in bits 5-7).
 ;    Inputs:
 ;        smudge-flag on the data stack (non-zero hides the new word)
 ;        name parsed from the input stream
@@ -2982,6 +2984,9 @@ HEADER:     LDD   #32
             PULU  X                 ; c-addr of the name
             PULU  D                 ; smudge flag in B
             LDA   ,X+               ; name length, X = name text
+            BEQ   HDZERO            ; no name: throw -16
+            CMPA  #31
+            BHI   HDLONG            ; over 31 characters: throw -19
             PSHS  A                 ; 2,S = length (5k: S-frame, no scratch)
             TSTB
             BEQ   HDNOSM
@@ -2989,13 +2994,12 @@ HEADER:     LDD   #32
 HDNOSM:     LDY   DPHERE
             PSHS  Y                 ; 0,S = address of the new header
             STA   ,Y+
-            LDB   2,S
-            BEQ   HDNONM
+            LDB   2,S               ; length is 1 to 31 here
 HDCPY:      LDA   ,X+
             STA   ,Y+
             DECB
             BNE   HDCPY
-HDNONM:     LDX   CURRENT           ; X = WID of the wordlist receiving the word
+            LDX   CURRENT           ; X = WID of the wordlist receiving the word
             LDD   ,X
             STD   ,Y++              ; LINK = old head of that wordlist
             LDD   CODEHERE
@@ -3006,6 +3010,11 @@ HDNONM:     LDX   CURRENT           ; X = WID of the wordlist receiving the word
             STD   ,X                ; and the new head of the CURRENT wordlist
             LEAS  1,S
             RTS
+HDZERO:     LDD   #-16              ; attempt to use zero-length string as a name
+            BRA   HDTHROW
+HDLONG:     LDD   #-19              ; definition name too long (flags need bits 5-7)
+HDTHROW:    PSHU  D
+            JMP   THROWW
 
 ; ------------------------------------------------------------
 ; Toggle the smudge bit (bit 6 of the length|flags byte) of the newest
@@ -9060,6 +9069,8 @@ ENVTABLE:
             IFNE  STRINGEXT
             FDB   EN21,EN21L,TRUEV  ; STRING-EXT
             ENDC
+            FDB   EN22,EN22L,TRUEV  ; SEARCH-ORDER (complete)
+            FDB   EN23,EN23L,TRUEV  ; SEARCH-ORDER-EXT (complete)
             FDB   0
 EN1:        FCC   "/COUNTED-STRING"
 EN1L        EQU   *-EN1
@@ -9099,6 +9110,10 @@ EN20L       EQU   *-EN20
 EN21:       FCC   "STRING-EXT"
 EN21L       EQU   *-EN21
             ENDC
+EN22:       FCC   "SEARCH-ORDER"
+EN22L       EQU   *-EN22
+EN23:       FCC   "SEARCH-ORDER-EXT"
+EN23L       EQU   *-EN23
 
 ; ============================================================
 ; SECTION 25: TOOLS WORD SET (.S / WORDS / DUMP)

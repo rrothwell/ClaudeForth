@@ -80,6 +80,8 @@
   okT{ GET-ORDER -> FORTH-WORDLIST 1 }T  Actual:Expected 1 =?= 1 91 =?= 91 
   ok\ ---- ENVIRONMENT?
   okT{ S" WORDLISTS" ENVIRONMENT? -> 8 TRUE }T  Actual:Expected -1 =?= -1 8 =?= 8 
+  okT{ S" SEARCH-ORDER" ENVIRONMENT? -> TRUE TRUE }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  okT{ S" SEARCH-ORDER-EXT" ENVIRONMENT? -> TRUE TRUE }T  Actual:Expected -1 =?= -1 -1 =?= -1 
   ok\ ---- MARKER restores wordlists, search order and CURRENT
   okFORTH-WORDLIST WL1 2 SET-ORDER
   okMARKER MK1
@@ -129,7 +131,7 @@
   okT{ ONLY TDEPTH -> 1 }T  Actual:Expected 1 =?= 1 
   okHEX
   okTEST-END
-TEST SUMMARY: 75 run, 0 failed
+TEST SUMMARY: 77 run, 0 failed
 
   okM33
   ok
