@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # build_all_tests.sh - assembles every glossary section's own unit test
-# group (TSTSELECTOR 0-20) into its own binary and listing, one at a
+# group (TSTSELECTOR 0-21) into its own binary and listing, one at a
 # time, and prints a summary of which groups assembled.
 #
 # Requires: lwasm. Assumes forth6809.asm. All overridable, run with
@@ -58,19 +58,19 @@ for v in "$SERIALPOLL" "$DISASM" "$DECOMP"; do
   fi
 done
 
-# Glossary section names, in TSTSELECTOR order (0-20), matching the table
+# Glossary section names, in TSTSELECTOR order (0-21), matching the table
 # in the ClaudeForth documentation's Build Instructions (Section 6.6).
 SECTION_NAMES=(
   "3.1_SysIO" "3.2_Stack" "3.3_RetStack" "3.4_SArith" "3.5_DArith"
   "3.6_Logic" "3.7_Compare" "3.8_CtrlFlow" "3.9_DefWords" "3.10_CompWords"
   "3.11_Memory" "3.12_StrParse" "3.13_NumOut" "3.14_BaseRadix"
   "3.15_Exception" "3.16_Comments" "3.17_EnvSys" "3.18_Tools"
-  "3.12_StrParse2" "3.9_DefWords2" "3.10_CompWords2"
+  "3.12_StrParse2" "3.9_DefWords2" "3.10_CompWords2" "3.11_Memory2"
 )
 
 # Groups that fit below BASEDICT when the disassembler is built in.
-FIT_DISASM=" 0 2 13 14 15 17  "   # DISASM=1, DECOMP=0 (1920 bytes)
-FIT_DECOMP="  "                  # DISASM=1, DECOMP=1 (1016 bytes)
+FIT_DISASM=" 0 2 13 14 15 17 "     # DISASM=1, DECOMP=0 (1682 bytes)
+FIT_DECOMP=" "                       # DISASM=1, DECOMP=1 (778 bytes): none fit
 
 fits() {   # $1 = group number; returns 0 if it can be built
   local eff_disasm="${DISASM:-0}"
