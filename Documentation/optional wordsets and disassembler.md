@@ -17,7 +17,7 @@ and the code is one contiguous run in section 19. Each switch wraps its
 run in `IFNE`/`ENDC`. The link of the header after a removed run is set
 by `H_STRLINK1` and `H_STRLINK2` (`EQU` chosen by the switch), so the
 dictionary chain stays intact in all four combinations (checked by
-walking the chain: 265 headers on with everything, 253 with both string switches off; 262 and 250 before the DASM, DIS and SEE headers).
+walking the chain: 269 headers on with everything, 257 with both string switches off; 266 and 254 before the DASM, DIS and SEE headers; the count was 265 and 253, 262 and 250 until stage 6o added (EMIT), (KEY), (KEY?) and IRQ-CHAIN).
 
 ## 2. Dependencies found (the "assuming nothing depends on them" check)
 
@@ -163,7 +163,7 @@ Spare ROM above the code: polled 333 bytes, interrupt 14 bytes.
 ### Unit-test regions
 
 With `DISASM=1` the region below `BASEDICT` is $C880-$C100 = 1,920 bytes.
-Groups that fit and pass with `DISASM=1`: 0, 2, 5, 13, 14, 15, 16, 17.
+Groups that fit and pass with `DISASM=1`, `DECOMP=0`: 0, 2, 13, 14, 15, 17 (16 until stage 6n added ENVIRONMENT? unit tests; 5 until stage 6o added the vectored I/O and the interrupt chain). With both switches on no group fits since stage 6o (13 and 15 did before). With `DISASM=0` all 22 groups fit; group 10 was split into 10 and 21 in stage 6o.
 The other groups need `DISASM=0`. When `UNITTESTS` is defined and nonzero
 and `DISASM` is not given, `DISASM` defaults to 0, so the usual
 `--define=UNITTESTS=1 --define=TSTSELECTOR=n` command works unchanged.
@@ -263,7 +263,7 @@ With both switches on, `BASECODE` is $CEC0 and `BASEDICT` is $C4F8 (was
 $D240 and $C880 with the disassembler alone). Spare ROM above the code:
 polled 336 bytes, interrupt 17 bytes. The region below `BASEDICT` is 1,016
 bytes, so with both on only unit-test groups 13 and 15 fit (both pass).
-With `DECOMP=0` the 6l list applies (groups 0, 2, 5, 13, 14, 15, 16, 17).
+With `DECOMP=0` the 6l list applies (groups 0, 2, 5, 13, 14, 15, 17 since stage 6n).
 The other groups need `DISASM=0`, which is the default whenever
 `UNITTESTS` is nonzero.
 
