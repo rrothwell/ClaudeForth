@@ -182,7 +182,7 @@ brew install binutils
 | Forth disassembler.  |1.6|:white_check_mark:|
 | Inbuilt decompiler (forth word SEE).  |1.6|:white_check_mark:|
 | Vectored I/O. In particular the ability to programatically change the behavior of EMIT, etc..  |1.7|:white_check_mark:|
-| Interrupt chaining to call forth words. [^1] |1.7|:white_check_mark:|
+| Interrupt chaining to call forth words. [^2] |1.7|:white_check_mark:|
 | MC6840 Forth timer applied to measure execution duration.  | | |
 | Inbuilt assembler. This would be developed in assembly langage and linked to the existing dictionary. | | |
 | Treat both space and tab as white space.  | ||
