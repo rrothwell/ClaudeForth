@@ -69,8 +69,8 @@ SECTION_NAMES=(
 )
 
 # Groups that fit below BASEDICT when the disassembler is built in.
-FIT_DISASM=" 0 2 5 13 14 15 16 17 "   # DISASM=1, DECOMP=0 (1920 bytes)
-FIT_DECOMP=" 13 15 "                  # DISASM=1, DECOMP=1 (1016 bytes)
+FIT_DISASM=" 0 2 13 14 15 17  "   # DISASM=1, DECOMP=0 (1920 bytes)
+FIT_DECOMP="  "                  # DISASM=1, DECOMP=1 (1016 bytes)
 
 fits() {   # $1 = group number; returns 0 if it can be built
   local eff_disasm="${DISASM:-0}"
@@ -89,7 +89,7 @@ echo "SERIALPOLL=$SERIALPOLL DISASM=${DISASM:-default} DECOMP=${DECOMP:-default}
 
 declare -a RESULTS
 
-for ((n=0; n<21; n++)); do
+for ((n=0; n<22; n++)); do
   name="${SECTION_NAMES[$n]}"
 
   echo "=================================================================="

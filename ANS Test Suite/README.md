@@ -99,7 +99,7 @@ python3 ans_test_runner.py \
     --retrigger-cmd $HOME/git/ClaudeForth/ANS\ Test\ Suite/retrigger.cmd \
     --skip-assemble \
     --ans-dir $HOME/git/ClaudeForth/ANS\ Test\ Suite/ans_tests \
-    --sections 08 09 10 11 12 13 14 15 16 17 18 19 20 21 23 24 26 27 28 29 30 31 33 34 36 37 \
+    --sections 08 09 10 11 12 13 14 15 16 17 18 19 20 21 23 24 26 27 28 29 30 31 33 34 36 37 38 \
     --char-delay 0.05 \
     --retries 0 \
     --log-dir $HOME/git/ClaudeForth/ANS\ Test\ Suite/ans_test_results
@@ -387,6 +387,8 @@ one-file-per-assembler-section rule:
 1. Also `34_header_smudge.tests.fs` (23 tests) is described only further down; it
    now also checks that `HEADER` throws -16 for no name and -19 for a name over 31
    characters.
+1. `38_io_vectors.tests.fs`: the redirectable `EMIT`, `KEY` and `KEY?` and the
+  initial value of `IRQ-CHAIN` (18 tests, written for this project).
 
 ## Differences from the Published Annex F Suite
 

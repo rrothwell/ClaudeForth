@@ -135,8 +135,8 @@ SECTION_NAMES=(
 )
 
 # Groups that fit below BASEDICT when the disassembler is built in.
-FIT_DISASM=" 0 2 5 13 14 15 16 17 "   # DISASM=1, DECOMP=0 (1920 bytes)
-FIT_DECOMP=" 13 15 "                  # DISASM=1, DECOMP=1 (1016 bytes)
+FIT_DISASM=" 0 2 13 14 15 17  "   # DISASM=1, DECOMP=0 (1920 bytes)
+FIT_DECOMP="  "                  # DISASM=1, DECOMP=1 (1016 bytes)
 
 fits() {   # $1 = group number; returns 0 if it can be built
   local eff_disasm="${DISASM:-0}"
@@ -157,7 +157,7 @@ echo $MAME_BIN
 echo "SERIALPOLL=$SERIALPOLL DISASM=${DISASM:-default} DECOMP=${DECOMP:-default}"
 # ------------------------------------------------------------------
 # One-time sanity check: confirm this driver actually exposes the
-# rs232/null_modem/bitb combination before looping 21 times on a
+# rs232/null_modem/bitb combination before looping 22 times on a
 # machine config that might not support it.
 # ------------------------------------------------------------------
 echo "=== Sanity check: does $MAME_SYSTEM support -rs232 null_modem -bitb? ==="
@@ -175,7 +175,7 @@ echo
 # ------------------------------------------------------------------
 declare -a RESULTS
 
-for ((n=0; n<21; n++)); do
+for ((n=0; n<22; n++)); do
   name="${SECTION_NAMES[$n]}"
   logfile="$LOG_DIR/${n}_${name}.log"
 
