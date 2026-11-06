@@ -46,6 +46,18 @@ character I/O. Source: `forth6809_stage_6o.asm`; documentation:
       figures, BASECODE/BASEDICT and unit-test tables, group 21, counts 265 → 269;
       Section 5 item; index.
 
+## Fixes after Richard's run (6 November)
+
+- [x] ANS tests all pass (lwasm/MAME).
+- [x] **Group 11 (StrParse) overflowed by 13 bytes with `SERIALPOLL=0`** ("Invalid fill
+      length"). `TSTDASHTRAILING` and `TSTSLASHSTRING` moved to group 18 (StrParse2).
+      Group 11 now reports 15 tests, group 18 reports 10. Every group was re-measured
+      in all four SERIALPOLL/DISASM combinations I can assemble; none is now within 60
+      bytes of overflowing. (My earlier check measured only the polled build.)
+- [x] Manual: Section 4.9 split into 4.9 Redirecting Character I/O and 4.10 Interrupt
+      Chaining; timeline entry added ("Addition of character I/O redirection and
+      interruption chaining: 1 day (~5 hours)").
+
 ## Open items
 
 - [ ] **Please run in lwasm and MAME:** all combinations of `SERIALPOLL`, `DISASM`
@@ -60,7 +72,6 @@ character I/O. Source: `forth6809_stage_6o.asm`; documentation:
 - [ ] Decide whether the lost unit-test coverage matters: with the disassembler on,
       groups 5, 13 and 15 (and 16 since 6n) can no longer be built. To get 13 and 15
       back with both options on, about 150 bytes would have to be found.
-- [ ] Timeline entry for the 6o work (hours) — needs your figures.
 - [ ] `CASE` is not rebuilt by `SEE` and other `SEE` limits (part 9) still apply.
 - [ ] A unit test group for the Search-Order words is still missing.
 - [ ] README_ANS.md: add `38` to the `--sections` list and list

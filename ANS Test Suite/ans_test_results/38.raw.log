@@ -1,0 +1,63 @@
+\ ============================================================
+  ok\ ANS test suite - redirectable EMIT/KEY/KEY? and IRQ-CHAIN
+  ok\ (EMIT) (KEY) (KEY?) IRQ-CHAIN are ClaudeForth extensions.
+  ok\ Each of the first three returns the address of a cell that holds
+  ok\ the execution token used by EMIT, KEY and KEY? respectively.
+  ok\ Requires ttester.fs then 00_test_prelude.fs to be loaded first.
+  ok\ Written for this project (forth6809_stage_6o and later).
+  ok\ ============================================================
+  okMARKER M38
+  okTEST-BEGIN
+  okDECIMAL
+  ok\ ---- the cells are distinct, in page zero, and hold nonzero xts
+  okT{ (EMIT) 256 U< (KEY) 256 U< (KEY?) 256 U< IRQ-CHAIN 256 U< -> TRUE TR•E TRUE TTR•E
+  ERROR -13 T{ (EMIT) (KEY) = (EMIT) (KEY?) = (KEY) (KEY?) = -> FALSE FALSE FALSE }T  Actual:Expected 0 =?= 0 0 =?= 0 0 =?= 0 
+  okT{ (EMIT) IRQ-CHAIN = -> FALSE }T  Actual:Expected 0 =?= 0 
+  okT{ (EMIT) @ 0<> (KEY) @ 0<> (KEY?) @ 0<> -> TRUE TRUE TRUE }T  Actual:Expected -1 =?= -1 -1 =?= -1 -1 =?= -1 
+  ok\ ---- IRQ-CHAIN starts out pointing at an RTI instruction ($3B)
+  okT{ IRQ-CHAIN @ C@ -> 59 }T  Actual:Expected 59 =?= 59 
+  ok\ ---- redirect EMIT into a buffer
+  ok(EMIT) @ CONSTANT SAVEEMIT
+  ok(KEY) @ CONSTANT SAVEKEY
+  ok(KEY?) @ CONSTANT SAVEKEYQ
+  okCREATE OBUF 64 ALLOT
+  okVARIABLE ON
+  ok: BUFEMIT ( c -- ) OBUF ON @ + C! 1 ON +! ;
+  ok: >BUF ( -- ) 0 ON ! ['] BUFEMIT (EMIT) ! ;
+  ok: >TERM ( -- ) SAVEEMIT (EMIT) ! ;
+  okT{ >BUF 65 EMIT 66 EMIT >TERM ON @ OBUF C@ OBUF 1+ C@ -> 2 65 66 }T  Actual:Expected 66 =?= 66 65 =?= 65 2 =?= 2 
+  okT{ >BUF S" Hi" TYPE >TERM ON @ OBUF C@ OBUF 1+ C@ -> 2 72 105 }T  Actual:Expected 105 =?= 105 72 =?= 72 2 =?= 2 
+  okT{ >BUF 123 . >TERM ON @ -> 4 }T  Actual:Expected 4 =?= 4 
+  okT{ >BUF 123 . >TERM OBUF C@ OBUF 3 + C@ -> 49 32 }T  Actual:Expected 32 =?= 32 49 =?= 49 
+  okT{ >BUF SPACE CR >TERM ON @ OBUF C@ -> 3 32 }T  Actual:Expected 32 =?= 32 3 =?= 3 
+  okT{ (EMIT) @ SAVEEMIT = -> TRUE }T  Actual:Expected -1 =?= -1 
+  ok\ ---- redirect KEY and KEY?
+  ok: FAKEKEY ( -- c ) 88 ;
+  ok: FAKEKEYQ ( -- f ) TRUE ;
+  ok: KEY>FAKE ['] FAKEKEY (KEY) ! ;
+  ok: KEYQ>FAKE ['] FAKEKEYQ (KEY?) ! ;
+  okT{ KEY>FAKE KEY KEY SAVEKEY (KEY) ! -> 88 88 }T  Actual:Expected 88 =?= 88 88 =?= 88 
+  okT{ KEYQ>FAKE KEY? SAVEKEYQ (KEY?) ! -> TRUE }T  Actual:Expected -1 =?= -1 
+  okT{ (KEY) @ SAVEKEY = (KEY?) @ SAVEKEYQ = -> TRUE TRUE }T  Actual:Expected -1 =?= -1 -1 =?= -1 
+  ok\ ---- a word compiled earlier still sees a later redirection
+  ok: EMIT3 ( -- ) 51 EMIT ;
+  okT{ >BUF EMIT3 >TERM ON @ OBUF C@ -> 1 51 }T  Actual:Expected 51 =?= 51 1 =?= 1 
+  ok\ ---- the interpreter's input line and ACCEPT use KEY: feed it text
+  ok\ ---- from a string and check that the echo goes through EMIT
+  okCREATE IBUF 8 ALLOT
+  okVARIABLE IP
+  ok: SRCKEY ( -- c ) IBUF IP @ + C@ 1 IP +! ;
+  ok: PUT-IN ( -- ) 0 IP ! 120 IBUF C! 121 IBUF 1+ C! 13 IBUF 2 + C! ;
+  okCREATE LBUF 8 ALLOT
+  ok: >SRC ( -- ) ['] SRCKEY (KEY) ! ;
+  ok: GETLINE ( -- n ) PUT-IN >SRC >BUF LBUF 5 ACCEPT >TERM SAVEKEY (KEY) !
+;
+  okT{ GETLINE -> 2 }T  Actual:Expected 2 =?= 2 
+  okT{ LBUF C@ LBUF 1+ C@ -> 120 121 }T  Actual:Expected 121 =?= 121 120 =?= 120 
+  okT{ OBUF C@ OBUF 1+ C@ -> 120 121 }T  Actual:Expected 121 =?= 121 120 =?= 120 
+  okHEX
+  okTEST-END
+TEST SUMMARY: 17 run, 0 failed
+
+  okM38
+  ok

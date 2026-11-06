@@ -20,7 +20,7 @@ ROMSTRT     EQU   $C000             ; physical start of the 16K EPROM
 USROMSTRT   EQU   $C100             ; usable ROM start (above INOUT)
 USROMEND    EQU   VECTORS-1         ; usable ROM end (VECTORS-1)
 VECTORS     EQU   $FFF0
-INITCODE    EQU   $FFA4             ; start of the init code (COLDSTRT)
+INITCODE    EQU   $FF9C             ; start of the init code (COLDSTRT). See shadow MEMMAP.22
             ; Commented-out code moved to shadow: MEMMAP.5
             IFNDEF DISASM
             IFDEF UNITTESTS
@@ -43,16 +43,16 @@ DECOMP      SET   DISASM            ; default: with the disassembler
             ENDC
             IFNE  DISASM
             IFNE  DECOMP
-BASECODE    EQU   $CE80             ; base code (DISASM and DECOMP). See shadow MEMMAP.6
-BASEDICT    EQU   $C4B8             ; base dictionary (DISASM and DECOMP). See shadow MEMMAP.8
+BASECODE    EQU   $CE00             ; base code (DISASM and DECOMP). See shadow MEMMAP.6
+BASEDICT    EQU   $C40A             ; base dictionary (DISASM and DECOMP). See shadow MEMMAP.8
             ELSE
-BASECODE    EQU   $D200             ; base code (with DISASM). See shadow MEMMAP.6
+BASECODE    EQU   $D180             ; base code (with DISASM). See shadow MEMMAP.6
             ; Commented-out code moved to shadow: MEMMAP.7
-BASEDICT    EQU   $C840             ; base dictionary (with DISASM). See shadow MEMMAP.8
+BASEDICT    EQU   $C792             ; base dictionary (with DISASM). See shadow MEMMAP.8
             ENDC
             ELSE
-BASECODE    EQU   $D8F6             ; base code (without DISASM)
-BASEDICT    EQU   $CF47             ; base dictionary (without DISASM)
+BASECODE    EQU   $D876             ; base code (without DISASM)
+BASEDICT    EQU   $CE99             ; base dictionary (without DISASM)
             ENDC
 INOUT       EQU   $C000             ; I/O block (ACIA), 256 bytes
 INOUTEND    EQU   INOUT+$FF
@@ -285,6 +285,13 @@ WLNOFF      EQU   WLNAMES-WLHEADS   ; from a WID to its WLNAMES cell
 WLCELLS     EQU   10                ; wordlists, including FORTH and ROOT
 WLMAX       EQU   8                 ; WIDs in the search order
 
+IRQCHAIN    RMB   2                 ; head of the chain of extra interrupt
+                                    ; handlers: IRQH jumps through it when the
+                                    ; ACIA is not the source
+EMITV       RMB   2                 ; vector used by EMIT (xt of the routine)
+KEYV        RMB   2                 ; vector used by KEY
+KEYQV       RMB   2                 ; vector used by KEY?
+
             IFNE  DISASM
 DISSTART    RMB   2                 ; start of the instruction being decoded
 DISPC       RMB   2                 ; next byte to fetch
@@ -317,7 +324,7 @@ QV          RMB   2
 QL          RMB   2                 ; DQ: target must be below this (0 = any)
 QC          RMB   1                 ; DQ count
             ENDC
-GLOBALS_USED EQU   131+19*DISASM+21*DECOMP    ; bytes used, of 256 available
+GLOBALS_USED EQU   139+19*DISASM+21*DECOMP    ; bytes used, of 256 available
 
 ; $0100-$0105 is unclaimed (was MVSCRATCH). See shadow MVSCRATCH.1
 
@@ -543,10 +550,27 @@ H_BRIF:     FCB   $84
             FDB   H_BRELSE
             FDB   BRIFW
 
+H_IRQCHAIN: FCB   $09
+            FCC   "IRQ-CHAIN"
+            FDB   H_BRIF
+            FDB   IRQCHAINW
+H_EMITV:    FCB   $06
+            FCC   "(EMIT)"
+            FDB   H_IRQCHAIN
+            FDB   EMITVW
+H_KEYV:     FCB   $05
+            FCC   "(KEY)"
+            FDB   H_EMITV
+            FDB   KEYVW
+H_KEYQV:    FCB   $06
+            FCC   "(KEY?)"
+            FDB   H_KEYV
+            FDB   KEYQVW
+
 H_DUMP:
             FCB   $04
             FCC   "DUMP"
-            FDB   H_BRIF
+            FDB   H_KEYQV
             FDB   DUMPW
 
             IFNE  DISASM
@@ -2397,7 +2421,7 @@ RTSCLODONE: RTS
 IRQH:       LDA   ACIASR            ; Get the status.
 
             BITA  #SR_IRQ           ; Is the ACIA the interrupt source?
-            BEQ   IRQDONE0          ; No! Just exit.
+            BEQ   IRQCHN            ; No! Pass it down the chain.
             BITA  #SR_RDRF          ; Is an incoming character available?
             BNE   INCHAR
             BITA  #SR_TDRE          ; Is the slot for an outgoing character available?
@@ -2405,6 +2429,9 @@ IRQH:       LDA   ACIASR            ; Get the status.
                                     ; Ignore all other interrupts such as DCD change.
 IRQDONE0:   RTI                     ; Single point of exit - re-enables interrupts
                                     ; & restores state.
+IRQRTI      EQU   IRQDONE0          ; IRQCHAIN initially points here
+IRQCHN:     JMP   [IRQCHAIN]        ; not the ACIA: next handler in the chain.
+                                    ; See shadow IRQH.1
 
 INCHAR:
             LDB   ACIADR            ; Get the char & clear RDRF & error flags.
@@ -2463,11 +2490,12 @@ IRQDONE3    RTI
 
             ELSE                    ; <<<<<>>>>>
 
-IRQH:       RTI                     ; polling mode (SERIALPOLL=1) - ACIA
+IRQH:       JMP   [IRQCHAIN]        ; polling mode (SERIALPOLL=1) - ACIA
                                     ; interrupts are never enabled (see
                                     ; COLDSTRT's CR_POLL init), so this should
                                     ; never fire; kept as a safe stub matching
                                     ; the other unused vectors below
+IRQRTI:     RTI                     ; IRQCHAIN initially points here
             ENDC                    ; <<<<<<<<<<
 
 ; ------------------------------------------------------------
@@ -2588,6 +2616,8 @@ QLOOP:      JSR   QUERYW
             LDD   #0
             STD   STATE
 
+            JSR   IOVINIT           ; Undo any EMIT/KEY redirection so the
+                                    ; error message reaches the terminal
             LDD   ,S                ; -1 is ABORT: reset silently, no "ERROR -1"
             CMPD  #-1
             BNE   QSHOWERR
@@ -2604,18 +2634,18 @@ QSHOWERR:   JSR   CRW
             PSHU  D                 ; n
             JSR   DOTW
             LEAS  10,S              ; drop the frame
-            BRA   QLOOP
+            LBRA  QLOOP
 
 QOK:        LEAS  10,S              ; drop the frame
             JSR   CRW               ; See bugfix: QOK.1
             LDD   STATE
-            BNE   QLOOP
+            LBNE  QLOOP
             LDX   #OKMSG
             PSHU  X                 ; c-addr
             LDD   #OKMSGL
             PSHU  D                 ; u
             JSR   TYPEW
-            BRA   QLOOP
+            LBRA  QLOOP
 
 SIGNON:     FCC   "6809 FORTH v1.0"
 SIGNONL     EQU   *-SIGNON
@@ -4357,7 +4387,7 @@ NQBAD:      LDX   ,S
 ; Wait for the next received character and return it. While waiting,
 ; drain the output ring by polling if RTS is high.
 ; ------------------------------------------------------------
-KEYW:
+KEYACIA:
 
             TST   RTSSTATE          ; Is throttling?
             BEQ   TRY_READ          ; No! Retrieve character from input buffer.
@@ -4368,7 +4398,7 @@ KEYW:
 
 TRY_READ:
             JSR   GETCHAR           ; Is char available in input buffer.
-            BCS   KEYW              ; No? Try again to receive a char,
+            BCS   KEYACIA           ; No? Try again to receive a char,
                                     ; while still transmitting!
 
             TFR   A,B               ; Move char result to Reg B (LSB of D)
@@ -4381,7 +4411,7 @@ TRY_READ:
 ; KEY?  ( -- flag )
 ; Return true if a received character is waiting in the input ring.
 ; ------------------------------------------------------------
-KEYQW:
+KEYQACIA:
             ; Commented-out code moved to shadow: KEYQW.1
 
             LDA   INHEAD            ; Characters received?
@@ -4408,7 +4438,7 @@ KQTRUE:
 ; Transmit char through PUTCHAR (the output ring). The character is
 ; discarded if the ring is full.
 ; ------------------------------------------------------------
-EMITW:
+EMITACIA:
             PULU  D                 ; char
             TFR   B,A
             JSR   PUTCHAR           ; Transmit char.
@@ -4425,7 +4455,7 @@ EMITW:
 ; Original comment: shadow KEYW.2. KEY?, EMIT, PUTXON and PUTXOFF
 ; follow.
 ; ------------------------------------------------------------
-KEYW:
+KEYACIA:
             LDA   ACIASR
             BITA  #SR_RDRF
             BEQ   KWAIT
@@ -4484,7 +4514,7 @@ PXWT:       LDB   ACIASR
 ; KEY?  ( -- flag )  [polling build]
 ; Return true if the ACIA has a received character (RDRF set).
 ; ------------------------------------------------------------
-KEYQW:      LDA   ACIASR
+KEYQACIA:    LDA   ACIASR
             BITA  #SR_RDRF
             BEQ   KQFALSE
             LDD   #TRUEV
@@ -4498,7 +4528,7 @@ KQFALSE:    LDD   #FALSEV
 ; EMIT  ( char -- )  [polling build]
 ; Wait for TDRE, then transmit char directly.
 ; ------------------------------------------------------------
-EMITW:      PULU  D                 ; char
+EMITACIA:    PULU  D                 ; char
             STB   EMITCH
 EMITWT:     LDA   ACIASR
             BITA  #SR_TDRE
@@ -4508,6 +4538,46 @@ EMITWT:     LDA   ACIASR
             RTS
 
             ENDC                    ; <<<<<<<<<<
+
+; ------------------------------------------------------------
+; KEY, KEY? and EMIT go through the vectors KEYV, KEYQV and EMITV
+; (page zero) so character I/O can be redirected. IOVINIT points
+; them back at the ACIA routines; it runs at cold start, warm start
+; and when QUIT handles an error.
+; ------------------------------------------------------------
+; Original direct entry points: shadow IOVEC.1.
+KEYW:       JMP   [KEYV]
+KEYQW:      JMP   [KEYQV]
+EMITW:      JMP   [EMITV]
+
+; ------------------------------------------------------------
+; IRQ-CHAIN ( -- addr )   address of the cell holding the next interrupt
+; handler for interrupts that did not come from the ACIA.
+; (EMIT) ( -- addr )  (KEY) ( -- addr )  (KEY?) ( -- addr )
+; addresses of the cells holding the xt used by EMIT, KEY and KEY?.
+; ------------------------------------------------------------
+IRQCHAINW:  LDD   #IRQCHAIN
+            PSHU  D
+            RTS
+EMITVW:     LDD   #EMITV
+            PSHU  D
+            RTS
+KEYVW:      LDD   #KEYV
+            PSHU  D
+            RTS
+KEYQVW:     LDD   #KEYQV
+            PSHU  D
+            RTS
+
+COLDIO:     LDD   #IRQRTI           ; cold start only: no extra interrupt
+            STD   IRQCHAIN          ; handlers, then the same as IOVINIT
+IOVINIT:    LDD   #EMITACIA
+            STD   EMITV
+            LDD   #KEYACIA
+            STD   KEYV
+            LDD   #KEYQACIA
+            STD   KEYQV
+            RTS
 
 ; ------------------------------------------------------------
 ; ACCEPT  ( c-addr +n1 -- +n2 )
@@ -10866,6 +10936,9 @@ CLRGLOB:    CLR   ,X+
 
             JSR   WLINIT            ; FIND must work for the unit tests too
 
+            JSR   COLDIO            ; no extra IRQ handlers; EMIT, KEY, KEY?
+                                    ; use the ACIA
+
             JSR   INITSERIAL
 
             ANDCC #$AF              ; Enable IRQ & FIRQ
@@ -10899,6 +10972,7 @@ WARM:       ORCC  #$50              ; Disable IRQ & FIRQ
             LDU   #SP0
             LDS   #RP0
 
+            JSR   IOVINIT           ; EMIT, KEY, KEY? use the ACIA
             JSR   INITSERIAL        ; See bugfix: WARM.1
 
             LDX   #WARMMSG

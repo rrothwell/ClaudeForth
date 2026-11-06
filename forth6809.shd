@@ -3300,32 +3300,69 @@ Default 6m build: 265 headers, BASEDICTSIZE 2504, BASECODESIZE 12180 polled
 DISASM=1 and DECOMP=1 only unit-test groups 13 and 15 fit.
 
 ================================================================
-HEADER.2  [design (stage 6n)]
+IOVEC.1  [history]  (stage 6o)
 ----------------------------------------------------------------
-HEADER throws -16 (attempt to use zero-length string as a name) when WORD returns
-an empty name, and -19 (definition name too long) when the name is longer than 31
-characters, because the length byte holds the length in bits 0-4 and the flags
-(immediate, smudge) above them. The check comes before anything is written, so a
-failed header leaves DPHERE, LATEST and the wordlist head unchanged. : , CREATE,
-VARIABLE, CONSTANT and the other defining words all go through HEADER, so all are
-covered. The old test for a zero length (BEQ HDNONM) became unreachable and was
-removed. Cost: +17 bytes of code.
+Before stage 6o the dictionary entries and every internal caller pointed
+straight at the serial routines, which were labelled KEYW, KEYQW and EMITW:
+   KEYW   (interrupt build: loop on GETCHAR; polled build: spin on RDRF)
+   KEYQW  (ring test / RDRF test)
+   EMITW  (PUTCHAR into the output ring / wait for TDRE and write)
+In 6o those routines are renamed KEYACIA, KEYQACIA and EMITACIA and the old
+labels become three-byte stubs:
+   KEYW   JMP [KEYV]      KEYQW  JMP [KEYQV]      EMITW  JMP [EMITV]
+so the headers, ACCEPT, TYPE, the number output words and the unit tests are
+unchanged. The cells KEYV, KEYQV and EMITV are in page zero (GLOBALS).
+IOVINIT sets them back to the ACIA routines; it runs from COLDIO (cold start,
+which also sets IRQCHAIN), from WARM, and from QUITW after a caught error and
+before "ERROR n" is printed. PUTXON and PUTXOFF write to the ACIA directly
+and bypass the vectors. The in-loop branch of the interrupt-build KEYW now
+reads BCS KEYACIA.
+Not DEFER: a DEFER word keeps its xt in a writable cell inside its header, and
+ROM headers cannot be written.
+Words added: (EMIT), (KEY), (KEY?) - each LDD #cell, PSHU D, RTS.
 
 ================================================================
-ENVSEARCH.1  [design (stage 6n)]
+IRQH.1  [history]  (stage 6o)
 ----------------------------------------------------------------
-ENVIRONMENT? answers SEARCH-ORDER and SEARCH-ORDER-EXT true true (two entries in
-ENVTABLE, always present). Cost: 12 bytes of table and 28 bytes of names.
+Interrupt build: the test "BITA #SR_IRQ / BEQ IRQDONE0" (not the ACIA: just
+RTI) is now BEQ IRQCHN, and IRQCHN is JMP [IRQCHAIN]. IRQDONE0 keeps its RTI
+and is also IRQRTI, the initial value of IRQCHAIN. IRQCHAIN is a page-zero
+cell (GLOBALS) set only by COLDIO. A has been changed (it holds the ACIA
+status) when a chained handler is entered; all other registers are as they
+were when the interrupt came.
+Polled build: IRQH was the single instruction RTI. It is now JMP [IRQCHAIN],
+followed by IRQRTI: RTI.
+Word added: IRQ-CHAIN ( -- addr ).
+FIRQ and NMI are not chained.
+6809 detail: there is no direct-page indirect JMP; JMP [IRQCHAIN] assembles as
+6E 9F 00 83 (extended indirect, 4 bytes), so keeping the cell in page zero
+saves nothing; it was placed there for grouping with the other globals.
 
 ================================================================
-MEMMAP.21  [history]  (stage 6n)
+MEMMAP.22  [history]  (stage 6o)
 ----------------------------------------------------------------
-HEADER's check and the two ENVIRONMENT? entries (57 bytes) used up the interrupt
-build's headroom, so BASECODE and BASEDICT were lowered by $40 in all three states:
-   DISASM DECOMP   BASECODE  BASEDICT   unit-test region
-     0      0       $D8F6     $CF47      (was $D936 / $CF87)
-     1      0       $D200     $C840      1856 bytes (was $D240 / $C880, 1920)
-     1      1       $CE80     $C4B8      952 bytes (was $CEC0 / $C4F8, 1016)
-Default build: BASECODESIZE 12237 polled (ends $FE4D, 343 spare) and 12556 interrupt
-(ends $FF8C, 24 spare). The same unit-test groups fit as before (DISASM=1 DECOMP=0:
-0, 2, 5, 13-17; both on: 13 and 15).
+Stage 6o added 4 headers (46 bytes of dictionary) and 68 bytes of code, and
+GLOBALS_USED rose from 131+19*DISASM+21*DECOMP to 139+19*DISASM+21*DECOMP
+(IRQCHAIN, EMITV, KEYV, KEYQV, 2 bytes each, placed before the DISASM block, so
+the DISASM and DECOMP globals each moved up by 8 bytes). The COLDSTRT and WARM
+calls added 6 bytes to the init code, which had 1 byte to spare, so INITCODE
+moved from $FFA4 to $FF9C (INITSIZE 81, INITEND $FFED). BASEDICT is always
+BASECODE minus BASEDICTSIZE, so it is recalculated whenever the dictionary
+grows:
+   DISASM DECOMP   BASECODE  BASEDICT     (6n values: BASECODE  BASEDICT)
+     0      0       $D876     $CE99                   $D8F6     $CF47
+     1      0       $D180     $C792                   $D200     $C840
+     1      1       $CE00     $C40A                   $CE80     $C4B8
+Default 6o build: 269 headers, BASEDICTSIZE 2550, BASECODESIZE 12305 polled
+(12624 interrupt), BASECODEEND $FE11 polled (395 spare) and $FF50 interrupt
+(76 spare). Unused ROM below BASEDICT: $C100-$C409 = 778 bytes (1682 with
+DECOMP=0, 3225 with DISASM=0). Unit-test groups that fit: DISASM=1/DECOMP=0:
+0 2 13 14 15 17; both on: none; DISASM=0: all 22. Group 10 (Memory) was
+split: TSTCMOVE, TSTCMOVEGT and TSTMOVE1-3 now form group 21 (1445 bytes);
+group 10 is 2705 bytes.
+Three branches to QLOOP became long branches (LBRA, LBNE) because JSR IOVINIT
+pushed them out of range.
+
+MEMMAP.22 addendum (6 November): with SERIALPOLL=0 group 11 overflowed the
+unit-test region by 13 bytes. TSTDASHTRAILING and TSTSLASHSTRING (and their
+JSR lines) moved to group 18, whose test count is now 10 (group 11: 15).

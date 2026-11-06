@@ -11606,15 +11606,20 @@ TSTMEMORY:  JSR   CRW
             JSR   TSTVUNUSED
             JSR   TSTFILL
             JSR   TSTERASE
+            JSR   TSTBLANK
+            JSR   TSTCMOVEOVL
+            JSR   TSTCMOVEGTOVL
+            JSR   TSTCMOVELONG
+
+            ENDC                    ; <<<<
+
+            IFEQ  TSTSELECTOR-21    ; >>>>
+
             JSR   TSTCMOVE
             JSR   TSTCMOVEGT
             JSR   TSTMOVE1
             JSR   TSTMOVE2
             JSR   TSTMOVE3
-            JSR   TSTBLANK
-            JSR   TSTCMOVEOVL
-            JSR   TSTCMOVEGTOVL
-            JSR   TSTCMOVELONG
 
             ENDC                    ; <<<<
 
@@ -12702,6 +12707,12 @@ TLCEND:     RTS
 TSTCLNAME:  FCB   13
             FCC   "TSTCMOVELONG"
 
+            ENDC                    ; <<<<
+
+; Group 21: the CMOVE, CMOVE> and MOVE tests, split from group 10
+; (TSTSELECTOR 10) to keep each group within the unused ROM.
+            IFEQ  TSTSELECTOR-21    ; >>>>
+
 ; ------------------------------------------------------------
 ; unit test for CMOVE. Non-overlapping regions (well
 ; separated within TSTCBUF's own 80 bytes) - CMOVE's own
@@ -13154,8 +13165,6 @@ TSTSTRPARSE:
             JSR   TSTSEARCH2
             JSR   TSTSEARCH3
             JSR   TSTSEARCH4
-            JSR   TSTDASHTRAILING
-            JSR   TSTSLASHSTRING
 
             ENDC                    ; <<<<
 
@@ -14493,6 +14502,12 @@ TSTSR4NAME: FCB   10
 TSTSRLD:    FCB   2
             FCC   "LD"
 
+            ENDC                    ; <<<<
+
+; The -TRAILING and /STRING tests are part of group 18 (they were moved
+; out of group 11 in stage 6o to make group 11 fit).
+            IFEQ  TSTSELECTOR-18    ; >>>>
+
 ; ------------------------------------------------------------
 ; unit test for -TRAILING. "AB   " (2 letters, 3 trailing
 ; spaces, len=5) trims to len=2, addr unchanged - confirmed
@@ -14661,6 +14676,8 @@ TSTSTRPARSE2:
             JSR   TSTSNAME1
             JSR   TSTSNAME2
             JSR   TSTUNESCAPE
+            JSR   TSTDASHTRAILING
+            JSR   TSTSLASHSTRING
 
             ENDC                    ; <<<<
 
@@ -17319,6 +17336,8 @@ TSTENVSYS:  JSR   CRW
             JSR   TSTENVQUERY1
             JSR   TSTENVQUERY2
             JSR   TSTENVQUERY3
+            JSR   TSTENVQUERY4
+            JSR   TSTENVQUERY5
 
             ENDC                    ; <<<<
 
@@ -17930,6 +17949,98 @@ EW3DONE:    LDX   #TSTEW3NAME
 
 TSTEW3NAME: FCB   12
             FCC   "TSTENVQUERY3"
+
+; ------------------------------------------------------------
+; helper for the word-set queries: ENVIRONMENT? must answer true true
+; (the value, then the recognized flag) and leave nothing else behind.
+; TSTENVYES
+;    Inputs:
+;        X = address of the query text, B = its length
+;    Outputs:
+;        D = TRUEV if the answer was true true and U is balanced, else FALSEV
+;    Registers: A, B, X and CC changed; U restored.
+; ------------------------------------------------------------
+TSTENVYES:  PSHS  U
+            PSHU  X
+            CLRA
+            PSHU  D
+            JSR   ENVQW
+            PULU  D                 ; recognized flag
+            CMPD  #TRUEV
+            BNE   TEYFAIL
+            PULU  D                 ; value of a word-set query
+            CMPD  #TRUEV
+            BNE   TEYFAIL
+            CMPU  ,S                ; nothing else left on the stack
+            BNE   TEYFAIL
+            LDD   #TRUEV
+            BRA   TEYDONE
+TEYFAIL:    LDD   #FALSEV
+TEYDONE:    PULS  U
+            RTS
+
+; ------------------------------------------------------------
+; unit test for ENVIRONMENT?, the Search-Order word-set queries
+; SEARCH-ORDER and SEARCH-ORDER-EXT (stage 6n): each is true true.
+; TSTENVQUERY4
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTENVQUERY4 OK" or "TSTENVQUERY4 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTENVQUERY4:
+            LDX   #TEQSO
+            LDB   #12
+            JSR   TSTENVYES
+            PSHS  D
+            LDX   #TEQSOX
+            LDB   #16
+            JSR   TSTENVYES
+            ANDA  ,S+
+            ANDB  ,S+
+            LDX   #TSTEW4NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+            RTS
+
+TEQSO:      FCC   "SEARCH-ORDER"
+TEQSOX:     FCC   "SEARCH-ORDER-EXT"
+TSTEW4NAME: FCB   12
+            FCC   "TSTENVQUERY4"
+
+; ------------------------------------------------------------
+; unit test for ENVIRONMENT?, the String word-set queries STRING and
+; STRING-EXT (stage 6k): each is true true. The unit tests are only
+; assembled with both string switches on, so both are always present.
+; TSTENVQUERY5
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTENVQUERY5 OK" or "TSTENVQUERY5 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTENVQUERY5:
+            LDX   #TEQST
+            LDB   #6
+            JSR   TSTENVYES
+            PSHS  D
+            LDX   #TEQSTX
+            LDB   #10
+            JSR   TSTENVYES
+            ANDA  ,S+
+            ANDB  ,S+
+            LDX   #TSTEW5NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+            RTS
+
+TEQST:      FCC   "STRING"
+TEQSTX:     FCC   "STRING-EXT"
+TSTEW5NAME: FCB   12
+            FCC   "TSTENVQUERY5"
 
             ENDC                    ; <<<<
 
