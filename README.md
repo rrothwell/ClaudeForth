@@ -100,7 +100,7 @@ brew install binutils
 |Disassembler and Forth decompiler added| 1.60|:white_check_mark:|
 |Feature flags for optional word sets and tools| 1.60|:white_check_mark:|
 |Update documentation| 1.60|:white_check_mark:|
-|Burn ROM and install onto real MECB 6809 hardware. | 1.60| |
+|Burn ROM and install onto real MECB 6809 hardware. | 1.60|:white_check_mark:|
 |Develop a simple forth application| 1.60| |
 |Refine the documentation| 1.60| |
 
