@@ -81,6 +81,9 @@ Usage examples:
     python3 ans_test_runner.py --target serial --serial-port /dev/ttyUSB0 \\
         --baud 19200 --sections 15
 
+    python3 ans_test_runner.py --target serial --serial-port /dev/cu.usbserial-A50285BI \\
+        --baud 38400 --sections 15
+
 Run with --help for every option and its default.
 """
 
@@ -270,6 +273,28 @@ def colon_delta(line):
         elif tok == ";":
             delta -= 1
     return delta
+
+
+def cond_delta(line):
+    """Return (net change in [IF]/[THEN] nesting, line_has_marker) for one
+    source line. Tokens in strings and after a backslash are ignored."""
+    stripped = line.strip("\r\n").strip()
+    if stripped == "" or is_line_comment(stripped):
+        return 0, False
+    delta, seen = 0, False
+    for tok in tokenize_preserving_strings(stripped, fuse_tests=False):
+        if tok == "\\":
+            break
+        u = tok.upper()
+        if u == "[IF]":
+            delta += 1
+            seen = True
+        elif u == "[THEN]":
+            delta -= 1
+            seen = True
+        elif u == "[ELSE]":
+            seen = True
+    return delta, seen
 
 
 def rewrap_line(line, width=SAFE_LINE_WIDTH):
@@ -716,6 +741,7 @@ def send_file(transport, path, char_delay, reply_timeout, retries, log, transcri
     fail_hit = False
     depth = 0
     last_depth = 0
+    cond_depth = 0
     for line in lines:
         if line.strip() == "":
             continue
@@ -726,13 +752,22 @@ def send_file(transport, path, char_delay, reply_timeout, retries, log, transcri
         # "ok" until that following line arrives. Don't wait for one.
         if expect_ok and "ACCEPT-TEST" in line.split() and not line.lstrip().startswith(":"):
             expect_ok = False
-        line_timeout = reply_timeout if expect_ok else min(reply_timeout, grace_timeout)
+        # A line that is part of, or holds a marker of, a [IF]/[ELSE]/[THEN]
+        # may be skipped by REFILL and get no reply: never retry it.
+        in_cond = cond_depth > 0
+        cd, has_marker = cond_delta(line)
+        cond_depth = max(0, cond_depth + cd)
+        soft_line = soft_timeout or in_cond or has_marker
+        line_timeout = (reply_timeout if (expect_ok and not soft_line)
+                        else min(reply_timeout, grace_timeout))
 
         attempt = 0
         while True:
             attempt += 1
             result, buf = send_line_and_wait(transport, line, char_delay, line_timeout, log, flow)
             transcript.extend(buf.split(b"\n"))
+            if result.error:
+                cond_depth = 0
 
             if not expect_ok:
                 if result.error:
@@ -759,7 +794,7 @@ def send_file(transport, path, char_delay, reply_timeout, retries, log, transcri
                     depth = 0
                 break
 
-            if result.timed_out and soft_timeout:
+            if result.timed_out and soft_line:
                 print(f"    [note] no immediate reply for: {line[:60]!r} "
                       f"(expected while inside a multi-line [IF]/[ELSE] skip)",
                       file=sys.stderr)

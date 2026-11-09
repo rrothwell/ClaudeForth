@@ -71,13 +71,13 @@ gdincrement @
   ok\ F.6.1.0760  BEGIN
   ok\ See F.6.1.2430 WHILE, F.6.1.2390 UNTIL.
   ok\ F.6.1.1240  DO
-  ok\ See F.6.1.1800 LOOP, F.6.1.0140 +LOOP, F.6.1.1730 J, F.6.1.1760 LEAVE, F.6•1.2
+  ok\ See F.6.1.1800 LOOP, F.6.1.0140 +LOOP, F.6.1.1730 J, F.6.1.1760 LEAVE, F.6.1.2
   ok\ F.6.1.1310  ELSE
   ok\ See F.6.1.1700 IF.
   ok\ F.6.1.1380  EXIT
   ok\ See F.6.1.2380 UNLOOP.
   ok\ F.6.1.1680  I
-  ok\ See F.6.1.1800 LOOP, F.6.1.0140 +LOOP, F.6.1.1730 J, F.6.1.1760 LEAVE, F.6•1.2
+  ok\ See F.6.1.1800 LOOP, F.6.1.0140 +LOOP, F.6.1.1730 J, F.6.1.1760 LEAVE, F.6.1.2
   ok\ F.6.1.1700  IF
   okT{ : GI1 IF 123 THEN ; -> }T
   okT{ : GI2 IF 123 ELSE 234 THEN ; -> }T

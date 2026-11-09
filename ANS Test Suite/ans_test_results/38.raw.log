@@ -10,7 +10,7 @@
   okTEST-BEGIN
   okDECIMAL
   ok\ ---- the cells are distinct, in page zero, and hold nonzero xts
-  okT{ (EMIT) 256 U< (KEY) 256 U< (KEY?) 256 U< IRQ-CHAIN 256 U< -> TRUE TR•E TRUE TTR•E
+  okT{ (EMIT) 256 U< (KEY) 256 U< (KEY?) 256 U< IRQ-CHAIN 256 U< -> TRUE TRUE TRUE TT
   ERROR -13 T{ (EMIT) (KEY) = (EMIT) (KEY?) = (KEY) (KEY?) = -> FALSE FALSE FALSE }T  Actual:Expected 0 =?= 0 0 =?= 0 0 =?= 0 
   okT{ (EMIT) IRQ-CHAIN = -> FALSE }T  Actual:Expected 0 =?= 0 
   okT{ (EMIT) @ 0<> (KEY) @ 0<> (KEY?) @ 0<> -> TRUE TRUE TRUE }T  Actual:Expected -1 =?= -1 -1 =?= -1 -1 =?= -1 
