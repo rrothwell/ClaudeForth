@@ -7,17 +7,17 @@
 
 \ ====== Commands
 
-\ Message entry
-\ Type: M[RETURN] the quick brown fox [RETURN]
+\ Message entry, overrides the default message.
+\ Type: MESSAGE![RETURN] the quick brown fox [RETURN]
 
 \ Current time
-\ Type: HHH.MM.SS [SPACE]T[RETURN]
+\ Type: hours minutes seconds [SPACE]TIME![RETURN]
 
 \ Display current time once
-\ Type: D[RETURN]
+\ Type: ONCE[RETURN]
 
-\ Display current time once
-\ Type: D[RETURN]
+\ Display current time continuously
+\ Type: ALWAYS[RETURN]
 \ Terminate the display by pressing any key.
 
 \ ====== Timer Driver Code

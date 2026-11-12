@@ -55,7 +55,7 @@ Timer 3 registers are at offsets from the base chip address as follows:
 | $6 | Read counter                 | Write MSB buffer register | 
 | $7 | Read LSB buffer register     | Write latches             |
 
-[MC6840 registers](MC6840_registers.png)
+![MC6840 registers](MC6840_registers.png)
 
 [Full datasheet](https://colorcomputerarchive.com/repo/Documents/Datasheets/MC6840%20Programmable%20Timer%20Module%20(Motorola).pdf)
 
@@ -135,4 +135,38 @@ RESET_CLK_TICK
 ```
 ### Main Processing and Display Loop
 
+The user interface assumes a serial communications terminal
+with the ability to accept type commands,
+to accepted prompted input and to 
+respond to ANSI command codes.
 
+This code is written in ANSI Forth.
+
+## User commands
+
+### Message Entry
+This overrides the default message.
+Type: 
+```
+MESSAGE![RETURN] the quick brown fox [RETURN]
+```
+
+### Set Current Time
+Type: 
+```
+hours minutes seconds [SPACE]TIME![RETURN]
+```
+
+### Display Current Time Once
+Type: 
+```
+ONCE[RETURN]
+```
+
+### Display Current Time Continuously
+Type: 
+```
+ALWAYS[RETURN]
+```
+Update occurs every second.
+Terminate the display by pressing any key.
