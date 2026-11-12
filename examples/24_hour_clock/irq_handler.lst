@@ -1,0 +1,147 @@
+                      (  irq_handler.asm):00001         ; ==============================================================================
+                      (  irq_handler.asm):00002         ; MC6840 PTM 24-Hour Clock Driver for Motorola 6809
+                      (  irq_handler.asm):00003         ; Base Address: $C000 | System Clock: 2 MHz | Interrupt Rate: 100 ms (10 Hz)
+                      (  irq_handler.asm):00004         ; ==============================================================================
+                      (  irq_handler.asm):00005         
+     C000             (  irq_handler.asm):00006         PTM_BASE    EQU     $C000
+     C000             (  irq_handler.asm):00007         PTM_CR13    EQU     PTM_BASE+0      ; Write: Control Reg 1 or 3 (selected by CR2 bit 0)
+     C001             (  irq_handler.asm):00008         PTM_CR2     EQU     PTM_BASE+1      ; Write: Control Reg 2 | Read: Status Register
+     C002             (  irq_handler.asm):00009         PTM_T1_MSB  EQU     PTM_BASE+2      ; Timer 1 Latches / Counter
+     C003             (  irq_handler.asm):00010         PTM_T1_LSB  EQU     PTM_BASE+3
+     C004             (  irq_handler.asm):00011         PTM_T2_MSB  EQU     PTM_BASE+4      ; Timer 2 Latches / Counter
+     C005             (  irq_handler.asm):00012         PTM_T2_LSB  EQU     PTM_BASE+5
+     C006             (  irq_handler.asm):00013         PTM_T3_MSB  EQU     PTM_BASE+6      ; Timer 3 Latches / Counter
+     C007             (  irq_handler.asm):00014         PTM_T3_LSB  EQU     PTM_BASE+7
+                      (  irq_handler.asm):00015         
+                      (  irq_handler.asm):00016         ; Timekeeping Variables (Place in RAM / end of Direct Page to avoid collisions)
+                      (  irq_handler.asm):00017                     ORG     $00F0
+00F0                  (  irq_handler.asm):00018         TENTHS      RMB     1               ; 0 - 9  (100 ms increments)
+00F1                  (  irq_handler.asm):00019         SECONDS     RMB     1               ; 0 - 59
+00F2                  (  irq_handler.asm):00020         MINUTES     RMB     1               ; 0 - 59
+00F3                  (  irq_handler.asm):00021         HOURS       RMB     1               ; 0 - 23
+                      (  irq_handler.asm):00022         
+                      (  irq_handler.asm):00023         ; ==============================================================================
+                      (  irq_handler.asm):00024         ; INITIALIZATION ROUTINE
+                      (  irq_handler.asm):00025         ; ==============================================================================
+                      (  irq_handler.asm):00026          ; Just under the Forth return stack to avoid collisions.
+                      (  irq_handler.asm):00027                     ORG     $B800
+B800                  (  irq_handler.asm):00028         INIT_CLOCK:
+B800 1A50             (  irq_handler.asm):00029                     ORCC    #$50            ; Disable IRQ and FIRQ during setup
+                      (  irq_handler.asm):00030         
+                      (  irq_handler.asm):00031                     ; 1. Clear time variables
+B802 0FF0             (  irq_handler.asm):00032                     CLR     TENTHS
+B804 0FF1             (  irq_handler.asm):00033                     CLR     SECONDS
+B806 0FF2             (  irq_handler.asm):00034                     CLR     MINUTES
+B808 0FF3             (  irq_handler.asm):00035                     CLR     HOURS
+                      (  irq_handler.asm):00036         
+                      (  irq_handler.asm):00037                     ; 2. Configure Control Register 2 (CR2)
+                      (  irq_handler.asm):00038                     ; Bit 0 = 0: Next write to $C000 accesses Control Register 3 (CR3)
+B80A 7FC001           (  irq_handler.asm):00039                     CLR     PTM_CR2
+                      (  irq_handler.asm):00040         
+                      (  irq_handler.asm):00041                     ; 3. Configure Control Register 3 (CR3)
+                      (  irq_handler.asm):00042                     ; Bit 7 = 0 (Output masked)
+                      (  irq_handler.asm):00043                     ; Bit 6 = 1 (Interrupt enabled)
+                      (  irq_handler.asm):00044                     ; Bits 5-3 = 000 (Continuous operating mode)
+                      (  irq_handler.asm):00045                     ; Bit 2 = 0 (16-bit counting mode)
+                      (  irq_handler.asm):00046                     ; Bit 1 = 1 (Use internal E clock)
+                      (  irq_handler.asm):00047                     ; Bit 0 = 1 (Enable Divide-by-8 prescaler)
+B80D 8643             (  irq_handler.asm):00048                     LDA     #%01000011      ; $43
+B80F B7C000           (  irq_handler.asm):00049                     STA     PTM_CR13
+                      (  irq_handler.asm):00050         
+                      (  irq_handler.asm):00051                     ; 4. Load Timer 3 Latch with 24,999 ($61A7)
+                      (  irq_handler.asm):00052                     ; Note: Must write MSB first, then LSB transfers both into counter
+B812 CC61A7           (  irq_handler.asm):00053                     LDD     #24999          ; $61A7
+B815 FDC006           (  irq_handler.asm):00054                     STD     PTM_T3_MSB      ; Writes A to $C006, B to $C007
+                      (  irq_handler.asm):00055         
+                      (  irq_handler.asm):00056                     ; 5. Configure CR2 to point $C000 to Control Register 1 (CR1)
+B818 8601             (  irq_handler.asm):00057                     LDA     #%00000001      ; $01 (Bit 0 = 1 selects CR1)
+B81A B7C001           (  irq_handler.asm):00058                     STA     PTM_CR2
+                      (  irq_handler.asm):00059         
+                      (  irq_handler.asm):00060                     ; 6. Start all timers by clearing the internal reset bit in CR1
+                      (  irq_handler.asm):00061                     ; Bit 0 = 0 (All timers allowed to operate)
+B81D 7FC000           (  irq_handler.asm):00062                     CLR     PTM_CR13
+                      (  irq_handler.asm):00063         
+B820 1CEF             (  irq_handler.asm):00064                     ANDCC   #$EF            ; Enable IRQ (Clear I flag)
+B822 39               (  irq_handler.asm):00065                     RTS
+                      (  irq_handler.asm):00066         
+                      (  irq_handler.asm):00067         ; ==============================================================================
+                      (  irq_handler.asm):00068         ; IRQ INTERRUPT SERVICE ROUTINE (100 ms Tick)
+                      (  irq_handler.asm):00069         ; Note: On the 6809, hardware IRQ automatically pushes CC, A, B, DP, X, Y, U, PC
+                      (  irq_handler.asm):00070         ; ==============================================================================
+B823                  (  irq_handler.asm):00071         IRQ_ISR:
+B823 B6C001           (  irq_handler.asm):00072                     LDA     PTM_CR2         ; Read Status Register (Step 1 of clearing IRQ)
+B826 8504             (  irq_handler.asm):00073                     BITA    #$04            ; Check Bit 2 (Timer 3 Interrupt Flag)
+B828 272C             (  irq_handler.asm):00074                     BEQ     NEXT_ISR        ; If not Timer 3, exit (or chain to other IRQ handlers)
+                      (  irq_handler.asm):00075         
+B82A FCC006           (  irq_handler.asm):00076                     LDD     PTM_T3_MSB      ; Read Timer 3 Counter (Step 2: clears T3 IRQ flag!)
+                      (  irq_handler.asm):00077         
+                      (  irq_handler.asm):00078                     ; --- Update 24-Hour Clock ---
+B82D 0CF0             (  irq_handler.asm):00079                     INC     TENTHS          ; Increment 100ms counter
+B82F 96F0             (  irq_handler.asm):00080                     LDA     TENTHS
+B831 810A             (  irq_handler.asm):00081                     CMPA    #10             ; Have 10 tenths (1 second) elapsed?
+B833 2520             (  irq_handler.asm):00082                     BLO     EXIT_ISR
+B835 0FF0             (  irq_handler.asm):00083                     CLR     TENTHS
+                      (  irq_handler.asm):00084         
+B837 0CF1             (  irq_handler.asm):00085                     INC     SECONDS         ; Increment seconds
+B839 96F1             (  irq_handler.asm):00086                     LDA     SECONDS
+B83B 813C             (  irq_handler.asm):00087                     CMPA    #60             ; Have 60 seconds elapsed?
+B83D 2516             (  irq_handler.asm):00088                     BLO     EXIT_ISR
+B83F 0FF1             (  irq_handler.asm):00089                     CLR     SECONDS
+                      (  irq_handler.asm):00090         
+B841 0CF2             (  irq_handler.asm):00091                     INC     MINUTES         ; Increment minutes
+B843 96F2             (  irq_handler.asm):00092                     LDA     MINUTES
+B845 813C             (  irq_handler.asm):00093                     CMPA    #60             ; Have 60 minutes elapsed?
+B847 250C             (  irq_handler.asm):00094                     BLO     EXIT_ISR
+B849 0FF2             (  irq_handler.asm):00095                     CLR     MINUTES
+                      (  irq_handler.asm):00096         
+B84B 0CF3             (  irq_handler.asm):00097                     INC     HOURS           ; Increment hours
+B84D 96F3             (  irq_handler.asm):00098                     LDA     HOURS
+B84F 8118             (  irq_handler.asm):00099                     CMPA    #24             ; Have 24 hours elapsed?
+B851 2502             (  irq_handler.asm):00100                     BLO     EXIT_ISR
+B853 0FF3             (  irq_handler.asm):00101                     CLR     HOURS           ; Wrap back to 00:00:00.0
+                      (  irq_handler.asm):00102                     
+B855 3B               (  irq_handler.asm):00103         EXIT_ISR:   RTI
+                      (  irq_handler.asm):00104         
+B856 6E9F0083         (  irq_handler.asm):00105         NEXT_ISR    JMP   [$0083]        ; Return from Interrupt (restores all registers)
+                      (  irq_handler.asm):00106         
+                      (  irq_handler.asm):00107         ; ==============================================================================
+                      (  irq_handler.asm):00108         ; FORTH-SAFE INTERRUPT CONTROL ROUTINES
+                      (  irq_handler.asm):00109         ; Note: Uses only Accumulator A. Safe to call from Forth CODE words.
+                      (  irq_handler.asm):00110         ; ==============================================================================
+                      (  irq_handler.asm):00111         
+                      (  irq_handler.asm):00112         ; ------------------------------------------------------------------------------
+                      (  irq_handler.asm):00113         ; DISABLE_CLK_IRQ
+                      (  irq_handler.asm):00114         ; Masks Timer 3 interrupts in CR3 while keeping the hardware counter running.
+                      (  irq_handler.asm):00115         ; Call this before reading or writing HOURS, MINUTES, SECONDS, or TENTHS.
+                      (  irq_handler.asm):00116         ; ------------------------------------------------------------------------------
+B85A                  (  irq_handler.asm):00117         DISABLE_CLK_IRQ:
+B85A 7FC001           (  irq_handler.asm):00118                     CLR     PTM_CR2         ; Bit 0 = 0: Select CR3 at $C000
+B85D 8603             (  irq_handler.asm):00119                     LDA     #%00000011      ; $03: Bit 6 = 0 (IRQ Disabled), Continuous, E-clk, /8
+B85F B7C000           (  irq_handler.asm):00120                     STA     PTM_CR13
+B862 8601             (  irq_handler.asm):00121                     LDA     #%00000001      ; Bit 0 = 1: Restore $C000 to point to CR1
+B864 B7C001           (  irq_handler.asm):00122                     STA     PTM_CR2
+B867 39               (  irq_handler.asm):00123                     RTS
+                      (  irq_handler.asm):00124         
+                      (  irq_handler.asm):00125         ; ------------------------------------------------------------------------------
+                      (  irq_handler.asm):00126         ; ENABLE_CLK_IRQ
+                      (  irq_handler.asm):00127         ; Re-enables Timer 3 interrupts in CR3.
+                      (  irq_handler.asm):00128         ; Note: If a 100ms tick occurred while disabled, the pending flag is still 
+                      (  irq_handler.asm):00129         ; latched and will immediately trigger the ISR upon re-enabling (no lost time).
+                      (  irq_handler.asm):00130         ; ------------------------------------------------------------------------------
+B868                  (  irq_handler.asm):00131         ENABLE_CLK_IRQ:
+B868 7FC001           (  irq_handler.asm):00132                     CLR     PTM_CR2         ; Bit 0 = 0: Select CR3 at $C000
+B86B 8643             (  irq_handler.asm):00133                     LDA     #%01000011      ; $43: Bit 6 = 1 (IRQ Enabled), Continuous, E-clk, /8
+B86D B7C000           (  irq_handler.asm):00134                     STA     PTM_CR13
+B870 8601             (  irq_handler.asm):00135                     LDA     #%00000001      ; Bit 0 = 1: Restore $C000 to point to CR1
+B872 B7C001           (  irq_handler.asm):00136                     STA     PTM_CR2
+B875 39               (  irq_handler.asm):00137                     RTS
+                      (  irq_handler.asm):00138         
+                      (  irq_handler.asm):00139         ; ------------------------------------------------------------------------------
+                      (  irq_handler.asm):00140         ; RESET_CLK_TICK (Optional: Call when setting a brand new time)
+                      (  irq_handler.asm):00141         ; Clears any pending Timer 3 IRQ flag and resets the 100ms phase.
+                      (  irq_handler.asm):00142         ; ------------------------------------------------------------------------------
+B876                  (  irq_handler.asm):00143         RESET_CLK_TICK:
+B876 0FF0             (  irq_handler.asm):00144                     CLR     TENTHS          ; Start fresh at .0 seconds
+B878 B6C001           (  irq_handler.asm):00145                     LDA     PTM_CR2         ; Step 1: Read Status Register
+B87B FCC006           (  irq_handler.asm):00146                     LDD     PTM_T3_MSB      ; Step 2: Read T3 Counter to clear any pending IRQ flag
+B87E 39               (  irq_handler.asm):00147                     RTS
