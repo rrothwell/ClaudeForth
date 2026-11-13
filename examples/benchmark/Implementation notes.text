@@ -1,0 +1,271 @@
+To measure the execution duration of an ANS Forth word using a 
+Motorola MC6840 Programmable Timer Module (PTM), 
+configure one of its three 16-bit down-counters 
+in continuous mode using the internal system clock (E), 
+read the counter immediately before and after executing 
+the target word's Execution Token (xt), and calculate 
+the elapsed clock ticks. [1] 
+(/goto?url=CAEShgEBxCJF12NrTET2pq90LDrquU_ls4lqNiwf8Fe6k6hY-Dq1_Skn9wpXIdmlVz1BM98b7mWtx34qYGsS1NbORmokaxTw9qmeJX25A8EXkr287Cl-3oHg-O-PIuwKYZs-DRgdTqUN2tnuaRXwXvQ8IIGF8dtQZoEUBN8D5A9CAcM8Zbrix5uuWA), [2] (/goto?url=CAESrwEBxCJF1_myQ9ynZMkr76iFFwFg5ksZTgp1XQfFPAgX2uFYE-JDBEBDarUXp90IkGLwMuYIXpU1n-_rvDZ26M38HzTYgsYWlDqISu2z3OcwGeL2DFG4gaPHiXpVuZPJxxLgeNII8OP603xLMjTGI-RIxvFQ_8_ZAI3QwoPKYRHk888L0pKWc2LpocAWZciPKKHXnLeTVyPig_ZbgbUKS8tD-GLoZfVumBEldkwliASe)
+Because the MC6840 counts down from $FFFF and rolls over, 
+subtracting the end count from the start count 
+using 16-bit unsigned arithmetic yields the exact 
+number of E-clock cycles elapsed (provided the word 
+takes fewer than 65,536 cycles). [1] 
+(/goto?url=CAESrwEBxCJF1_myQ9ynZMkr76iFFwFg5ksZTgp1XQfFPAgX2uFYE-JDBEBDarUXp90IkGLwMuYIXpU1n-_rvDZ26M38HzTYgsYWlDqISu2z3OcwGeL2DFG4gaPHiXpVuZPJxxLgeNII8OP603xLMjTGI-RIxvFQ_8_ZAI3QwoPKYRHk888L0pKWc2LpocAWZciPKKHXnLeTVyPig_ZbgbUKS8tD-GLoZfVumBEldkwliASe), [2] (/goto?url=CAEShgEBxCJF12NrTET2pq90LDrquU_ls4lqNiwf8Fe6k6hY-Dq1_Skn9wpXIdmlVz1BM98b7mWtx34qYGsS1NbORmokaxTw9qmeJX25A8EXkr287Cl-3oHg-O-PIuwKYZs-DRgdTqUN2tnuaRXwXvQ8IIGF8dtQZoEUBN8D5A9CAcM8Zbrix5uuWA)
+
+1. MC6840 Register Map & Setup
+
+The Motorola MC6840 occupies 8 consecutive bytes in memory. 
+Note that Control Register 1 (CR1) and Control Register 3 (CR3) 
+share the same base address (PTM+0), selected by 
+Bit 0 of Control Register 2 (CR2 at PTM+1). 
+[1] (/goto?url=CAESegHEIkXXsgaGNBfk9hFkJRGOjb4_XLx6a8VHb4jPvgwaXrWjv-8H3n8buT8fVnDtfP4GhhZc1r6FBmh7ebKvpfTZuoFeMZStQkCBluvCpBpJWnLTP_dZ3KJPZHrBnbK_dEF5sQ6WaT-Ght_qaoROcrw0DFI8rlXaJ4G_), [2] (/goto?url=CAESrwEBxCJF1_myQ9ynZMkr76iFFwFg5ksZTgp1XQfFPAgX2uFYE-JDBEBDarUXp90IkGLwMuYIXpU1n-_rvDZ26M38HzTYgsYWlDqISu2z3OcwGeL2DFG4gaPHiXpVuZPJxxLgeNII8OP603xLMjTGI-RIxvFQ_8_ZAI3QwoPKYRHk888L0pKWc2LpocAWZciPKKHXnLeTVyPig_ZbgbUKS8tD-GLoZfVumBEldkwliASe)
+• PTM+0 (Write) — Control Register 1 / 3. Write $00 (with CR2 bit 0 = 1) 
+to configure Timer 1 in continuous 16-bit mode, interrupts disabled, 
+using the internal E clock. Write $01 to hold timers in reset during initialization. 
+[1] (/goto?url=CAESegHEIkXXsgaGNBfk9hFkJRGOjb4_XLx6a8VHb4jPvgwaXrWjv-8H3n8buT8fVnDtfP4GhhZc1r6FBmh7ebKvpfTZuoFeMZStQkCBluvCpBpJWnLTP_dZ3KJPZHrBnbK_dEF5sQ6WaT-Ght_qaoROcrw0DFI8rlXaJ4G_)
+• PTM+1 (Write) — Control Register 2. Write $01 to select CR1 at PTM+0, 
+or $00 to select CR3 at PTM+0. [1] 
+(/goto?url=CAESegHEIkXXsgaGNBfk9hFkJRGOjb4_XLx6a8VHb4jPvgwaXrWjv-8H3n8buT8fVnDtfP4GhhZc1r6FBmh7ebKvpfTZuoFeMZStQkCBluvCpBpJWnLTP_dZ3KJPZHrBnbK_dEF5sQ6WaT-Ght_qaoROcrw0DFI8rlXaJ4G_)
+• PTM+2 / PTM+3 (Read/Write) — Timer 1 MSB / LSB. Writing latches the 
+initial 16-bit reload value ($FFFF). Reading returns the current live 
+16-bit down-counter value. (Note: On 8-bit buses like the 6809/6502, 
+always read the MSB at PTM+2 first, which latches the LSB into an 
+internal buffer so PTM+3 reads coherently).
+
+2. ANS Forth Implementation
+
+The following standard ANS Forth code sets up Timer 1 as a free-running 
+16-bit cycle counter and defines BENCHMARK to measure any word's execution token (xt).
+forth
+\ Adjust PTM-BASE to match your hardware's memory-mapped I/O address
+HEX
+E000 CONSTANT PTM-BASE
+DECIMAL
+
+PTM-BASE 0 + CONSTANT PTM-CR13
+PTM-BASE 1 + CONSTANT PTM-CR2
+PTM-BASE 2 + CONSTANT PTM-T1-MSB
+PTM-BASE 3 + CONSTANT PTM-T1-LSB
+
+\ Initialize Timer 1 as a free-running E-clock down-counter
+: INIT-PTM ( -- )
+    1 PTM-CR2 C!          \ Select CR1 at offset 0
+    1 PTM-CR13 C!         \ Assert internal reset (CR1 bit 0 = 1)
+    255 PTM-T1-MSB C!     \ Load $FFFF reload value (MSB first)
+    255 PTM-T1-LSB C!     \ Writing LSB transfers $FFFF into counter
+    2 PTM-CR13 C! ;       \ Clear reset, select internal E clock (CR1 bit 1 = 1)
+
+\ Coherently read the 16-bit down-counter (MSB first latches LSB)
+: T1@ ( -- u )
+    PTM-T1-MSB C@ 8 LSHIFT
+    PTM-T1-LSB C@ OR ;
+
+\ Measure execution time of an Execution Token (xt) in E-clock ticks
+: MEASURE ( i*x xt -- j*x ticks )
+    T1@ >R                \ Capture start count on return stack
+    EXECUTE               \ Execute the target Forth word
+    T1@                   \ Capture end count
+    R> SWAP -             \ Elapsed = Start - End (down-counter)
+    65535 AND ;           \ Mask to 16-bit unsigned to handle rollover
+
+\ Measure baseline overhead of EXECUTE + timer reads
+: NOOP ( -- ) ;
+: OVERHEAD ( -- ticks )
+    ['] NOOP MEASURE ;
+
+\ Print net E-clock cycles for a given word
+: TIME-WORD ( i*x xt -- j*x )
+    MEASURE OVERHEAD -
+    CR ." Elapsed E-clock cycles: " U. ;
+Use code with caution.
+
+3. Usage Example
+
+To time a word named MY-WORD, pass its execution token using ['] 
+(or ' in interpret mode) to TIME-WORD:
+forth
+INIT-PTM
+' MY-WORD TIME-WORD
+Use code with caution.
+
+4. Practical Considerations
+
+• Converting Ticks to Microseconds. Divide the reported E-clock cycle count 
+by your system's E-clock frequency in MHz. For example, on a 1 MHz 6809/6502 system, 
+1 tick equals 1 µs; on a 2 MHz system, divide ticks by 2.
+• Measuring Longer Words (> 65,535 cycles). If your word takes longer 
+than 65,535 E-clock cycles, Timer 1 will wrap around more than once. 
+You can extend the range by a factor of 8 by using Timer 3 
+(PTM+6 / PTM+7) with its built-in /8 prescaler enabled (set Bit 0 of CR3 to 1), 
+or by chaining Timer 1's output (O1) into Timer 2's external clock input (C2) 
+for a 32-bit hardware counter. [1] 
+(/goto?url=CAESiAEBxCJF1-2EBWehbw70Ho3FLMrXMc-FD-xAl4vfkiJq8snWWe9jokbDVV5WYAQmp0rDy7lH9pUO0vDe1hW-_wH1tvvBOMrRwKRyP_92Ll0drzfahT3PPZc8vlsBjdcxqXhD75AlhvwVGWTRRHWuGEGwl1WzLAH9AdnjcNe0EPaQZ6G-bOIQkUqQ), [2] (/goto?url=CAESrwEBxCJF1_myQ9ynZMkr76iFFwFg5ksZTgp1XQfFPAgX2uFYE-JDBEBDarUXp90IkGLwMuYIXpU1n-_rvDZ26M38HzTYgsYWlDqISu2z3OcwGeL2DFG4gaPHiXpVuZPJxxLgeNII8OP603xLMjTGI-RIxvFQ_8_ZAI3QwoPKYRHk888L0pKWc2LpocAWZciPKKHXnLeTVyPig_ZbgbUKS8tD-GLoZfVumBEldkwliASe)
+• Interrupts and Hardware Gate. Ensure Timer 1's hardware gate pin (G1) is 
+tied low (active) in your circuit, as a high level on G1 inhibits counting. 
+Disable system interrupts (SEI / interrupt mask) around MEASURE if you want 
+deterministic cycle counts free of ISR jitter.
+If you'd like to adapt this code to your exact setup, let me know:
+• Your CPU architecture (e.g., 6809, 68000, 6502) and Forth system (e.g., CamelForth, FlashForth, Gforth)
+• Your PTM base address and E-clock frequency
+• Whether you need 32-bit chaining for long-running words
+I can tailor the register access words or add a cascading 32-bit timer routine.
+
+
+
+==================================================================
+
+To measure the execution duration of an ANS Forth word on a 2 MHz MC6809 
+using Timer 2 of an MC6840 at base address $C000, you can maintain shadow 
+bytes in Direct Page (page zero) for the write-only control registers 
+(CR1, CR2, and CR3), mask IRQ/FIRQ via the 6809 CC register during the 
+timed section, and read Timer 2's 16-bit counter before and after EXECUTE.
+Because the MC6809 has a 2 MHz E clock, each Timer 
+2 tick equals 0.5 µs (2 ticks per microsecond).
+
+1. Memory Map & Shadow Register Layout
+
+On the MC6840, CR1 and CR3 share address $C000, selected by Bit 0 of CR2 ($C001). 
+Keeping three shadow bytes in Direct Page lets you modify any single timer's 
+control bits without disturbing the other timers.
+
+Register / Shadow	Address	Purpose
+PTM-CR13	$C000	Hardware Write: CR1 (when CR2 bit 0 = 1) or CR3 (when CR2 bit 0 = 0)
+PTM-CR2	$C001	Hardware Write: Control Register 2 (controls Timer 2 & selects CR1/CR3)
+PTM-T2-MSB	$C004	Hardware Read/Write: Timer 2 MSB counter/latch
+PTM-T2-LSB	$C005	Hardware Read/Write: Timer 2 LSB counter/latch
+SHAD-CR1	$0080	Direct Page shadow for Control Register 1
+SHAD-CR2	$0081	Direct Page shadow for Control Register 2
+SHAD-CR3	$0082	Direct Page shadow for Control Register 3
+
+(Adjust $0080–$0082 if your 6809 Forth kernel uses those specific Direct Page addresses.)
+
+2. MC6809 Interrupt Control Words
+
+To disable interrupts cleanly without losing the processor's prior 
+interrupt mask state, define two small 6809 CODE primitives that save 
+CC onto the return stack (S or U depending on your Forth; standard 6809 Forth 
+uses U as the data stack and S as the return stack):
+forth
+\ Assuming standard 6809 Forth register model:
+\ U = Data Stack Pointer, S = Return Stack Pointer
+HEX
+CODE DI-SAVE ( -- )   \ Push CC onto return stack and mask IRQ + FIRQ
+    TFR  CC,A
+    PSHS A
+    ORCC #$50         \ Set I (bit 4) and F (bit 6)
+    NEXT
+END-CODE
+
+CODE RESTORE-CC ( -- ) \ Restore original CC from return stack
+    PULS A
+    TFR  A,CC
+    NEXT
+END-CODE
+Use code with caution.
+(If your Forth uses an inline assembler with different mnemonics or stack registers, 
+replace ORCC #$50 / TFR CC,A with its equivalent).
+
+3. Complete ANS Forth Implementation
+
+This code updates CR1, CR2, and CR3 strictly through their Direct Page shadows, 
+configures Timer 2 for continuous 16-bit internal E-clock counting (CR2 = $02), 
+and reports both raw ticks and microseconds.
+forth
+HEX
+C000 CONSTANT PTM-BASE
+
+\ Hardware registers
+PTM-BASE 0 + CONSTANT PTM-CR13
+PTM-BASE 1 + CONSTANT PTM-CR2
+PTM-BASE 4 + CONSTANT PTM-T2-MSB
+PTM-BASE 5 + CONSTANT PTM-T2-LSB
+
+\ Page zero (Direct Page) shadow registers (adjust addresses if needed)
+0080 CONSTANT SHAD-CR1
+0081 CONSTANT SHAD-CR2
+0082 CONSTANT SHAD-CR3
+
+\ Write shadow values to hardware without disturbing other timers
+: FLUSH-CR2 ( -- )
+    SHAD-CR2 C@ PTM-CR2 C! ;
+
+: FLUSH-CR1 ( -- )
+    SHAD-CR2 C@ 01 OR DUP SHAD-CR2 C! PTM-CR2 C!  \ Set CR2 bit 0 = 1 (select CR1)
+    SHAD-CR1 C@ PTM-CR13 C! ;
+
+: FLUSH-CR3 ( -- )
+    SHAD-CR2 C@ FE AND DUP SHAD-CR2 C! PTM-CR2 C! \ Clear CR2 bit 0 = 0 (select CR3)
+    SHAD-CR3 C@ PTM-CR13 C! ;
+
+\ Initialize Timer 2 only (preserves CR1 and CR3 shadow states)
+: INIT-T2 ( -- )
+    \ Assert internal reset via CR1 bit 0 without altering other CR1 bits
+    SHAD-CR1 C@ 01 OR SHAD-CR1 C!
+    FLUSH-CR1
+
+    \ Load Timer 2 16-bit counter with $FFFF (MSB first, then LSB)
+    FF PTM-T2-MSB C!
+    FF PTM-T2-LSB C!
+
+    \ Configure Timer 2 in CR2:
+    \ Bit 7=0 (IRQ masked), Bit 6=0 (O2 disabled), Bits 5-3=000 (continuous),
+    \ Bit 2=0 (16-bit mode), Bit 1=1 (internal E clock), Bit 0=1 (keep CR1 selected)
+    03 SHAD-CR2 C!
+    FLUSH-CR2
+
+    \ Release internal reset via CR1 bit 0 = 0 (starts all enabled timers)
+    SHAD-CR1 C@ FE AND SHAD-CR1 C!
+    FLUSH-CR1 ;
+
+\ Coherently read Timer 2 (reading MSB latches LSB into PTM buffer)
+: T2@ ( -- u )
+    PTM-T2-MSB C@ 8 LSHIFT
+    PTM-T2-LSB C@ OR ;
+
+\ Measure execution time of xt in 2 MHz E-clock ticks with interrupts disabled
+: MEASURE-T2 ( i*x xt -- j*x ticks )
+    DI-SAVE               \ Mask IRQ and FIRQ, saving CC
+    T2@ >R                \ Read start count onto return stack
+    EXECUTE               \ Run target word
+    T2@                   \ Read end count
+    RESTORE-CC            \ Restore previous interrupt state
+    R> SWAP -             \ Elapsed = Start - End (16-bit down-counter)
+    FFFF AND ;            \ Mask to 16-bit unsigned for single rollover
+
+\ Calibration word to subtract EXECUTE and timer read overhead
+: NOOP ( -- ) ;
+: T2-OVERHEAD ( -- ticks )
+    ['] NOOP MEASURE-T2 ;
+
+\ Run word and display net ticks and microseconds (at 2 MHz, 1 us = 2 ticks)
+: BENCH-T2 ( i*x xt -- j*x )
+    MEASURE-T2 T2-OVERHEAD -
+    DECIMAL
+    CR ." Net E-clock cycles (0.5 us each): " DUP U.
+    CR ." Execution duration: "
+    DUP 2 / U. ." ." 1 AND 5 * 0 .R ."  us" ;
+Use code with caution.
+
+4. Usage & Hardware Notes
+
+• Running a Benchmark. Call INIT-T2 once at startup (assuming SHAD-CR1 and SHAD-CR3 
+were initialized to your desired states or $00 on boot), then pass any 
+word's execution token to BENCH-T2:forth
+INIT-T2
+' MY-WORD BENCH-T2
+Use code with caution.
+• Maximum Single-Pass Duration. At 2 MHz, Timer 2's 16-bit counter wraps 
+every 65,536 × 0.5 µs = 32.768 ms. Any word taking less than 32.768 ms 
+is measured accurately with single-rollover subtraction.
+• Hardware Gate Pin (G2). Ensure pin 4 (G2) on the MC6840 is pulled or tied low (GND). 
+A high logic level on G2 halts Timer 2 counting regardless of CR2 settings.
+• 6809 Direct Page Optimisation. Because SHAD-CR1–SHAD-CR3 reside in Direct 
+Page ($0080–$0082), if your Forth system keeps DP = $00, any assembly routines 
+accessing those shadows can use fast 2-byte direct addressing (LDA <$80).
+If you'd like to refine this further, let me know:
+• Which 6809 Forth you are running (e.g., CamelForth, fig-Forth, Pygmy, 
+or a custom kernel) so I can match its exact assembler syntax and Direct Page map
+• Whether you need Timer 2 interrupt-driven overflow counting to measure 
+words longer than 32.768 ms
+I can adjust the CODE definitions or add a 32-bit overflow accumulator.

@@ -1,0 +1,8 @@
+0000 1FA8             (interrupt_managem):00001             TFR  CC,A
+0002 3402             (interrupt_managem):00002             PSHS A
+0004 1A50             (interrupt_managem):00003             ORCC #$50 
+0006 39               (interrupt_managem):00004             RTS
+                      (interrupt_managem):00005         
+0007 3502             (interrupt_managem):00006             PULS A
+0009 1F8A             (interrupt_managem):00007             TFR  A,CC
+000B 39               (interrupt_managem):00008             RTS
