@@ -101,8 +101,10 @@ brew install binutils
 |Feature flags for optional word sets and tools| 1.60|:white_check_mark:|
 |Update documentation| 1.60|:white_check_mark:|
 |Burn ROM and install onto real MECB 6809 hardware. | 1.60|:white_check_mark:|
-|Develop a simple forth application| 1.60| |
+|Develop a simple forth application[^1]| 1.60|:white_check_mark:|
 |Refine the documentation| 1.60| |
+
+[^1]: The simple forth applications are found in the examples folder. 
 
 ## Assets
 ### Manifest
@@ -140,10 +142,10 @@ brew install binutils
 |.py| Python source code |
 |.sh| Bash script file |
 |.log| A logfile. Likely for accepting test results |
-|.shd| A shadow file with content corresponding to the same named assembler file[^1].|
+|.shd| A shadow file with content corresponding to the same named assembler file[^2].|
 
 
-[^1]: A shadow file is a text file with sections corresponding 
+[^2]: A shadow file is a text file with sections corresponding 
       to those of the same named assembler files.
       This lists expanded block comments, operating principles,
       bug fixes explanations and obsolete assembler code.
@@ -182,7 +184,7 @@ brew install binutils
 | Forth disassembler.  |1.6|:white_check_mark:|
 | Inbuilt decompiler (forth word SEE).  |1.6|:white_check_mark:|
 | Vectored I/O. In particular the ability to programatically change the behavior of EMIT, etc..  |1.7|:white_check_mark:|
-| Interrupt chaining to call forth words. [^2] |1.7|:white_check_mark:|
+| Interrupt chaining to call forth words. [^3] |1.7|:white_check_mark:|
 | MC6840 Forth timer applied to measure execution duration.  | | |
 | Inbuilt assembler. This would be developed in assembly langage and linked to the existing dictionary. | | |
 | Treat both space and tab as white space.  | ||
@@ -204,6 +206,6 @@ brew install binutils
 | Improve output formatting for SEE | | |
 | Add Forth words like TOGGLE | | |
 
-[^2]: handlers are
+[^3]: handlers are
       machine-code routines chained through `IRQ-CHAIN`, not Forth words. Calling a
       Forth word from an interrupt is not provided.
