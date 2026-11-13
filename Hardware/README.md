@@ -39,11 +39,12 @@ Beginning addresses showing forth dictionary:
 
 End addresses showing the processor vectors:
 
-![ ROM_code_end](./ROM_code_end.png)
+![ROM code end](./ROM_code_end.png)
 
 The computer failed to boot. 
-The fault was attributed to the 74HCT688 comparator chip
-that was diagnosed with the chip tester in the TL866 II plus.
+The failure was attributed to the 74HCT688 comparator chip.
+This was diagnosed as bad with the chip tester in the TL866 II plus. 
+It failed its test vectors.
 Other samples in the same batch tested as fine, but still malfunctioned.
 They were unable to pull down the input of the PLD when the address matched.
 
@@ -68,7 +69,7 @@ The dongle was modified to provide RTS instead of DTR.
 
 ![hacked usb dongle](./hacked_usb_dongle.png)
 
-The baud rate was set at second highest baud rate 38400. 
+The baud rate was set at the second highest; 38400. 
 The highest baud rate provided by the card is unusual 
 and rarely provided by host software.
 In any case higher baud rates drop the occasional character,
