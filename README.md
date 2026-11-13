@@ -185,15 +185,19 @@ brew install binutils
 | Inbuilt decompiler (forth word SEE).  |1.6|:white_check_mark:|
 | Vectored I/O. In particular the ability to programatically change the behavior of EMIT, etc..  |1.7|:white_check_mark:|
 | Interrupt chaining to call forth words. [^3] |1.7|:white_check_mark:|
-| MC6840 Forth timer applied to measure execution duration.  | | |
-| Inbuilt assembler. This would be developed in assembly langage and linked to the existing dictionary. | | |
+| MC6840 Forth timer applied to measure execution duration.  |1.7|:white_check_mark:|
+| Add Forth words like SET, CLR, TOGGLE a bit in a byte. | | |
 | Treat both space and tab as white space.  | ||
 | Change formatting of ok line output to match GForth.  | | |
 | Format the output of WORDS to 10 forth words per line. Possibly pad each word to 8 character width and if longer to 16 character width.  | | |
 | Format the output of DUMP to show an address per line. | | |
-| Run some benchmarks.  | ||
 | Reorganise memory map so that the stacks are below $8000. Move the in-RAM code and dictionary up to fill the gap below $C000. | | |
 | Adjust DICT:CODE ratio to 1:4| | |
+| Add more feature flogs to reduce memory usage| | |
+| Inbuilt assembler. This would be developed in assembly langage and linked to the existing dictionary. | | |
+| More examples controlling hardware. The PIA is the next candidate. | ||
+| More examples controlling hardware. The graphics chips are the next candidate. | ||
+| Run some benchmarks.  | ||
 | Cooperative multitasking.  | | |
 | Mass storage support - SD Card or Flash.  | | |
 | Application compilation to the ROM area via ROM emulation.  | | |
@@ -202,9 +206,8 @@ brew install binutils
 | Improve the number parser to recognise binary and hexadecimal numbers.  | | |
 | Move the serial communications code to an include file.  | | |
 | Debugging support. | | |
-| Tandy CoCo. Port | | |
+| Tandy CoCo. Port. | | |
 | Improve output formatting for SEE | | |
-| Add Forth words like TOGGLE | | |
 
 [^3]: handlers are
       machine-code routines chained through `IRQ-CHAIN`, not Forth words. Calling a
