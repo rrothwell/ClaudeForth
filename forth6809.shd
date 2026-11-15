@@ -3366,3 +3366,26 @@ pushed them out of range.
 MEMMAP.22 addendum (6 November): with SERIALPOLL=0 group 11 overflowed the
 unit-test region by 13 bytes. TSTDASHTRAILING and TSTSLASHSTRING (and their
 JSR lines) moved to group 18, whose test count is now 10 (group 11: 15).
+
+================================================================
+EMITACIA.1  [bugfix]  (stage 6o, 14 November 2026)
+----------------------------------------------------------------
+Found on real hardware (38400 baud, SERIALPOLL=0): DUMP and other long output
+came out with characters missing from the second line on. The polled build and
+MAME were fine. Cause: the interrupt build's EMIT called PUTCHAR, which throws
+the character away when the 64-byte output ring is full. MAME's emulated ACIA
+empties the ring almost instantly; a real ACIA at 38400 baud sends one
+character every 0.26 ms, about as fast as DUMP produces them, so the ring fills
+and characters are lost.
+Original:
+   EMITACIA:   PULU  D
+               TFR   B,A
+               JSR   PUTCHAR
+               RTS
+Now EMIT waits until OUTHEAD+1 differs from OUTTAIL. While RTS is low the
+transmit interrupt drains the ring; while RTS is high (transmit interrupt off)
+the loop sends one character by polling with FLUSHOUTBUFFER inside a critical
+section, as PUTCHAR does. PUTCHAR itself is unchanged and still discards when
+called directly. Consequence: EMIT must not be called with interrupts masked or
+from an interrupt handler (it would wait forever for room). +29 bytes in the
+interrupt build; BASECODEEND $FF6D, 47 bytes spare below INITCODE.

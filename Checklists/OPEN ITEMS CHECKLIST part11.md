@@ -58,6 +58,21 @@ character I/O. Source: `forth6809_stage_6o.asm`; documentation:
       Chaining; timeline entry added ("Addition of character I/O redirection and
       interruption chaining: 1 day (~5 hours)").
 
+## Real-hardware findings (9-14 November)
+
+- [x] File 31 failures on the board were the runner re-sending lines inside `[IF]`/`[ELSE]`
+      skips (`ans_test_runner_cond.patch.txt`); confirmed fixed by Richard.
+- [x] **DUMP (and any long output) lost characters on real hardware with `SERIALPOLL=0`.**
+      Cause: interrupt-build `EMIT` called `PUTCHAR`, which discards a character when
+      the 64-byte output ring is full; MAME drains the ring instantly, a 38400 baud
+      ACIA does not. Fixed in `EMITACIA`: it now waits for room (polling flush when RTS
+      is high). +29 bytes: interrupt build ends `$FF6D`, 47 bytes spare. Shadow
+      `EMITACIA.1`; manual figures and the `EMIT` glossary entry updated.
+      **Not yet run:** my emulator cannot run the interrupt build, so please test
+      `HEX D000 60 DUMP` and a long `WORDS` on the board (and the unit tests with
+      `--serialpoll 0`). `EMIT` must not be called with interrupts masked or from an
+      interrupt handler.
+
 ## Open items
 
 - [ ] **Please run in lwasm and MAME:** all combinations of `SERIALPOLL`, `DISASM`
