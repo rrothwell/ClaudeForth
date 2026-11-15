@@ -86,8 +86,8 @@ void mecb6809_state::mecb6809(machine_config &config)
 	rs232.set_option_device_input_defaults("terminal", DEVICE_INPUT_DEFAULTS_NAME(terminal)); // must be below the DEVICE_INPUT_DEFAULTS_START block
 
 
-	PTM6840(config, m_ptm, 16_MHz_XTAL / 4);
-	m_ptm->set_external_clocks(4000000.0/14.0, 4000000.0/14.0, (4000000.0/14.0)/8.0);
+	PTM6840(config, m_ptm, XTAL(8'000'000) / 4);
+	m_ptm->set_external_clocks(0.0, 0.0, 0.0);
 	m_ptm->irq_callback().set_inputline("maincpu", M6809_IRQ_LINE);
 
 	// video hardware
