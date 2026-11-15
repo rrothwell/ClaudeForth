@@ -94,7 +94,7 @@ THEN
 F} ;
   ok\ TEST-BEGIN / TEST-END (the per-file report that reads TESTCOUNT
   ok\ and FAILCOUNT) are defined in 00_test_prelude.fs.
-  ok' }T ." XT for }T" .7FF0 
+  ok' }T ." XT for }T" .7198 
   ok: ...}T ( -- )
 XCURSOR @ START-DEPTH @ + ACTUAL-DEPTH @ <> IF
 S" NUMBER OF CELL RESULTS BEFORE '->' DOES NOT MATCH ...}T "

@@ -4435,12 +4435,28 @@ KQTRUE:
 
 ; ------------------------------------------------------------
 ; EMIT  ( char -- )
-; Transmit char through PUTCHAR (the output ring). The character is
-; discarded if the ring is full.
+; Transmit char through PUTCHAR (the output ring). When the ring is
+; full EMIT waits for room, so no character is lost however fast the
+; caller produces output. The wait needs the transmit interrupt to be
+; able to run, so EMIT must not be called with interrupts masked, nor
+; from an interrupt handler. See shadow EMITACIA.1.
 ; ------------------------------------------------------------
 EMITACIA:
             PULU  D                 ; char
-            TFR   B,A
+            PSHS  B                 ; keep it while waiting
+EMWAIT:     LDB   OUTHEAD           ; Is there room for one more?
+            INCB
+            ANDB  #OUTBUFSZ-1
+            CMPB  OUTTAIL
+            BNE   EMROOM            ; Yes!
+            TST   RTSSTATE          ; No! Is the transmit interrupt running?
+            BEQ   EMWAIT            ; Yes! It will make room.
+            PSHS  CC                ; RTS is high so the transmit interrupt
+            ORCC  #$50              ; is off: send one character by polling,
+            JSR   FLUSHOUTBUFFER    ; as PUTCHAR does.
+            PULS  CC
+            BRA   EMWAIT
+EMROOM:     PULS  A                 ; char
             JSR   PUTCHAR           ; Transmit char.
             RTS
 
