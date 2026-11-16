@@ -123,7 +123,7 @@ for v in "$SERIALPOLL" "$DISASM" "$DECOMP"; do
   fi
 done
 
-# Glossary section names, in TSTSELECTOR order (0-22), matching the
+# Glossary section names, in TSTSELECTOR order (0-22`), matching the
 # table in the ClaudeForth documentation's own Build Instructions
 # section (6.6) - used only for readable log file names and the summary.
 SECTION_NAMES=(

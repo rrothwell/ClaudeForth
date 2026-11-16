@@ -183,8 +183,8 @@ brew install binutils
 | External assembler.  |1.50|:white_check_mark:|
 | Forth disassembler.  |1.6|:white_check_mark:|
 | Inbuilt decompiler (forth word SEE).  |1.6|:white_check_mark:|
-| Vectored I/O. In particular the ability to programatically change the behavior of EMIT, etc..  |1.7|:white_check_mark:|
-| Interrupt chaining to call forth words. [^3] |1.7|:white_check_mark:|
+| Vectored I/O. In particular the ability to programatically change the behavior of EMIT, etc.. [^4] |1.7|:white_check_mark:|
+| Interrupt chaining to call forth words. [^4] |1.7|:white_check_mark:|
 | MC6840 Forth timer applied to measure execution duration.  |1.7|:white_check_mark:|
 | Add Forth words like SET, CLR, TOGGLE a bit in a byte. | | |
 | Treat both space and tab as white space.  | ||
@@ -209,6 +209,7 @@ brew install binutils
 | Tandy CoCo. Port. | | |
 | Improve output formatting for SEE | | |
 
-[^3]: handlers are
-      machine-code routines chained through `IRQ-CHAIN`, not Forth words. Calling a
-      Forth word from an interrupt is not provided.
+[^3]: The vector words are `(EMIT)`, `(KEY)` and `(KEY?)`, which return the
+  address of a cell holding the execution token (they are not `DEFER` words).
+[^4]: Handlers are machine-code routines chained through `IRQ-CHAIN`, 
+      not Forth words. Calling a Forth word from an interrupt is not provided.

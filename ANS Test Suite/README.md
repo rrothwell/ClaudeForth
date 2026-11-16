@@ -389,6 +389,9 @@ one-file-per-assembler-section rule:
    characters.
 1. `38_io_vectors.tests.fs`: the redirectable `EMIT`, `KEY` and `KEY?` and the
   initial value of `IRQ-CHAIN` (18 tests, written for this project).
+1. `39_irq_chain.tests.fs`: a board test (MC6840 PTM at `$C000`) for
+  `IRQ-CHAIN` with a real interrupt source. Do not add `39` to the default
+  `--sections`; run it only on MECB or MAME.
 
 ## Differences from the Published Annex F Suite
 
