@@ -11,6 +11,7 @@
 #include "machine/clock.h"
 #include "bus/rs232/rs232.h"
 #include "video/tms9928a.h"
+#include "machine/input_merger.h"
 
 
 namespace {
@@ -70,7 +71,7 @@ void mecb6809_state::mecb6809(machine_config &config)
 	// Configure UART (via m_acia)
 	ACIA6850(config, m_acia, 0);
 	m_acia->txd_handler().set("rs232", FUNC(rs232_port_device::write_txd));
-	m_acia->irq_handler().set_inputline("maincpu", M6809_IRQ_LINE);
+	// m_acia->irq_handler().set_inputline("maincpu", M6809_IRQ_LINE);
 	m_acia->rts_handler().set("rs232", FUNC(rs232_port_device::write_rts));
 
 	// clock_device &acia_clock(CLOCK(config, "acia_clock", 7'372'800/4)); // 115200
@@ -88,14 +89,21 @@ void mecb6809_state::mecb6809(machine_config &config)
 
 	PTM6840(config, m_ptm, XTAL(8'000'000) / 4);
 	m_ptm->set_external_clocks(0.0, 0.0, 0.0);
-	m_ptm->irq_callback().set_inputline("maincpu", M6809_IRQ_LINE);
+	// m_ptm->irq_callback().set_inputline("maincpu", M6809_IRQ_LINE);
 
 	// video hardware
 	tms9929a_device &vdp(TMS9929A(config, "vdp", XTAL(10'738'635)));
 	vdp.set_screen("screen");
 	vdp.set_vram_size(0x4000);
-	vdp.int_callback().set_inputline("maincpu", M6809_IRQ_LINE);
+	// vdp.int_callback().set_inputline("maincpu", M6809_IRQ_LINE);
 	SCREEN(config, "screen", SCREEN_TYPE_RASTER);
+
+    // Represent the MECB 6809's wired-OR for device interrupt lines.
+	INPUT_MERGER_ANY_HIGH(config, "mainirq").output_handler().set_inputline(m_maincpu, M6809_IRQ_LINE);
+	// Replacing the above irq_callback/irq_handler's with these so that they work together.
+	m_acia->irq_handler().set("mainirq", FUNC(input_merger_device::in_w<0>));
+	m_ptm->irq_callback().set("mainirq", FUNC(input_merger_device::in_w<1>));
+	vdp.int_callback().set("mainirq", FUNC(input_merger_device::in_w<2>));
 }
 
 ROM_START(mecb6809)
