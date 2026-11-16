@@ -70,7 +70,8 @@ brew install binutils
 * ~~Usable: all words tested as functional & performant, nearly all complying with the ANS Forth Test Suite. Tagged as version 1.30.~~
 * ~~Trustworthy: all words tested as functional & performant, with complete test coverage, complying with the ANS Forth Test Suite. Tagged as version 1.40.~~ 
 * ~~Developer ready: Word Lists added, complying with the ANS Forth Test Suite. Tagged as version 1.50.~~ 
-* Developer utilities: addition of disassembler and decompiler. Tagged as version 1.60. 
+* ~~Developer utilities: addition of disassembler and decompiler. Tagged as version 1.60.~~ 
+* Vectored character I/O and chained interrupts. Tagged as version 1.70. 
 
 | Item             | Version   | Completed   |
 |:-----------------|----------:|------------:|
