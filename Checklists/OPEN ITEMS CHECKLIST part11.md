@@ -81,14 +81,27 @@ character I/O. Source: `forth6809_stage_6o.asm`; documentation:
       My emulator cannot run the interrupt-driven build (`SERIALPOLL=0`), so I
       checked that build only by assembling it and reading the bytes
       (`JMP [IRQCHAIN]` is `6E 9F 00 83`).
-- [ ] **A test of a real chained interrupt is missing.** `IRQ-CHAIN` is tested only
-      for its initial value. A proper test needs an interrupt source other than the
-      ACIA (in MAME, a timer) to hit a chained handler.
+- [x] **Real chained-interrupt tests written and confirmed (part 11 follow-up).**
+      Unit-test group 22 (`TSTIRQ1`-`TSTIRQ4`) builds a synthetic interrupt frame and
+      jumps to `IRQH`; it fits with `DISASM=1 DECOMP=0` (22 added to `FIT_DISASM`) and
+      passes in the Richard's assembler test run. `39_irq_chain.tests.fs` is a MECB
+      board test using the MC6840 PTM at `$C000` (one handler, two chained handlers,
+      stop, restore, serial output while ticking). It passes on the real board
+      (3 runs) and on MAME (3 runs) once the driver is fixed. The dual-timer parts
+      start and check the timers inside one definition.
+      MAME finding: `mecb6809.cpp` connected the ACIA, PTM and VDP straight to the CPU
+      IRQ line, so one device clearing the line wiped another's pending interrupt. Fix:
+      an `INPUT_MERGER_ANY_HIGH` ("mainirq") with the three sources on inputs 0, 1, 2.
 - [ ] Decide whether the lost unit-test coverage matters: with the disassembler on,
       groups 5, 13 and 15 (and 16 since 6n) can no longer be built. To get 13 and 15
       back with both options on, about 150 bytes would have to be found.
 - [ ] `CASE` is not rebuilt by `SEE` and other `SEE` limits (part 9) still apply.
-- [ ] A unit test group for the Search-Order words is still missing.
+- [x] **Search-Order unit-test group written** (group 23, `TSTSRCH`, 11 tests): WORDLIST
+      (and -8), SET-ORDER/GET-ORDER (and -49/-50/-11), GET/SET-CURRENT, DEFINITIONS,
+      ALSO/PREVIOUS, ONLY/FORTH/ROOT, SEARCH-WORDLIST, the order search (SRCHORD) and
+      PRUNE. Passes in my emulator (polled build); mutation checks fail as intended.
+      About 1800 bytes, so it assembles only with `DISASM=0` (not in `FIT_DISASM`).
+      NOT yet run on your side: please run it in MAME with `SERIALPOLL=0` and `=1`.
 - [ ] README_ANS.md: add `38` to the `--sections` list and list
       `38_io_vectors.tests.fs`; README.md Plans: "Vectored I/O" and "Interrupt
       chaining" can be ticked (see `README_review_6o.md`).

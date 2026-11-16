@@ -58,14 +58,14 @@ for v in "$SERIALPOLL" "$DISASM" "$DECOMP"; do
   fi
 done
 
-# Glossary section names, in TSTSELECTOR order (0-22), matching the table
+# Glossary section names, in TSTSELECTOR order (0-23), matching the table
 # in the ClaudeForth documentation's Build Instructions (Section 6.6).
 SECTION_NAMES=(
   "3.1_SysIO" "3.2_Stack" "3.3_RetStack" "3.4_SArith" "3.5_DArith"
   "3.6_Logic" "3.7_Compare" "3.8_CtrlFlow" "3.9_DefWords" "3.10_CompWords"
   "3.11_Memory" "3.12_StrParse" "3.13_NumOut" "3.14_BaseRadix"
   "3.15_Exception" "3.16_Comments" "3.17_EnvSys" "3.18_Tools"
-  "3.12_StrParse2" "3.9_DefWords2" "3.10_CompWords2" "3.11_Memory2" "IrqFrame"
+  "3.12_StrParse2" "3.9_DefWords2" "3.10_CompWords2" "3.11_Memory2" "IrqFrame" "SearchOrder"
 )
 
 # Groups that fit below BASEDICT when the disassembler is built in.
@@ -89,7 +89,7 @@ echo "SERIALPOLL=$SERIALPOLL DISASM=${DISASM:-default} DECOMP=${DECOMP:-default}
 
 declare -a RESULTS
 
-for ((n=0; n<23; n++)); do
+for ((n=0; n<24; n++)); do
   name="${SECTION_NAMES[$n]}"
 
   echo "=================================================================="

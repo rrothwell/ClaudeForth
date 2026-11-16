@@ -78,6 +78,15 @@ TSTIRQC2    EQU   APPVARS+263       ; times TSTIRQH2 ran (byte)
 TSTIRQNEXT  EQU   APPVARS+264       ; the handler TSTIRQH2 passes on to
 TSTIRQSP    EQU   APPVARS+266       ; S before the synthetic interrupt
 
+TSTSOWE     EQU   APPVARS+268       ; Search-Order tests: saved WLEND
+TSTSOCU     EQU   APPVARS+270       ; saved CURRENT
+TSTSOOE     EQU   APPVARS+272       ; saved ORDEND
+TSTSOOR     EQU   APPVARS+274       ; saved ORDER (16 bytes)
+TSTSOU0     EQU   APPVARS+290       ; U at the start of a test
+TSTSOT1     EQU   APPVARS+292       ; scratch
+TSTSOWH     EQU   APPVARS+294       ; saved WLHEADS FORTH and ROOT cells (4 bytes)
+TSTSOWN     EQU   APPVARS+298       ; saved WLNAMES FORTH and ROOT cells (4 bytes)
+
 TSTNEG1     EQU   $CFC7             ; -12345: a non-trivial negative value
 TSTNEG2     EQU   $FEBF             ; -321
 
@@ -162,6 +171,7 @@ TSTRUNNER:  LDD   #APPCODE          ; The tests run before COLD, so CODEHERE wou
             JSR   TSTENVSYS
             JSR   TSTTOOLS
             JSR   TSTIRQ
+            JSR   TSTSRCH
             RTS
 
 ; ------------------------------------------------------------
@@ -18729,5 +18739,807 @@ TI4END:     PULS  X                 ; restore the vectors and the chain
 
 TSTIRQ4NAME: FCB  7
             FCC   "TSTIRQ4"
+
+            ENDC                    ; <<<<
+
+; ------------------------------------------------------------
+; Search-Order tests (group 23, stage 6o). They call the word set's
+; routines directly and check the cells they change: WLHEADS, WLEND,
+; CURRENT, ORDER and ORDEND. Each test saves that state and puts it
+; back. A synthetic wordlist is made with WORDLIST; fake headers are
+; built in TSTDBUF (header = length|flags, name, link, code).
+; TSTSRCH
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; ------------------------------------------------------------
+TSTSRCH:    JSR   CRW
+            LDX   #TSTSRCHMSG
+            PSHU  X
+            LDD   #11
+            PSHU  D
+            JSR   TYPEW
+            JSR   CRW
+
+            IFEQ  TSTSELECTOR-23    ; >>>>
+
+            JSR   TSTSO1
+            JSR   TSTSO2
+            JSR   TSTSO3
+            JSR   TSTSO4
+            JSR   TSTSO5
+            JSR   TSTSO6
+            JSR   TSTSO7
+            JSR   TSTSO8
+            JSR   TSTSO9
+            JSR   TSTSO10
+            JSR   TSTSO11
+
+            ENDC                    ; <<<<
+
+            RTS
+
+TSTSRCHMSG: FCC   "SearchOrder"
+
+            IFEQ  TSTSELECTOR-23    ; >>>>
+
+; ------------------------------------------------------------
+; Save and restore the Search-Order state.
+; TSTSOSAVE / TSTSOREST
+;    Registers: RegD, RegX, RegY and CC changed.
+; ------------------------------------------------------------
+TSTSOSAVE:  LDD   WLEND
+            STD   TSTSOWE
+            LDD   CURRENT
+            STD   TSTSOCU
+            LDD   ORDEND
+            STD   TSTSOOE
+            LDD   WLHEADS
+            STD   TSTSOWH
+            LDD   WLHEADS+2
+            STD   TSTSOWH+2
+            LDD   WLNAMES
+            STD   TSTSOWN
+            LDD   WLNAMES+2
+            STD   TSTSOWN+2
+            LDX   #ORDER
+            LDY   #TSTSOOR
+TSSLOOP:    LDD   ,X++
+            STD   ,Y++
+            CMPX  #ORDER+16
+            BLO   TSSLOOP
+            RTS
+
+TSTSOREST:  LDD   TSTSOWE
+            STD   WLEND
+            LDD   TSTSOCU
+            STD   CURRENT
+            LDD   TSTSOOE
+            STD   ORDEND
+            LDD   TSTSOWH
+            STD   WLHEADS
+            LDD   TSTSOWH+2
+            STD   WLHEADS+2
+            LDD   TSTSOWN
+            STD   WLNAMES
+            LDD   TSTSOWN+2
+            STD   WLNAMES+2
+            LDX   #TSTSOOR
+            LDY   #ORDER
+TSRLOOP:    LDD   ,X++
+            STD   ,Y++
+            CMPX  #TSTSOOR+16
+            BLO   TSRLOOP
+            RTS
+
+; ------------------------------------------------------------
+; Run the word whose xt is in RegX under CATCH. Any arguments are
+; already on the data stack.
+; TSTSOCATCH
+;    Outputs:
+;        RegD = the throw code, 0 if none
+;    Registers: RegD, RegX and CC changed.
+; ------------------------------------------------------------
+TSTSOCATCH: PSHU  X
+            JSR   CATCHW
+            PULU  D
+            RTS
+
+; ------------------------------------------------------------
+; Set the search order to the one or two WIDs given.
+; TSTSOORD1 sets ORDER = (RegX); TSTSOORD2 sets ORDER = (RegX, RegY).
+; ------------------------------------------------------------
+TSTSOORD1:  STX   ORDER
+            LDX   #ORDER+2
+            STX   ORDEND
+            RTS
+
+TSTSOORD2:  STX   ORDER
+            STY   ORDER+2
+            LDX   #ORDER+4
+            STX   ORDEND
+            RTS
+
+; ------------------------------------------------------------
+; Report a test: RegD = TRUEV or FALSEV, RegX = name.
+; The state and U are put back first.
+; ------------------------------------------------------------
+TSTSODONE:  PSHS  D,X
+            JSR   TSTSOREST
+            LDU   TSTSOU0
+            PULS  D,X
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+            RTS
+
+; ------------------------------------------------------------
+; unit test for WORDLIST: a new cell at the old WLEND, zeroed
+; (both its head and its name cell), WLEND moved on by 2, and a
+; second call yields the next cell.
+; TSTSO1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTWORDLST OK" or "TSTWORDLST FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTSO1:     STU   TSTSOU0
+            JSR   TSTSOSAVE
+            LDX   WLEND
+            STX   TSTSOT1
+            LDD   #$1234            ; dirty the cells first
+            STD   ,X
+            STD   WLNOFF,X
+            JSR   WORDLISTW
+            PULU  X
+            CMPX  TSTSOT1
+            BNE   TS1BAD
+            LDD   ,X
+            BNE   TS1BAD
+            LDD   WLNOFF,X
+            BNE   TS1BAD
+            LDD   WLEND
+            SUBD  TSTSOT1
+            CMPD  #2
+            BNE   TS1BAD
+            JSR   WORDLISTW
+            PULU  D
+            SUBD  TSTSOT1
+            CMPD  #2
+            BNE   TS1BAD
+            LDD   #TRUEV
+            BRA   TS1END
+TS1BAD:     LDD   #FALSEV
+TS1END:     LDX   #TSTSO1NAME
+            JMP   TSTSODONE
+
+TSTSO1NAME: FCB   10
+            FCC   "TSTWORDLST"
+
+; ------------------------------------------------------------
+; unit test for WORDLIST when every cell is in use: throws -8 and
+; leaves WLEND alone.
+; TSTSO2
+;    Outputs:
+;        prints "TSTWLFULL OK" or "TSTWLFULL FAIL" (TSTREPORT)
+; ------------------------------------------------------------
+TSTSO2:     STU   TSTSOU0
+            JSR   TSTSOSAVE
+            LDD   #WLHEADS+2*WLCELLS
+            STD   WLEND
+            LDX   #WORDLISTW
+            JSR   TSTSOCATCH
+            CMPD  #-8
+            BNE   TS2BAD
+            LDD   WLEND
+            CMPD  #WLHEADS+2*WLCELLS
+            BNE   TS2BAD
+            LDD   #TRUEV
+            BRA   TS2END
+TS2BAD:     LDD   #FALSEV
+TS2END:     LDX   #TSTSO2NAME
+            JMP   TSTSODONE
+
+TSTSO2NAME: FCB   9
+            FCC   "TSTWLFULL"
+
+; ------------------------------------------------------------
+; unit test for SET-ORDER and GET-ORDER: a three-WID order round
+; trips (first WID on top of the stack), n = -1 gives FORTH only,
+; n = 0 gives an empty order, n = 8 fills the order.
+; TSTSO3
+;    Outputs:
+;        prints "TSTSETORD OK" or "TSTSETORD FAIL" (TSTREPORT)
+; ------------------------------------------------------------
+TSTSO3:     STU   TSTSOU0
+            JSR   TSTSOSAVE
+            JSR   WORDLISTW         ; a third wordlist, WLHEADS+4
+            PULU  X
+            STX   TSTSOT1
+            LDD   #WLHEADS          ; wid3
+            PSHU  D
+            LDD   #WLHEADS+2        ; wid2
+            PSHU  D
+            LDD   TSTSOT1           ; wid1 (searched first)
+            PSHU  D
+            LDD   #3
+            PSHU  D
+            JSR   SETORDERW
+            LDD   ORDER
+            CMPD  TSTSOT1
+            LBNE   TS3BAD
+            LDD   ORDER+2
+            CMPD  #WLHEADS+2
+            LBNE   TS3BAD
+            LDD   ORDER+4
+            CMPD  #WLHEADS
+            LBNE   TS3BAD
+            LDD   ORDEND
+            CMPD  #ORDER+6
+            LBNE   TS3BAD
+            JSR   GETORDERW         ; ( wid3 wid2 wid1 3 )
+            PULU  D
+            CMPD  #3
+            LBNE   TS3BAD
+            PULU  D
+            CMPD  TSTSOT1
+            LBNE   TS3BAD
+            PULU  D
+            CMPD  #WLHEADS+2
+            LBNE   TS3BAD
+            PULU  D
+            CMPD  #WLHEADS
+            LBNE   TS3BAD
+            LDD   #-1               ; n = -1: the minimum order
+            PSHU  D
+            JSR   SETORDERW
+            LDD   ORDER
+            CMPD  #WLHEADS
+            LBNE   TS3BAD
+            LDD   ORDEND
+            CMPD  #ORDER+2
+            LBNE   TS3BAD
+            LDD   #0                ; n = 0: empty
+            PSHU  D
+            JSR   SETORDERW
+            LDD   ORDEND
+            CMPD  #ORDER
+            LBNE   TS3BAD
+            JSR   GETORDERW
+            PULU  D
+            LBNE   TS3BAD
+            LDB   #8                ; n = 8: eight copies of FORTH
+TS3FILL:    LDX   #WLHEADS
+            PSHU  X
+            DECB
+            BNE   TS3FILL
+            LDD   #8
+            PSHU  D
+            JSR   SETORDERW
+            LDD   ORDEND
+            CMPD  #ORDER+16
+            LBNE   TS3BAD
+            LDD   #TRUEV
+            BRA   TS3END
+TS3BAD:     LDD   #FALSEV
+TS3END:     LDX   #TSTSO3NAME
+            JMP   TSTSODONE
+
+TSTSO3NAME: FCB   9 
+            FCC   "TSTSETORD"
+
+; ------------------------------------------------------------
+; Shared error table: wid, n, expected throw code. The first two
+; entries are SET-ORDER-only errors; the rest are invalid WIDs
+; (odd, zero, and one past the wordlists in use).
+; ------------------------------------------------------------
+TSTSOTAB:   FDB   WLHEADS,9,-49
+            FDB   WLHEADS,-2,-50
+            FDB   WLHEADS+1,1,-11
+            FDB   0,1,-11
+            FDB   WLHEADS+2*WLCELLS,1,-11
+
+; ------------------------------------------------------------
+; Run the xt in RegY over RegB entries of the table at RegX, each
+; time under CATCH, and check the throw code. SET-ORDER takes
+; (wid n); anything else takes the wid alone.
+; TSTSOLOOP
+;    Outputs:
+;        RegD = TRUEV if every code matched, else FALSEV
+;    Registers: all changed.
+; ------------------------------------------------------------
+TSTSOLOOP:  PSHS  Y,B,X             ; 0,S count, 1,S table, 3,S xt
+TSLNEXT:    TST   ,S
+            BEQ   TSLOK
+            LDX   1,S
+            LDD   ,X
+            PSHU  D
+            LDY   3,S
+            CMPY  #SETORDERW
+            BNE   TSLONE
+            LDD   2,X
+            PSHU  D
+TSLONE:     PSHU  Y
+            JSR   CATCHW
+            PULU  D
+            LDX   1,S
+            CMPD  4,X
+            BNE   TSLBAD
+            LDU   TSTSOU0
+            LEAX  6,X
+            STX   1,S
+            DEC   ,S
+            BRA   TSLNEXT
+TSLOK:      LDD   #TRUEV
+            BRA   TSLEND
+TSLBAD:     LDD   #FALSEV
+TSLEND:     LEAS  5,S
+            RTS
+
+; ------------------------------------------------------------
+; unit test for the SET-ORDER errors: n > 8 throws -49, n < -1
+; throws -50, an invalid WID throws -11, and the order is left as it was.
+; TSTSO4
+;    Outputs:
+;        prints "TSTSOERR OK" or "TSTSOERR FAIL" (TSTREPORT)
+; ------------------------------------------------------------
+TSTSO4:     STU   TSTSOU0
+            JSR   TSTSOSAVE
+            LDX   #TSTSOTAB
+            LDB   #5
+            LDY   #SETORDERW
+            JSR   TSTSOLOOP
+            CMPD  #TRUEV
+            BNE   TS4BAD
+            LDD   ORDEND
+            CMPD  TSTSOOE
+            BNE   TS4BAD
+            LDD   ORDER
+            CMPD  TSTSOOR
+            BNE   TS4BAD
+            LDD   #TRUEV
+            BRA   TS4END
+TS4BAD:     LDD   #FALSEV
+TS4END:     LDX   #TSTSO4NAME
+            JMP   TSTSODONE
+
+TSTSO4NAME: FCB   8
+            FCC   "TSTSOERR"
+
+; ------------------------------------------------------------
+; unit test for GET-CURRENT and SET-CURRENT: they read and write
+; CURRENT, and SET-CURRENT throws -11 for the invalid WIDs.
+; TSTSO5
+;    Outputs:
+;        prints "TSTCURRENT OK" or "TSTCURRENT FAIL" (TSTREPORT)
+; ------------------------------------------------------------
+TSTSO5:     STU   TSTSOU0
+            JSR   TSTSOSAVE
+            LDD   #WLHEADS+2        ; ROOT
+            PSHU  D
+            JSR   SETCURW
+            LDD   CURRENT
+            CMPD  #WLHEADS+2
+            BNE   TS5BAD
+            JSR   GETCURW
+            PULU  D
+            CMPD  #WLHEADS+2
+            BNE   TS5BAD
+            LDX   #TSTSOTAB+12      ; the three invalid WIDs
+            LDB   #3
+            LDY   #SETCURW
+            JSR   TSTSOLOOP
+            CMPD  #TRUEV
+            BNE   TS5BAD
+            LDD   CURRENT
+            CMPD  #WLHEADS+2        ; unchanged by the failures
+            BNE   TS5BAD
+            LDD   #TRUEV
+            BRA   TS5END
+TS5BAD:     LDD   #FALSEV
+TS5END:     LDX   #TSTSO5NAME
+            JMP   TSTSODONE
+
+TSTSO5NAME: FCB   10
+            FCC   "TSTCURRENT"
+
+; ------------------------------------------------------------
+; unit test for DEFINITIONS: CURRENT becomes the first WID of the
+; order, and an empty order throws -50 and leaves CURRENT alone.
+; TSTSO6
+;    Outputs:
+;        prints "TSTDEFINIT OK" or "TSTDEFINIT FAIL" (TSTREPORT)
+; ------------------------------------------------------------
+TSTSO6:     STU   TSTSOU0
+            JSR   TSTSOSAVE
+            LDX   #WLHEADS+2
+            LDY   #WLHEADS
+            JSR   TSTSOORD2
+            LDD   #WLHEADS
+            STD   CURRENT
+            JSR   DEFINITIONSW
+            LDD   CURRENT
+            CMPD  #WLHEADS+2
+            BNE   TS6BAD
+            LDD   #ORDER
+            STD   ORDEND            ; empty order
+            LDD   #WLHEADS
+            STD   CURRENT
+            LDX   #DEFINITIONSW
+            JSR   TSTSOCATCH
+            CMPD  #-50
+            BNE   TS6BAD
+            LDD   CURRENT
+            CMPD  #WLHEADS
+            BNE   TS6BAD
+            LDD   #TRUEV
+            BRA   TS6END
+TS6BAD:     LDD   #FALSEV
+TS6END:     LDX   #TSTSO6NAME
+            JMP   TSTSODONE
+
+TSTSO6NAME: FCB   10
+            FCC   "TSTDEFINIT"
+
+; ------------------------------------------------------------
+; unit test for ALSO and PREVIOUS: ALSO duplicates the first WID,
+; PREVIOUS removes it and closes the gap, an empty order throws -50
+; for both, and ALSO on a full order throws -49.
+; TSTSO7
+;    Outputs:
+;        prints "TSTALSOPRV OK" or "TSTALSOPRV FAIL" (TSTREPORT)
+; ------------------------------------------------------------
+TSTSO7:     STU   TSTSOU0
+            JSR   TSTSOSAVE
+            LDX   #WLHEADS+2
+            LDY   #WLHEADS
+            JSR   TSTSOORD2         ; ( ROOT FORTH )
+            JSR   ALSOW             ; ( ROOT ROOT FORTH )
+            LDD   ORDEND
+            CMPD  #ORDER+6
+            LBNE   TS7BAD
+            LDD   ORDER
+            CMPD  #WLHEADS+2
+            LBNE   TS7BAD
+            LDD   ORDER+2
+            CMPD  #WLHEADS+2
+            LBNE   TS7BAD
+            LDD   ORDER+4
+            CMPD  #WLHEADS
+            LBNE   TS7BAD
+            JSR   PREVIOUSW         ; ( ROOT FORTH )
+            JSR   PREVIOUSW         ; ( FORTH )
+            LDD   ORDEND
+            CMPD  #ORDER+2
+            LBNE   TS7BAD
+            LDD   ORDER
+            CMPD  #WLHEADS
+            LBNE   TS7BAD
+            JSR   PREVIOUSW         ; empty
+            LDD   ORDEND
+            CMPD  #ORDER
+            LBNE   TS7BAD
+            LDX   #PREVIOUSW
+            JSR   TSTSOCATCH
+            CMPD  #-50
+            LBNE   TS7BAD
+            LDX   #ALSOW
+            JSR   TSTSOCATCH
+            CMPD  #-50
+            LBNE   TS7BAD
+            LDD   #ORDER+16         ; a full order
+            STD   ORDEND
+            LDX   #ALSOW
+            JSR   TSTSOCATCH
+            CMPD  #-49
+            LBNE   TS7BAD
+            LDD   ORDEND
+            CMPD  #ORDER+16
+            LBNE   TS7BAD
+            LDD   #TRUEV
+            BRA   TS7END
+TS7BAD:     LDD   #FALSEV
+TS7END:     LDX   #TSTSO7NAME
+            JMP   TSTSODONE
+
+TSTSO7NAME: FCB   11
+            FCC   "TSTALSOPREV"
+
+; ------------------------------------------------------------
+; unit test for ONLY, FORTH and ROOT: ONLY gives FORTH alone, FORTH
+; and ROOT replace the first WID (making the order if it was empty).
+; TSTSO8
+;    Outputs:
+;        prints "TSTONLYFRT OK" or "TSTONLYFRT FAIL" (TSTREPORT)
+; ------------------------------------------------------------
+TSTSO8:     STU   TSTSOU0
+            JSR   TSTSOSAVE
+            LDX   #WLHEADS+2
+            LDY   #WLHEADS+2
+            JSR   TSTSOORD2
+            JSR   FORTHW            ; ( FORTH ROOT )
+            LDD   ORDER
+            CMPD  #WLHEADS
+            LBNE   TS8BAD
+            LDD   ORDER+2
+            CMPD  #WLHEADS+2
+            LBNE   TS8BAD
+            LDD   ORDEND
+            CMPD  #ORDER+4
+            LBNE   TS8BAD
+            JSR   ROOTW             ; ( ROOT ROOT )
+            LDD   ORDER
+            CMPD  #WLHEADS+2
+            LBNE   TS8BAD
+            JSR   ONLYW             ; ( FORTH )
+            LDD   ORDER
+            CMPD  #WLHEADS
+            LBNE   TS8BAD
+            LDD   ORDEND
+            CMPD  #ORDER+2
+            LBNE   TS8BAD
+            LDD   #ORDER            ; empty order: ROOT makes it ( ROOT )
+            STD   ORDEND
+            JSR   ROOTW
+            LDD   ORDEND
+            CMPD  #ORDER+2
+            LBNE   TS8BAD
+            LDD   ORDER
+            CMPD  #WLHEADS+2
+            LBNE   TS8BAD
+            LDD   #ORDER            ; empty again: FORTH makes ( FORTH )
+            STD   ORDEND
+            JSR   FORTHW
+            LDD   ORDEND
+            CMPD  #ORDER+2
+            LBNE   TS8BAD
+            LDD   ORDER
+            CMPD  #WLHEADS
+            LBNE   TS8BAD
+            LDD   #TRUEV
+            BRA   TS8END
+TS8BAD:     LDD   #FALSEV
+TS8END:     LDX   #TSTSO8NAME
+            JMP   TSTSODONE
+
+TSTSO8NAME: FCB   10
+            FCC   "TSTONLYFRT"
+
+; ------------------------------------------------------------
+; Names used by the search tests, and a table for SEARCH-WORDLIST:
+; wid, expected flag, then the counted name; a zero wid ends it.
+; ------------------------------------------------------------
+TSTSNDUP:   FCB   3
+            FCC   "DUP"
+TSTSNIF:    FCB   2
+            FCC   "IF"
+TSTSNNONE:  FCB   4
+            FCC   "ZZZZ"
+TSTSNFORTH: FCB   5
+            FCC   "FORTH"
+
+TSTSOSWL:   FDB   WLHEADS,-1
+            FCB   3
+            FCC   "DUP"             ; found, not immediate
+            FDB   WLHEADS,1
+            FCB   2
+            FCC   "IF"              ; found, immediate
+            FDB   WLHEADS,0
+            FCB   4
+            FCC   "ZZZZ"            ; not found
+            FDB   WLHEADS+2,-1
+            FCB   5
+            FCC   "FORTH"           ; ROOT holds FORTH
+            FDB   WLHEADS+2,0
+            FCB   3
+            FCC   "DUP"             ; but not DUP
+            FDB   WLHEADS,0
+            FCB   0                 ; a zero-length name is not found
+            FDB   0
+
+; ------------------------------------------------------------
+; unit test for SEARCH-WORDLIST: the results for found, immediate and
+; missing names in FORTH and ROOT, a name over 31 characters is not
+; found, and an invalid WID throws -11.
+; TSTSO9
+;    Outputs:
+;        prints "TSTSEARCHWL OK" or "TSTSEARCHWL FAIL" (TSTREPORT)
+; ------------------------------------------------------------
+TSTSO9:     STU   TSTSOU0
+            JSR   TSTSOSAVE
+            LDX   #TSTSOSWL
+TS9LOOP:    LDD   ,X
+            BEQ   TS9LONG
+            STX   TSTSOT1           ; this entry
+            LEAX  5,X               ; the name text
+            PSHU  X
+            LDB   -1,X              ; its length
+            CLRA
+            PSHU  D
+            LDX   TSTSOT1
+            LDD   ,X                ; the wid
+            PSHU  D
+            JSR   SEARCHWLW
+            LDX   TSTSOT1
+            PULU  D                 ; flag, or 0 when not found
+            CMPD  2,X
+            LBNE   TS9BAD
+            CMPD  #0
+            BEQ   TS9NEXT
+            PULU  D                 ; the xt must not be 0
+            LBEQ   TS9BAD
+TS9NEXT:    LDB   4,X               ; step over this entry
+            CLRA
+            ADDD  #5
+            LEAX  D,X
+            BRA   TS9LOOP
+TS9LONG:    LDD   #TSTSNDUP+1       ; 32 characters long: not found
+            PSHU  D
+            LDD   #32
+            PSHU  D
+            LDD   #WLHEADS
+            PSHU  D
+            JSR   SEARCHWLW
+            PULU  D
+            LBNE   TS9BAD
+            LDD   #TSTSNDUP+1       ; an invalid wid throws -11
+            PSHU  D
+            LDD   #3
+            PSHU  D
+            LDD   #WLHEADS+1
+            PSHU  D
+            LDX   #SEARCHWLW
+            JSR   TSTSOCATCH
+            CMPD  #-11
+            LBNE   TS9BAD
+            LDD   #TRUEV
+            BRA   TS9END
+TS9BAD:     LDD   #FALSEV
+TS9END:     LDX   #TSTSO9NAME
+            JMP   TSTSODONE
+
+TSTSO9NAME: FCB   11
+            FCC   "TSTSEARCHWL"
+
+; ------------------------------------------------------------
+; Fake headers for the search and prune tests: build in TSTDBUF a
+; chain  new (smudged "DUP") -> old ("DUP") -> end, and a new
+; wordlist whose head is the newest of them.
+; TSTSOFAKE
+;    Outputs:
+;        RegX = the new WID
+;    Registers: RegD, RegX and CC changed.
+; ------------------------------------------------------------
+TSTSOFAKE:  LDX   #TSTDBUF
+            LDD   #$0344            ; length 3, 'D'
+            STD   ,X
+            LDD   #$5550            ; 'U' 'P'
+            STD   2,X
+            LDD   #0                ; link: end of the chain
+            STD   4,X
+            LDD   #$1111            ; code field
+            STD   6,X
+            LDD   #$4344            ; length 3 + smudge, 'D'
+            STD   8,X
+            LDD   #$5550
+            STD   10,X
+            LDD   #TSTDBUF          ; link to the older header
+            STD   12,X
+            LDD   #$2222
+            STD   14,X
+            JSR   WORDLISTW
+            PULU  X
+            LDD   #TSTDBUF+8        ; the head: the smudged header
+            STD   ,X
+            RTS
+
+; ------------------------------------------------------------
+; unit test for the search of the order (SRCHORD): smudged headers are
+; skipped, the first wordlist of the order wins, ROOT is searched last
+; even when the order is empty, and unknown names are not found.
+; TSTSO10
+;    Outputs:
+;        prints "TSTSRCHORD OK" or "TSTSRCHORD FAIL" (TSTREPORT)
+; ------------------------------------------------------------
+TSTSO10:    STU   TSTSOU0
+            JSR   TSTSOSAVE
+            JSR   TSTSOFAKE
+            STX   TSTSOT1           ; the fake wordlist
+            LDX   TSTSOT1
+            JSR   TSTSOORD1         ; ( fake )
+            LDX   #TSTSNDUP
+            JSR   TSTSOSRCH         ; the older header, past the smudged one
+            CMPX  #TSTDBUF
+            LBNE   TS10BAD
+            LDX   TSTSOT1
+            LDY   #WLHEADS
+            JSR   TSTSOORD2         ; ( fake FORTH ): fake wins
+            LDX   #TSTSNDUP
+            JSR   TSTSOSRCH
+            CMPX  #TSTDBUF
+            LBNE   TS10BAD
+            LDX   #WLHEADS
+            LDY   TSTSOT1
+            JSR   TSTSOORD2         ; ( FORTH fake ): the ROM header wins
+            LDX   #TSTSNDUP
+            JSR   TSTSOSRCH
+            CMPX  #ROMSTRT
+            LBLO   TS10BAD
+            LDD   #ORDER            ; empty order: only ROOT is searched
+            STD   ORDEND
+            LDX   #TSTSNDUP
+            JSR   TSTSOSRCH
+            CMPX  #0
+            LBNE   TS10BAD
+            LDX   #TSTSNFORTH
+            JSR   TSTSOSRCH
+            CMPX  #ROMSTRT
+            LBLO   TS10BAD
+            LDX   #WLHEADS
+            JSR   TSTSOORD1
+            LDX   #TSTSNNONE
+            JSR   TSTSOSRCH
+            CMPX  #0
+            LBNE   TS10BAD
+            LDD   #TRUEV
+            BRA   TS10END
+TS10BAD:    LDD   #FALSEV
+TS10END:    LDX   #TSTSO10NAME
+            JMP   TSTSODONE
+
+; X = counted name; returns X = header or 0
+TSTSOSRCH:  LDB   ,X+
+            TFR   X,Y
+            JMP   SRCHORD
+
+TSTSO10NAME: FCB  10
+            FCC   "TSTSRCHORD"
+
+; ------------------------------------------------------------
+; unit test for PRUNE: headers at or above the mark are unlinked from
+; every wordlist, those below are kept, and ROM headers are never
+; touched.
+; TSTSO11
+;    Outputs:
+;        prints "TSTPRUNE OK" or "TSTPRUNE FAIL" (TSTREPORT)
+; ------------------------------------------------------------
+TSTSO11:    STU   TSTSOU0
+            JSR   TSTSOSAVE
+            JSR   TSTSOFAKE
+            STX   TSTSOT1           ; head = TSTDBUF+8, link to TSTDBUF
+            LDD   #TSTDBUF+9        ; mark above both: nothing goes
+            JSR   PRUNE
+            LDX   TSTSOT1
+            LDD   ,X
+            CMPD  #TSTDBUF+8
+            LBNE   TS11BAD
+            LDD   #TSTDBUF+8        ; mark at the newer header
+            JSR   PRUNE
+            LDX   TSTSOT1
+            LDD   ,X
+            CMPD  #TSTDBUF
+            LBNE   TS11BAD
+            LDD   #TSTDBUF          ; mark at the older one: chain is empty
+            JSR   PRUNE
+            LDX   TSTSOT1
+            LDD   ,X
+            LBNE   TS11BAD
+            LDD   WLHEADS           ; the ROM wordlists did not move
+            CMPD  TSTSOWH
+            LBNE   TS11BAD
+            LDD   WLHEADS+2
+            CMPD  TSTSOWH+2
+            LBNE   TS11BAD
+            LDD   #TRUEV
+            BRA   TS11END
+TS11BAD:    LDD   #FALSEV
+TS11END:    LDX   #TSTSO11NAME
+            JMP   TSTSODONE
+
+TSTSO11NAME: FCB  8
+            FCC   "TSTPRUNE"
 
             ENDC                    ; <<<<
