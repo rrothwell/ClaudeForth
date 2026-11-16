@@ -72,6 +72,12 @@ TSTHANDSAV  EQU   APPVARS+245       ; saved HANDLER (CATCH test)
 
 TSTSISAV    EQU   APPVARS+247       ; saved SRCID (SOURCE-ID, REFILL tests)
 
+TSTIRQSAVE  EQU   APPVARS+260       ; saved IRQCHAIN (interrupt chain tests)
+TSTIRQC1    EQU   APPVARS+262       ; times TSTIRQH1 ran (byte)
+TSTIRQC2    EQU   APPVARS+263       ; times TSTIRQH2 ran (byte)
+TSTIRQNEXT  EQU   APPVARS+264       ; the handler TSTIRQH2 passes on to
+TSTIRQSP    EQU   APPVARS+266       ; S before the synthetic interrupt
+
 TSTNEG1     EQU   $CFC7             ; -12345: a non-trivial negative value
 TSTNEG2     EQU   $FEBF             ; -321
 
@@ -155,6 +161,7 @@ TSTRUNNER:  LDD   #APPCODE          ; The tests run before COLD, so CODEHERE wou
             JSR   TSTCOMMENTS
             JSR   TSTENVSYS
             JSR   TSTTOOLS
+            JSR   TSTIRQ
             RTS
 
 ; ------------------------------------------------------------
@@ -18477,3 +18484,250 @@ TSTBRTAB:   FDB   BQ1,BQ1L,BQ1E+1-BQ1
 
             ENDC                    ; <<<<
 
+; ------------------------------------------------------------
+; Interrupt chain tests (group 22, stage 6o). A synthetic interrupt
+; frame is built on the return stack and IRQH is entered with it, so
+; no timer or other interrupt source is needed and the tests run in
+; both serial builds. In the interrupt-driven build the tests first
+; wait for the transmitter to go idle, so the ACIA is not asking for
+; service and IRQH hands the interrupt down the chain.
+; TSTIRQ
+;    Inputs:
+;        none
+;    Outputs:
+;        group heading and each enabled test's result queued for output
+;    Registers: all changed.
+; ------------------------------------------------------------
+TSTIRQ:     JSR   CRW
+            LDX   #TSTIRQMSG
+            PSHU  X
+            LDD   #3
+            PSHU  D
+            JSR   TYPEW
+            JSR   CRW
+
+            IFEQ  TSTSELECTOR-22    ; >>>>
+
+            JSR   TSTIRQ1
+            JSR   TSTIRQ2
+            JSR   TSTIRQ3
+            JSR   TSTIRQ4
+
+            ENDC                    ; <<<<
+
+            RTS
+
+TSTIRQMSG:  FCC   "IRQ"
+
+            IFEQ  TSTSELECTOR-22    ; >>>>
+
+; ------------------------------------------------------------
+; The handlers under test. TSTIRQH1 ends the chain; TSTIRQH2 passes
+; on to the handler in TSTIRQNEXT.
+; ------------------------------------------------------------
+TSTIRQH1:   INC   TSTIRQC1
+            RTI
+
+TSTIRQH2:   INC   TSTIRQC2
+            JMP   [TSTIRQNEXT]
+
+; ------------------------------------------------------------
+; Enter IRQH with a synthetic interrupt frame.
+; TSTIRQFIRE
+;    Inputs:
+;        IRQCHAIN set up by the caller
+;    Outputs:
+;        RegD = TRUEV if S came back unchanged, else FALSEV
+;    Registers: all changed except S, U and DP.
+; ------------------------------------------------------------
+TSTIRQFIRE:
+            IFEQ  SERIALPOLL
+TIFIDLE:    TST   OUTACTIVITY       ; wait until the transmit interrupt is off
+            BNE   TIFIDLE
+            ENDC
+            PSHS  CC                ; remember the interrupt mask
+            STS   TSTIRQSP
+            ORCC  #$90              ; mask IRQ; E set so RTI pulls everything
+            LDD   #TIFRET
+            PSHS  D                 ; PC
+            PSHS  U,Y,X,DP,B,A,CC   ; the rest of a full interrupt frame
+            JMP   IRQH
+TIFRET:     TFR   S,D
+            CMPD  TSTIRQSP
+            BNE   TIFBAD
+            PULS  CC
+            LDD   #TRUEV
+            RTS
+TIFBAD:     LDS   TSTIRQSP
+            PULS  CC
+            LDD   #FALSEV
+            RTS
+
+; ------------------------------------------------------------
+; unit test for IRQ-CHAIN: with the initial value (an RTI) the
+; interrupt is ignored and S is unchanged.
+; TSTIRQ1
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTIRQ1 OK" or "TSTIRQ1 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTIRQ1:    CLR   TSTIRQC1
+            CLR   TSTIRQC2
+            LDD   IRQCHAIN
+            STD   TSTIRQSAVE
+            LDD   #IRQRTI
+            STD   IRQCHAIN
+            JSR   TSTIRQFIRE
+            PSHS  D
+            LDD   TSTIRQSAVE
+            STD   IRQCHAIN
+            PULS  D
+            TST   TSTIRQC1
+            BNE   TI1BAD
+            TST   TSTIRQC2
+            BEQ   TI1END
+TI1BAD:     LDD   #FALSEV
+TI1END:     LDX   #TSTIRQ1NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+            RTS
+
+TSTIRQ1NAME: FCB  7
+            FCC   "TSTIRQ1"
+
+; ------------------------------------------------------------
+; unit test for the interrupt chain: one handler that ends in RTI
+; runs exactly once.
+; TSTIRQ2
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTIRQ2 OK" or "TSTIRQ2 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTIRQ2:    CLR   TSTIRQC1
+            CLR   TSTIRQC2
+            LDD   IRQCHAIN
+            STD   TSTIRQSAVE
+            LDD   #TSTIRQH1
+            STD   IRQCHAIN
+            JSR   TSTIRQFIRE
+            PSHS  D
+            LDD   TSTIRQSAVE
+            STD   IRQCHAIN
+            PULS  D
+            LDA   TSTIRQC1
+            CMPA  #1
+            BNE   TI2BAD
+            TST   TSTIRQC2
+            BEQ   TI2END
+TI2BAD:     LDD   #FALSEV
+TI2END:     LDX   #TSTIRQ2NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+            RTS
+
+TSTIRQ2NAME: FCB  7
+            FCC   "TSTIRQ2"
+
+; ------------------------------------------------------------
+; unit test for the interrupt chain: a handler that passes the
+; interrupt on reaches the next handler, each running once.
+; TSTIRQ3
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTIRQ3 OK" or "TSTIRQ3 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTIRQ3:    CLR   TSTIRQC1
+            CLR   TSTIRQC2
+            LDD   IRQCHAIN
+            STD   TSTIRQSAVE
+            LDD   #TSTIRQH1
+            STD   TSTIRQNEXT
+            LDD   #TSTIRQH2
+            STD   IRQCHAIN
+            JSR   TSTIRQFIRE
+            PSHS  D
+            LDD   TSTIRQSAVE
+            STD   IRQCHAIN
+            PULS  D
+            LDA   TSTIRQC1
+            CMPA  #1
+            BNE   TI3BAD
+            LDA   TSTIRQC2
+            CMPA  #1
+            BEQ   TI3END
+TI3BAD:     LDD   #FALSEV
+TI3END:     LDX   #TSTIRQ3NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+            RTS
+
+TSTIRQ3NAME: FCB  7
+            FCC   "TSTIRQ3"
+
+; ------------------------------------------------------------
+; unit test for IOVINIT: it points EMIT, KEY and KEY? back at the
+; ACIA routines but leaves IRQCHAIN alone (a chained handler survives
+; an error, which runs IOVINIT).
+; TSTIRQ4
+;    Inputs:
+;        none
+;    Outputs:
+;        prints "TSTIRQ4 OK" or "TSTIRQ4 FAIL" (TSTREPORT)
+;    Registers: U restored; all others changed.
+; ------------------------------------------------------------
+TSTIRQ4:    LDD   IRQCHAIN
+            STD   TSTIRQSAVE
+            LDD   EMITV
+            PSHS  D
+            LDD   KEYV
+            PSHS  D
+            LDD   KEYQV
+            PSHS  D
+            LDD   #TSTIRQH1
+            STD   IRQCHAIN
+            LDD   #$1234
+            STD   EMITV
+            STD   KEYV
+            STD   KEYQV
+            JSR   IOVINIT
+            LDD   #TRUEV
+            LDX   IRQCHAIN
+            CMPX  #TSTIRQH1
+            BNE   TI4BAD
+            LDX   EMITV
+            CMPX  #EMITACIA
+            BNE   TI4BAD
+            LDX   KEYV
+            CMPX  #KEYACIA
+            BNE   TI4BAD
+            LDX   KEYQV
+            CMPX  #KEYQACIA
+            BEQ   TI4END
+TI4BAD:     LDD   #FALSEV
+TI4END:     PULS  X                 ; restore the vectors and the chain
+            STX   KEYQV
+            PULS  X
+            STX   KEYV
+            PULS  X
+            STX   EMITV
+            LDX   TSTIRQSAVE
+            STX   IRQCHAIN
+            LDX   #TSTIRQ4NAME
+            PSHU  X
+            PSHU  D
+            JSR   TSTREPORT
+            RTS
+
+TSTIRQ4NAME: FCB  7
+            FCC   "TSTIRQ4"
+
+            ENDC                    ; <<<<
