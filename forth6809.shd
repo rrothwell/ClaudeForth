@@ -3389,3 +3389,27 @@ section, as PUTCHAR does. PUTCHAR itself is unchanged and still discards when
 called directly. Consequence: EMIT must not be called with interrupts masked or
 from an interrupt handler (it would wait forever for room). +29 bytes in the
 interrupt build; BASECODEEND $FF6D, 47 bytes spare below INITCODE.
+
+================================================================
+SEE.1  [history]  (stage 6p)
+----------------------------------------------------------------
+Before 6p, HND_ASM listed machine code with DASMW until the first RTS. That cut
+words like = , < , MIN and MAX short, because their code has a second RTS
+after a conditional branch. 6p adds DTERM (called from HND_ASM after each
+instruction) and one cell, DSMAXF (the highest forward branch target seen so
+far in this word, within $200 bytes; cleared by DECOMPW). DTERM sees short
+branches $20-$2F, LBRA $16, long conditional branches $10 $21-$2F and
+JMP extended $7E (absolute target). The code ends at RTS $39, RTI $3B, JMP
+$0E/$6E/$7E, BRA $20, LBRA $16, or PULS $35 / PULU $37 with the PC bit set, but
+only when DSMAXF is below the next address. A JMP into another word that is
+not a forward target inside this one ends the listing (DEFER ends "JMP ,X").
+GLOBALS_USED is now 139+19*DISASM+23*DECOMP. The change took 149 bytes of
+code, so BASECODE/BASEDICT moved down by $70:
+   DISASM DECOMP   BASECODE  BASEDICT
+     1      1       $CD90     $C39A       (6o: $CE00 $C40A)
+Default 6p build: BASECODESIZE 12454 polled, 12802 interrupt; BASECODEEND $FE36
+polled (358 spare) and $FF92 interrupt (10 spare). Unused ROM below BASEDICT
+$C100-$C399 = 666 bytes with both options on; the DECOMP=0 and DISASM=0 builds
+are unchanged (1682 and 3225 bytes). Known limit: a branch from inside the
+word that lands beyond $200 bytes is ignored, so such a word would still stop
+at the first terminator.

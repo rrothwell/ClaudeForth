@@ -43,8 +43,8 @@ DECOMP      SET   DISASM            ; default: with the disassembler
             ENDC
             IFNE  DISASM
             IFNE  DECOMP
-BASECODE    EQU   $CE00             ; base code (DISASM and DECOMP). See shadow MEMMAP.6
-BASEDICT    EQU   $C40A             ; base dictionary (DISASM and DECOMP). See shadow MEMMAP.8
+BASECODE    EQU   $CD90             ; base code (DISASM and DECOMP). See shadow MEMMAP.6
+BASEDICT    EQU   $C39A             ; base dictionary (DISASM and DECOMP). See shadow MEMMAP.8
             ELSE
 BASECODE    EQU   $D180             ; base code (with DISASM). See shadow MEMMAP.6
             ; Commented-out code moved to shadow: MEMMAP.7
@@ -317,6 +317,7 @@ DSPREV      RMB   1                 ; kind of the previous instruction
 DSMODE      RMB   1                 ; 0 colon definition, 1 machine code
 DSCNT       RMB   1                 ; instruction limit
 DSFIN       RMB   1                 ; non-zero when finished
+DSMAXF      RMB   2                 ; highest forward branch target in machine code
 QK          RMB   1                 ; DQ search: kind, direction, target/end
 QD          RMB   1
 QW          RMB   1
@@ -324,7 +325,7 @@ QV          RMB   2
 QL          RMB   2                 ; DQ: target must be below this (0 = any)
 QC          RMB   1                 ; DQ count
             ENDC
-GLOBALS_USED EQU   139+19*DISASM+21*DECOMP    ; bytes used, of 256 available
+GLOBALS_USED EQU   139+19*DISASM+23*DECOMP    ; bytes used, of 256 available
 
 ; $0100-$0105 is unclaimed (was MVSCRATCH). See shadow MVSCRATCH.1
 
@@ -10643,16 +10644,21 @@ HND_ASM:      LDX   DSPOS
             JSR   DASMW
             PULU  X
             STX   DSNXT
-            TST   DSMODE
-            BEQ   HAS1
-            LDX   DSPOS
-            LDA   ,X
-            CMPA  #$39
-            BNE   HAS2
+            JSR   DTERM             ; does this instruction end the code?
+            BEQ   HAS3
             INC   DSFIN
-HAS2:       JMP   CRW
+HAS3:       TST   DSMODE
+            BEQ   HAS1
+            JMP   CRW
 HAS1:       LDA   #' '
-            JMP   DCH
+            JSR   DCH
+            TST   DSFIN             ; machine code inside a definition has
+            BEQ   HAS4              ; ended: show ; and end the line
+            LDB   #17
+            JSR   DKEY
+            JMP   CRW
+HAS4:       RTS
+
 HND_PLAIN:    LDD   DSOPD
             PSHU  D
             JSR   SNAMEW
@@ -10735,6 +10741,81 @@ HND_RTS:      INC   DSFIN
             JSR   DKEY
             JMP   CRW
 
+; DTERM  does the instruction at DSPOS end the machine code? It does if it
+; is an RTS, RTI, JMP, PULS or PULU with PC, BRA or LBRA, and no forward
+; branch or jump seen so far reaches the next instruction or beyond. The
+; target of each forward branch, and of a JMP or long branch that lands
+; within 512 bytes ahead, is kept in DSMAXF. So SEE stops at the end of a
+; word that finishes with a JMP, such as the action of DEFER, but not at
+; an early RTS or JMP that has more code after it.
+; Out: A = 0 (Z set) if the code goes on. DSNXT = the next address.
+DTERM:      LDX   DSPOS
+            LDA   ,X
+            CMPA  #$20
+            BLO   DT1
+            CMPA  #$2F
+            BHI   DT1
+            LDB   1,X               ; short branch: signed offset
+            SEX
+            BRA   DTT
+DT1:        CMPA  #$16
+            BNE   DT2
+            LDD   1,X               ; LBRA
+            BRA   DTT
+DT2:        CMPA  #$10
+            BNE   DT3
+            LDA   1,X
+            CMPA  #$21
+            BLO   DTEND
+            CMPA  #$2F
+            BHI   DTEND
+            LDD   2,X               ; long conditional branch
+            BRA   DTT
+DT3:        CMPA  #$7E
+            BNE   DTEND
+            LDD   1,X               ; JMP extended: absolute target
+            SUBD  DSNXT
+DTT:        ADDD  DSNXT             ; D = target address
+            CMPD  DSPOS
+            BLS   DTEND             ; not a forward target
+            TFR   D,Y
+            SUBD  DSPOS
+            CMPD  #$200
+            BHS   DTEND             ; too far to be inside this word
+            CMPY  DSMAXF
+            BLS   DTEND
+            STY   DSMAXF
+DTEND:      LDX   DSPOS
+            LDA   ,X
+            CMPA  #$39
+            BEQ   DTTM
+            CMPA  #$3B
+            BEQ   DTTM
+            CMPA  #$0E
+            BEQ   DTTM
+            CMPA  #$6E
+            BEQ   DTTM
+            CMPA  #$7E
+            BEQ   DTTM
+            CMPA  #$20
+            BEQ   DTTM
+            CMPA  #$16
+            BEQ   DTTM
+            CMPA  #$35
+            BEQ   DTPUL
+            CMPA  #$37
+            BNE   DTNO
+DTPUL:      LDA   1,X
+            BITA  #$80
+            BEQ   DTNO
+DTTM:       LDD   DSMAXF
+            CMPD  DSNXT
+            BHS   DTNO              ; the code goes on
+            LDA   #1
+            RTS
+DTNO:       CLRA
+            RTS
+
 DSKJT:      FDB   HND_ASM,HND_PLAIN,HND_DO,HND_DOES,HND_LIT,HND_ZBR,HND_BR,HND_LOOP
             FDB   HND_PLUS,HND_QDO,HND_EXIT,HND_STR,HND_STR,HND_STR,HND_STR,HND_RTS
 
@@ -10775,6 +10856,8 @@ DECOMPW:    PULU  X                 ; xt
             CLR   DISMUTE
             CLR   DSPREV
             CLR   DSFIN
+            LDD   #0
+            STD   DSMAXF
             LDA   #255
             STA   DSCNT
             CLR   DSMODE
